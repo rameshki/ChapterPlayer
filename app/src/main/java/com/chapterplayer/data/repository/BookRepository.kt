@@ -1,0 +1,35 @@
+package com.chapterplayer.data.repository
+
+import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.data.model.ServerConfig
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * Repository interface for audiobook data.
+ *
+ * The strategy:
+ * - Books are cached locally in Room after a successful server sync.
+ * - [observeAllBooks] always reads from the local cache for instant UI updates.
+ * - [syncBooksFromServer] fetches fresh data from the network and updates the cache.
+ * - Progress is always local-only.
+ */
+interface BookRepository {
+
+    /** Live stream of all cached books across all servers. */
+    fun observeAllBooks(): Flow<List<AudioBook>>
+
+    /** Live stream of books from a specific server. */
+    fun observeBooksByServer(serverId: String): Flow<List<AudioBook>>
+
+    /**
+     * Fetch fresh books from the given server's API and update the local cache.
+     * Returns a [Result] so callers can surface network errors to the UI.
+     */
+    suspend fun syncBooksFromServer(server: ServerConfig): Result<Unit>
+
+    /** Progress tracking */
+    fun observeProgress(bookId: String): Flow<ReadingProgress?>
+    fun observeInProgressBooks(): Flow<List<ReadingProgress>>
+    suspend fun saveProgress(progress: ReadingProgress)
+}
