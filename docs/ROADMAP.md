@@ -89,8 +89,8 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [x] Merge `plex-signin` into `main`
 - [x] Add the Gradle wrapper (`gradlew`) so builds work without Android Studio
 - [x] GitHub Actions CI: build + unit tests on every PR
-- [ ] Protect `main`: changes land through PRs
-- [ ] Set up issues and milestones on GitHub, one milestone per stage
+- [x] Protect `main`: changes land through PRs
+- [x] Set up issues and milestones on GitHub, one milestone per stage
 
 **Done when:** CI is green on `main`, and `./gradlew assembleDebug` works from a clean clone.
 
