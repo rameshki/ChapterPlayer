@@ -149,11 +149,4 @@ ChapterPlayer/
 
 ## What's Next
 
-Once you have the Library screen working with real data, the next features to build are:
-
-1. **Library picker** — let the user choose which ABS library / Plex section to load (instead of manually entering the ID)
-2. **Player screen** — the full playback UI from the prototype: scrubber, chapter nav, speed control, sleep timer
-3. **Media3 integration** — actual audio playback with proper chapter seeking
-4. **Mini player** — persistent playback bar above the bottom nav
-
-Let's get this thing playing audiobooks! 🎧
+The project goals, stages and design direction live in **[docs/ROADMAP.md](docs/ROADMAP.md)**.
