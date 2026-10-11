@@ -69,6 +69,12 @@ function Set-UserEnv([string]$name, [string]$value) {
     Set-Item -Path "env:$name" -Value $value
 }
 
+# Runs a native tool and prints its stderr as plain text. Windows PowerShell 5.1
+# otherwise renders every stderr line (progress, warnings) as a red NativeCommandError.
+function Invoke-Native([scriptblock]$cmd) {
+    & $cmd 2>&1 | ForEach-Object { Write-Host "    $_" }
+}
+
 function Test-Command([string]$name) { [bool](Get-Command $name -ErrorAction SilentlyContinue) }
 
 function Install-WingetPackage([string]$id, [string]$label) {
@@ -130,6 +136,7 @@ if (-not (Test-Command winget)) {
 Install-WingetPackage 'Git.Git' 'Git for Windows'
 Install-WingetPackage 'GitHub.cli' 'GitHub CLI'
 Install-WingetPackage 'Google.AndroidStudio' 'Android Studio'
+Install-WingetPackage 'EclipseAdoptium.Temurin.17.JDK' 'JDK 17 (Temurin)'
 Update-SessionPath
 
 # -----------------------------------------------------------------------------
@@ -152,15 +159,17 @@ if (-not $gitEmail) {
 Write-Ok "Git user: $(& git config --global user.name) <$(& git config --global user.email)>"
 
 # -----------------------------------------------------------------------------
-# 4. Java (Android Studio's bundled JBR) and Android SDK environment
+# 4. Java (JDK 17) and Android SDK environment
 # -----------------------------------------------------------------------------
+# Not Android Studio's bundled JBR: newer Studio releases bundle Java 25, which
+# the project's Gradle 8.8 cannot run on (max Java 22). JDK 17 matches CI.
 Write-Step 'Java and Android SDK environment'
-$studioDir = Join-Path $env:ProgramFiles 'Android\Android Studio'
-$jbr = Join-Path $studioDir 'jbr'
-if (-not (Test-Path (Join-Path $jbr 'bin\java.exe'))) {
-    throw "Android Studio's bundled Java not found at $jbr. Check the Android Studio install location."
+$jdk = Get-ChildItem (Join-Path $env:ProgramFiles 'Eclipse Adoptium') -Directory -Filter 'jdk-17*' -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -First 1
+if (-not $jdk -or -not (Test-Path (Join-Path $jdk.FullName 'bin\java.exe'))) {
+    throw 'JDK 17 not found under "C:\Program Files\Eclipse Adoptium". Re-run the script, or install Temurin 17 manually.'
 }
-Set-UserEnv 'JAVA_HOME' $jbr
+Set-UserEnv 'JAVA_HOME' $jdk.FullName
 
 $sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 New-Item -ItemType Directory -Force -Path $sdk | Out-Null
@@ -275,6 +284,7 @@ Write-Step 'GitHub'
 & gh auth status *> $null
 if ($LASTEXITCODE -ne 0) {
     Write-Info 'Sign in to GitHub (a browser window will open)...'
+    # Not piped: gh needs a real console for the interactive sign-in prompt
     & gh auth login --hostname github.com --git-protocol https --web
 }
 & gh auth setup-git
@@ -282,10 +292,10 @@ Write-Ok 'GitHub CLI signed in and set up as git credential helper'
 
 if (Test-Path (Join-Path $RepoDir '.git')) {
     Write-Ok "Repo already cloned at $RepoDir"
-    & git -C $RepoDir pull --ff-only
+    Invoke-Native { git -C $RepoDir pull --ff-only }
 } else {
     New-Item -ItemType Directory -Force -Path (Split-Path $RepoDir) | Out-Null
-    & git clone $RepoUrl $RepoDir
+    Invoke-Native { git clone $RepoUrl $RepoDir }
     if ($LASTEXITCODE -ne 0) { throw 'git clone failed' }
     Write-Ok "Cloned to $RepoDir"
 }
@@ -300,7 +310,7 @@ if (-not $SkipBuild) {
     Write-Step 'Test build (debug APK)'
     Push-Location $RepoDir
     try {
-        & .\gradlew.bat :app:assembleDebug --console=plain
+        Invoke-Native { .\gradlew.bat :app:assembleDebug --console=plain }
         if ($LASTEXITCODE -eq 0) { Write-Ok 'Build succeeded: app\build\outputs\apk\debug\app-debug.apk' }
         else { Write-Warn2 'Test build failed; open the project in Android Studio to see the error.' }
     } finally { Pop-Location }
@@ -319,6 +329,8 @@ Write-Host @"
     Next steps:
       1. Open a NEW terminal (so PATH and env vars apply).
       2. Open Android Studio once and finish its setup wizard; it will reuse this SDK.
+         Then set Settings > Build, Execution, Deployment > Build Tools > Gradle >
+         Gradle JDK to "JAVA_HOME" (JDK 17); the bundled Java 25 cannot run this project.
       3. Start the emulator:   emulator -avd $AvdName
       4. Start Claude Code:    cd "$RepoDir"; claude
          - Sign in when prompted.
