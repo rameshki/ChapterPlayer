@@ -1,6 +1,9 @@
 package com.chapterplayer.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +21,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -27,24 +32,31 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,7 +69,7 @@ import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.theme.TextSecondary
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Settings Screen — shows list of connected servers
+// Settings Screen — server list
 // ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,10 +86,7 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Settings",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
+                    Text("Settings", style = MaterialTheme.typography.headlineSmall)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDeep)
             )
@@ -166,33 +175,64 @@ private fun ServerRow(
                 Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AmberGold)
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Server Setup Screen — add / edit a server
+// Server Setup Screen — add / edit
 // ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServerSetupScreen(
-    serverId: String?,           // null means "add new"
+    serverId: String?,
     onDone: () -> Unit,
     viewModel: ServerSetupViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
-    // Load existing server data if editing
+    // Track whether we've already launched the browser for the current pin,
+    // so a recomposition doesn't open it again.
+    val browserLaunched = remember { mutableStateOf(false) }
+
+    // Load existing server if editing
     LaunchedEffect(serverId) {
         serverId?.let { viewModel.loadServer(it) }
     }
 
-    // Navigate back after a successful save
+    // Navigate back after successful save
     LaunchedEffect(uiState.savedSuccessfully) {
         if (uiState.savedSuccessfully) onDone()
+    }
+
+    // Open the Plex auth page in the system browser when a new pin code is ready
+    LaunchedEffect(uiState.plexPinCode) {
+        val code = uiState.plexPinCode
+        if (code == null) {
+            browserLaunched.value = false   // Reset so next OAuth attempt works
+            return@LaunchedEffect
+        }
+        if (browserLaunched.value) return@LaunchedEffect
+        browserLaunched.value = true
+        val authUrl = buildPlexAuthUrl(code, uiState.plexClientId)
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(authUrl)))
+    }
+
+    // Server picker dialog — shown after OAuth completes
+    if (uiState.plexOAuthStep == PlexOAuthStep.PICKING_SERVER) {
+        PlexServerPickerDialog(
+            servers = uiState.availablePlexServers,
+            onSelect = { viewModel.onPlexServerSelected(it) },
+            onDismiss = { viewModel.cancelPlexOAuth() }
+        )
     }
 
     Scaffold(
@@ -206,7 +246,10 @@ fun ServerSetupScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onDone) {
+                    IconButton(onClick = {
+                        viewModel.cancelPlexOAuth()
+                        onDone()
+                    }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
                     }
                 },
@@ -251,41 +294,62 @@ fun ServerSetupScreen(
                 }
             }
 
-            // Form fields
+            // Display name — shared for both server types
             ChapterTextField(
                 value = uiState.name,
                 onValueChange = viewModel::onNameChanged,
                 label = "Display Name",
-                placeholder = "e.g. Home ABS"
+                placeholder = if (uiState.source == ServerSource.ABS) "e.g. Home ABS" else "e.g. My Plex"
             )
 
-            ChapterTextField(
-                value = uiState.baseUrl,
-                onValueChange = viewModel::onBaseUrlChanged,
-                label = "Server URL",
-                placeholder = "http://192.168.1.10:8080",
-                keyboardType = KeyboardType.Uri
-            )
+            // ── ABS fields ────────────────────────────────────────────────
+            if (uiState.source == ServerSource.ABS) {
+                ChapterTextField(
+                    value = uiState.baseUrl,
+                    onValueChange = viewModel::onBaseUrlChanged,
+                    label = "Server URL",
+                    placeholder = "http://192.168.1.10:8080",
+                    keyboardType = KeyboardType.Uri
+                )
+                ChapterTextField(
+                    value = uiState.token,
+                    onValueChange = viewModel::onTokenChanged,
+                    label = "API Token",
+                    placeholder = "Paste your ABS token here",
+                    isPassword = true
+                )
+                ChapterTextField(
+                    value = uiState.libraryId,
+                    onValueChange = viewModel::onLibraryIdChanged,
+                    label = "Library ID (optional)",
+                    placeholder = "Leave blank to load all libraries"
+                )
+            }
 
-            ChapterTextField(
-                value = uiState.token,
-                onValueChange = viewModel::onTokenChanged,
-                label = if (uiState.source == ServerSource.ABS) "API Token" else "Plex Token (X-Plex-Token)",
-                placeholder = "Paste your token here",
-                isPassword = true
-            )
+            // ── Plex OAuth flow ───────────────────────────────────────────
+            if (uiState.source == ServerSource.PLEX) {
+                PlexAuthSection(
+                    uiState = uiState,
+                    onSignIn = viewModel::startPlexOAuth,
+                    onCancel = viewModel::cancelPlexOAuth
+                )
 
-            ChapterTextField(
-                value = uiState.libraryId,
-                onValueChange = viewModel::onLibraryIdChanged,
-                label = if (uiState.source == ServerSource.ABS) "Library ID (optional)" else "Section ID (optional)",
-                placeholder = if (uiState.source == ServerSource.ABS) "Leave blank to load all libraries" else "e.g. 1"
-            )
+                // Library section ID — shown after server is selected
+                if (uiState.baseUrl.isNotBlank()) {
+                    ChapterTextField(
+                        value = uiState.libraryId,
+                        onValueChange = viewModel::onLibraryIdChanged,
+                        label = "Music Section ID (optional)",
+                        placeholder = "e.g. 1  — leave blank to load all music"
+                    )
+                }
+            }
 
             // Error message
-            if (uiState.saveError != null) {
+            val errorMsg = uiState.saveError ?: uiState.plexOAuthError
+            if (errorMsg != null) {
                 Text(
-                    text = uiState.saveError!!,
+                    text = errorMsg,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -320,6 +384,179 @@ fun ServerSetupScreen(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Plex auth section — replaces the URL/token fields for Plex servers
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PlexAuthSection(
+    uiState: ServerSetupUiState,
+    onSignIn: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            when {
+                // Already signed in and server selected
+                uiState.baseUrl.isNotBlank() && uiState.plexOAuthStep == PlexOAuthStep.IDLE -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = AmberGold,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Connected to Plex",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = uiState.baseUrl,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    OutlinedButton(
+                        onClick = onSignIn,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberGold)
+                    ) {
+                        Text("Sign in with a different account")
+                    }
+                }
+
+                // Waiting for user to sign in via browser
+                uiState.plexOAuthStep == PlexOAuthStep.AWAITING_AUTH -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = AmberGold,
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = "Waiting for sign-in in browser…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = "Complete sign-in on the plex.tv page that opened. Come back here when done.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    TextButton(
+                        onClick = onCancel,
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                }
+
+                // Not started yet — show the sign-in button
+                else -> {
+                    Text(
+                        text = "Sign in with your Plex account to automatically discover your servers.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Button(
+                        onClick = onSignIn,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AmberGold,
+                            contentColor = BackgroundDeep
+                        )
+                    ) {
+                        Text(
+                            text = "Sign in with Plex",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server picker dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PlexServerPickerDialog(
+    servers: List<PlexServerOption>,
+    onSelect: (PlexServerOption) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceElevated,
+        title = {
+            Text(
+                text = "Choose a Server",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Select which Plex Media Server to connect to:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                servers.forEachIndexed { index, server ->
+                    if (index > 0) HorizontalDivider(color = SurfaceSecondary)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(server) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = server.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = server.url,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared text field component
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun ChapterTextField(
     value: String,
@@ -333,13 +570,12 @@ private fun ChapterTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        placeholder = {
-            Text(placeholder, color = TextSecondary)
-        },
+        placeholder = { Text(placeholder, color = TextSecondary) },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        visualTransformation = if (isPassword) PasswordVisualTransformation()
+        else androidx.compose.ui.text.input.VisualTransformation.None,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AmberGold,
             unfocusedBorderColor = SurfaceSecondary,
@@ -351,3 +587,19 @@ private fun ChapterTextField(
         )
     )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+private fun buildPlexAuthUrl(pinCode: String, clientId: String): String {
+    return "https://app.plex.tv/auth#?" +
+        "clientID=$clientId" +
+        "&code=$pinCode" +
+        "&context[device][product]=$PLEX_PRODUCT" +
+        "&context[device][version]=$PLEX_VERSION" +
+        "&context[device][platform]=Android"
+}
+
+private const val PLEX_PRODUCT = "ChapterPlayer"
+private const val PLEX_VERSION = "0.1.0"

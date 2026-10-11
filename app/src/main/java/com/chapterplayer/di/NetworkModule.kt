@@ -1,8 +1,7 @@
 package com.chapterplayer.di
 
 import com.chapterplayer.BuildConfig
-import com.chapterplayer.data.remote.abs.AbsApiService
-import com.chapterplayer.data.remote.plex.PlexApiService
+import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
@@ -22,14 +21,9 @@ import javax.inject.Singleton
 object NetworkModule {
 
     /**
-     * We need two separate Retrofit instances: one for ABS and one for Plex.
-     * The base URL is set dynamically per server, so we use a placeholder URL here.
-     * The actual URL is injected via a custom OkHttp interceptor or by creating
-     * Retrofit instances on demand in the repositories.
-     *
-     * For simplicity in v1, we use a shared Retrofit with a dummy base URL and
-     * override it per-call using @Url parameters where needed.
-     * The per-server base URL is passed as part of the request in the repository.
+     * ABS and Plex Media Server APIs live at a different base URL per server, so
+     * BookRepositoryImpl builds a Retrofit instance per server on demand using the
+     * shared OkHttpClient and Moshi below. Only plex.tv has a fixed base URL.
      */
 
     @Provides
@@ -46,10 +40,12 @@ object NetworkModule {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
 
-        // Add logging in debug builds only
+        // Add logging in debug builds only, with auth headers redacted
         if (BuildConfig.DEBUG) {
             val logging = HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BODY
+                redactHeader("Authorization")
+                redactHeader("X-Plex-Token")
             }
             builder.addInterceptor(logging)
         }
@@ -57,42 +53,18 @@ object NetworkModule {
         return builder.build()
     }
 
-    /**
-     * ABS Retrofit instance.
-     * Base URL is a placeholder — the real URL is set per-server in BookRepositoryImpl
-     * by creating a new Retrofit instance dynamically. However, we still need a
-     * singleton Retrofit here for Hilt to provide AbsApiService.
-     *
-     * In practice the base URL must end with "/" for Retrofit to work correctly.
-     * We use "http://localhost/" as the placeholder.
-     */
     @Provides
     @Singleton
-    @Named("abs")
-    fun provideAbsRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
+    @Named("plextv")
+    fun providePlexTvRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
         Retrofit.Builder()
-            .baseUrl("http://localhost/")
+            .baseUrl("https://plex.tv/")
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
 
     @Provides
     @Singleton
-    @Named("plex")
-    fun providePlexRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
-        Retrofit.Builder()
-            .baseUrl("http://localhost/")
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-
-    @Provides
-    @Singleton
-    fun provideAbsApiService(@Named("abs") retrofit: Retrofit): AbsApiService =
-        retrofit.create(AbsApiService::class.java)
-
-    @Provides
-    @Singleton
-    fun providePlexApiService(@Named("plex") retrofit: Retrofit): PlexApiService =
-        retrofit.create(PlexApiService::class.java)
+    fun providePlexTvApiService(@Named("plextv") retrofit: Retrofit): PlexTvApiService =
+        retrofit.create(PlexTvApiService::class.java)
 }

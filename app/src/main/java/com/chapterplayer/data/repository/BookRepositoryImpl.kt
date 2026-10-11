@@ -17,6 +17,9 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import okhttp3.OkHttpClient
+import retrofit2.Retrofit
+import retrofit2.converter.moshi.MoshiConverterFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,14 +27,35 @@ import javax.inject.Singleton
 class BookRepositoryImpl @Inject constructor(
     private val bookDao: BookDao,
     private val progressDao: ProgressDao,
-    private val absApiService: AbsApiService,
-    private val plexApiService: PlexApiService,
+    private val okHttpClient: OkHttpClient,
     private val moshi: Moshi
 ) : BookRepository {
 
     // Moshi adapters for serialising chapters to/from JSON for Room storage
     private val chapterListType = Types.newParameterizedType(List::class.java, Chapter::class.java)
     private val chapterAdapter get() = moshi.adapter<List<Chapter>>(chapterListType)
+
+    // -------------------------------------------------------------------------
+    // Per-server Retrofit factories
+    // Build a fresh Retrofit pointing at each server's real base URL.
+    // This avoids the placeholder http://localhost/ issue from the singleton setup.
+    // -------------------------------------------------------------------------
+
+    private fun absServiceFor(server: ServerConfig): AbsApiService =
+        Retrofit.Builder()
+            .baseUrl(server.baseUrl.trimEnd('/') + "/")
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(AbsApiService::class.java)
+
+    private fun plexServiceFor(server: ServerConfig): PlexApiService =
+        Retrofit.Builder()
+            .baseUrl(server.baseUrl.trimEnd('/') + "/")
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(PlexApiService::class.java)
 
     // -------------------------------------------------------------------------
     // Book observation (reads from local cache)
@@ -53,7 +77,6 @@ class BookRepositoryImpl @Inject constructor(
                 ServerSource.ABS -> fetchFromAbs(server)
                 ServerSource.PLEX -> fetchFromPlex(server)
             }
-            // Replace all books from this server with fresh data
             bookDao.deleteByServer(server.id)
             bookDao.insertAll(books)
         }
@@ -63,33 +86,47 @@ class BookRepositoryImpl @Inject constructor(
     // -------------------------------------------------------------------------
 
     private suspend fun fetchFromAbs(server: ServerConfig): List<BookEntity> {
-        val libraryId = requireNotNull(server.libraryId) {
-            "Cannot sync ABS books: no library selected for server ${server.name}"
-        }
+        val service = absServiceFor(server)
         val bearerToken = "Bearer ${server.token}"
-        val response = absApiService.getLibraryItems(
-            bearerToken = bearerToken,
-            libraryId = libraryId
-        )
         val now = System.currentTimeMillis()
-        return response.results.map { item ->
-            val metadata = item.media.metadata
-            val chapters = item.media.chapters?.mapIndexed { index, dto ->
-                dto.toChapter(index)
-            } ?: emptyList()
-            BookEntity(
-                id = "abs_${item.id}",
-                title = metadata.title ?: "Unknown Title",
-                author = metadata.authorName ?: "Unknown Author",
-                narrator = metadata.narratorName ?: "",
-                durationMs = ((item.media.duration ?: 0.0) * 1000).toLong(),
-                chaptersJson = chapterAdapter.toJson(chapters),
-                streamUrl = "${server.baseUrl}/api/items/${item.id}/play",
-                coverUrl = if (item.media.coverPath != null) "${server.baseUrl}/api/items/${item.id}/cover" else null,
-                source = ServerSource.ABS.name,
-                serverId = server.id,
-                cachedAt = now
+
+        // If a specific library ID was provided, use it.
+        // Otherwise, auto-discover all book-type libraries on this server.
+        val libraryIds: List<String> = if (!server.libraryId.isNullOrBlank()) {
+            listOf(server.libraryId)
+        } else {
+            service.getLibraries(bearerToken)
+                .libraries
+                .filter { it.mediaType == "book" }
+                .map { it.id }
+        }
+
+        return libraryIds.flatMap { libraryId ->
+            val response = service.getLibraryItems(
+                bearerToken = bearerToken,
+                libraryId = libraryId
             )
+            response.results.map { item ->
+                val metadata = item.media.metadata
+                val chapters = item.media.chapters?.mapIndexed { index, dto ->
+                    dto.toChapter(index)
+                } ?: emptyList()
+                BookEntity(
+                    id = "abs_${item.id}",
+                    title = metadata.title ?: "Unknown Title",
+                    author = metadata.authorName ?: "Unknown Author",
+                    narrator = metadata.narratorName ?: "",
+                    durationMs = ((item.media.duration ?: 0.0) * 1000).toLong(),
+                    chaptersJson = chapterAdapter.toJson(chapters),
+                    streamUrl = "${server.baseUrl}/api/items/${item.id}/play",
+                    coverUrl = if (item.media.coverPath != null)
+                        "${server.baseUrl}/api/items/${item.id}/cover"
+                    else null,
+                    source = ServerSource.ABS.name,
+                    serverId = server.id,
+                    cachedAt = now
+                )
+            }
         }
     }
 
@@ -98,31 +135,47 @@ class BookRepositoryImpl @Inject constructor(
     // -------------------------------------------------------------------------
 
     private suspend fun fetchFromPlex(server: ServerConfig): List<BookEntity> {
-        val sectionId = requireNotNull(server.libraryId) {
-            "Cannot sync Plex books: no library section selected for server ${server.name}"
-        }
-        val response = plexApiService.getLibraryAll(
-            token = server.token,
-            sectionId = sectionId
-        )
+        val service = plexServiceFor(server)
         val now = System.currentTimeMillis()
-        return response.mediaContainer.metadata?.mapIndexed { _, meta ->
-            val chapters = meta.chapters?.map { it.toChapter() } ?: emptyList()
-            val streamPath = meta.media?.firstOrNull()?.parts?.firstOrNull()?.key ?: ""
-            BookEntity(
-                id = "plex_${meta.ratingKey}",
-                title = meta.title,
-                author = meta.author ?: "Unknown Author",
-                narrator = "",  // Plex doesn't expose narrator as a first-class field
-                durationMs = meta.durationMs ?: 0L,
-                chaptersJson = chapterAdapter.toJson(chapters),
-                streamUrl = "${server.baseUrl}$streamPath?X-Plex-Token=${server.token}",
-                coverUrl = if (meta.thumb != null) "${server.baseUrl}${meta.thumb}?X-Plex-Token=${server.token}" else null,
-                source = ServerSource.PLEX.name,
-                serverId = server.id,
-                cachedAt = now
+
+        // If a section ID was provided, use it.
+        // Otherwise, fetch all music sections (audiobooks live in music libraries in Plex).
+        val sectionIds: List<String> = if (!server.libraryId.isNullOrBlank()) {
+            listOf(server.libraryId)
+        } else {
+            service.getLibrarySections(token = server.token)
+                .mediaContainer
+                .directories
+                ?.filter { it.type == "artist" }   // "artist" == music/audiobook section in Plex
+                ?.map { it.key }
+                ?: emptyList()
+        }
+
+        return sectionIds.flatMap { sectionId ->
+            val response = service.getLibraryAll(
+                token = server.token,
+                sectionId = sectionId
             )
-        } ?: emptyList()
+            response.mediaContainer.metadata?.map { meta ->
+                val chapters = meta.chapters?.map { it.toChapter() } ?: emptyList()
+                val streamPath = meta.media?.firstOrNull()?.parts?.firstOrNull()?.key ?: ""
+                BookEntity(
+                    id = "plex_${meta.ratingKey}",
+                    title = meta.title,
+                    author = meta.author ?: "Unknown Author",
+                    narrator = "",
+                    durationMs = meta.durationMs ?: 0L,
+                    chaptersJson = chapterAdapter.toJson(chapters),
+                    streamUrl = "${server.baseUrl}$streamPath?X-Plex-Token=${server.token}",
+                    coverUrl = if (meta.thumb != null)
+                        "${server.baseUrl}${meta.thumb}?X-Plex-Token=${server.token}"
+                    else null,
+                    source = ServerSource.PLEX.name,
+                    serverId = server.id,
+                    cachedAt = now
+                )
+            } ?: emptyList()
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -163,6 +216,6 @@ class BookRepositoryImpl @Inject constructor(
         id = id,
         title = title,
         startMs = startTimeMs,
-        endMs = 0L  // Plex doesn't always provide endTime; we'll calculate from next chapter's start
+        endMs = 0L
     )
 }

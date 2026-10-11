@@ -3,6 +3,7 @@ package com.chapterplayer.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.ui.components.LibraryFilter
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -25,6 +28,22 @@ class LibraryViewModel @Inject constructor(
     // Internal mutable state for things the UI can change (filter, sync status)
     private val _syncState = MutableStateFlow(SyncState())
     private val _activeFilter = MutableStateFlow(LibraryFilter.ALL)
+
+    init {
+        // Auto-sync any configured server that has nothing in the local cache yet
+        // (first launch, or a server was just added), so the user doesn't have to
+        // tap refresh manually.
+        viewModelScope.launch {
+            serverRepository.observeAll()
+                .distinctUntilChangedBy { servers -> servers.map { it.id }.toSet() }
+                .collect { servers ->
+                    val cachedServerIds = bookRepository.observeAllBooks().first()
+                        .mapTo(mutableSetOf()) { it.serverId }
+                    val uncached = servers.filter { it.id !in cachedServerIds }
+                    if (uncached.isNotEmpty()) syncServers(uncached)
+                }
+        }
+    }
 
     // Exposed as StateFlow — the screen collects this
     val uiState: StateFlow<LibraryUiState> = combine(
@@ -67,28 +86,26 @@ class LibraryViewModel @Inject constructor(
 
     fun onRefreshRequested() {
         viewModelScope.launch {
-            _syncState.update { it.copy(isSyncing = true, error = null) }
+            syncServers(serverRepository.observeAll().first())
+        }
+    }
 
-            val servers = serverRepository.observeAll().stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.Eagerly,
-                initialValue = emptyList()
-            ).value
+    private suspend fun syncServers(servers: List<ServerConfig>) {
+        _syncState.update { it.copy(isSyncing = true, error = null) }
 
-            val errors = mutableListOf<String>()
-            servers.forEach { server ->
-                bookRepository.syncBooksFromServer(server)
-                    .onFailure { throwable ->
-                        errors.add("${server.name}: ${throwable.message ?: "Unknown error"}")
-                    }
-            }
+        val errors = mutableListOf<String>()
+        servers.forEach { server ->
+            bookRepository.syncBooksFromServer(server)
+                .onFailure { throwable ->
+                    errors.add("${server.name}: ${throwable.message ?: "Unknown error"}")
+                }
+        }
 
-            _syncState.update {
-                it.copy(
-                    isSyncing = false,
-                    error = if (errors.isNotEmpty()) errors.joinToString("\n") else null
-                )
-            }
+        _syncState.update {
+            it.copy(
+                isSyncing = false,
+                error = if (errors.isNotEmpty()) errors.joinToString("\n") else null
+            )
         }
     }
 
