@@ -12,11 +12,11 @@ for scope, stages and design direction. Keep that file updated as stages complet
 ## Current state
 - Single Android module (`app/`): Compose, Hilt, Room (kapt), Retrofit/Moshi
 - Stage 1 of the roadmap migrates this to `shared/` (KMP) + `androidApp/` + `iosApp/`
-- No tests yet; no Gradle wrapper yet (Stage 0)
+- No tests yet
 
 ## Building
 - Java: Android Studio's bundled JBR (`C:\Program Files\Android\Android Studio\jbr`)
-- `./gradlew :app:assembleDebug` once the wrapper is added
+- `./gradlew :app:assembleDebug` (needs JAVA_HOME set to the JBR above)
 
 ## Conventions
 - Branches `stage-N/<feature>`, PRs into protected `main`, tags `v0.N.0` per stage

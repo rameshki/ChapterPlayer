@@ -86,9 +86,9 @@ Keep ChapterPlayer's identity: dark theme with the amber-gold accent, and the Pl
 Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 
 ### Stage 0: Repo & tooling foundation
-- [ ] Merge `plex-signin` into `main`
-- [ ] Add the Gradle wrapper (`gradlew`) so builds work without Android Studio
-- [ ] GitHub Actions CI: build + unit tests on every PR
+- [x] Merge `plex-signin` into `main`
+- [x] Add the Gradle wrapper (`gradlew`) so builds work without Android Studio
+- [x] GitHub Actions CI: build + unit tests on every PR
 - [ ] Protect `main`: changes land through PRs
 - [ ] Set up issues and milestones on GitHub, one milestone per stage
 
