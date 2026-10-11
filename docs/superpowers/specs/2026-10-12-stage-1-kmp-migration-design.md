@@ -31,7 +31,7 @@ Each PR builds, passes CI and gets an emulator pass before merge. Branches are `
 
 | PR | Branch | Change | Risk |
 |---|---|---|---|
-| 1 | `stage-1/toolchain` | Kotlin 2.x, Compose compiler plugin, current AGP and Gradle, add KSP beside kapt, bump AndroidX only as required | Medium |
+| 1 | `stage-1/toolchain` | Gradle 9.5, AGP 9.3 with built-in Kotlin, Kotlin 2.4, Compose compiler plugin, kapt replaced by KSP for Hilt, Room and Moshi codegen, compileSdk 37, AndroidX bumped to current. Delivered in PR #5 | Medium |
 | 2 | `stage-1/module-split` | Create `shared/` (Android target only) and `androidApp/`; move code unchanged into `shared/androidMain`; retire `app/`; update CI paths | Medium |
 | 3 | `stage-1/ktor` | Record and sanitize JSON fixtures; parser tests pass on Moshi first; port DTOs and clients to kotlinx.serialization and Ktor in `commonMain` | High |
 | 4 | `stage-1/koin` | Hilt to Koin; remove Hilt and its kapt processor | Medium |
@@ -41,6 +41,8 @@ Each PR builds, passes CI and gets an emulator pass before merge. Branches are `
 | 8 | `stage-1/ios-shell` | Empty `iosApp/`; macOS CI job compiles the framework; tick Stage 1 in the roadmap; tag `v0.1.0` | Low |
 
 PR 6 is the largest. If it grows unwieldy it splits into theme and components first, then screens.
+
+PR 1 removed kapt entirely, because AGP 9 no longer supports the `org.jetbrains.kotlin.kapt` plugin. PR 5 therefore starts from KSP already. PR 1 also found that the Compose BOM bump changes Material 3 defaults: the bottom bar had been tinted through tonal elevation. Expect similar default-colour drift in PR 6 (Compose Multiplatform) and compare screenshots again there.
 
 ## Library changes
 

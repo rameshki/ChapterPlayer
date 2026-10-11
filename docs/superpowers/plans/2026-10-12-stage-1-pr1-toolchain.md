@@ -72,7 +72,7 @@ Expected: on branch `stage-1/toolchain`, `git status` clean.
 - [ ] **Step 2: Install the SDK pieces AGP 9.3 needs**
 
 ```bash
-sdkmanager.bat "platforms;android-37.0" "build-tools;36.0.0"
+sdkmanager.bat "platforms/android-37.0" "build-tools/36.0.0"   # use slashes: the batch wrapper splits on semicolons
 ```
 Expected: both packages download. If asked to accept licenses, run `sdkmanager.bat --licenses` and accept. Verify:
 ```bash
@@ -639,7 +639,7 @@ Claude-Session: https://claude.ai/code/session_01M55YRaxmRRG8NmDaVhSmey"
 - [ ] **Step 1: Final local check from clean**
 
 ```bash
-./gradlew clean :app:assembleDebug :app:testDebugUnitTest
+./gradlew help && ./gradlew :app:assembleDebug :app:testDebugUnitTest   # no clean: it only wastes time
 git status --short
 ```
 Expected: `BUILD SUCCESSFUL` and a clean working tree.
@@ -678,3 +678,11 @@ Only add it if the log shows that failure. Push the fix to the same branch.
 - "CI green": Task 8.
 - Spec deviations (kapt removed, compileSdk 37): recorded in Task 7.
 - Known gap: R8 runtime behavior is unverified without a signed release build.
+
+## Execution notes (added after PR #5)
+
+- Result: the build was green on the first attempt; Task 5 needed no fixes. One visual regression was found in Task 6 and fixed (`NavBarSurface`): Material 3 stopped tinting the bottom bar through tonal elevation.
+- The Task 6 screenshot comparison was done with pixel sampling against the baseline captures, not by eye alone: 0.13%, 0.08% and 0.00% of sampled pixels differed on Library, Settings and Add Server.
+- A fullscreen focus highlight on the first focusable button after launch is a keyboard-focus state on the emulator, not a regression. One tap in touch mode clears it. Tap before capturing.
+- `sdkmanager` on Windows needs slash paths (`platforms/android-37.0`); the semicolon form is split by the batch wrapper.
+- Google's `agp-9-upgrade` skill says not to run `clean` when verifying, and to verify with `./gradlew help` and `./gradlew build --dry-run`.
