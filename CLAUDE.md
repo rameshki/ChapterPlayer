@@ -21,3 +21,6 @@ for scope, stages and design direction. Keep that file updated as stages complet
 ## Conventions
 - Branches `stage-N/<feature>`, PRs into protected `main`, tags `v0.N.0` per stage
 - Server tokens never logged (auth headers are redacted in the HTTP logger)
+
+## New dev machine
+- `scripts/setup-dev-machine.ps1` installs Git, GitHub CLI, Android Studio, SDK + emulator + Android Auto DHU, Claude Code, and clones the repo
