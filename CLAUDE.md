@@ -15,8 +15,8 @@ for scope, stages and design direction. Keep that file updated as stages complet
 - No tests yet
 
 ## Building
-- Java: Android Studio's bundled JBR (`C:\Program Files\Android\Android Studio\jbr`)
-- `./gradlew :app:assembleDebug` (needs JAVA_HOME set to the JBR above)
+- Java: JDK 17 (CI uses Temurin 17). Android Studio's bundled JBR 21 also works, but newer Studio releases bundle JBR 25, which Gradle 8.8 cannot run on. Stage 1's Gradle upgrade removes this limit.
+- `./gradlew :app:assembleDebug` (needs JAVA_HOME set to JDK 17 or 21)
 
 ## Conventions
 - Branches `stage-N/<feature>`, PRs into protected `main`, tags `v0.N.0` per stage
