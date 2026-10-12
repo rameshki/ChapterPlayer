@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.room)
 }
 
 kotlin {
@@ -89,6 +90,11 @@ kotlin {
             implementation(libs.datastore.preferences)
         }
     }
+}
+
+// The exported schema records what installed apps already hold; RoomSchemaTest pins it.
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 dependencies {

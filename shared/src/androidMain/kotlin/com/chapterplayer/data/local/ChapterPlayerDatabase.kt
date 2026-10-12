@@ -16,7 +16,7 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
         ServerConfigEntity::class
     ],
     version = 1,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class ChapterPlayerDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
