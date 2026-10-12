@@ -43,7 +43,7 @@ fun ChapterPlayerTheme(
 ) {
     MaterialTheme(
         colorScheme = ChapterPlayerColorScheme,
-        typography = ChapterPlayerTypography,
+        typography = chapterPlayerTypography(),
         content = content
     )
 }

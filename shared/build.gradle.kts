@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidx.room)
@@ -33,6 +34,13 @@ kotlin {
     sourceSets {
         // Data layer: models, entities, DAOs and the database. Nothing here may use Android APIs.
         commonMain.dependencies {
+            implementation(compose.runtime)
+            implementation(compose.foundation)
+            implementation(compose.material3)
+            implementation(compose.ui)
+            implementation(compose.components.resources)
+            implementation(libs.coil3.compose)
+            implementation(libs.coil3.network.ktor3)
             implementation(libs.room.runtime)
             implementation(libs.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
@@ -86,13 +94,14 @@ kotlin {
             // Coroutines
             implementation(libs.coroutines.android)
 
-            // Image Loading
-            implementation(libs.coil.compose)
-
             // DataStore (Settings persistence)
             implementation(libs.datastore.preferences)
         }
     }
+}
+
+compose.resources {
+    packageOfResClass = "com.chapterplayer.resources"
 }
 
 // The exported schema records what installed apps already hold; RoomSchemaTest pins it.
