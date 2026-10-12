@@ -27,6 +27,10 @@ jobs:
       - name: Build debug APK and run unit tests
         run: ./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest :shared:testAndroidHostTest --stacktrace
 
+      - name: Check the Room schema did not change
+        # The build regenerates shared/schemas. A difference means an entity changed without a migration.
+        run: git diff --exit-code -- shared/schemas
+
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug

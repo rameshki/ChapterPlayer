@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.room)
 }
 
 kotlin {
@@ -30,6 +31,13 @@ kotlin {
     }
 
     sourceSets {
+        // Data layer: models, entities, DAOs and the database. Nothing here may use Android APIs.
+        commonMain.dependencies {
+            implementation(libs.room.runtime)
+            implementation(libs.coroutines.core)
+            implementation(libs.kotlinx.serialization.json)
+        }
+
         getByName("androidHostTest").dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
@@ -66,10 +74,6 @@ kotlin {
             implementation(libs.koin.androidx.compose)
 
 
-            // Room (Local Database)
-            implementation(libs.room.runtime)
-            implementation(libs.room.ktx)
-
             // Ktor + kotlinx.serialization
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.okhttp)
@@ -89,6 +93,11 @@ kotlin {
             implementation(libs.datastore.preferences)
         }
     }
+}
+
+// The exported schema records what installed apps already hold; RoomSchemaTest pins it.
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 dependencies {
