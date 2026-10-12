@@ -1,0 +1,297 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "allowSync": true,
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "librarySectionUUID": "Fixture librarySectionUUID 1",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1775695608,
+    "Metadata": [
+      {
+        "ratingKey": "1024",
+        "key": "/library/metadata/1024",
+        "parentRatingKey": "1019",
+        "grandparentRatingKey": "1005",
+        "guid": "local://fixture1025",
+        "parentGuid": "local://fixture1020",
+        "grandparentGuid": "plex://artist/fixture1006",
+        "type": "track",
+        "title": "Fixture title 12",
+        "grandparentKey": "/library/metadata/1005",
+        "parentKey": "/library/metadata/1019",
+        "librarySectionTitle": "Fixture librarySectionTitle 1",
+        "librarySectionID": 4,
+        "librarySectionKey": "Fixture librarySectionKey 1",
+        "grandparentTitle": "Fixture grandparentTitle 1",
+        "parentTitle": "Fixture parentTitle 3",
+        "summary": "Fixture summary 1",
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1019/thumb/1700000000",
+        "parentThumb": "/library/metadata/1019/thumb/1700000000",
+        "duration": 47198808,
+        "addedAt": 1700000000,
+        "chapterSource": "Fixture chapterSource 1",
+        "Media": [
+          {
+            "id": 1026,
+            "duration": 47198808,
+            "bitrate": 126,
+            "audioChannels": 2,
+            "audioCodec": "Fixture audioCodec 1",
+            "container": "mp4",
+            "optimizedForStreaming": 0,
+            "audioProfile": "lc",
+            "has64bitOffsets": false,
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1027,
+                "key": "/library/parts/1027/1700000000/file.m4b",
+                "duration": 47198808,
+                "file": "/fixtures/Fixture Author/Fixture Book/Fixture Book.m4b",
+                "size": 749847734,
+                "audioProfile": "lc",
+                "container": "mp4",
+                "has64bitOffsets": false,
+                "hasThumbnail": "1001",
+                "optimizedForStreaming": false,
+                "Stream": [
+                  {
+                    "id": 1028,
+                    "streamType": 2,
+                    "selected": true,
+                    "default": true,
+                    "codec": "Fixture codec 1",
+                    "index": 0,
+                    "channels": 2,
+                    "bitrate": 126,
+                    "language": "English",
+                    "languageTag": "Fixture languageTag 1",
+                    "languageCode": "eng",
+                    "albumGain": "Fixture albumGain 1",
+                    "albumPeak": "Fixture albumPeak 1",
+                    "albumRange": "Fixture albumRange 1",
+                    "audioChannelLayout": "Fixture audioChannelLayout 1",
+                    "gain": "Fixture gain 1",
+                    "loudness": "Fixture loudness 1",
+                    "lra": "Fixture lra 1",
+                    "peak": "Fixture peak 1",
+                    "profile": "Fixture profile 1",
+                    "samplingRate": 44100,
+                    "streamIdentifier": "1001",
+                    "displayTitle": "Fixture displayTitle 1",
+                    "extendedDisplayTitle": "Fixture extendedDisplayTitle 1"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Fixture alt 5",
+            "type": "coverPoster",
+            "url": "/library/metadata/1019/thumb/1700000000"
+          }
+        ],
+        "Chapter": [
+          {
+            "id": 1029,
+            "filter": "thumb=1029",
+            "tag": "Fixture tag 6",
+            "index": 1,
+            "startTimeOffset": 0,
+            "endTimeOffset": 43560
+          },
+          {
+            "id": 1030,
+            "filter": "thumb=1030",
+            "tag": "Fixture tag 7",
+            "index": 2,
+            "startTimeOffset": 43560,
+            "endTimeOffset": 118955
+          },
+          {
+            "id": 1031,
+            "filter": "thumb=1031",
+            "tag": "Fixture tag 8",
+            "index": 3,
+            "startTimeOffset": 118955,
+            "endTimeOffset": 2459290
+          },
+          {
+            "id": 1032,
+            "filter": "thumb=1032",
+            "tag": "Fixture tag 9",
+            "index": 4,
+            "startTimeOffset": 2459290,
+            "endTimeOffset": 4416340
+          },
+          {
+            "id": 1033,
+            "filter": "thumb=1033",
+            "tag": "Fixture tag 10",
+            "index": 5,
+            "startTimeOffset": 4416340,
+            "endTimeOffset": 7654710
+          },
+          {
+            "id": 1034,
+            "filter": "thumb=1034",
+            "tag": "Fixture tag 11",
+            "index": 6,
+            "startTimeOffset": 7654710,
+            "endTimeOffset": 9719380
+          },
+          {
+            "id": 1035,
+            "filter": "thumb=1035",
+            "tag": "Fixture tag 12",
+            "index": 7,
+            "startTimeOffset": 9719380,
+            "endTimeOffset": 11528500
+          },
+          {
+            "id": 1036,
+            "filter": "thumb=1036",
+            "tag": "Fixture tag 13",
+            "index": 8,
+            "startTimeOffset": 11528500,
+            "endTimeOffset": 13976400
+          },
+          {
+            "id": 1037,
+            "filter": "thumb=1037",
+            "tag": "Fixture tag 14",
+            "index": 9,
+            "startTimeOffset": 13976400,
+            "endTimeOffset": 16672599
+          },
+          {
+            "id": 1038,
+            "filter": "thumb=1038",
+            "tag": "Fixture tag 15",
+            "index": 10,
+            "startTimeOffset": 16672599,
+            "endTimeOffset": 19331800
+          },
+          {
+            "id": 1039,
+            "filter": "thumb=1039",
+            "tag": "Fixture tag 16",
+            "index": 11,
+            "startTimeOffset": 19331800,
+            "endTimeOffset": 21520800
+          },
+          {
+            "id": 1040,
+            "filter": "thumb=1040",
+            "tag": "Fixture tag 17",
+            "index": 12,
+            "startTimeOffset": 21520800,
+            "endTimeOffset": 23818100
+          },
+          {
+            "id": 1041,
+            "filter": "thumb=1041",
+            "tag": "Fixture tag 18",
+            "index": 13,
+            "startTimeOffset": 23818100,
+            "endTimeOffset": 25784900
+          },
+          {
+            "id": 1042,
+            "filter": "thumb=1042",
+            "tag": "Fixture tag 19",
+            "index": 14,
+            "startTimeOffset": 25784900,
+            "endTimeOffset": 28303500
+          },
+          {
+            "id": 1043,
+            "filter": "thumb=1043",
+            "tag": "Fixture tag 20",
+            "index": 15,
+            "startTimeOffset": 28303500,
+            "endTimeOffset": 29935200
+          },
+          {
+            "id": 1044,
+            "filter": "thumb=1044",
+            "tag": "Fixture tag 21",
+            "index": 16,
+            "startTimeOffset": 29935200,
+            "endTimeOffset": 32060000
+          },
+          {
+            "id": 1045,
+            "filter": "thumb=1045",
+            "tag": "Fixture tag 22",
+            "index": 17,
+            "startTimeOffset": 32060000,
+            "endTimeOffset": 35167600
+          },
+          {
+            "id": 1046,
+            "filter": "thumb=1046",
+            "tag": "Fixture tag 23",
+            "index": 18,
+            "startTimeOffset": 35167600,
+            "endTimeOffset": 37764500
+          },
+          {
+            "id": 1047,
+            "filter": "thumb=1047",
+            "tag": "Fixture tag 24",
+            "index": 19,
+            "startTimeOffset": 37764500,
+            "endTimeOffset": 39734800
+          },
+          {
+            "id": 1048,
+            "filter": "thumb=1048",
+            "tag": "Fixture tag 25",
+            "index": 20,
+            "startTimeOffset": 39734800,
+            "endTimeOffset": 41885400
+          },
+          {
+            "id": 1049,
+            "filter": "thumb=1049",
+            "tag": "Fixture tag 26",
+            "index": 21,
+            "startTimeOffset": 41885400,
+            "endTimeOffset": 43956600
+          },
+          {
+            "id": 1050,
+            "filter": "thumb=1050",
+            "tag": "Fixture tag 27",
+            "index": 22,
+            "startTimeOffset": 43956600,
+            "endTimeOffset": 46399800
+          },
+          {
+            "id": 1051,
+            "filter": "thumb=1051",
+            "tag": "Fixture tag 28",
+            "index": 23,
+            "startTimeOffset": 46399800,
+            "endTimeOffset": 47121400
+          },
+          {
+            "id": 1052,
+            "filter": "thumb=1052",
+            "tag": "Fixture tag 29",
+            "index": 24,
+            "startTimeOffset": 47121400,
+            "endTimeOffset": 47198800
+          }
+        ]
+      }
+    ]
+  }
+}

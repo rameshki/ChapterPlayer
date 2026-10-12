@@ -1,0 +1,172 @@
+{
+  "MediaContainer": {
+    "size": 4,
+    "totalSize": 942,
+    "offset": 0,
+    "allowSync": true,
+    "art": "/:/resources/artist-fanart.jpg",
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "librarySectionUUID": "Fixture librarySectionUUID 1",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1775695608,
+    "nocache": true,
+    "thumb": "/:/resources/artist.png",
+    "title1": "Fixture title1 2",
+    "title2": "Fixture title2 1",
+    "viewGroup": "artist",
+    "viewMode": 65592,
+    "Metadata": [
+      {
+        "ratingKey": "1013",
+        "key": "/library/metadata/1013/children",
+        "parentRatingKey": "1003",
+        "guid": "local://fixture1014",
+        "parentGuid": "local://fixture1004",
+        "type": "album",
+        "title": "Fixture title 9",
+        "parentKey": "/library/metadata/1003",
+        "parentTitle": "Fixture parentTitle 1",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "year": 2025,
+        "thumb": "/library/metadata/1013/thumb/1700000000",
+        "originallyAvailableAt": "2026-01-01",
+        "addedAt": 1700000000,
+        "updatedAt": 1700000000,
+        "loudnessAnalysisVersion": "1015",
+        "Image": [
+          {
+            "alt": "Fixture alt 2",
+            "type": "coverPoster",
+            "url": "/library/metadata/1013/thumb/1700000000"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "Fixture topLeft 2",
+          "topRight": "Fixture topRight 2",
+          "bottomRight": "Fixture bottomRight 2",
+          "bottomLeft": "1016"
+        },
+        "Genre": [
+          {
+            "tag": "Fixture tag 3"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1017",
+        "key": "/library/metadata/1017/children",
+        "parentRatingKey": "1003",
+        "guid": "local://fixture1018",
+        "parentGuid": "local://fixture1004",
+        "type": "album",
+        "title": "Fixture title 9",
+        "parentKey": "/library/metadata/1003",
+        "parentTitle": "Fixture parentTitle 1",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "skipCount": 2,
+        "year": 2025,
+        "thumb": "/library/metadata/1017/thumb/1700000000",
+        "originallyAvailableAt": "2026-01-01",
+        "addedAt": 1700000000,
+        "updatedAt": 1700000000,
+        "loudnessAnalysisVersion": "1015",
+        "Image": [
+          {
+            "alt": "Fixture alt 2",
+            "type": "coverPoster",
+            "url": "/library/metadata/1017/thumb/1700000000"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "Fixture topLeft 2",
+          "topRight": "Fixture topRight 2",
+          "bottomRight": "Fixture bottomRight 2",
+          "bottomLeft": "1016"
+        },
+        "Genre": [
+          {
+            "tag": "Fixture tag 3"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1019",
+        "key": "/library/metadata/1019/children",
+        "parentRatingKey": "1005",
+        "guid": "local://fixture1020",
+        "parentGuid": "plex://artist/fixture1006",
+        "type": "album",
+        "title": "Fixture title 10",
+        "parentKey": "/library/metadata/1005",
+        "parentTitle": "Fixture parentTitle 2",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "year": 2024,
+        "thumb": "/library/metadata/1019/thumb/1700000000",
+        "originallyAvailableAt": "2026-01-01",
+        "addedAt": 1700000000,
+        "updatedAt": 1700000000,
+        "loudnessAnalysisVersion": "1015",
+        "Image": [
+          {
+            "alt": "Fixture alt 3",
+            "type": "coverPoster",
+            "url": "/library/metadata/1019/thumb/1700000000"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "1021",
+          "topRight": "Fixture topRight 3",
+          "bottomRight": "Fixture bottomRight 3",
+          "bottomLeft": "Fixture bottomLeft 2"
+        },
+        "Genre": [
+          {
+            "tag": "Fixture tag 4"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1022",
+        "key": "/library/metadata/1022/children",
+        "parentRatingKey": "1005",
+        "guid": "local://fixture1023",
+        "parentGuid": "plex://artist/fixture1006",
+        "type": "album",
+        "title": "Fixture title 11",
+        "parentKey": "/library/metadata/1005",
+        "parentTitle": "Fixture parentTitle 2",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "year": 2024,
+        "thumb": "/library/metadata/1022/thumb/1700000000",
+        "originallyAvailableAt": "2026-01-01",
+        "addedAt": 1700000000,
+        "updatedAt": 1700000000,
+        "loudnessAnalysisVersion": "1015",
+        "Image": [
+          {
+            "alt": "Fixture alt 4",
+            "type": "coverPoster",
+            "url": "/library/metadata/1022/thumb/1700000000"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "Fixture topLeft 3",
+          "topRight": "Fixture topRight 4",
+          "bottomRight": "Fixture bottomRight 4",
+          "bottomLeft": "Fixture bottomLeft 3"
+        },
+        "Genre": [
+          {
+            "tag": "Fixture tag 5"
+          }
+        ]
+      }
+    ]
+  }
+}

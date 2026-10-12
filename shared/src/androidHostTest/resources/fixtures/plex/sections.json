@@ -1,0 +1,84 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "allowSync": false,
+    "title1": "Fixture title1 1",
+    "Directory": [
+      {
+        "allowSync": true,
+        "filters": true,
+        "refreshing": false,
+        "key": "3",
+        "type": "movie",
+        "title": "Fixture title 1",
+        "agent": "tv.plex.agents.movie",
+        "scanner": "Plex Movie",
+        "language": "en-US",
+        "uuid": "Fixture uuid 1",
+        "updatedAt": 1700000000,
+        "createdAt": 1700000000,
+        "scannedAt": 1700000000,
+        "content": true,
+        "directory": true,
+        "contentChangedAt": 11113854,
+        "hidden": 0,
+        "Location": [
+          {
+            "id": 1000,
+            "path": "Fixture path 1"
+          }
+        ]
+      },
+      {
+        "allowSync": true,
+        "filters": true,
+        "refreshing": false,
+        "key": "1",
+        "type": "show",
+        "title": "Fixture title 2",
+        "agent": "tv.plex.agents.series",
+        "scanner": "Plex TV Series",
+        "language": "en-US",
+        "uuid": "Fixture uuid 2",
+        "updatedAt": 1700000000,
+        "createdAt": 1700000000,
+        "scannedAt": 1700000000,
+        "content": true,
+        "directory": true,
+        "contentChangedAt": 11114563,
+        "hidden": 0,
+        "Location": [
+          {
+            "id": 1001,
+            "path": "Fixture path 2"
+          }
+        ]
+      },
+      {
+        "allowSync": true,
+        "filters": true,
+        "refreshing": false,
+        "key": "4",
+        "type": "artist",
+        "title": "Fixture title 3",
+        "agent": "tv.plex.agents.music",
+        "scanner": "Plex Music",
+        "language": "en-US",
+        "uuid": "Fixture uuid 3",
+        "updatedAt": 1700000000,
+        "createdAt": 1700000000,
+        "scannedAt": 1700000000,
+        "content": true,
+        "directory": true,
+        "contentChangedAt": 10817844,
+        "hidden": 0,
+        "Location": [
+          {
+            "id": 1002,
+            "path": "Fixture path 3"
+          }
+        ]
+      }
+    ]
+  }
+}

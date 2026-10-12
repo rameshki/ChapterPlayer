@@ -1,0 +1,112 @@
+[
+  {
+    "name": "Fixture Server 1",
+    "product": "Plex Media Server",
+    "productVersion": "1.43.1.10611",
+    "platform": "Fixture OS",
+    "platformVersion": "1.0",
+    "device": "Fixture Device",
+    "clientIdentifier": "fixturemachine010000000000000000",
+    "provides": "server",
+    "ownerId": 5001,
+    "sourceTitle": null,
+    "publicAddress": "198.51.100.1",
+    "accessToken": "fixture-access-token-1",
+    "searchEnabled": true,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "lastSeenAt": "2026-01-01T00:00:00Z",
+    "owned": true,
+    "home": false,
+    "synced": false,
+    "relay": true,
+    "presence": true,
+    "httpsRequired": false,
+    "publicAddressMatches": true,
+    "dnsRebindingProtection": true,
+    "natLoopbackSupported": true,
+    "connections": [
+      {
+        "protocol": "https",
+        "address": "192.0.2.11",
+        "port": 32400,
+        "uri": "https://192-0-2-11.fixturemachine010000000000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "198.51.100.1",
+        "port": 32400,
+        "uri": "https://198-51-100-1.fixturemachine010000000000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "198.51.100.200",
+        "port": 8443,
+        "uri": "https://198-51-100-200.fixturemachine010000000000000000.plex.direct:8443",
+        "local": false,
+        "relay": true,
+        "IPv6": false
+      }
+    ]
+  },
+  {
+    "name": "Fixture Server 2",
+    "product": "Plex Media Server",
+    "productVersion": "1.43.1.10611",
+    "platform": "Fixture OS",
+    "platformVersion": "1.0",
+    "device": "Fixture Device",
+    "clientIdentifier": "fixturemachine020000000000000000",
+    "provides": "server",
+    "ownerId": 5002,
+    "sourceTitle": "Fixture Owner",
+    "publicAddress": "198.51.100.2",
+    "accessToken": "fixture-access-token-2",
+    "searchEnabled": true,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "lastSeenAt": "2026-01-01T00:00:00Z",
+    "owned": false,
+    "home": false,
+    "synced": false,
+    "relay": true,
+    "presence": true,
+    "httpsRequired": false,
+    "publicAddressMatches": false,
+    "dnsRebindingProtection": false,
+    "natLoopbackSupported": false,
+    "connections": [
+      {
+        "protocol": "https",
+        "address": "192.0.2.12",
+        "port": 32400,
+        "uri": "https://192-0-2-12.fixturemachine020000000000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "198.51.100.2",
+        "port": 32400,
+        "uri": "https://198-51-100-2.fixturemachine020000000000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "198.51.100.200",
+        "port": 8443,
+        "uri": "https://198-51-100-200.fixturemachine020000000000000000.plex.direct:8443",
+        "local": false,
+        "relay": true,
+        "IPv6": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,85 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "allowSync": true,
+    "art": "/:/resources/artist-fanart.jpg",
+    "grandparentRatingKey": 1005,
+    "grandparentTitle": "Fixture grandparentTitle 1",
+    "identifier": "com.plexapp.plugins.library",
+    "key": "1019",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "librarySectionUUID": "Fixture librarySectionUUID 1",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1775695608,
+    "nocache": true,
+    "parentIndex": 1,
+    "parentTitle": "Fixture parentTitle 3",
+    "parentYear": 2024,
+    "thumb": "/library/metadata/1019/thumb/1700000000",
+    "title1": "Fixture title1 3",
+    "title2": "Fixture title2 2",
+    "viewGroup": "track",
+    "viewMode": 65593,
+    "Metadata": [
+      {
+        "ratingKey": "1024",
+        "key": "/library/metadata/1024",
+        "parentRatingKey": "1019",
+        "grandparentRatingKey": "1005",
+        "guid": "local://fixture1025",
+        "parentGuid": "local://fixture1020",
+        "grandparentGuid": "plex://artist/fixture1006",
+        "type": "track",
+        "title": "Fixture title 12",
+        "grandparentKey": "/library/metadata/1005",
+        "parentKey": "/library/metadata/1019",
+        "grandparentTitle": "Fixture grandparentTitle 1",
+        "parentTitle": "Fixture parentTitle 3",
+        "summary": "Fixture summary 1",
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1019/thumb/1700000000",
+        "parentThumb": "/library/metadata/1019/thumb/1700000000",
+        "duration": 47198808,
+        "addedAt": 1700000000,
+        "chapterSource": "Fixture chapterSource 1",
+        "Media": [
+          {
+            "id": 1026,
+            "duration": 47198808,
+            "bitrate": 126,
+            "audioChannels": 2,
+            "audioCodec": "Fixture audioCodec 1",
+            "container": "mp4",
+            "optimizedForStreaming": 0,
+            "audioProfile": "lc",
+            "has64bitOffsets": false,
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1027,
+                "key": "/library/parts/1027/1700000000/file.m4b",
+                "duration": 47198808,
+                "file": "/fixtures/Fixture Author/Fixture Book/Fixture Book.m4b",
+                "size": 749847734,
+                "audioProfile": "lc",
+                "container": "mp4",
+                "has64bitOffsets": false,
+                "hasThumbnail": "1001",
+                "optimizedForStreaming": false
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Fixture alt 5",
+            "type": "coverPoster",
+            "url": "/library/metadata/1019/thumb/1700000000"
+          }
+        ]
+      }
+    ]
+  }
+}
