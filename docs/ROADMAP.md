@@ -109,6 +109,8 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [ ] ABS sign-in: username/password and API key; library picker
 - [ ] AudioBooth-style navigation: Home, Library, Collections, Downloads, Search
 - [ ] Book details screen (description, chapters, series, narrator)
+- [ ] Load chapters per book from `/api/items/{id}`: the library list response has none, only `numChapters`
+- [ ] Replace the ABS stream URL (`/api/items/{id}/play` starts a playback session, it is not an audio URL)
 - [ ] Media3 playback: chapters, speed, sleep timer, ±30s skip, lock-screen controls
 - [ ] Full player sheet + mini player
 - [ ] ABS playback sessions and progress sync: save locally first, sync every ~10s, queue while offline and retry with backoff (AudioBooth's approach)

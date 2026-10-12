@@ -26,8 +26,7 @@ interface AbsApiService {
 
     /**
      * Fetch all audiobook items in a library.
-     * ABS paginates — we fetch up to [limit] at once (max 100 per ABS docs).
-     * For large libraries we'll need to page through results; this is good enough for v1.
+     * ABS paginates, so this returns one page of up to [limit] items; callers walk the pages with fetchAllAbsItems.
      */
     @GET("api/libraries/{libraryId}/items")
     suspend fun getLibraryItems(

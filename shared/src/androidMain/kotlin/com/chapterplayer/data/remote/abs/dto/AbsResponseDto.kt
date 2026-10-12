@@ -9,7 +9,8 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class AbsLibraryItemsResponse(
     @Json(name = "results") val results: List<AbsLibraryItemDto>,
-    @Json(name = "total") val total: Int,
+    // Audiobookshelf omits "total" on some pages, so it is optional.
+    @Json(name = "total") val total: Int?,
     @Json(name = "limit") val limit: Int,
     @Json(name = "page") val page: Int
 )

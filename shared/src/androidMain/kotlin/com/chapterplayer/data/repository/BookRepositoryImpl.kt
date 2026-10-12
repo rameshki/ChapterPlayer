@@ -11,6 +11,7 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.dto.AbsChapterDto
+import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.dto.PlexChapterDto
 import com.squareup.moshi.Moshi
@@ -102,11 +103,15 @@ class BookRepositoryImpl @Inject constructor(
         }
 
         return libraryIds.flatMap { libraryId ->
-            val response = service.getLibraryItems(
-                bearerToken = bearerToken,
-                libraryId = libraryId
-            )
-            response.results.map { item ->
+            val items = fetchAllAbsItems { page, limit ->
+                service.getLibraryItems(
+                    bearerToken = bearerToken,
+                    libraryId = libraryId,
+                    limit = limit,
+                    page = page
+                )
+            }
+            items.map { item ->
                 val metadata = item.media.metadata
                 val chapters = item.media.chapters?.mapIndexed { index, dto ->
                     dto.toChapter(index)
