@@ -36,6 +36,8 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)
+            implementation(project.dependencies.platform(libs.koin.bom))
+            implementation(libs.koin.test)
         }
 
         androidMain.dependencies {
@@ -58,6 +60,12 @@ kotlin {
 
             // Navigation
             implementation(libs.navigation.compose)
+
+            // Koin (Dependency Injection)
+            implementation(project.dependencies.platform(libs.koin.bom))
+            implementation(libs.koin.core)
+            implementation(libs.koin.android)
+            implementation(libs.koin.compose.viewmodel)
 
             // Hilt (Dependency Injection)
             implementation(libs.hilt.android)
