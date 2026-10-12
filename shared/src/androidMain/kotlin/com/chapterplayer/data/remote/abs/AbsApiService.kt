@@ -9,7 +9,6 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.http.HttpHeaders
 import io.ktor.http.encodeURLPathPart
-import javax.inject.Inject
 
 /**
  * The Audiobookshelf REST API.
@@ -17,7 +16,7 @@ import javax.inject.Inject
  * Auth: Bearer token in the Authorization header. Every call takes the server's base URL,
  * because each configured server has its own address.
  */
-class AbsApiService @Inject constructor(private val client: HttpClient) {
+class AbsApiService(private val client: HttpClient) {
 
     /**
      * Fetch all libraries on this ABS server.

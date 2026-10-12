@@ -5,11 +5,8 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
 import com.chapterplayer.data.model.ServerConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class ServerRepositoryImpl @Inject constructor(
+class ServerRepositoryImpl(
     private val serverConfigDao: ServerConfigDao
 ) : ServerRepository {
 

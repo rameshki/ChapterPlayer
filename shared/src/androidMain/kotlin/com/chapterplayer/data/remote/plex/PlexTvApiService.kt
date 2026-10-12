@@ -9,7 +9,6 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.http.HttpHeaders
-import javax.inject.Inject
 
 /**
  * The plex.tv cloud API at https://plex.tv/.
@@ -21,7 +20,7 @@ import javax.inject.Inject
  *   3. Poll GET /api/v2/pins/{id} until authToken is non-null
  *   4. Use authToken with GET /api/v2/resources to discover the user's servers
  */
-class PlexTvApiService @Inject constructor(private val client: HttpClient) {
+class PlexTvApiService(private val client: HttpClient) {
 
     /**
      * Create a new auth pin. Returns a code for the sign-in page, and a pin ID we use to

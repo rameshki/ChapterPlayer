@@ -97,7 +97,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 ### Stage 1: Kotlin Multiplatform migration
 - [ ] Upgrade Kotlin/AGP; restructure into `shared/` + `androidApp/` (toolchain upgrade done in PR 1, module split done in PR 2; Android target only so far)
 - [x] Port models, ABS client, Plex + plex.tv clients to Ktor + kotlinx.serialization
-- [ ] Room → Room KMP with KSP; Hilt → Koin
+- [ ] Room → Room KMP with KSP; Hilt → Koin (Hilt → Koin done in PR 4)
 - [ ] Move ViewModels and Compose screens into `commonMain`
 - [ ] Define the `LibrarySource` and `PlaybackController` interfaces
 - [x] Unit tests for the API parsers using recorded JSON responses

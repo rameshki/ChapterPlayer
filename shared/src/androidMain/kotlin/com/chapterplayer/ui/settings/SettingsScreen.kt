@@ -58,7 +58,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
@@ -77,7 +77,7 @@ import com.chapterplayer.ui.theme.TextSecondary
 fun SettingsScreen(
     onAddServer: () -> Unit,
     onEditServer: (String) -> Unit,
-    viewModel: SettingsViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = koinViewModel()
 ) {
     val uiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
 
@@ -194,7 +194,7 @@ private fun ServerRow(
 fun ServerSetupScreen(
     serverId: String?,
     onDone: () -> Unit,
-    viewModel: ServerSetupViewModel = hiltViewModel()
+    viewModel: ServerSetupViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
