@@ -107,6 +107,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 
 ### Stage 2: Audiobookshelf core experience (priority 1)
 - [ ] ABS sign-in: username/password and API key; library picker
+- [ ] Library selection per server: show some libraries and exempt others (multi-select, remembered per server). Today there is one optional library id, or every book library
 - [ ] AudioBooth-style navigation: Home, Library, Collections, Downloads, Search
 - [ ] Book details screen (description, chapters, series, narrator)
 - [ ] Load chapters per book from `/api/items/{id}`: the library list response has none, only `numChapters`
@@ -121,7 +122,12 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 ### Stage 3: Android Auto, widgets & offline
 - [ ] Android Auto: Media3 `MediaLibraryService` browse tree (Continue Listening, Library, Downloads), voice search, chapter skip
 - [ ] Glance widgets: Now Playing (play/pause, skip) and Continue Listening
-- [ ] Downloads with WorkManager: background, resumable, storage limits
+- [ ] Downloads that survive a very slow link (ABS behind a Cloudflare Tunnel; a book may take 30 hours):
+  - one request per audio file with HTTP `Range` resume, never the all-in-one zip, so a dropped connection continues where it stopped
+  - no overall request timeout (stall detection only), retry with backoff, same file and offset after app backgrounding, process death and reboot
+  - percent complete from bytes received, and ETA from a rolling average speed, per book and overall
+  - foreground worker with a progress notification. Android 15 limits `dataSync` foreground services to 6 hours per 24 hours and calls `onTimeout`, so the worker must stop cleanly and resume rather than assume one long run (research user-initiated data transfer jobs as the alternative)
+  - storage limits and a download-location choice, pause and resume controls, Wi-Fi-only option
 - [ ] Offline mode: play downloaded books, sync progress when back online
 
 **Done when:** it works in the car (Desktop Head Unit test + a real car) and without network.
