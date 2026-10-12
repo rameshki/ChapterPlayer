@@ -1,6 +1,8 @@
 package com.chapterplayer.data.remote.plex.dto
 
 import com.squareup.moshi.Json
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import com.squareup.moshi.JsonClass
 
 /**
@@ -9,10 +11,11 @@ import com.squareup.moshi.JsonClass
  * then poll until authToken is populated.
  */
 @JsonClass(generateAdapter = true)
+@Serializable
 data class PlexPinDto(
-    @Json(name = "id") val id: Long,
-    @Json(name = "code") val code: String,
-    @Json(name = "authToken") val authToken: String?   // null until user completes sign-in
+    @Json(name = "id") @SerialName("id") val id: Long,
+    @Json(name = "code") @SerialName("code") val code: String,
+    @Json(name = "authToken") @SerialName("authToken") val authToken: String? = null   // null until user completes sign-in
 )
 
 /**
@@ -22,11 +25,12 @@ data class PlexPinDto(
  * We filter by provides == "server" to get only media servers.
  */
 @JsonClass(generateAdapter = true)
+@Serializable
 data class PlexResourceDto(
-    @Json(name = "name") val name: String,
-    @Json(name = "provides") val provides: String,          // e.g. "server", "player"
-    @Json(name = "accessToken") val accessToken: String?,   // Token for this specific server (required for shared servers)
-    @Json(name = "connections") val connections: List<PlexConnectionDto>
+    @Json(name = "name") @SerialName("name") val name: String,
+    @Json(name = "provides") @SerialName("provides") val provides: String,          // e.g. "server", "player"
+    @Json(name = "accessToken") @SerialName("accessToken") val accessToken: String? = null,   // Token for this specific server (required for shared servers)
+    @Json(name = "connections") @SerialName("connections") val connections: List<PlexConnectionDto>
 )
 
 /**
@@ -35,7 +39,8 @@ data class PlexResourceDto(
  * We prefer local connections when available.
  */
 @JsonClass(generateAdapter = true)
+@Serializable
 data class PlexConnectionDto(
-    @Json(name = "uri") val uri: String,
-    @Json(name = "local") val local: Boolean
+    @Json(name = "uri") @SerialName("uri") val uri: String,
+    @Json(name = "local") @SerialName("local") val local: Boolean
 )

@@ -1,15 +1,11 @@
 package com.chapterplayer.data.remote.abs
 
-import com.chapterplayer.data.remote.abs.dto.AbsLibraryItemsResponse
-import com.squareup.moshi.Moshi
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class AbsItemsResponseParsingTest {
 
-    private val adapter = Moshi.Builder().build().adapter(AbsLibraryItemsResponse::class.java)
 
     // Shape taken from a real Audiobookshelf 2.37.1 response: the server sends some
     // pages without "total" (other pages of the same library include it).
@@ -22,7 +18,7 @@ class AbsItemsResponseParsingTest {
 
     @Test
     fun `parses a page that has no total`() {
-        val response = assertNotNull(adapter.fromJson(pageWithoutTotal))
+        val response = AbsParsers.items(pageWithoutTotal)
 
         assertNull(response.total)
         assertEquals(1, response.results.size)
@@ -31,7 +27,7 @@ class AbsItemsResponseParsingTest {
 
     @Test
     fun `parses a page that reports the total`() {
-        val response = assertNotNull(adapter.fromJson(pageWithTotal))
+        val response = AbsParsers.items(pageWithTotal)
 
         assertEquals(938, response.total)
     }
