@@ -1,13 +1,13 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
 }
 
 android {
     namespace = "com.chapterplayer"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.chapterplayer"
@@ -42,26 +42,22 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-        freeCompilerArgs += listOf(
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
-        )
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+// Built-in Kotlin: jvmTarget follows compileOptions.targetCompatibility above.
+kotlin {
+    compilerOptions {
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
 }
 
@@ -91,13 +87,13 @@ dependencies {
 
     // Hilt (Dependency Injection)
     implementation(libs.hilt.android)
-    kapt(libs.hilt.android.compiler)
+    ksp(libs.hilt.android.compiler)
     implementation(libs.hilt.navigation.compose)
 
     // Room (Local Database)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    kapt(libs.room.compiler)
+    ksp(libs.room.compiler)
 
     // Networking
     implementation(libs.retrofit)
@@ -106,7 +102,7 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.moshi)
     implementation(libs.moshi.kotlin)
-    kapt(libs.moshi.kotlin.codegen)
+    ksp(libs.moshi.kotlin.codegen)
 
     // Coroutines
     implementation(libs.coroutines.android)
@@ -116,9 +112,4 @@ dependencies {
 
     // DataStore (Settings persistence)
     implementation(libs.datastore.preferences)
-}
-
-// Allow references to generated code from kapt
-kapt {
-    correctErrorTypes = true
 }
