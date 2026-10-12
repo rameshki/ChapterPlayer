@@ -135,8 +135,9 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 **Done when:** it works in the car (Desktop Head Unit test + a real car) and without network.
 
 ### Stage 4: Plex parity (priority 2)
+- [ ] Fix the Plex library call: a Plex music library lists artists at the top level, so the app currently imports artists (no author, duration, audio or chapters). Audiobooks are albums (type 9, author in `parentTitle`), the audio is in each album's tracks, and chapters come from the track detail (`/library/metadata/{id}?includeChapters=1`), not the track list
 - [ ] Plex section picker; chapters from Plex metadata
-- [ ] Smart connection choice: local → remote (plex.direct) → relay, re-checked on network change
+- [ ] Smart connection choice: local → remote (plex.direct) → relay, re-checked on network change. plex.tv reports `dnsRebindingProtection` and `natLoopbackSupported` per server: on a network whose router blocks the `*.plex.direct` name (seen on a Fritz!Box) the app currently fails with `UnknownHostException`, so it must fall back to the server address or another connection
 - [ ] Progress sync via the Plex timeline/scrobble API
 - [ ] Unified library: ABS + Plex side by side, with filters and source badges
 - [ ] Listening stats page
