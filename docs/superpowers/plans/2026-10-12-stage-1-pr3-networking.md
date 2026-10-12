@@ -39,3 +39,12 @@ The HTTP client is built by a factory that takes the timeout settings as paramet
 ## Out of scope
 
 Moving code to `commonMain` (the code stays in `androidMain`; the Ktor engine is Android-only for now), Koin (PR 4), fixing the stream URL or chapters (Stage 2), token storage.
+
+## Execution notes (added after PR 3)
+
+- Tests: 58 host tests. Parsing, the stored chapter format, every request the API classes make, the `HTTP <code> <reason>` error text and the token redaction in the debug log.
+- The same parsing assertions passed unchanged on Moshi and on kotlinx.serialization. For one commit the data classes carried both sets of annotations so the app kept working while the tests moved first.
+- Release APK 4,226,378 to 3,900,927 bytes.
+- Checked on a device: in-place upgrade over the previous build keeps all 1298 Audiobookshelf books; a manual sync gives 1298 rows matching the server (all pages); Plex sync works through the new client (1909 books, the 611 extra being the artist entries the app imports today); sign-in code creation and polling work against plex.tv. The server-list call was covered by a request test and not exercised live.
+- Found on the way: the Ktor BODY log level prints no headers, so the first redaction test proved nothing. Logging at ALL and requiring the header name in the test fixed it, confirmed by a test that fails when the hiding is removed.
+- Not changed on purpose (separate work, see the roadmap): the Plex library call returns artists, the Plex connection uses the plex.direct name that routers with DNS rebind protection block, ABS chapters need a per-book call.
