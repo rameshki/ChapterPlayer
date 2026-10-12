@@ -32,6 +32,10 @@
 
 Ktor 3.6.0 (core, okhttp engine, content-negotiation, serialization-kotlinx-json, logging, mock for tests), kotlinx.serialization 1.11.0, Kotlin serialization compiler plugin matching Kotlin 2.4.21. If Ktor 3.6.0 fails to build, fall back to 3.5.2.
 
+## Design note for Stage 3
+
+The HTTP client is built by a factory that takes the timeout settings as parameters. PR 3 uses the 30-second values the app has today. Stage 3 downloads (very slow links, possibly 30 hours per book) need a client with no overall request timeout and only a stall check, so that must be a different configuration of the same factory and not a rewrite.
+
 ## Out of scope
 
 Moving code to `commonMain` (the code stays in `androidMain`; the Ktor engine is Android-only for now), Koin (PR 4), fixing the stream URL or chapters (Stage 2), token storage.
