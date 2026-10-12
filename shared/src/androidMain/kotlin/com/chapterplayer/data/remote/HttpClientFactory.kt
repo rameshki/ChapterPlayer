@@ -57,7 +57,7 @@ internal fun HttpClientConfig<*>.installApiDefaults(
         logger = object : Logger {
             override fun log(message: String) = sink(message)
         }
-        level = if (isDebuggable) LogLevel.BODY else LogLevel.NONE
+        level = if (isDebuggable) LogLevel.ALL else LogLevel.NONE
         sanitizeHeader { name ->
             name.equals(HttpHeaders.Authorization, ignoreCase = true) ||
                 name.equals("X-Plex-Token", ignoreCase = true)

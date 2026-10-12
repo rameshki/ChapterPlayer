@@ -57,6 +57,9 @@ class HttpClientTest {
 
         val text = logs.joinToString("\n")
         assertTrue(text.contains("http://server.test/x"), "debug builds should log requests")
+        // Headers are logged, so the hiding is what keeps the tokens out.
+        assertTrue(text.contains("Authorization"), "debug builds should log header names")
+        assertTrue(text.contains("X-Plex-Token"), "debug builds should log header names")
         assertFalse(text.contains("secret-abs-token"), "ABS token leaked into the log")
         assertFalse(text.contains("secret-plex-token"), "Plex token leaked into the log")
     }
