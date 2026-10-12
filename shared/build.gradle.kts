@@ -18,6 +18,9 @@ kotlin {
         // Fonts live in src/androidMain/res until Compose Multiplatform resources arrive.
         androidResources { enable = true }
 
+        // JVM unit tests for code in androidMain (src/androidHostTest).
+        withHostTest { }
+
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
         }
@@ -28,6 +31,11 @@ kotlin {
     }
 
     sourceSets {
+        getByName("androidHostTest").dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.coroutines.test)
+        }
+
         androidMain.dependencies {
             // AndroidX Core
             implementation(libs.core.ktx)
