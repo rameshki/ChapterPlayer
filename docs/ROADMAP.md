@@ -107,6 +107,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 
 ### Stage 2: Audiobookshelf core experience (priority 1)
 - [ ] ABS sign-in: username/password and API key; library picker
+- [ ] Library selection per server: show some libraries and exempt others (multi-select, remembered per server). Libraries added to the server later are shown by default and can be turned off. Today there is one optional library id, or every book library
 - [ ] AudioBooth-style navigation: Home, Library, Collections, Downloads, Search
 - [ ] Book details screen (description, chapters, series, narrator)
 - [ ] Load chapters per book from `/api/items/{id}`: the library list response has none, only `numChapters`
@@ -121,14 +122,22 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 ### Stage 3: Android Auto, widgets & offline
 - [ ] Android Auto: Media3 `MediaLibraryService` browse tree (Continue Listening, Library, Downloads), voice search, chapter skip
 - [ ] Glance widgets: Now Playing (play/pause, skip) and Continue Listening
-- [ ] Downloads with WorkManager: background, resumable, storage limits
+- [ ] Downloads that survive a very slow link (ABS behind a Cloudflare Tunnel; a book may take 30 hours):
+  - one request per audio file with HTTP `Range` resume, never the all-in-one zip, so a dropped connection continues where it stopped
+  - no overall request timeout (stall detection only), retry with backoff, same file and offset after app backgrounding, process death and reboot
+  - percent complete from bytes received, and ETA from a rolling average speed, per book and overall
+  - foreground worker with a progress notification. Android 15 limits `dataSync` foreground services to 6 hours per 24 hours and calls `onTimeout`, so the worker must stop cleanly and resume rather than assume one long run (research user-initiated data transfer jobs as the alternative)
+  - Settings toggle: download on Wi-Fi only, or on Wi-Fi and cellular
+  - single-file books (`.m4b`) are the preferred layout, so one resumable request per book is the common case; multi-file books still work, one file after another
+  - storage limits and a download-location choice, pause and resume controls
 - [ ] Offline mode: play downloaded books, sync progress when back online
 
 **Done when:** it works in the car (Desktop Head Unit test + a real car) and without network.
 
 ### Stage 4: Plex parity (priority 2)
+- [ ] Fix the Plex library call: a Plex music library lists artists at the top level, so the app currently imports artists (no author, duration, audio or chapters). Audiobooks are albums (type 9, author in `parentTitle`), the audio is in each album's tracks, and chapters come from the track detail (`/library/metadata/{id}?includeChapters=1`), not the track list
 - [ ] Plex section picker; chapters from Plex metadata
-- [ ] Smart connection choice: local → remote (plex.direct) → relay, re-checked on network change
+- [ ] Smart connection choice: local → remote (plex.direct) → relay, re-checked on network change. plex.tv reports `dnsRebindingProtection` and `natLoopbackSupported` per server: on a network whose router blocks the `*.plex.direct` name (seen on a Fritz!Box) the app currently fails with `UnknownHostException`, so it must fall back to the server address or another connection
 - [ ] Progress sync via the Plex timeline/scrobble API
 - [ ] Unified library: ABS + Plex side by side, with filters and source badges
 - [ ] Listening stats page
