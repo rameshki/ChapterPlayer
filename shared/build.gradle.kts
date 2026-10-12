@@ -31,6 +31,13 @@ kotlin {
     }
 
     sourceSets {
+        // Data layer: models, entities, DAOs and the database. Nothing here may use Android APIs.
+        commonMain.dependencies {
+            implementation(libs.room.runtime)
+            implementation(libs.coroutines.core)
+            implementation(libs.kotlinx.serialization.json)
+        }
+
         getByName("androidHostTest").dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
@@ -66,10 +73,6 @@ kotlin {
             implementation(libs.koin.android)
             implementation(libs.koin.androidx.compose)
 
-
-            // Room (Local Database)
-            implementation(libs.room.runtime)
-            implementation(libs.room.ktx)
 
             // Ktor + kotlinx.serialization
             implementation(libs.ktor.client.core)
