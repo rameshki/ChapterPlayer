@@ -6,6 +6,7 @@ import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.Chapter
+import com.chapterplayer.data.model.ChapterJson
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
@@ -15,7 +16,6 @@ import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.dto.PlexChapterDto
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import okhttp3.OkHttpClient
@@ -32,9 +32,6 @@ class BookRepositoryImpl @Inject constructor(
     private val moshi: Moshi
 ) : BookRepository {
 
-    // Moshi adapters for serialising chapters to/from JSON for Room storage
-    private val chapterListType = Types.newParameterizedType(List::class.java, Chapter::class.java)
-    private val chapterAdapter get() = moshi.adapter<List<Chapter>>(chapterListType)
 
     // -------------------------------------------------------------------------
     // Per-server Retrofit factories
@@ -122,7 +119,7 @@ class BookRepositoryImpl @Inject constructor(
                     author = metadata.authorName ?: "Unknown Author",
                     narrator = metadata.narratorName ?: "",
                     durationMs = ((item.media.duration ?: 0.0) * 1000).toLong(),
-                    chaptersJson = chapterAdapter.toJson(chapters),
+                    chaptersJson = ChapterJson.encode(chapters),
                     streamUrl = "${server.baseUrl}/api/items/${item.id}/play",
                     coverUrl = if (item.media.coverPath != null)
                         "${server.baseUrl}/api/items/${item.id}/cover"
@@ -170,7 +167,7 @@ class BookRepositoryImpl @Inject constructor(
                     author = meta.author ?: "Unknown Author",
                     narrator = "",
                     durationMs = meta.durationMs ?: 0L,
-                    chaptersJson = chapterAdapter.toJson(chapters),
+                    chaptersJson = ChapterJson.encode(chapters),
                     streamUrl = "${server.baseUrl}$streamPath?X-Plex-Token=${server.token}",
                     coverUrl = if (meta.thumb != null)
                         "${server.baseUrl}${meta.thumb}?X-Plex-Token=${server.token}"
@@ -203,7 +200,7 @@ class BookRepositoryImpl @Inject constructor(
 
     private fun BookEntity.toAudioBook(): AudioBook {
         val chapters = try {
-            chapterAdapter.fromJson(chaptersJson) ?: emptyList()
+            ChapterJson.decode(chaptersJson)
         } catch (e: Exception) {
             emptyList()
         }
