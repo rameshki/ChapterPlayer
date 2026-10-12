@@ -17,11 +17,8 @@ import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.dto.PlexChapterDto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class BookRepositoryImpl @Inject constructor(
+class BookRepositoryImpl(
     private val bookDao: BookDao,
     private val progressDao: ProgressDao,
     private val absApi: AbsApiService,

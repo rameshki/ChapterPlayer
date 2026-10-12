@@ -14,8 +14,6 @@ kotlin {
         compileSdk = 37
         minSdk = 26
 
-        // Hilt generates Java sources, so Java compilation must be on.
-        withJava()
         // Fonts live in src/androidMain/res until Compose Multiplatform resources arrive.
         androidResources { enable = true }
 
@@ -65,11 +63,8 @@ kotlin {
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.core)
             implementation(libs.koin.android)
-            implementation(libs.koin.compose.viewmodel)
+            implementation(libs.koin.androidx.compose)
 
-            // Hilt (Dependency Injection)
-            implementation(libs.hilt.android)
-            implementation(libs.hilt.navigation.compose)
 
             // Room (Local Database)
             implementation(libs.room.runtime)
@@ -97,6 +92,5 @@ kotlin {
 }
 
 dependencies {
-    add("kspAndroid", libs.hilt.android.compiler)
     add("kspAndroid", libs.room.compiler)
 }

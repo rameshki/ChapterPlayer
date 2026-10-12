@@ -9,7 +9,6 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.http.HttpHeaders
 import io.ktor.http.encodeURLPathPart
-import javax.inject.Inject
 
 /**
  * The Plex Media Server REST API.
@@ -17,7 +16,7 @@ import javax.inject.Inject
  * Auth: X-Plex-Token header. JSON is requested with an Accept header on every call.
  * Every call takes the server's base URL, because each configured server has its own address.
  */
-class PlexApiService @Inject constructor(private val client: HttpClient) {
+class PlexApiService(private val client: HttpClient) {
 
     /**
      * Fetch all library sections on this Plex server.

@@ -7,7 +7,6 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.chapterplayer.data.repository.ServerRepository
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +16,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
-import javax.inject.Inject
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings screen state
@@ -71,8 +69,7 @@ data class ServerSetupUiState(
 // Settings ViewModel (server list + delete)
 // ─────────────────────────────────────────────────────────────────────────────
 
-@HiltViewModel
-class SettingsViewModel @Inject constructor(
+class SettingsViewModel(
     private val serverRepository: ServerRepository
 ) : ViewModel() {
 
@@ -101,8 +98,7 @@ private const val PLEX_VERSION = "0.1.0"
 private const val POLL_INTERVAL_MS = 2_000L
 private const val POLL_MAX_ATTEMPTS = 150   // ~5 minutes
 
-@HiltViewModel
-class ServerSetupViewModel @Inject constructor(
+class ServerSetupViewModel(
     private val serverRepository: ServerRepository,
     private val plexTvApiService: PlexTvApiService,
     private val plexClientIdentifier: PlexClientIdentifier
