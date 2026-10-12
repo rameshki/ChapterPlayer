@@ -310,8 +310,8 @@ if (-not $SkipBuild) {
     Write-Step 'Test build (debug APK)'
     Push-Location $RepoDir
     try {
-        Invoke-Native { .\gradlew.bat :app:assembleDebug --console=plain }
-        if ($LASTEXITCODE -eq 0) { Write-Ok 'Build succeeded: app\build\outputs\apk\debug\app-debug.apk' }
+        Invoke-Native { .\gradlew.bat :androidApp:assembleDebug --console=plain }
+        if ($LASTEXITCODE -eq 0) { Write-Ok 'Build succeeded: androidApp\build\outputs\apk\debug\androidApp-debug.apk' }
         else { Write-Warn2 'Test build failed; open the project in Android Studio to see the error.' }
     } finally { Pop-Location }
 }
