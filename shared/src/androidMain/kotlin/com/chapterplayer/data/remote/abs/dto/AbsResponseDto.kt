@@ -1,60 +1,60 @@
 package com.chapterplayer.data.remote.abs.dto
 
-import com.squareup.moshi.Json
-import com.squareup.moshi.JsonClass
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /**
  * Top-level response from GET /api/libraries/{id}/items
  */
-@JsonClass(generateAdapter = true)
+@Serializable
 data class AbsLibraryItemsResponse(
-    @Json(name = "results") val results: List<AbsLibraryItemDto>,
+    @SerialName("results") val results: List<AbsLibraryItemDto>,
     // Audiobookshelf omits "total" on some pages, so it is optional.
-    @Json(name = "total") val total: Int?,
-    @Json(name = "limit") val limit: Int,
-    @Json(name = "page") val page: Int
+    @SerialName("total") val total: Int? = null,
+    @SerialName("limit") val limit: Int,
+    @SerialName("page") val page: Int
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class AbsLibraryItemDto(
-    @Json(name = "id") val id: String,
-    @Json(name = "media") val media: AbsMediaDto
+    @SerialName("id") val id: String,
+    @SerialName("media") val media: AbsMediaDto
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class AbsMediaDto(
-    @Json(name = "metadata") val metadata: AbsMetadataDto,
-    @Json(name = "chapters") val chapters: List<AbsChapterDto>?,
-    @Json(name = "duration") val duration: Double?,           // seconds
-    @Json(name = "coverPath") val coverPath: String?
+    @SerialName("metadata") val metadata: AbsMetadataDto,
+    @SerialName("chapters") val chapters: List<AbsChapterDto>? = null,
+    @SerialName("duration") val duration: Double? = null,           // seconds
+    @SerialName("coverPath") val coverPath: String? = null
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class AbsMetadataDto(
-    @Json(name = "title") val title: String?,
-    @Json(name = "authorName") val authorName: String?,
-    @Json(name = "narratorName") val narratorName: String?
+    @SerialName("title") val title: String? = null,
+    @SerialName("authorName") val authorName: String? = null,
+    @SerialName("narratorName") val narratorName: String? = null
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class AbsChapterDto(
-    @Json(name = "id") val id: Int,
-    @Json(name = "start") val start: Double,   // seconds
-    @Json(name = "end") val end: Double,       // seconds
-    @Json(name = "title") val title: String
+    @SerialName("id") val id: Int,
+    @SerialName("start") val start: Double,   // seconds
+    @SerialName("end") val end: Double,       // seconds
+    @SerialName("title") val title: String
 )
 
 /**
  * Response from GET /api/libraries — used when user needs to pick a library.
  */
-@JsonClass(generateAdapter = true)
+@Serializable
 data class AbsLibrariesResponse(
-    @Json(name = "libraries") val libraries: List<AbsLibraryDto>
+    @SerialName("libraries") val libraries: List<AbsLibraryDto>
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class AbsLibraryDto(
-    @Json(name = "id") val id: String,
-    @Json(name = "name") val name: String,
-    @Json(name = "mediaType") val mediaType: String   // "book" or "podcast"
+    @SerialName("id") val id: String,
+    @SerialName("name") val name: String,
+    @SerialName("mediaType") val mediaType: String   // "book" or "podcast"
 )

@@ -2,39 +2,53 @@ package com.chapterplayer.data.remote.plex
 
 import com.chapterplayer.data.remote.plex.dto.PlexLibraryAllResponse
 import com.chapterplayer.data.remote.plex.dto.PlexLibrarySectionsResponse
-import retrofit2.http.GET
-import retrofit2.http.Header
-import retrofit2.http.Path
-import retrofit2.http.Query
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLPathPart
+import javax.inject.Inject
 
 /**
- * Retrofit interface for the Plex Media Server REST API.
+ * The Plex Media Server REST API.
  *
- * Auth: X-Plex-Token query parameter or header.
- * We always request JSON via Accept header (set in the OkHttp interceptor).
+ * Auth: X-Plex-Token header. JSON is requested with an Accept header on every call.
+ * Every call takes the server's base URL, because each configured server has its own address.
  */
-interface PlexApiService {
+class PlexApiService @Inject constructor(private val client: HttpClient) {
 
     /**
      * Fetch all library sections on this Plex server.
      * Used to let the user pick which section contains their audiobooks.
      */
-    @GET("library/sections")
     suspend fun getLibrarySections(
-        @Header("X-Plex-Token") token: String,
-        @Header("Accept") accept: String = "application/json"
-    ): PlexLibrarySectionsResponse
+        baseUrl: String,
+        token: String,
+        accept: String = "application/json",
+    ): PlexLibrarySectionsResponse =
+        client.get(endpoint(baseUrl, "library/sections")) {
+            header("X-Plex-Token", token)
+            header(HttpHeaders.Accept, accept)
+        }.body()
 
     /**
      * Fetch all items in a library section.
      * For audiobooks, the section type is typically "artist" in Plex.
-     * type=9 filters for audiobooks specifically when using the Plex music library type.
      */
-    @GET("library/sections/{sectionId}/all")
     suspend fun getLibraryAll(
-        @Header("X-Plex-Token") token: String,
-        @Path("sectionId") sectionId: String,
-        @Header("Accept") accept: String = "application/json",
-        @Query("includeChapters") includeChapters: Int = 1
-    ): PlexLibraryAllResponse
+        baseUrl: String,
+        token: String,
+        sectionId: String,
+        accept: String = "application/json",
+        includeChapters: Int = 1,
+    ): PlexLibraryAllResponse =
+        client.get(endpoint(baseUrl, "library/sections/${sectionId.encodeURLPathPart()}/all")) {
+            header("X-Plex-Token", token)
+            header(HttpHeaders.Accept, accept)
+            parameter("includeChapters", includeChapters)
+        }.body()
+
+    private fun endpoint(baseUrl: String, path: String) = baseUrl.trimEnd('/') + "/" + path
 }

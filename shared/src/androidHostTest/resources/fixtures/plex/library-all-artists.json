@@ -1,0 +1,98 @@
+{
+  "MediaContainer": {
+    "size": 5,
+    "allowSync": true,
+    "art": "/:/resources/artist-fanart.jpg",
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "librarySectionUUID": "Fixture librarySectionUUID 1",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1775695608,
+    "nocache": true,
+    "thumb": "/:/resources/artist.png",
+    "title1": "Fixture title1 2",
+    "title2": "Fixture title2 1",
+    "viewGroup": "artist",
+    "viewMode": 65592,
+    "Metadata": [
+      {
+        "ratingKey": "1003",
+        "key": "/library/metadata/1003/children",
+        "guid": "local://fixture1004",
+        "type": "artist",
+        "title": "Fixture title 4",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "skipCount": 2,
+        "addedAt": 1700000000
+      },
+      {
+        "ratingKey": "1005",
+        "key": "/library/metadata/1005/children",
+        "guid": "plex://artist/fixture1006",
+        "type": "artist",
+        "title": "Fixture title 5",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "addedAt": 1700000000,
+        "updatedAt": 1700000000,
+        "Country": [
+          {
+            "tag": "Fixture tag 1"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1007",
+        "key": "/library/metadata/1007/children",
+        "guid": "plex://artist/fixture1008",
+        "type": "artist",
+        "title": "Fixture title 6",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "thumb": "/library/metadata/1007/thumb/1700000000",
+        "addedAt": 1700000000,
+        "updatedAt": 1700000000,
+        "Image": [
+          {
+            "alt": "Fixture alt 1",
+            "type": "coverPoster",
+            "url": "/library/metadata/1007/thumb/1700000000"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "Fixture topLeft 1",
+          "topRight": "Fixture topRight 1",
+          "bottomRight": "Fixture bottomRight 1",
+          "bottomLeft": "Fixture bottomLeft 1"
+        },
+        "Country": [
+          {
+            "tag": "Fixture tag 2"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1009",
+        "key": "/library/metadata/1009/children",
+        "guid": "local://fixture1010",
+        "type": "artist",
+        "title": "Fixture title 7",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "addedAt": 1700000000
+      },
+      {
+        "ratingKey": "1011",
+        "key": "/library/metadata/1011/children",
+        "guid": "local://fixture1012",
+        "type": "artist",
+        "title": "Fixture title 8",
+        "summary": "Fixture summary 1",
+        "index": 1,
+        "addedAt": 1700000000
+      }
+    ]
+  }
+}

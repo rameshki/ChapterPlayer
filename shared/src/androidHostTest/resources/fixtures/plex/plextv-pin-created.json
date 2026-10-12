@@ -1,0 +1,26 @@
+{
+  "id": 1000001,
+  "code": "fixturecode000000000000",
+  "product": "ChapterPlayer",
+  "trusted": false,
+  "qr": "https://plex.tv/api/v2/pins/qr/fixturecode000000000000",
+  "clientIdentifier": "00000000-0000-4000-8000-000000000000",
+  "location": {
+    "code": "Fixture",
+    "european_union_member": false,
+    "continent_code": "Fixture",
+    "country": "Fixture",
+    "city": "Fixture",
+    "time_zone": "Fixture",
+    "postal_code": "Fixture",
+    "in_privacy_restricted_country": false,
+    "in_privacy_restricted_region": false,
+    "subdivisions": "Fixture",
+    "coordinates": "0, 0"
+  },
+  "expiresIn": 1800,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "expiresAt": "2026-01-01T00:15:00Z",
+  "authToken": null,
+  "newRegistration": null
+}

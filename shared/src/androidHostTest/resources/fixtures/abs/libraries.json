@@ -1,0 +1,127 @@
+{
+  "libraries": [
+    {
+      "id": "lib_fixture_books",
+      "name": "Fixture Books",
+      "folders": [
+        {
+          "id": "fol_fixture_1",
+          "fullPath": "/audiobooks/Fixture Books",
+          "libraryId": "lib_fixture_books",
+          "addedAt": 1700000000000
+        }
+      ],
+      "displayOrder": 1,
+      "icon": "audiobookshelf",
+      "mediaType": "book",
+      "provider": "audible",
+      "settings": {
+        "coverAspectRatio": 1,
+        "disableWatcher": false,
+        "autoScanCronExpression": null,
+        "skipMatchingMediaWithAsin": false,
+        "skipMatchingMediaWithIsbn": false,
+        "audiobooksOnly": false,
+        "epubsAllowScriptedContent": false,
+        "hideSingleBookSeries": false,
+        "onlyShowLaterBooksInContinueSeries": false,
+        "metadataPrecedence": [
+          "folderStructure",
+          "audioMetatags",
+          "nfoFile",
+          "txtFiles",
+          "opfFile",
+          "absMetadata"
+        ],
+        "markAsFinishedPercentComplete": null,
+        "markAsFinishedTimeRemaining": 10
+      },
+      "lastScan": 1700000000000,
+      "lastScanVersion": "2.31.0",
+      "createdAt": 1700000000000,
+      "lastUpdate": 1700000000000
+    },
+    {
+      "id": "lib_fixture_more",
+      "name": "Fixture More Books",
+      "folders": [
+        {
+          "id": "fol_fixture_2",
+          "fullPath": "/audiobooks/Fixture More Books",
+          "libraryId": "lib_fixture_more",
+          "addedAt": 1700000000000
+        }
+      ],
+      "displayOrder": 2,
+      "icon": "audiobookshelf",
+      "mediaType": "book",
+      "provider": "audible",
+      "settings": {
+        "coverAspectRatio": 1,
+        "disableWatcher": false,
+        "autoScanCronExpression": null,
+        "skipMatchingMediaWithAsin": false,
+        "skipMatchingMediaWithIsbn": false,
+        "audiobooksOnly": false,
+        "epubsAllowScriptedContent": false,
+        "hideSingleBookSeries": false,
+        "onlyShowLaterBooksInContinueSeries": false,
+        "metadataPrecedence": [
+          "folderStructure",
+          "audioMetatags",
+          "nfoFile",
+          "txtFiles",
+          "opfFile",
+          "absMetadata"
+        ],
+        "markAsFinishedPercentComplete": null,
+        "markAsFinishedTimeRemaining": 10
+      },
+      "lastScan": 1700000000000,
+      "lastScanVersion": "2.31.0",
+      "createdAt": 1700000000000,
+      "lastUpdate": 1700000000000
+    },
+    {
+      "id": "lib_fixture_pods",
+      "name": "Fixture Podcasts",
+      "folders": [
+        {
+          "id": "fol_fixture_3",
+          "fullPath": "/audiobooks/Fixture Podcasts",
+          "libraryId": "lib_fixture_pods",
+          "addedAt": 1700000000000
+        }
+      ],
+      "displayOrder": 3,
+      "icon": "audiobookshelf",
+      "mediaType": "podcast",
+      "provider": "audible",
+      "settings": {
+        "coverAspectRatio": 1,
+        "disableWatcher": false,
+        "autoScanCronExpression": null,
+        "skipMatchingMediaWithAsin": false,
+        "skipMatchingMediaWithIsbn": false,
+        "audiobooksOnly": false,
+        "epubsAllowScriptedContent": false,
+        "hideSingleBookSeries": false,
+        "onlyShowLaterBooksInContinueSeries": false,
+        "metadataPrecedence": [
+          "folderStructure",
+          "audioMetatags",
+          "nfoFile",
+          "txtFiles",
+          "opfFile",
+          "absMetadata"
+        ],
+        "markAsFinishedPercentComplete": null,
+        "markAsFinishedTimeRemaining": 10
+      },
+      "lastScan": 1700000000000,
+      "lastScanVersion": "2.31.0",
+      "createdAt": 1700000000000,
+      "lastUpdate": 1700000000000
+    }
+  ]
+}

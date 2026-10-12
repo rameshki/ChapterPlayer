@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
 
@@ -34,6 +35,7 @@ kotlin {
         getByName("androidHostTest").dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
 
         androidMain.dependencies {
@@ -65,13 +67,14 @@ kotlin {
             implementation(libs.room.runtime)
             implementation(libs.room.ktx)
 
-            // Networking
-            implementation(libs.retrofit)
-            implementation(libs.retrofit.moshi)
-            implementation(libs.okhttp)
-            implementation(libs.okhttp.logging)
-            implementation(libs.moshi)
-            implementation(libs.moshi.kotlin)
+            // Ktor + kotlinx.serialization
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.okhttp)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.kotlinx.serialization.json)
+
 
             // Coroutines
             implementation(libs.coroutines.android)
@@ -88,5 +91,4 @@ kotlin {
 dependencies {
     add("kspAndroid", libs.hilt.android.compiler)
     add("kspAndroid", libs.room.compiler)
-    add("kspAndroid", libs.moshi.kotlin.codegen)
 }
