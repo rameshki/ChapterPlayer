@@ -95,7 +95,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 **Done when:** CI is green on `main`, and `./gradlew assembleDebug` works from a clean clone.
 
 ### Stage 1: Kotlin Multiplatform migration
-- [ ] Upgrade Kotlin/AGP; restructure into `shared/` + `androidApp/` (toolchain upgrade done in PR 1; module split pending)
+- [ ] Upgrade Kotlin/AGP; restructure into `shared/` + `androidApp/` (toolchain upgrade done in PR 1, module split done in PR 2; Android target only so far)
 - [ ] Port models, ABS client, Plex + plex.tv clients to Ktor + kotlinx.serialization
 - [ ] Room → Room KMP with KSP; Hilt → Koin
 - [ ] Move ViewModels and Compose screens into `commonMain`

@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.chapterplayer.R
+import com.chapterplayer.shared.R
 
 /**
  * Typography for ChapterPlayer.
@@ -16,7 +16,7 @@ import com.chapterplayer.R
  * - Playfair Display (serif) — book titles, display text
  * - DM Sans (sans-serif) — body text, metadata, UI labels
  *
- * Font files must be placed in app/src/main/res/font/:
+ * Font files must be placed in shared/src/androidMain/res/font/:
  *   playfair_display_regular.ttf
  *   playfair_display_bold.ttf
  *   playfair_display_italic.ttf
@@ -25,7 +25,7 @@ import com.chapterplayer.R
  *   dm_sans_bold.ttf
  *
  * Download these from Google Fonts (https://fonts.google.com) and add them to
- * app/src/main/res/font/ before building.
+ * shared/src/androidMain/res/font/ before building.
  */
 val PlayfairDisplay = FontFamily(
     Font(R.font.playfair_display_regular, FontWeight.Normal),

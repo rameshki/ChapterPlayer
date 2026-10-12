@@ -54,62 +54,18 @@ android {
     }
 }
 
-// Built-in Kotlin: jvmTarget follows compileOptions.targetCompatibility above.
-kotlin {
-    compilerOptions {
-        optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
-    }
-}
-
 dependencies {
-    // AndroidX Core
-    implementation(libs.core.ktx)
-    implementation(libs.activity.compose)
-    implementation(libs.lifecycle.runtime.ktx)
+    implementation(project(":shared"))
 
-    // Compose
+    implementation(libs.activity.compose)
+
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
     implementation(libs.compose.ui)
-    implementation(libs.compose.ui.graphics)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.icons.extended)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 
-    // Lifecycle + ViewModel
-    implementation(libs.lifecycle.viewmodel.compose)
-    implementation(libs.lifecycle.runtime.compose)
-
-    // Navigation
-    implementation(libs.navigation.compose)
-
-    // Hilt (Dependency Injection)
+    // Hilt: the application and activity live here, so the Hilt plugin and compiler do too.
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
-    implementation(libs.hilt.navigation.compose)
-
-    // Room (Local Database)
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
-
-    // Networking
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.moshi)
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
-    implementation(libs.moshi)
-    implementation(libs.moshi.kotlin)
-    ksp(libs.moshi.kotlin.codegen)
-
-    // Coroutines
-    implementation(libs.coroutines.android)
-
-    // Image Loading
-    implementation(libs.coil.compose)
-
-    // DataStore (Settings persistence)
-    implementation(libs.datastore.preferences)
 }

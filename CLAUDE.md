@@ -10,13 +10,13 @@ for scope, stages and design direction. Keep that file updated as stages complet
 - Design reference: AudioBooth (iOS ABS client): tabs, home shelves, player sheet, mini player. Borrow structure, not code (MPL-2.0).
 
 ## Current state
-- Single Android module (`app/`): Compose, Hilt, Room (KSP), Retrofit/Moshi on Kotlin 2.4, AGP 9.3 (built-in Kotlin), Gradle 9.5, compileSdk 37
+- Two modules: `shared/` (Kotlin Multiplatform, Android target only for now; all app code) and `androidApp/` (activity, manifest). Compose, Hilt, Room (KSP), Retrofit/Moshi on Kotlin 2.4, AGP 9.3 (built-in Kotlin), Gradle 9.5, compileSdk 37
 - Stage 1 of the roadmap migrates this to `shared/` (KMP) + `androidApp/` + `iosApp/`
 - No tests yet
 
 ## Building
-- Java: JDK 17 (CI uses Temurin 17); full builds are tested on it. Gradle 9.5 also configures the project on Android Studio's bundled JBR 25 (`:app:help` checked; a full compile on JBR 25 has not been run).
-- `./gradlew :app:assembleDebug` (needs JAVA_HOME set to JDK 17 or newer)
+- Java: JDK 17 (CI uses Temurin 17); full builds are tested on it. Gradle 9.5 also configures the project on Android Studio's bundled JBR 25 (`help` checked; a full compile on JBR 25 has not been run).
+- `./gradlew :androidApp:assembleDebug` (needs JAVA_HOME set to JDK 17 or newer)
 - SDK: platform `android-37.0` and build-tools `36.0.0` (AGP 9.3 minimum). With `sdkmanager` on Windows use slash paths: `sdkmanager "platforms/android-37.0"`
 
 ## Conventions

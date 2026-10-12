@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "ChapterPlayer"
-include(":app")
+include(":shared", ":androidApp")

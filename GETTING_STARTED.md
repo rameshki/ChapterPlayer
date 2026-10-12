@@ -33,7 +33,7 @@ The app uses **Playfair Display** and **DM Sans** from Google Fonts. These need 
    - `DMSans-Bold.ttf` → `dm_sans_bold.ttf`
 5. Place all 6 files in:
    ```
-   ChapterPlayer/app/src/main/res/font/
+   ChapterPlayer/shared/src/androidMain/res/font/
    ```
 6. Delete `FONTS_README.txt` from that folder.
 
@@ -44,7 +44,7 @@ The app uses **Playfair Display** and **DM Sans** from Google Fonts. These need 
 Android Studio will create a default icon when you open the project.
 After opening (Step 4), to create a proper icon:
 
-1. Right-click `app/src/main/res` in the Project panel
+1. Right-click `androidApp/src/main/res` in the Project panel
 2. Choose **New → Image Asset**
 3. Set "Icon Type" to **Launcher Icons (Adaptive and Legacy)**
 4. Customize or keep the default — click **Next → Finish**
@@ -129,7 +129,8 @@ Once the app is running:
 
 ```
 ChapterPlayer/
-├── app/src/main/java/com/chapterplayer/
+├── androidApp/src/main/              ← MainActivity, application class, manifest, icons
+├── shared/src/androidMain/kotlin/com/chapterplayer/
 │   ├── data/
 │   │   ├── model/          ← AudioBook, Chapter, ServerConfig, etc.
 │   │   ├── local/          ← Room database (entities + DAOs)
