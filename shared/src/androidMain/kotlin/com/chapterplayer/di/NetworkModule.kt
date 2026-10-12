@@ -1,6 +1,5 @@
 package com.chapterplayer.di
 
-import com.chapterplayer.BuildConfig
 import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -34,14 +33,14 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
+    fun provideOkHttpClient(@Named("debuggable") isDebuggable: Boolean): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
 
         // Add logging in debug builds only, with auth headers redacted
-        if (BuildConfig.DEBUG) {
+        if (isDebuggable) {
             val logging = HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BODY
                 redactHeader("Authorization")
