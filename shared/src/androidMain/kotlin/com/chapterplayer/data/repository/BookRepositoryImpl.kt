@@ -15,12 +15,8 @@ import com.chapterplayer.data.remote.abs.dto.AbsChapterDto
 import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.dto.PlexChapterDto
-import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,32 +24,10 @@ import javax.inject.Singleton
 class BookRepositoryImpl @Inject constructor(
     private val bookDao: BookDao,
     private val progressDao: ProgressDao,
-    private val okHttpClient: OkHttpClient,
-    private val moshi: Moshi
+    private val absApi: AbsApiService,
+    private val plexApi: PlexApiService
 ) : BookRepository {
 
-
-    // -------------------------------------------------------------------------
-    // Per-server Retrofit factories
-    // Build a fresh Retrofit pointing at each server's real base URL.
-    // This avoids the placeholder http://localhost/ issue from the singleton setup.
-    // -------------------------------------------------------------------------
-
-    private fun absServiceFor(server: ServerConfig): AbsApiService =
-        Retrofit.Builder()
-            .baseUrl(server.baseUrl.trimEnd('/') + "/")
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(AbsApiService::class.java)
-
-    private fun plexServiceFor(server: ServerConfig): PlexApiService =
-        Retrofit.Builder()
-            .baseUrl(server.baseUrl.trimEnd('/') + "/")
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(PlexApiService::class.java)
 
     // -------------------------------------------------------------------------
     // Book observation (reads from local cache)
@@ -84,7 +58,6 @@ class BookRepositoryImpl @Inject constructor(
     // -------------------------------------------------------------------------
 
     private suspend fun fetchFromAbs(server: ServerConfig): List<BookEntity> {
-        val service = absServiceFor(server)
         val bearerToken = "Bearer ${server.token}"
         val now = System.currentTimeMillis()
 
@@ -93,7 +66,7 @@ class BookRepositoryImpl @Inject constructor(
         val libraryIds: List<String> = if (!server.libraryId.isNullOrBlank()) {
             listOf(server.libraryId)
         } else {
-            service.getLibraries(bearerToken)
+            absApi.getLibraries(server.baseUrl, bearerToken)
                 .libraries
                 .filter { it.mediaType == "book" }
                 .map { it.id }
@@ -101,7 +74,8 @@ class BookRepositoryImpl @Inject constructor(
 
         return libraryIds.flatMap { libraryId ->
             val items = fetchAllAbsItems { page, limit ->
-                service.getLibraryItems(
+                absApi.getLibraryItems(
+                    baseUrl = server.baseUrl,
                     bearerToken = bearerToken,
                     libraryId = libraryId,
                     limit = limit,
@@ -137,7 +111,6 @@ class BookRepositoryImpl @Inject constructor(
     // -------------------------------------------------------------------------
 
     private suspend fun fetchFromPlex(server: ServerConfig): List<BookEntity> {
-        val service = plexServiceFor(server)
         val now = System.currentTimeMillis()
 
         // If a section ID was provided, use it.
@@ -145,7 +118,7 @@ class BookRepositoryImpl @Inject constructor(
         val sectionIds: List<String> = if (!server.libraryId.isNullOrBlank()) {
             listOf(server.libraryId)
         } else {
-            service.getLibrarySections(token = server.token)
+            plexApi.getLibrarySections(baseUrl = server.baseUrl, token = server.token)
                 .mediaContainer
                 .directories
                 ?.filter { it.type == "artist" }   // "artist" == music/audiobook section in Plex
@@ -154,7 +127,8 @@ class BookRepositoryImpl @Inject constructor(
         }
 
         return sectionIds.flatMap { sectionId ->
-            val response = service.getLibraryAll(
+            val response = plexApi.getLibraryAll(
+                baseUrl = server.baseUrl,
                 token = server.token,
                 sectionId = sectionId
             )

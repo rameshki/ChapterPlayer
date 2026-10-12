@@ -75,13 +75,6 @@ kotlin {
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.kotlinx.serialization.json)
 
-            // Networking
-            implementation(libs.retrofit)
-            implementation(libs.retrofit.moshi)
-            implementation(libs.okhttp)
-            implementation(libs.okhttp.logging)
-            implementation(libs.moshi)
-            implementation(libs.moshi.kotlin)
 
             // Coroutines
             implementation(libs.coroutines.android)
@@ -98,5 +91,4 @@ kotlin {
 dependencies {
     add("kspAndroid", libs.hilt.android.compiler)
     add("kspAndroid", libs.room.compiler)
-    add("kspAndroid", libs.moshi.kotlin.codegen)
 }
