@@ -12,6 +12,12 @@ val SurfaceElevated = Color(0xFF1A1916)
 /** Even lighter for secondary surfaces (dialogs, chips). */
 val SurfaceSecondary = Color(0xFF252320)
 
+/**
+ * Bottom navigation bar. Material 3 1.2 tinted the bar amber through tonal
+ * elevation; later versions dropped the tint, so the colour is set explicitly.
+ */
+val NavBarSurface = Color(0xFF2B261A)
+
 // ─── Accent ────────────────────────────────────────────────────────────────
 /** Amber gold — the primary accent. Progress bars, active states, CTAs. */
 val AmberGold = Color(0xFFE8B84B)

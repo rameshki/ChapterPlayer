@@ -1,6 +1,6 @@
 # ChapterPlayer Roadmap
 
-_Last updated: 2026-10-11_
+_Last updated: 2026-10-12_
 
 ## Vision
 
@@ -95,7 +95,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 **Done when:** CI is green on `main`, and `./gradlew assembleDebug` works from a clean clone.
 
 ### Stage 1: Kotlin Multiplatform migration
-- [ ] Upgrade Kotlin/AGP; restructure into `shared/` + `androidApp/`
+- [ ] Upgrade Kotlin/AGP; restructure into `shared/` + `androidApp/` (toolchain upgrade done in PR 1; module split pending)
 - [ ] Port models, ABS client, Plex + plex.tv clients to Ktor + kotlinx.serialization
 - [ ] Room → Room KMP with KSP; Hilt → Koin
 - [ ] Move ViewModels and Compose screens into `commonMain`

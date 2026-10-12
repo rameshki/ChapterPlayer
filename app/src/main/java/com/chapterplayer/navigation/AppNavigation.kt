@@ -29,6 +29,7 @@ import com.chapterplayer.ui.library.LibraryScreen
 import com.chapterplayer.ui.settings.SettingsScreen
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
+import com.chapterplayer.ui.theme.NavBarSurface
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
 
@@ -60,7 +61,7 @@ fun AppNavigation() {
     Scaffold(
         bottomBar = {
             NavigationBar(
-                containerColor = SurfaceElevated
+                containerColor = NavBarSurface
             ) {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentDestination = navBackStackEntry?.destination
