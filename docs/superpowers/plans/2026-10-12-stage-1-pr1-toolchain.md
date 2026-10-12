@@ -683,6 +683,6 @@ Only add it if the log shows that failure. Push the fix to the same branch.
 
 - Result: the build was green on the first attempt; Task 5 needed no fixes. One visual regression was found in Task 6 and fixed (`NavBarSurface`): Material 3 stopped tinting the bottom bar through tonal elevation.
 - The Task 6 screenshot comparison was done with pixel sampling against the baseline captures, not by eye alone: 0.13%, 0.08% and 0.00% of sampled pixels differed on Library, Settings and Add Server.
-- A fullscreen focus highlight on the first focusable button after launch is a keyboard-focus state on the emulator, not a regression. One tap in touch mode clears it. Tap before capturing.
+- A circular highlight on the first focusable button (the refresh icon) after launch is a keyboard-focus state on the emulator, not a regression. One tap in touch mode clears it. Tap before capturing.
 - `sdkmanager` on Windows needs slash paths (`platforms/android-37.0`); the semicolon form is split by the batch wrapper.
 - Google's `agp-9-upgrade` skill says not to run `clean` when verifying, and to verify with `./gradlew help` and `./gradlew build --dry-run`.

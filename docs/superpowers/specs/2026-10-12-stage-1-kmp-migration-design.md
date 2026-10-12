@@ -96,5 +96,6 @@ interface PlaybackController {
 - **Room KMP (PR 5):** a schema mismatch would crash or wipe existing installs. Export the schema and add the migration test before touching entities.
 - **Koin (PR 4):** bindings resolve at runtime, so a missing binding crashes when a screen opens. Open every screen on the emulator.
 - **iOS (PR 8):** Xcode is not available to the agent; iOS is verified by CI only until run on a Mac.
-- **Unread code:** the plan was drawn from build files and the roadmap, not a full read of the app code. PR 1's task plan starts with that read, and any surprise updates this spec.
-- **Token storage:** how `ServerConfigEntity` stores tokens has not been reviewed. Check during PR 5 and record the finding; changing storage is out of scope for Stage 1 unless it blocks the migration.
+- **Code read so far:** the design was drawn from build files and the roadmap. PR 1 also read the application class, `MainActivity`, the three Hilt modules, the Room database class and `ServerConfigEntity`. The rest of the code is read PR by PR, and any surprise updates this spec.
+- **Token storage (finding):** `ServerConfigEntity.token` is a plain `String` column in the Room table `server_configs`, so server tokens are stored unencrypted on the device. Stage 1 keeps this behaviour. Moving tokens to platform secure storage (Android Keystore, iOS Keychain) should be its own item, ideally before Stage 2 adds more credentials.
+- **Room schema:** the database is version 1 with `exportSchema = false`. PR 5 turns schema export on and adds the migration test before touching entities, as described above.
