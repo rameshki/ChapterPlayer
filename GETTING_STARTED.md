@@ -33,7 +33,7 @@ The app uses **Playfair Display** and **DM Sans** from Google Fonts. These need 
    - `DMSans-Bold.ttf` → `dm_sans_bold.ttf`
 5. Place all 6 files in:
    ```
-   ChapterPlayer/shared/src/androidMain/res/font/
+   ChapterPlayer/shared/src/commonMain/composeResources/font/
    ```
 6. Delete `FONTS_README.txt` from that folder.
 

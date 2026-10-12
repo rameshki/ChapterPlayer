@@ -12,6 +12,7 @@ for scope, stages and design direction. Keep that file updated as stages complet
 ## Current state
 - Two modules: `shared/` (Kotlin Multiplatform, Android target only for now; all app code) and `androidApp/` (activity, manifest). Compose, Koin, Room (KSP), Ktor + kotlinx.serialization on Kotlin 2.4, AGP 9.3 (built-in Kotlin), Gradle 9.5, compileSdk 37
 - Stage 1 of the roadmap migrates this to `shared/` (KMP) + `androidApp/` + `iosApp/`
+- UI is Compose Multiplatform (plugin 1.12.1). The theme, fonts (`shared/src/commonMain/composeResources/font`) and the book components are in `commonMain`; screens, view models and navigation are still in `androidMain` until PR 6b. Images load with Coil 3
 - Dependency injection is Koin (Classic DSL, modules in `shared/.../di/KoinModules.kt`). Koin fails when a screen opens, not at build time, so `KoinModulesTest` runs `verify()` over every module: add a new class to a module and the test shows what it still needs
 - Host tests in `shared/src/androidHostTest` (`./gradlew :shared:testAndroidHostTest`). Parsers are tested against recorded server responses in `src/androidHostTest/resources/fixtures`: real structure, synthetic text, ids, paths and tokens. The repo is public, so never commit real server data
 
