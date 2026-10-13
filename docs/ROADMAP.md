@@ -62,7 +62,7 @@ Library changes from today's Android-only stack:
 Rules:
 - Everything that isn't playback, car, widgets or OS integration goes in `commonMain`.
 - Playback sits behind a common `PlaybackController` interface with one implementation per platform.
-- Each source implements a common `LibrarySource` interface (`browse`, `search`, `streamInfo`, `reportProgress`), so the UI never knows which server a book came from.
+- Each source implements a common `LibrarySource` interface, so the UI never knows which server a book came from. It lists books today (`fetchBooks`); search, stream resolution and progress reporting are added in Stages 2 and 4, when they have behaviour to carry.
 
 ## Design direction
 
@@ -99,7 +99,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [x] Port models, ABS client, Plex + plex.tv clients to Ktor + kotlinx.serialization
 - [x] Room → Room KMP with KSP; Hilt → Koin
 - [x] Move ViewModels and Compose screens into `commonMain`
-- [ ] Define the `LibrarySource` and `PlaybackController` interfaces
+- [x] Define the `LibrarySource` and `PlaybackController` interfaces (`PlaybackController` has no implementation until Stage 2)
 - [x] Unit tests for the API parsers using recorded JSON responses
 - [ ] Empty `iosApp/` that compiles the shared framework (CI on a macOS runner)
 

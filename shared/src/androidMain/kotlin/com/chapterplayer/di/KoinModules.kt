@@ -12,6 +12,9 @@ import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.BookRepositoryImpl
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.repository.ServerRepositoryImpl
+import com.chapterplayer.data.source.AbsLibrarySource
+import com.chapterplayer.data.source.LibrarySource
+import com.chapterplayer.data.source.PlexLibrarySource
 import com.chapterplayer.ui.library.LibraryViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
@@ -47,8 +50,13 @@ val networkModule = module {
     singleOf(::AndroidPlexClientIdentifier) { bind<PlexClientIdentifier>() }
 }
 
+val sourceModule = module {
+    singleOf(::AbsLibrarySource) { bind<LibrarySource>() }
+    singleOf(::PlexLibrarySource) { bind<LibrarySource>() }
+}
+
 val repositoryModule = module {
-    singleOf(::BookRepositoryImpl) { bind<BookRepository>() }
+    single<BookRepository> { BookRepositoryImpl(get(), get(), getAll<LibrarySource>()) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
 }
 
@@ -59,4 +67,4 @@ val viewModelModule = module {
 }
 
 /** Everything the shared module declares. The app adds what only it knows. */
-val sharedModules = listOf(databaseModule, networkModule, repositoryModule, viewModelModule)
+val sharedModules = listOf(databaseModule, networkModule, sourceModule, repositoryModule, viewModelModule)
