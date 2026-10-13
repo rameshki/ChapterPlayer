@@ -43,6 +43,14 @@ kotlin {
             implementation(libs.coil3.network.ktor3)
             implementation(libs.room.runtime)
             implementation(libs.coroutines.core)
+            implementation(libs.ktor.client.core)
+            implementation(project.dependencies.platform(libs.koin.bom))
+            implementation(libs.koin.core)
+            implementation(libs.koin.compose.viewmodel)
+            implementation(libs.jetbrains.lifecycle.viewmodel)
+            implementation(libs.jetbrains.lifecycle.runtime.compose)
+            implementation(libs.jetbrains.navigation.compose)
+            implementation(libs.compose.icons.extended.cmp)
             implementation(libs.kotlinx.serialization.json)
         }
 
@@ -66,20 +74,11 @@ kotlin {
             implementation(libs.compose.ui.graphics)
             implementation(libs.compose.ui.tooling.preview)
             implementation(libs.compose.material3)
-            implementation(libs.compose.icons.extended)
-
-            // Lifecycle + ViewModel
-            implementation(libs.lifecycle.viewmodel.compose)
-            implementation(libs.lifecycle.runtime.compose)
-
-            // Navigation
-            implementation(libs.navigation.compose)
 
             // Koin (Dependency Injection)
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.core)
             implementation(libs.koin.android)
-            implementation(libs.koin.androidx.compose)
 
 
             // Ktor + kotlinx.serialization
