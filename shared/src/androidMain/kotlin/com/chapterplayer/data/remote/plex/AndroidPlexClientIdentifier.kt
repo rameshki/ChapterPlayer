@@ -4,15 +4,12 @@ import android.content.Context
 import java.util.UUID
 
 /**
- * Stable X-Plex-Client-Identifier for this install.
- *
- * Plex treats each distinct client identifier as a separate device on the user's
- * account, so it must be generated once and reused for every plex.tv request.
+ * Keeps the identifier in the same SharedPreferences entry earlier versions used, so an
+ * existing installation keeps the id Plex already knows.
  */
-class PlexClientIdentifier(
-    context: Context
-) {
-    val value: String by lazy {
+class AndroidPlexClientIdentifier(context: Context) : PlexClientIdentifier {
+
+    override val value: String by lazy {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.getString(KEY_CLIENT_ID, null)
             ?: UUID.randomUUID().toString().also { id ->

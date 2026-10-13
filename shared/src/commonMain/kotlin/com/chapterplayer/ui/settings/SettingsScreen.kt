@@ -1,7 +1,5 @@
 package com.chapterplayer.ui.settings
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,12 +51,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.viewmodel.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
@@ -197,7 +195,7 @@ fun ServerSetupScreen(
     viewModel: ServerSetupViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
 
     // Track whether we've already launched the browser for the current pin,
     // so a recomposition doesn't open it again.
@@ -223,7 +221,7 @@ fun ServerSetupScreen(
         if (browserLaunched.value) return@LaunchedEffect
         browserLaunched.value = true
         val authUrl = buildPlexAuthUrl(code, uiState.plexClientId)
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(authUrl)))
+        uriHandler.openUri(authUrl)
     }
 
     // Server picker dialog — shown after OAuth completes

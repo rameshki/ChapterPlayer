@@ -5,6 +5,7 @@ import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.plex.PlexApiService
+import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.chapterplayer.data.repository.BookRepository
@@ -43,7 +44,7 @@ val networkModule = module {
     singleOf(::AbsApiService)
     singleOf(::PlexApiService)
     singleOf(::PlexTvApiService)
-    singleOf(::PlexClientIdentifier)
+    singleOf(::AndroidPlexClientIdentifier) { bind<PlexClientIdentifier>() }
 }
 
 val repositoryModule = module {

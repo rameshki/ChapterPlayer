@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.chapterplayer.ui.settings
 
 import androidx.lifecycle.ViewModel
@@ -15,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.UUID
+import kotlin.uuid.Uuid
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings screen state
@@ -318,7 +320,7 @@ class ServerSetupViewModel(
         viewModelScope.launch {
             _uiState.value = state.copy(isSaving = true, saveError = null)
             val config = ServerConfig(
-                id = existingId ?: UUID.randomUUID().toString(),
+                id = existingId ?: Uuid.random().toString(),
                 source = state.source,
                 name = state.name.trim(),
                 baseUrl = state.baseUrl.trimEnd('/'),
