@@ -106,9 +106,11 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 **Done when:** the Android app has the same features as today, running entirely on the shared module.
 
 ### Stage 2: Audiobookshelf core experience (priority 1)
+- [ ] Move the server token out of the Room database into encrypted storage (before sign-in is built)
+- [ ] Light theme and a Dark / Light / Follow system setting
 - [ ] ABS sign-in: username/password and API key; library picker
-- [ ] Library selection per server: show some libraries and exempt others (multi-select, remembered per server). Libraries added to the server later are shown by default and can be turned off. Today there is one optional library id, or every book library
-- [ ] AudioBooth-style navigation: Home, Library, Collections, Downloads, Search
+- [ ] Combined library across servers with a Libraries check-list (grouped by server): untick a library to hide it everywhere; libraries added later show by default. Today there is one optional library id, or every book library
+- [ ] Four tabs: Home (Resume card), Library (Authors, Narrators, Series and Collections views; large-cover, small-cover and list layouts with a remembered switch), Downloads (placeholder until Stage 3), Search
 - [ ] Book details screen (description, chapters, series, narrator)
 - [ ] Load chapters per book from `/api/items/{id}`: the library list response has none, only `numChapters`
 - [ ] Replace the ABS stream URL (`/api/items/{id}/play` starts a playback session, it is not an audio URL)
@@ -116,11 +118,11 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [ ] Full player sheet + mini player
 - [ ] ABS playback sessions and progress sync: save locally first, sync every ~10s, queue while offline and retry with backoff (AudioBooth's approach)
 - [ ] Bookmarks synced with ABS
+- [ ] Android Auto (moved up from Stage 3): Media3 `MediaLibraryService` browse tree (Continue, Recently added, Library with Series, Authors, Collections and All books in letter ranges), chapters as the Now Playing queue, skip 15 / 30 on Previous / Next, voice search, resume on connect with a Settings switch
 
-**Done when:** you can listen to an ABS book daily, across phone and the ABS web UI, with progress staying in sync.
+**Done when:** you can listen to an ABS book daily, on the phone and in the car (Desktop Head Unit test + a real car), across phone and the ABS web UI, with progress staying in sync. Design: `docs/superpowers/specs/2026-10-14-stage-2-abs-core-design.md`.
 
-### Stage 3: Android Auto, widgets & offline
-- [ ] Android Auto: Media3 `MediaLibraryService` browse tree (Continue Listening, Library, Downloads), voice search, chapter skip
+### Stage 3: Widgets & offline
 - [ ] Glance widgets: Now Playing (play/pause, skip) and Continue Listening
 - [ ] Downloads that survive a very slow link (ABS behind a Cloudflare Tunnel; a book may take 30 hours):
   - one request per audio file with HTTP `Range` resume, never the all-in-one zip, so a dropped connection continues where it stopped
@@ -132,7 +134,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
   - storage limits and a download-location choice, pause and resume controls
 - [ ] Offline mode: play downloaded books, sync progress when back online
 
-**Done when:** it works in the car (Desktop Head Unit test + a real car) and without network.
+**Done when:** the widgets work and books play without network. Downloads also appear in the Android Auto browse tree.
 
 ### Stage 4: Plex parity (priority 2)
 - [ ] Fix the Plex library call: a Plex music library lists artists at the top level, so the app currently imports artists (no author, duration, audio or chapters). Audiobooks are albums (type 9, author in `parentTitle`), the audio is in each album's tracks, and chapters come from the track detail (`/library/metadata/{id}?includeChapters=1`), not the track list
