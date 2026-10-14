@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.Chapter
+import com.chapterplayer.data.model.ChapterJson
 import com.chapterplayer.data.model.ServerSource
 
 /**
@@ -37,4 +38,21 @@ data class BookEntity(
         source = ServerSource.valueOf(source),
         serverId = serverId
     )
+
+    companion object {
+        /** The row stored for [book], stamped with when it was fetched. */
+        fun fromDomain(book: AudioBook, cachedAt: Long): BookEntity = BookEntity(
+            id = book.id,
+            title = book.title,
+            author = book.author,
+            narrator = book.narrator,
+            durationMs = book.durationMs,
+            chaptersJson = ChapterJson.encode(book.chapters),
+            streamUrl = book.streamUrl,
+            coverUrl = book.coverUrl,
+            source = book.source.name,
+            serverId = book.serverId,
+            cachedAt = cachedAt
+        )
+    }
 }
