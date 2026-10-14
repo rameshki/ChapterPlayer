@@ -27,6 +27,14 @@ kotlin {
         }
     }
 
+    // The iOS app links this module as a static framework named Shared.
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
+
     compilerOptions {
         optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
@@ -110,4 +118,6 @@ room {
 
 dependencies {
     add("kspAndroid", libs.room.compiler)
+    add("kspIosArm64", libs.room.compiler)
+    add("kspIosSimulatorArm64", libs.room.compiler)
 }

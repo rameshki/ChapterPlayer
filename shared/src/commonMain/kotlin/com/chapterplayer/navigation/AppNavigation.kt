@@ -25,6 +25,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.savedstate.read
 import com.chapterplayer.ui.library.LibraryScreen
 import com.chapterplayer.ui.settings.SettingsScreen
 import com.chapterplayer.ui.theme.AmberGold
@@ -131,7 +132,7 @@ fun AppNavigation() {
                 }
 
                 composable(Screen.ServerSetup.route) { backStackEntry ->
-                    val serverId = backStackEntry.arguments?.getString(Screen.ServerSetup.ARG_SERVER_ID)
+                    val serverId = backStackEntry.arguments?.read { getStringOrNull(Screen.ServerSetup.ARG_SERVER_ID) }
                     com.chapterplayer.ui.settings.ServerSetupScreen(
                         serverId = serverId?.takeIf { it != Screen.ServerSetup.NEW_SERVER },
                         onDone = { navController.popBackStack() }
