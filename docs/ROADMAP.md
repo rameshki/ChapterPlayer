@@ -111,6 +111,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [ ] ABS sign-in: username/password and API key; library picker
 - [ ] Combined library across servers with a Libraries check-list (grouped by server): untick a library to hide it everywhere; libraries added later show by default. Today there is one optional library id, or every book library
 - [ ] Four tabs: Home (Resume card), Library (Authors, Narrators, Series and Collections views; large-cover, small-cover and list layouts with a remembered switch), Downloads (placeholder until Stage 3), Search
+- [ ] Downloaded state in the UI (built now, filled in by Stage 3): badges on covers, Downloaded filter chip and Filter sheet on every browse screen, Downloads tab empty state, offline dimming. Per-book download state, always "not downloaded" until Stage 3
 - [ ] Book details screen (description, chapters, series, narrator)
 - [ ] Load chapters per book from `/api/items/{id}`: the library list response has none, only `numChapters`
 - [ ] Replace the ABS stream URL (`/api/items/{id}/play` starts a playback session, it is not an audio URL)
@@ -118,7 +119,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [ ] Full player sheet + mini player
 - [ ] ABS playback sessions and progress sync: save locally first, sync every ~10s, queue while offline and retry with backoff (AudioBooth's approach)
 - [ ] Bookmarks synced with ABS
-- [ ] Android Auto (moved up from Stage 3): Media3 `MediaLibraryService` browse tree (Continue, Recently added, Library with Series, Authors, Collections and All books in letter ranges), chapters as the Now Playing queue, skip 15 / 30 on Previous / Next, voice search, resume on connect with a Settings switch
+- [ ] Android Auto (moved up from Stage 3): Media3 `MediaLibraryService` browse tree (Continue, Recently added, Library and a Downloaded placeholder tab; Library has Series, Authors, Collections and All books in letter ranges), chapters as the Now Playing queue, skip 15 / 30 on Previous / Next, voice search, resume on connect with a Settings switch
 
 **Done when:** you can listen to an ABS book daily, on the phone and in the car (Desktop Head Unit test + a real car), across phone and the ABS web UI, with progress staying in sync. Design: `docs/superpowers/specs/2026-10-14-stage-2-abs-core-design.md`.
 

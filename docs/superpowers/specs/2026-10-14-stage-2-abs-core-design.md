@@ -26,13 +26,22 @@ Done when:
 
 ### Tabs
 - Four tabs: Home, Library, Downloads, Search.
-- Downloads shows a "coming in a later update" placeholder until Stage 3.
+- The Downloads tab is built now. Until downloading arrives in Stage 3 it shows an empty state ("No downloads yet. Downloading arrives in a later update"). The storage summary, the Wi-Fi or Wi-Fi + cellular choice and the list of downloads appear in Stage 3.
 - A mini player sits above the tab bar whenever something is playing. Tapping it opens the full player.
 
 ### Library
 - Five views along the top: Library, Authors, Narrators, Series, Collections, plus sort and filter.
 - Three layouts for the Library view: large covers two across, small covers three across, and a list. A switch in the toolbar changes it and the app remembers the choice. New installs start on large covers.
 - An in-progress book shows a thin amber bar. A finished book shows a check mark.
+- Filter chips under the views: All, Downloaded, In progress, Not started and Finished. A Filter button opens a sheet with Downloaded / Not downloaded, progress and the sort order (Recently added, Recently played, Title, Author, Length).
+- The filters apply to every browse screen: Library, Authors, Narrators, Series, Collections, Search and Home. Authors, narrators and series with no matching books disappear while a filter is on, as in Audible's library.
+
+### Downloaded state
+Stage 3 adds real downloading. The screens for it are built in Stage 2 so they do not change later.
+- Every book shows its state on its cover and in lists: a check mark when it is on the phone, a ring with progress while it downloads, and nothing when it is only on the server.
+- The Downloaded chip and the Filter sheet work from the first release. Because nothing can be downloaded yet, they show "Nothing downloaded here yet".
+- When the phone has no connection, books that are not downloaded are dimmed with a cloud icon and cannot be played. A banner offers "Downloaded only". In Stage 2 that means nothing plays offline.
+- The app keeps a download state for every book (not downloaded, downloading, downloaded). In Stage 2 it is always "not downloaded".
 - All servers appear as one combined library. A "Libraries" control at the top opens a check-list of every library, grouped by server. Unticking a library hides it everywhere: Home, Library, Search and the car. A library added to a server later appears ticked.
 
 ### Adding a server
@@ -50,9 +59,10 @@ Done when:
 - Tapping the chapter title opens the chapter list.
 
 ### Android Auto
-- Three tabs along the top: Continue, Recently added and Library.
+- Four tabs along the top: Continue, Recently added, Library and Downloaded.
   - Continue lists your in-progress books, most recent first, so one tap resumes.
   - Recently added lists the newest books.
+  - Downloaded is a placeholder in Stage 2 ("Downloads arrive in a later update") and lists the downloaded books from Stage 3. With no connection, books that are not downloaded are dimmed with a cloud icon and cannot be played, and a banner offers to open this tab.
   - Library holds Series, Authors, Collections and All books. All books is grouped into letter ranges ("A to C", "D to F" and so on) so no list is long.
   - Narrators are not in the car.
 - On the Now Playing screen, Previous and Next skip back 15 and forward 30 seconds, matching the phone.
@@ -107,24 +117,25 @@ Each step is its own pull request, branches named `stage-2/<feature>`, and each 
 1. Secure token storage and the preferences store. Moves the token out of Room.
 2. Theme: a light palette, the Dark, Light and Follow system choice, and the Settings entry for it.
 3. Sign-in: username and password, API token under Advanced, and the library picker (with the database migration).
-4. Navigation shell and Library: four tabs, the Downloads placeholder, five Library views, three layouts with the switch, and the combined view with the Libraries check-list.
+4. Navigation shell and Library: four tabs, the Downloads empty state, five Library views, three layouts with the switch, the combined view with the Libraries check-list, the filter chips and Filter sheet, and the downloaded-state badges and offline dimming (with the per-book download state, always "not downloaded" for now).
 5. Book details with chapters loaded per book, and the Series tab.
 6. The playback service: Media3, the playback session, chapters, speed, sleep timer, skip 15 and 30, lock-screen controls, rewind on resume and pause on disconnect.
 7. The full player, the mini player and the Home Resume card.
 8. Progress sync, the offline queue and bookmarks.
-9. Android Auto: the browse tree, chapters as the queue, voice search, resume on connect and its Settings switch.
+9. Android Auto: the browse tree (Continue, Recently added, Library and the Downloaded placeholder), chapters as the queue, voice search, resume on connect and its Settings switch.
 
 Steps 1 to 8 give you the phone app. Step 9 adds the car.
 
 ## Roadmap changes
 
 - Android Auto moves from Stage 3 into Stage 2. Stage 3 keeps widgets, downloads and offline mode, and its "done when" no longer mentions the car.
+- The downloaded-state screens move into Stage 2: badges, the Downloaded filter, the Downloads tab empty state, offline dimming and the car's Downloaded placeholder tab. Stage 3 fills them in with real downloading.
 - The Stage 2 library-selection item changes to the combined view with the Libraries check-list.
 - The Stage 2 navigation item changes to four tabs, with Collections inside Library.
 
 ## Out of scope for Stage 2
 
-Downloads and offline mode (Stage 3), widgets (Stage 3), Plex (Stage 4), the stats page, CarPlay and iOS (Stage 5). Playing without a network connection is not part of Stage 2.
+Actually downloading books and playing downloaded books without a connection (Stage 3), widgets (Stage 3), Plex (Stage 4), the stats page, CarPlay and iOS (Stage 5). Stage 2 builds the downloaded-state screens but nothing can be downloaded yet.
 
 ## Assumptions to confirm
 
