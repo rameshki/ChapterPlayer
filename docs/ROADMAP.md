@@ -101,7 +101,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [x] Move ViewModels and Compose screens into `commonMain`
 - [x] Define the `LibrarySource` and `PlaybackController` interfaces (`PlaybackController` has no implementation until Stage 2)
 - [x] Unit tests for the API parsers using recorded JSON responses
-- [ ] Empty `iosApp/` that compiles the shared framework (CI on a macOS runner)
+- [x] Empty `iosApp/` that compiles the shared framework (CI on a macOS runner). Not yet done: the iOS database driver, HTTP engine and Koin start-up (`iosMain` is only a placeholder screen); these come in Stage 5
 
 **Done when:** the Android app has the same features as today, running entirely on the shared module.
 
