@@ -1,9 +1,11 @@
 package com.chapterplayer.di
 
 import androidx.room.Room
+import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.abs.AbsApiService
+import com.chapterplayer.data.remote.abs.AbsSignIn
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
@@ -56,6 +58,7 @@ val networkModule = module {
     // One HTTP client for every server. Debug builds log requests with auth headers hidden.
     single { createHttpClient(get<Boolean>(DebuggableQualifier)) }
     singleOf(::AbsApiService)
+    singleOf(::AbsSignIn) { bind<AbsSignInPort>() }
     singleOf(::PlexApiService)
     singleOf(::PlexTvApiService)
     singleOf(::AndroidPlexClientIdentifier) { bind<PlexClientIdentifier>() }
