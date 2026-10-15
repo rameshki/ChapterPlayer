@@ -3,6 +3,7 @@ package com.chapterplayer.data.source
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.AbsApiService
+import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.installApiDefaults
 import io.ktor.client.HttpClient
@@ -27,6 +28,11 @@ class AbsLibrarySourceTest {
         id = "srv1", source = ServerSource.ABS, name = "Test", baseUrl = "http://abs.test", token = "tok", libraryId = null
     )
 
+    private object PassThroughAuthorizer : AbsAuthorizer {
+        override suspend fun <T> authorized(server: ServerConfig, call: suspend (bearerToken: String) -> T): T =
+            call("Bearer " + server.token)
+    }
+
     private fun source(items: String = fixture("abs/items-page-with-total.json")) = AbsLibrarySource(
         AbsApiService(
             HttpClient(
@@ -36,7 +42,8 @@ class AbsLibrarySourceTest {
                     respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
             ) { installApiDefaults(isDebuggable = false) }
-        )
+        ),
+        PassThroughAuthorizer
     )
 
     @Test

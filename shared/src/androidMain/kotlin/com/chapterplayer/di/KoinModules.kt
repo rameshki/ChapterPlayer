@@ -5,6 +5,8 @@ import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.abs.AbsApiService
+import com.chapterplayer.data.remote.abs.AbsAuthorizer
+import com.chapterplayer.data.remote.abs.AbsSessionManager
 import com.chapterplayer.data.remote.abs.AbsSignIn
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.plex.PlexApiService
@@ -81,6 +83,7 @@ val sourceModule = module {
 val repositoryModule = module {
     single<BookRepository> { BookRepositoryImpl(get(), get(), getAll<LibrarySource>()) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
+    single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
 }
 
 val viewModelModule = module {
