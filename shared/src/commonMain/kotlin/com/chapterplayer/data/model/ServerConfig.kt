@@ -10,6 +10,8 @@ package com.chapterplayer.data.model
  * @param token    Auth token. For ABS this is the API key; for Plex it's the X-Plex-Token.
  * @param libraryId ABS library ID or Plex section ID to load books from.
  *                  Can be null if the user hasn't selected a library yet.
+ * @param refreshToken Long-lived token used to get a new [token]; null when the server gave none.
+ * @param excludedLibraryIds Libraries the user turned off for this server.
  */
 data class ServerConfig(
     val id: String,
@@ -17,5 +19,10 @@ data class ServerConfig(
     val name: String,
     val baseUrl: String,
     val token: String,
-    val libraryId: String? = null
-)
+    val libraryId: String? = null,
+    val refreshToken: String? = null,
+    val excludedLibraryIds: Set<String> = emptySet()
+) {
+    /** The stored token is gone or unreadable, so the user has to sign in again. */
+    val needsSignIn: Boolean get() = token.isBlank()
+}

@@ -52,6 +52,7 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().bookDao() }
     single { get<ChapterPlayerDatabase>().progressDao() }
     single { get<ChapterPlayerDatabase>().serverConfigDao() }
+    single { get<ChapterPlayerDatabase>().excludedLibraryDao() }
 }
 
 val networkModule = module {
