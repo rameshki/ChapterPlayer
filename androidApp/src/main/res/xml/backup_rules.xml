@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Tokens are encrypted with a Keystore key that does not move to another phone. -->
+    <exclude domain="file" path="datastore/credentials.preferences_pb"/>
+</full-backup-content>

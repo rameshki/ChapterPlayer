@@ -86,4 +86,18 @@ class CredentialStoreTest {
         assertNull(DataStoreCredentialStore(raw, cipher()).get("a"))
         assertEquals(1, raw.data.first().asMap().size)
     }
+
+    @Test
+    fun `an unreadable store reads as no token`() = runTest {
+        val broken = object : androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+            override val data = kotlinx.coroutines.flow.flow<androidx.datastore.preferences.core.Preferences> {
+                throw androidx.datastore.core.IOException("unreadable")
+            }
+            override suspend fun updateData(
+                transform: suspend (androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences
+            ) = error("not used")
+        }
+
+        assertNull(DataStoreCredentialStore(broken, cipher()).get("a"))
+    }
 }

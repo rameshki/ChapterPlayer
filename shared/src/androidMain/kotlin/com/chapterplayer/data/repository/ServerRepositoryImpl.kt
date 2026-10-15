@@ -36,8 +36,19 @@ class ServerRepositoryImpl(
 
     override suspend fun save(config: ServerConfig) {
         ensureTokensMigrated()
-        credentials.put(config.id, config.token)
-        serverConfigDao.insert(ServerConfigEntity.fromDomain(config))
+        migrationLock.withLock {
+            val isNew = serverConfigDao.getById(config.id) == null
+            credentials.put(config.id, config.token)
+            try {
+                serverConfigDao.insert(ServerConfigEntity.fromDomain(config))
+            } catch (e: Throwable) {
+                if (isNew) {
+                    // Don't leave a token behind for a row that was never written.
+                    try { credentials.remove(config.id) } catch (_: Exception) {}
+                }
+                throw e
+            }
+        }
     }
 
     override suspend fun delete(id: String) {
