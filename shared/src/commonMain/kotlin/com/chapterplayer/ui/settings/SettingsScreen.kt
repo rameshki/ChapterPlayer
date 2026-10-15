@@ -316,6 +316,17 @@ fun ServerSetupScreen(
         onBackCompleted = { viewModel.onAbsBack() }
     )
 
+    // Leaving an Audiobookshelf edit by system Back drops typed secrets, like the top-bar arrow.
+    val isAbsEdit = serverId != null && uiState.source == ServerSource.ABS
+    NavigationEventHandler(
+        state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
+        isBackEnabled = isAbsEdit,
+        onBackCompleted = {
+            viewModel.onAbsSecretsDiscarded()
+            onDone()
+        }
+    )
+
     Scaffold(
         containerColor = BackgroundDeep,
         topBar = {
@@ -410,6 +421,16 @@ fun ServerSetupScreen(
                     placeholder = "http://192.168.1.10:8080",
                     keyboardType = KeyboardType.Uri
                 )
+                if (serverId != null) {
+                    AbsSignInAgainSection(
+                        state = uiState.abs,
+                        onUsernameChanged = viewModel::onAbsUsernameChanged,
+                        onPasswordChanged = viewModel::onAbsPasswordChanged,
+                        onUseApiKeyChanged = viewModel::onAbsUseApiKeyChanged,
+                        onApiKeyChanged = viewModel::onAbsApiKeyChanged,
+                        onSignIn = { viewModel.onAbsSignInAgain(serverId) }
+                    )
+                }
             }
 
             // ── Plex OAuth flow ───────────────────────────────────────────

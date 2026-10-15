@@ -511,12 +511,16 @@ class AbsSetupViewModelTest {
     @Test
     fun `signing in again for a server that is gone says so and saves nothing`() {
         val repo = FakeRepository()
-        val vm = viewModel(FakePort { result() }, repo)
+        val port = FakePort { result() }
+        val vm = viewModel(port, repo)
         vm.onAbsUsernameChanged("reader")
         vm.onAbsPasswordChanged("pw-made-up")
         vm.onBaseUrlChanged("http://old.test")
 
         vm.onAbsSignInAgain("gone")
+
+        assertEquals(0, port.passwordCalls)
+        assertEquals(0, port.apiKeyCalls)
 
         val s = vm.uiState.value
         assertEquals("That server no longer exists.", s.saveError)
@@ -579,5 +583,53 @@ class AbsSetupViewModelTest {
 
         assertEquals(1, port.passwordCalls)
         assertEquals(1, repo.saved.size)
+    }
+
+    @Test
+    fun `an edited address is replaced by the normalised address from the sign-in`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val port = object : AbsSignInPort {
+            override suspend fun withPassword(address: String, username: String, password: String) =
+                AbsSignInResult("http://" + address.removePrefix("http://").trimEnd('/'), "token-1", "refresh-1", libraries)
+            override suspend fun withApiKey(address: String, apiKey: String) = withPassword(address, "", "")
+        }
+        val vm = viewModel(port, repo)
+        vm.loadServer("s1")
+        vm.onBaseUrlChanged("  http://new.test/  ")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+
+        vm.onAbsSignInAgain("s1")
+
+        assertEquals("http://new.test", repo.saved.single().baseUrl)
+    }
+
+    @Test
+    fun `the edit state of an Audiobookshelf server is what the sign in again section needs`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val port = FakePort { result() }
+        val vm = viewModel(port, repo)
+
+        vm.loadServer("s1")
+
+        val s = vm.uiState.value
+        assertEquals(ServerSource.ABS, s.source)
+        assertEquals("http://old.test", s.baseUrl)
+        assertEquals("", s.token)
+        assertEquals("", s.abs.username)
+        assertEquals("", s.abs.password)
+        assertEquals("", s.abs.apiKey)
+        assertFalse(s.abs.useApiKey)
+        assertFalse(s.abs.isSigningIn)
+
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+        vm.onAbsSignInAgain("s1")
+
+        assertEquals(1, port.passwordCalls)
+        assertEquals("token-1", repo.saved.single().token)
+        assertTrue(vm.uiState.value.savedSuccessfully)
     }
 }

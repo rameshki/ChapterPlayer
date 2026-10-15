@@ -143,6 +143,18 @@ internal class AbsSetupHandler(
         edit { copy(isSigningIn = true, signInError = null) }
         state.update { it.copy(saveError = null) }
         scope.launch {
+            // The server must still exist before a sign-in is attempted.
+            val exists = try {
+                serverRepository.getById(serverId) != null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                false
+            }
+            if (!exists) {
+                edit { copy(isSigningIn = false) }
+                state.update { it.copy(saveError = SERVER_GONE_MESSAGE) }
+                return@launch
+            }
             val signedIn = try {
                 if (current.useApiKey) {
                     port.withApiKey(address, current.apiKey.trim())
