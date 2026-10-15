@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -52,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +62,7 @@ import org.koin.compose.viewmodel.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -78,6 +81,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val uiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = BackgroundDeep,
@@ -106,6 +110,15 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp)
         ) {
             Text(
+                text = "Appearance",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            AppearanceCard(selected = themeMode, onSelect = viewModel::setThemeMode)
+            Spacer(Modifier.height(16.dp))
+
+            Text(
                 text = "Connected Servers",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -126,6 +139,51 @@ fun SettingsScreen(
                         server = server,
                         onEdit = { onEditServer(server.id) },
                         onDelete = { viewModel.deleteServer(server.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppearanceCard(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit
+) {
+    val options = listOf(
+        ThemeMode.DARK to "Dark",
+        ThemeMode.LIGHT to "Light",
+        ThemeMode.SYSTEM to "Follow system"
+    )
+    Card(
+        colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.selectableGroup()) {
+            options.forEach { (mode, label) ->
+                val isSelected = selected == mode
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(mode) }
+                        )
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = null,
+                        colors = RadioButtonDefaults.colors(selectedColor = AmberGold)
+                    )
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else TextSecondary,
+                        modifier = Modifier.padding(start = 12.dp)
                     )
                 }
             }

@@ -9,6 +9,8 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.chapterplayer.data.repository.ServerRepository
+import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.data.settings.ThemeMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -73,7 +75,8 @@ data class ServerSetupUiState(
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsViewModel(
-    private val serverRepository: ServerRepository
+    private val serverRepository: ServerRepository,
+    private val appSettings: AppSettings
 ) : ViewModel() {
 
     val settingsUiState: StateFlow<SettingsUiState> =
@@ -94,6 +97,17 @@ class SettingsViewModel(
                 // The row stays visible so the user can try again.
             }
         }
+    }
+
+    val themeMode: StateFlow<ThemeMode> =
+        appSettings.themeMode.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = ThemeMode.SYSTEM
+        )
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { appSettings.setThemeMode(mode) }
     }
 }
 
