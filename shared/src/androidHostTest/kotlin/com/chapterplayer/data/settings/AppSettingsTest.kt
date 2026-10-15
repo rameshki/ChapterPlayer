@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import com.chapterplayer.testing.InMemoryPreferencesDataStore
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,7 +20,7 @@ class AppSettingsTest {
 
     @Test
     fun `a new install uses follow system, large covers and resume on car connect`() = runTest {
-        val settings = DataStoreAppSettings(newStore(tempFile()))
+        val settings = DataStoreAppSettings(InMemoryPreferencesDataStore())
 
         assertEquals(ThemeMode.SYSTEM, settings.themeMode.first())
         assertEquals(LibraryLayout.LARGE_GRID, settings.libraryLayout.first())
@@ -28,7 +29,7 @@ class AppSettingsTest {
 
     @Test
     fun `changes are saved and read back`() = runTest {
-        val settings = DataStoreAppSettings(newStore(tempFile()))
+        val settings = DataStoreAppSettings(InMemoryPreferencesDataStore())
 
         settings.setThemeMode(ThemeMode.LIGHT)
         settings.setLibraryLayout(LibraryLayout.LIST)
@@ -41,7 +42,7 @@ class AppSettingsTest {
 
     @Test
     fun `an unknown stored value falls back to the default`() = runTest {
-        val store = newStore(tempFile())
+        val store = InMemoryPreferencesDataStore()
         store.edit { it[stringPreferencesKey("theme_mode")] = "PURPLE" }
 
         assertEquals(ThemeMode.SYSTEM, DataStoreAppSettings(store).themeMode.first())
