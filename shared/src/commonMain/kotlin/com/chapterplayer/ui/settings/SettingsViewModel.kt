@@ -9,6 +9,7 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.chapterplayer.data.repository.ServerRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -327,7 +328,16 @@ class ServerSetupViewModel(
                 token = state.token.trim(),
                 libraryId = state.libraryId.takeIf { it.isNotBlank() }
             )
-            serverRepository.save(config)
+            try {
+                serverRepository.save(config)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    saveError = "Couldn't save this server securely on your phone. Please try again."
+                )
+                return@launch
+            }
             _uiState.value = _uiState.value.copy(isSaving = false, savedSuccessfully = true)
         }
     }

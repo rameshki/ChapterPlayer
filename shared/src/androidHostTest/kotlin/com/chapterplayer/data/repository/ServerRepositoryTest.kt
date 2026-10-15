@@ -28,10 +28,11 @@ class ServerRepositoryTest {
         override suspend fun deleteById(id: String) { rows.value = rows.value - id }
     }
 
-    private class FakeCredentials(val tokens: MutableMap<String, String> = mutableMapOf(), var failPutAfter: Int = Int.MAX_VALUE) : CredentialStore {
+    private class FakeCredentials(val tokens: MutableMap<String, String> = mutableMapOf(), var failPutAfter: Int = Int.MAX_VALUE, var alwaysFail: Boolean = false) : CredentialStore {
         private var puts = 0
         override suspend fun get(serverId: String) = tokens[serverId]
         override suspend fun put(serverId: String, token: String) {
+            if (alwaysFail) error("broken")
             if (puts++ >= failPutAfter) error("interrupted")
             tokens[serverId] = token
         }
@@ -116,5 +117,40 @@ class ServerRepositoryTest {
         repo.save(config("a", odd))
 
         assertEquals(odd, repo.getById("a")?.token)
+    }
+
+    @Test
+    fun `a failing credential store does not stop a legacy token being read`() = runTest {
+        val dao = FakeDao(listOf(entity("a", "legacy-a")))
+        val repo = ServerRepositoryImpl(dao, FakeCredentials(alwaysFail = true))
+
+        assertEquals("legacy-a", repo.getById("a")?.token)
+        assertEquals(listOf("legacy-a"), repo.observeAll().first().map { it.token })
+        assertEquals("legacy-a", dao.rows.value.getValue("a").token)
+    }
+
+    @Test
+    fun `a migration that failed is retried on the same repository`() = runTest {
+        val dao = FakeDao(listOf(entity("a", "legacy-a")))
+        val creds = FakeCredentials(alwaysFail = true)
+        val repo = ServerRepositoryImpl(dao, creds)
+        repo.getById("a")
+
+        creds.alwaysFail = false
+        assertEquals("legacy-a", repo.getById("a")?.token)
+
+        assertEquals(mapOf("a" to "legacy-a"), creds.tokens)
+        assertEquals("", dao.rows.value.getValue("a").token)
+    }
+
+    @Test
+    fun `deleting a server that still holds a legacy token leaves nothing behind`() = runTest {
+        val dao = FakeDao(listOf(entity("a", "legacy-a")))
+        val creds = FakeCredentials()
+
+        ServerRepositoryImpl(dao, creds).delete("a")
+
+        assertEquals(emptyMap(), dao.rows.value)
+        assertEquals(emptyMap(), creds.tokens)
     }
 }
