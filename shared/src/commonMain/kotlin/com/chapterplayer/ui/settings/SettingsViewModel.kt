@@ -107,7 +107,14 @@ class SettingsViewModel(
         )
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { appSettings.setThemeMode(mode) }
+        viewModelScope.launch {
+            try {
+                appSettings.setThemeMode(mode)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
     }
 }
 

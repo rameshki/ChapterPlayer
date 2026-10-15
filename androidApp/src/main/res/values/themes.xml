@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Base theme — Compose handles theming, this is just used for the splash/window background -->
+    <!-- Base theme (light) — Compose handles theming; this draws the starting window before the first frame -->
     <style name="Theme.ChapterPlayer" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowBackground">#F7F5F0</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

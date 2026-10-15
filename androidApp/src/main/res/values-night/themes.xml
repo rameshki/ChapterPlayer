@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark variant of the starting window -->
+    <style name="Theme.ChapterPlayer" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#0E0D0B</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

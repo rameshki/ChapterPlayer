@@ -17,6 +17,8 @@ data class ChapterPlayerPalette(
     val textSecondary: Color,
     val textTertiary: Color,
     val divider: Color,
+    /** Outline of an empty text field. */
+    val fieldBorder: Color,
     val error: Color,
     /** Text or icons drawn on an amber button. */
     val onAmber: Color
@@ -33,6 +35,7 @@ val DarkPalette = ChapterPlayerPalette(
     textSecondary = Color(0xFFABA89F),
     textTertiary = Color(0xFF6B6860),
     divider = Color(0xFF2A2926),
+    fieldBorder = Color(0xFF252320),
     error = Color(0xFFCF6679),
     onAmber = Color(0xFF0E0D0B)
 )
@@ -49,6 +52,7 @@ val LightPalette = ChapterPlayerPalette(
     textSecondary = Color(0xFF5F5A50),
     textTertiary = Color(0xFF7A7568),
     divider = Color(0xFFDDD8CC),
+    fieldBorder = Color(0xFF8D877B),
     error = Color(0xFFB3261E),
     onAmber = Color(0xFFFFFFFF)
 )

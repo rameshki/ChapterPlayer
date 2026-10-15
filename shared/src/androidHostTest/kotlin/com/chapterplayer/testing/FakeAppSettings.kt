@@ -8,10 +8,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 
 /** An in-memory [AppSettings] for view model tests. Only the theme is writable. */
-class FakeAppSettings : AppSettings {
-    val theme = MutableStateFlow(ThemeMode.SYSTEM)
+class FakeAppSettings(
+    initialTheme: ThemeMode = ThemeMode.SYSTEM,
+    private val failOnSet: Boolean = false
+) : AppSettings {
+    val theme = MutableStateFlow(initialTheme)
     override val themeMode: Flow<ThemeMode> = theme
-    override suspend fun setThemeMode(mode: ThemeMode) { theme.value = mode }
+    override suspend fun setThemeMode(mode: ThemeMode) {
+        if (failOnSet) error("storage unavailable")
+        theme.value = mode
+    }
     override val libraryLayout: Flow<LibraryLayout> = flowOf(LibraryLayout.LARGE_GRID)
     override suspend fun setLibraryLayout(layout: LibraryLayout) {}
     override val resumeOnCarConnect: Flow<Boolean> = flowOf(true)

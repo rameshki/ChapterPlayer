@@ -65,6 +65,7 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
+import com.chapterplayer.ui.theme.FieldBorder
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.theme.TextSecondary
@@ -97,7 +98,7 @@ fun SettingsScreen(
             FloatingActionButton(
                 onClick = onAddServer,
                 containerColor = AmberGold,
-                contentColor = BackgroundDeep
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add server")
             }
@@ -108,6 +109,8 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 88.dp)
         ) {
             Text(
                 text = "Appearance",
@@ -418,13 +421,13 @@ fun ServerSetupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AmberGold,
-                    contentColor = BackgroundDeep
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             ) {
                 if (uiState.isSaving) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        color = BackgroundDeep,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         strokeWidth = 2.dp
                     )
                 } else {
@@ -533,7 +536,7 @@ private fun PlexAuthSection(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = AmberGold,
-                            contentColor = BackgroundDeep
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
                         Text(
@@ -634,7 +637,7 @@ private fun ChapterTextField(
         else androidx.compose.ui.text.input.VisualTransformation.None,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AmberGold,
-            unfocusedBorderColor = SurfaceSecondary,
+            unfocusedBorderColor = FieldBorder,
             focusedLabelColor = AmberGold,
             unfocusedLabelColor = TextSecondary,
             cursorColor = AmberGold,

@@ -24,9 +24,17 @@ class PaletteContrastTest {
         listOf(palette.background, palette.surfaceElevated).forEach { s ->
             assertTrue(contrast(palette.textTertiary, s) >= 3.0, "$name hint text on a surface")
         }
+        assertTrue(contrast(palette.error, palette.background) >= 4.5, "$name error text on the background")
         assertTrue(contrast(palette.onAmber, palette.amber) >= 4.5, "$name text on an amber button")
         assertTrue(contrast(palette.textSecondary, palette.navBar) >= 4.5, "$name nav bar labels")
         assertTrue(contrast(palette.amber, palette.navBar) >= 4.5, "$name selected nav item")
+    }
+
+    @Test fun `the light field border is visible`() {
+        // Not asserted for dark: its border equals surfaceSecondary, the existing approved look.
+        listOf(LightPalette.background, LightPalette.surfaceElevated).forEach { s ->
+            assertTrue(contrast(LightPalette.fieldBorder, s) >= 3.0, "light field border on a surface")
+        }
     }
 
     @Test fun `the dark palette is readable`() = check("dark", DarkPalette)

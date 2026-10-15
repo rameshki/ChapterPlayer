@@ -46,4 +46,20 @@ class SettingsViewModelTest {
         assertEquals(ThemeMode.LIGHT, settings.theme.value)
         assertEquals(ThemeMode.LIGHT, vm.themeMode.value)
     }
+
+    @Test
+    fun `the saved theme is shown when the screen opens`() = runTest {
+        val vm = SettingsViewModel(FakeServers(), FakeAppSettings(initialTheme = ThemeMode.DARK))
+        assertEquals(ThemeMode.DARK, vm.themeMode.value)
+    }
+
+    @Test
+    fun `a failed save does not crash and the view model stays usable`() = runTest {
+        val vm = SettingsViewModel(FakeServers(), FakeAppSettings(failOnSet = true))
+
+        vm.setThemeMode(ThemeMode.LIGHT)
+        vm.setThemeMode(ThemeMode.DARK)
+
+        assertEquals(ThemeMode.SYSTEM, vm.themeMode.value)
+    }
 }
