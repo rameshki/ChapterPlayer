@@ -54,6 +54,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationEventHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -299,6 +302,13 @@ fun ServerSetupScreen(
     val isAbsAdd = serverId == null && uiState.source == ServerSource.ABS
     val inLibraryStep = isAbsAdd && uiState.abs.step == AbsStep.LIBRARIES
 
+    // The system Back button does what the arrow in the top bar does on the libraries step.
+    NavigationEventHandler(
+        state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
+        isBackEnabled = inLibraryStep,
+        onBackCompleted = { viewModel.onAbsBack() }
+    )
+
     Scaffold(
         containerColor = BackgroundDeep,
         topBar = {
@@ -336,12 +346,12 @@ fun ServerSetupScreen(
             Spacer(Modifier.height(8.dp))
 
             // Server type selector
-            if (!inLibraryStep) Text(
+            if (!inLibraryStep && serverId == null) Text(
                 text = "Server Type",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onBackground
             )
-            if (!inLibraryStep) Row(
+            if (!inLibraryStep && serverId == null) Row(
                 modifier = Modifier.selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -644,7 +654,20 @@ internal fun ChapterTextField(
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        keyboardActions = KeyboardActions(onAny = { onImeAction?.invoke() }),
+        // Only the field's own action is customised; everything else keeps Compose's default
+        // (Next moves focus, Done hides the keyboard).
+        keyboardActions = when {
+            onImeAction == null -> KeyboardActions.Default
+            imeAction == ImeAction.Done -> KeyboardActions(onDone = {
+                defaultKeyboardAction(ImeAction.Done)
+                onImeAction()
+            })
+            imeAction == ImeAction.Next -> KeyboardActions(onNext = {
+                defaultKeyboardAction(ImeAction.Next)
+                onImeAction()
+            })
+            else -> KeyboardActions.Default
+        },
         visualTransformation = if (isPassword) PasswordVisualTransformation()
         else androidx.compose.ui.text.input.VisualTransformation.None,
         colors = OutlinedTextFieldDefaults.colors(

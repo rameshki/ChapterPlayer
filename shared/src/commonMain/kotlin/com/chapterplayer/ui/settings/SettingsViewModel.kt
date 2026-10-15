@@ -183,6 +183,7 @@ class ServerSetupViewModel(
     fun onSourceChanged(source: ServerSource) {
         // Cancel any in-flight OAuth when switching away from Plex
         if (source != ServerSource.PLEX) cancelPlexOAuth()
+        absHandler.clearSecrets()
         _uiState.value = _uiState.value.copy(
             source = source,
             baseUrl = "",
@@ -349,20 +350,12 @@ class ServerSetupViewModel(
 
     fun saveServer(existingId: String?) {
         val state = _uiState.value
-        val editingAbs = existingId != null && state.source == ServerSource.ABS
 
-        // Validation
         if (state.name.isBlank()) {
             _uiState.value = state.copy(saveError = "Display name is required.")
             return
         }
-        if (editingAbs) {
-            // The token is kept as stored, so only the address needs checking.
-            if (normalizeServerAddress(state.baseUrl) == null) {
-                _uiState.value = state.copy(saveError = "Enter a valid server address.")
-                return
-            }
-        } else if (state.baseUrl.isBlank() || state.token.isBlank()) {
+        if (existingId == null && (state.baseUrl.isBlank() || state.token.isBlank())) {
             val msg = if (state.source == ServerSource.PLEX)
                 "Please sign in with Plex and select a server first."
             else
@@ -373,41 +366,53 @@ class ServerSetupViewModel(
 
         viewModelScope.launch {
             _uiState.value = state.copy(isSaving = true, saveError = null)
+            fun fail(message: String) {
+                _uiState.value = _uiState.value.copy(isSaving = false, saveError = message)
+            }
             try {
                 // An edit starts from the stored server so its refresh token and
                 // turned-off libraries are never erased by changing a name or address.
                 val stored = existingId?.let { serverRepository.getById(it) }
+                if (existingId != null && stored == null) {
+                    fail(SERVER_GONE_MESSAGE)
+                    return@launch
+                }
                 val config = when {
-                    editingAbs -> {
-                        if (stored == null) error("Server no longer exists")
+                    stored == null -> ServerConfig(
+                        id = Uuid.random().toString(),
+                        source = state.source,
+                        name = state.name.trim(),
+                        baseUrl = state.baseUrl.trimEnd('/'),
+                        token = state.token.trim(),
+                        libraryId = state.libraryId.takeIf { it.isNotBlank() }
+                    )
+                    // The stored server's own source decides, not the form's.
+                    stored.source == ServerSource.ABS -> {
+                        // The token is kept as stored, so only the address needs checking.
+                        val address = normalizeServerAddress(state.baseUrl)
+                        if (address == null) {
+                            fail("Enter a valid server address.")
+                            return@launch
+                        }
+                        stored.copy(name = state.name.trim(), baseUrl = address)
+                    }
+                    else -> {
+                        if (state.baseUrl.isBlank() || state.token.isBlank()) {
+                            fail("Please sign in with Plex and select a server first.")
+                            return@launch
+                        }
                         stored.copy(
                             name = state.name.trim(),
-                            baseUrl = normalizeServerAddress(state.baseUrl) ?: stored.baseUrl
+                            baseUrl = state.baseUrl.trimEnd('/'),
+                            token = state.token.trim(),
+                            libraryId = state.libraryId.takeIf { it.isNotBlank() }
                         )
                     }
-                    stored != null -> stored.copy(
-                        source = state.source,
-                        name = state.name.trim(),
-                        baseUrl = state.baseUrl.trimEnd('/'),
-                        token = state.token.trim(),
-                        libraryId = state.libraryId.takeIf { it.isNotBlank() }
-                    )
-                    else -> ServerConfig(
-                        id = existingId ?: Uuid.random().toString(),
-                        source = state.source,
-                        name = state.name.trim(),
-                        baseUrl = state.baseUrl.trimEnd('/'),
-                        token = state.token.trim(),
-                        libraryId = state.libraryId.takeIf { it.isNotBlank() }
-                    )
                 }
                 serverRepository.save(config)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    saveError = SAVE_FAILED_MESSAGE
-                )
+                fail(SAVE_FAILED_MESSAGE)
                 return@launch
             }
             _uiState.value = _uiState.value.copy(isSaving = false, savedSuccessfully = true)

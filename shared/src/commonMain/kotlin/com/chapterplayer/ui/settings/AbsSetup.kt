@@ -42,6 +42,7 @@ data class AbsSetupState(
     override fun toString() = "AbsSetupState(step=$step)"
 }
 
+internal const val SERVER_GONE_MESSAGE = "That server no longer exists."
 internal const val SAVE_FAILED_MESSAGE = "Couldn't save this server securely on your phone. Please try again."
 private const val SIGN_IN_FAILED_MESSAGE = "Couldn't sign in. Please try again."
 
@@ -78,7 +79,12 @@ internal class AbsSetupHandler(
     fun onAddressChanged(value: String) = edit { copy(address = value) }
     fun onUsernameChanged(value: String) = edit { copy(username = value) }
     fun onPasswordChanged(value: String) = edit { copy(password = value) }
-    fun onUseApiKeyChanged(value: Boolean) = edit { copy(useApiKey = value, signInError = null) }
+    fun onUseApiKeyChanged(value: Boolean) = edit {
+        copy(useApiKey = value, signInError = null, password = if (value) "" else password)
+    }
+
+    /** Drops what was typed so a password or key does not wait in memory after the user leaves the ABS form. */
+    fun clearSecrets() = edit { copy(password = "", apiKey = "") }
     fun onApiKeyChanged(value: String) = edit { copy(apiKey = value) }
 
     fun onLibraryToggled(id: String) = edit {
@@ -107,6 +113,7 @@ internal class AbsSetupHandler(
                         step = AbsStep.LIBRARIES,
                         isSigningIn = false,
                         password = "",
+                        apiKey = "",
                         libraries = signedIn.libraries.map { LibraryChoice(it.id, it.name, true) },
                         saveError = null,
                     )
@@ -143,6 +150,7 @@ internal class AbsSetupHandler(
                 edit { copy(isSaving = false, saveError = SAVE_FAILED_MESSAGE) }
                 return@launch
             }
+            result = null
             edit { copy(isSaving = false) }
             state.update { it.copy(savedSuccessfully = true) }
         }

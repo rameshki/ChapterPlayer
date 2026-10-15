@@ -67,7 +67,7 @@ class AbsSetupViewModelTest {
         }
     }
 
-    private class FakeRepository(private val failSave: Boolean = false) : ServerRepository {
+    private class FakeRepository(var failSave: Boolean = false) : ServerRepository {
         val saved = mutableListOf<ServerConfig>()
         val stored = mutableMapOf<String, ServerConfig>()
         override fun observeAll(): Flow<List<ServerConfig>> = emptyFlow()
@@ -232,10 +232,12 @@ class AbsSetupViewModelTest {
     }
 
     @Test
-    fun `a failed save stays on the libraries step with an error`() {
-        val vm = viewModel(FakePort { result() }, FakeRepository(failSave = true))
+    fun `a failed save keeps the ticks and a retry succeeds`() {
+        val repo = FakeRepository(failSave = true)
+        val vm = viewModel(FakePort { result() }, repo)
         vm.fillForm()
         vm.onAbsSignIn()
+        vm.onAbsLibraryToggled("lib2")
 
         vm.onAbsSave()
 
@@ -243,6 +245,125 @@ class AbsSetupViewModelTest {
         assertEquals(AbsStep.LIBRARIES, s.abs.step)
         assertEquals("Couldn't save this server securely on your phone. Please try again.", s.abs.saveError)
         assertFalse(s.savedSuccessfully)
+        assertFalse(s.abs.isSaving)
+        assertEquals(listOf(true, false), s.abs.libraries.map { it.enabled })
+
+        repo.failSave = false
+        vm.onAbsSave()
+
+        assertTrue(vm.uiState.value.savedSuccessfully)
+        assertEquals(setOf("lib2"), repo.saved.single().excludedLibraryIds)
+    }
+
+    @Test
+    fun `signing in again after an error works and clears the error`() {
+        var fail = true
+        val vm = viewModel(FakePort { if (fail) throw AbsSignInException(AbsSignInError.WrongCredentials) else result() })
+        vm.fillForm()
+        vm.onAbsSignIn()
+        assertEquals("The username or password is wrong.", vm.uiState.value.abs.signInError)
+
+        fail = false
+        vm.onAbsSignIn()
+
+        assertNull(vm.uiState.value.abs.signInError)
+        assertEquals(AbsStep.LIBRARIES, vm.uiState.value.abs.step)
+    }
+
+    @Test
+    fun `switching to the api key clears a typed password`() {
+        val vm = viewModel(FakePort { result() })
+        vm.fillForm()
+
+        vm.onAbsUseApiKeyChanged(true)
+
+        assertEquals("", vm.uiState.value.abs.password)
+    }
+
+    @Test
+    fun `switching to Plex clears the typed password and key`() {
+        val vm = viewModel(FakePort { result() })
+        vm.fillForm()
+        vm.onAbsApiKeyChanged("key-made-up")
+
+        vm.onSourceChanged(ServerSource.PLEX)
+
+        assertEquals("", vm.uiState.value.abs.password)
+        assertEquals("", vm.uiState.value.abs.apiKey)
+    }
+
+    @Test
+    fun `the api key is cleared after a successful sign-in`() {
+        val vm = viewModel(FakePort { result(refresh = null) })
+        vm.onAbsAddressChanged("abs.test")
+        vm.onAbsUseApiKeyChanged(true)
+        vm.onAbsApiKeyChanged("key-made-up")
+
+        vm.onAbsSignIn()
+
+        assertEquals("", vm.uiState.value.abs.apiKey)
+    }
+
+    @Test
+    fun `a second save after success writes nothing because the result is dropped`() {
+        val repo = FakeRepository()
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.fillForm()
+        vm.onAbsSignIn()
+        vm.onAbsSave()
+
+        vm.onAbsSave()
+
+        assertEquals(1, repo.saved.size)
+    }
+
+    @Test
+    fun `editing a server that no longer exists says so`() {
+        val vm = viewModel(FakePort { result() }, FakeRepository())
+        vm.onSourceChanged(ServerSource.ABS)
+        vm.onNameChanged("New")
+        vm.onBaseUrlChanged("http://new.test")
+
+        vm.saveServer("gone")
+
+        val s = vm.uiState.value
+        assertEquals("That server no longer exists.", s.saveError)
+        assertFalse(s.savedSuccessfully)
+        assertFalse(s.isSaving)
+    }
+
+    @Test
+    fun `editing an Audiobookshelf server with a bad address shows an error and saves nothing`() {
+        val repo = FakeRepository()
+        repo.stored["s1"] = ServerConfig("s1", ServerSource.ABS, "Old", "http://old.test", "token-1")
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onBaseUrlChanged("ftp://bad")
+
+        vm.saveServer("s1")
+
+        assertEquals("Enter a valid server address.", vm.uiState.value.saveError)
+        assertTrue(repo.saved.isEmpty())
+    }
+
+    @Test
+    fun `an edit keeps the stored source even if the form source was changed`() {
+        val repo = FakeRepository()
+        repo.stored["s1"] = ServerConfig(
+            "s1", ServerSource.ABS, "Old", "http://old.test", "token-1", refreshToken = "refresh-1"
+        )
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onSourceChanged(ServerSource.PLEX)
+        vm.onNameChanged("New")
+        vm.onBaseUrlChanged("http://new.test")
+
+        vm.saveServer("s1")
+
+        val saved = repo.saved.single()
+        assertEquals(ServerSource.ABS, saved.source)
+        assertEquals("token-1", saved.token)
+        assertEquals("refresh-1", saved.refreshToken)
     }
 
     @Test

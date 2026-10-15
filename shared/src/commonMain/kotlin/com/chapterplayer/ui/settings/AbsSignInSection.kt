@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
@@ -16,13 +17,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -61,7 +61,6 @@ private fun AbsSignInForm(
     onApiKeyChanged: (String) -> Unit,
     onSignIn: () -> Unit,
 ) {
-    var advancedOpen by rememberSaveable { mutableStateOf(state.useApiKey) }
     val submit = { if (!state.isSigningIn) onSignIn() }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -94,18 +93,15 @@ private fun AbsSignInForm(
         }
 
         TextButton(
-            onClick = {
-                advancedOpen = !advancedOpen
-                // Opening the row switches to an API token; closing it goes back to a password.
-                onUseApiKeyChanged(advancedOpen)
-            }
+            // Opening the row switches to an API token; closing it goes back to a password.
+            onClick = { onUseApiKeyChanged(!state.useApiKey) }
         ) {
             Text(
-                text = if (advancedOpen) "Advanced (hide)" else "Advanced",
+                text = if (state.useApiKey) "Advanced (hide)" else "Advanced",
                 color = AmberGold
             )
         }
-        if (advancedOpen) {
+        if (state.useApiKey) {
             ChapterTextField(
                 value = state.apiKey,
                 onValueChange = onApiKeyChanged,
@@ -166,6 +162,7 @@ private fun AbsLibraryChoice(
                         role = Role.Checkbox,
                         onValueChange = { onLibraryToggled(library.id) }
                     )
+                    .heightIn(min = 48.dp)
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -219,6 +216,7 @@ private fun ErrorText(message: String) {
     Text(
         text = message,
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.error
+        color = MaterialTheme.colorScheme.error,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
     )
 }
