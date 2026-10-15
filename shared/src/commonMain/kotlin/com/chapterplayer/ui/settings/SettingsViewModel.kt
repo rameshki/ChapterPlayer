@@ -87,7 +87,12 @@ class SettingsViewModel(
 
     fun deleteServer(serverId: String) {
         viewModelScope.launch {
-            serverRepository.delete(serverId)
+            try {
+                serverRepository.delete(serverId)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The row stays visible so the user can try again.
+            }
         }
     }
 }

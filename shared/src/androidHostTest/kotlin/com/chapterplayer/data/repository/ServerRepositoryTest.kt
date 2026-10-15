@@ -12,17 +12,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ServerRepositoryTest {
 
-    private class FakeDao(initial: List<ServerConfigEntity> = emptyList()) : ServerConfigDao {
+    private class FakeDao(initial: List<ServerConfigEntity> = emptyList(), var failInsert: Boolean = false) : ServerConfigDao {
         val rows = MutableStateFlow(initial.associateBy { it.id })
         override fun observeAll(): Flow<List<ServerConfigEntity>> = rows.map { it.values.sortedBy { e -> e.name } }
         override suspend fun getAll(): List<ServerConfigEntity> = rows.value.values.toList()
         override suspend fun getById(id: String): ServerConfigEntity? = rows.value[id]
         override fun observeBySource(source: String): Flow<List<ServerConfigEntity>> = rows.map { it.values.filter { e -> e.source == source } }
-        override suspend fun insert(config: ServerConfigEntity) { rows.value = rows.value + (config.id to config) }
+        override suspend fun insert(config: ServerConfigEntity) { if (failInsert) error("disk full"); rows.value = rows.value + (config.id to config) }
         override suspend fun update(config: ServerConfigEntity) { insert(config) }
         override suspend fun delete(config: ServerConfigEntity) { rows.value = rows.value - config.id }
         override suspend fun deleteById(id: String) { rows.value = rows.value - id }
@@ -152,5 +154,25 @@ class ServerRepositoryTest {
 
         assertEquals(emptyMap(), dao.rows.value)
         assertEquals(emptyMap(), creds.tokens)
+    }
+
+    @Test
+    fun `a failed insert for a new server leaves no token behind`() = runTest {
+        val dao = FakeDao(failInsert = true); val creds = FakeCredentials()
+
+        assertFailsWith<IllegalStateException> { ServerRepositoryImpl(dao, creds).save(config("a", "tok-a")) }
+
+        assertEquals(emptyMap(), creds.tokens)
+    }
+
+    @Test
+    fun `a failed insert for an existing server keeps its stored token`() = runTest {
+        val dao = FakeDao(listOf(entity("a", "")))
+        val creds = FakeCredentials(mutableMapOf("a" to "old"))
+        dao.failInsert = true
+
+        assertFailsWith<IllegalStateException> { ServerRepositoryImpl(dao, creds).save(config("a", "new")) }
+
+        assertTrue(creds.tokens.containsKey("a"))
     }
 }

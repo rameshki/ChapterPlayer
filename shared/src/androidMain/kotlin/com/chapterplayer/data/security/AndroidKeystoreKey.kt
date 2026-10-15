@@ -11,6 +11,7 @@ object AndroidKeystoreKey {
     private const val PROVIDER = "AndroidKeyStore"
     private const val ALIAS = "chapterplayer_credentials_v1"
 
+    @Synchronized
     fun getOrCreate(): SecretKey {
         val keyStore = KeyStore.getInstance(PROVIDER).apply { load(null) }
         (keyStore.getKey(ALIAS, null) as? SecretKey)?.let { return it }
