@@ -4,6 +4,7 @@ import com.chapterplayer.data.local.dao.ServerConfigDao
 import com.chapterplayer.data.local.entity.ServerConfigEntity
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.security.CredentialStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -40,8 +41,10 @@ class ServerRepositoryImpl(
     }
 
     override suspend fun delete(id: String) {
-        serverConfigDao.deleteById(id)
+        ensureTokensMigrated()
+        // Token first: a failure leaves a visible row the user can delete again.
         credentials.remove(id)
+        serverConfigDao.deleteById(id)
     }
 
     // A row that still holds a token (not migrated yet) wins over the store.
@@ -57,11 +60,18 @@ class ServerRepositoryImpl(
         if (migrated) return
         migrationLock.withLock {
             if (migrated) return
+            var failed = false
             serverConfigDao.getAll().filter { it.token.isNotEmpty() }.forEach { row ->
-                credentials.put(row.id, row.token)
-                serverConfigDao.insert(row.copy(token = ""))
+                // A failed row keeps its token in the database (withToken falls back to it).
+                try {
+                    credentials.put(row.id, row.token)
+                    serverConfigDao.insert(row.copy(token = ""))
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    failed = true
+                }
             }
-            migrated = true
+            if (!failed) migrated = true
         }
     }
 }
