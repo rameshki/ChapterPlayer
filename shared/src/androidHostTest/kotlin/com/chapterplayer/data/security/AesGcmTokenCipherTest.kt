@@ -59,4 +59,15 @@ class AesGcmTokenCipherTest {
         assertFailsWith<TokenCipherException> { cipher.decrypt("") }
         assertFailsWith<TokenCipherException> { cipher.decrypt("AAAA") }
     }
+
+    @Test
+    fun `a failing key supplier surfaces as TokenCipherException`() {
+        val encoded = cipher.encrypt("secret")
+        assertFailsWith<TokenCipherException> {
+            AesGcmTokenCipher { throw IllegalStateException("keystore") }.decrypt(encoded)
+        }
+        assertFailsWith<TokenCipherException> {
+            AesGcmTokenCipher { throw java.security.ProviderException("keystore") }.decrypt(encoded)
+        }
+    }
 }
