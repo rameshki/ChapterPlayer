@@ -684,4 +684,23 @@ class AbsSetupViewModelTest {
         assertEquals("token-1", saved.token)
         assertEquals("refresh-1", saved.refreshToken)
     }
+
+    @Test
+    fun `a rename of a server saved with an un-normalised address is not refused`() {
+        val repo = FakeRepository()
+        repo.stored["s1"] = ServerConfig(
+            "s1", ServerSource.ABS, "Home", "http://NAS.local:13378", "old-token",
+            refreshToken = "old-refresh", excludedLibraryIds = setOf("lib2")
+        )
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onNameChanged("Renamed")
+
+        vm.saveServer("s1")
+
+        assertEquals(null, vm.uiState.value.saveError)
+        assertEquals("Renamed", repo.saved.single().name)
+        assertEquals("old-token", repo.saved.single().token)
+        assertTrue(vm.uiState.value.savedSuccessfully)
+    }
 }

@@ -55,7 +55,7 @@ class AbsSessionManager(
         } catch (e: HttpStatusException) {
             if (e.status.value != 401 || server.refreshToken == null) {
                 if (e.status.value == 401) {
-                    markSignedOut(server)
+                    markSignedOut(server, token)
                     throw SignInRequiredException(server.name)
                 }
                 throw e
@@ -71,9 +71,11 @@ class AbsSessionManager(
     }
 
     /** The server refused the sign-in for good: blank the tokens so Settings shows "Sign in again". */
-    private suspend fun markSignedOut(server: ServerConfig) {
+    private suspend fun markSignedOut(server: ServerConfig, rejectedToken: String) {
         locks.computeIfAbsent(server.id) { Mutex() }.withLock {
             val current = servers.getById(server.id) ?: return@withLock
+            // A newer sign-in already replaced the token that was rejected: leave it alone.
+            if (current.token != rejectedToken) return@withLock
             withContext(NonCancellable) { saveSignedOut(current) }
         }
     }

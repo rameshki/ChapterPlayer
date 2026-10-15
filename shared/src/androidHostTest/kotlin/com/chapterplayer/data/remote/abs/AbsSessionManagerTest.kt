@@ -398,4 +398,26 @@ class AbsSessionManagerTest {
         assertEquals(setOf("lib_off"), stored.excludedLibraryIds)
         assertEquals("Home", stored.name)
     }
+
+    @Test
+    fun `a refused refresh ahead of expiry marks the server as needing sign-in and makes no call`() = runTest {
+        val r = rig(serverWith(jwt(now + 30)), refreshStatus = HttpStatusCode.Unauthorized, refreshBody = "no")
+        assertFailsWith<SignInRequiredException> { r.use() }
+        assertEquals(0, r.protectedCount.get())
+        assertTrue(r.servers.holder.value.needsSignIn)
+        assertEquals(setOf("lib_off"), r.servers.holder.value.excludedLibraryIds)
+    }
+
+    @Test
+    fun `a late 401 for an old token does not blank tokens from a newer sign-in`() = runTest {
+        val old = jwt(now + 3600)
+        val newer = jwt(now + 3601)
+        val r = rig(serverWith(old, refreshToken = null), accepted = emptySet())
+        // The user signed in again while the request with the old token was still in flight.
+        r.servers.holder.value = serverWith(newer, refreshToken = "refresh-newer")
+        assertFailsWith<SignInRequiredException> { r.use(from = serverWith(old, refreshToken = null)) }
+        val stored = r.servers.holder.value
+        assertEquals(newer, stored.token)
+        assertEquals("refresh-newer", stored.refreshToken)
+    }
 }

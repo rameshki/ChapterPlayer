@@ -403,7 +403,8 @@ class ServerSetupViewModel(
                             fail("Enter a valid server address.")
                             return@launch
                         }
-                        if (address != stored.baseUrl) {
+                        // Servers saved by older builds may hold an address that was never normalised.
+                        if (address != (normalizeServerAddress(stored.baseUrl) ?: stored.baseUrl)) {
                             // The tokens belong to the old host; only a new sign-in may move them.
                             fail("To change the address, sign in again below.")
                             return@launch
