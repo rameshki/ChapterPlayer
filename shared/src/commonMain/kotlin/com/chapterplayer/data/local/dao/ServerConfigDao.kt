@@ -15,6 +15,9 @@ interface ServerConfigDao {
     @Query("SELECT * FROM server_configs ORDER BY name ASC")
     fun observeAll(): Flow<List<ServerConfigEntity>>
 
+    @Query("SELECT * FROM server_configs")
+    suspend fun getAll(): List<ServerConfigEntity>
+
     @Query("SELECT * FROM server_configs WHERE id = :id")
     suspend fun getById(id: String): ServerConfigEntity?
 

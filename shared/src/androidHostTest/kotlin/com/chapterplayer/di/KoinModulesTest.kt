@@ -31,14 +31,19 @@ class KoinModulesTest {
     }
 
     @Test
+    fun `the security module resolves`() {
+        securityModule.verify(extraTypes = providedByApp)
+    }
+
+    @Test
     fun `the repository module resolves`() {
         // Repositories need the DAOs and API services, which other modules declare.
-        module { includes(databaseModule, networkModule, repositoryModule) }.verify(extraTypes = providedByApp)
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule) }.verify(extraTypes = providedByApp)
     }
 
     @Test
     fun `every screen's view model can be built`() {
-        module { includes(databaseModule, networkModule, repositoryModule, viewModelModule) }
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, viewModelModule) }
             .verify(extraTypes = providedByApp)
     }
 
