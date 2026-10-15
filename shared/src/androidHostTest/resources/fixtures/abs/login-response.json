@@ -1,0 +1,1 @@
+{"user":{"id":"usr_fixture01","username":"fixture-user","email":null,"type":"user","token":"legacy.fixture.token","accessToken":"access.fixture.token","refreshToken":"refresh.fixture.token","isActive":true,"permissions":{"download":true}},"userDefaultLibraryId":"lib_fixture_books","serverSettings":{"version":"2.37.1"},"Source":"docker"}

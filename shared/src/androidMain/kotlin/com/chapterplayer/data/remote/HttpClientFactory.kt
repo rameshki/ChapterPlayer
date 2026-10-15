@@ -52,15 +52,19 @@ internal fun HttpClientConfig<*>.installApiDefaults(
         socketTimeoutMillis = timeouts.socketMillis
     }
 
-    // Debug builds only. Auth headers are never logged (project rule).
+    // Debug builds only. Auth headers are never logged (project rule), and neither are bodies,
+    // because login carries a password and its response carries the tokens.
     install(Logging) {
         logger = object : Logger {
             override fun log(message: String) = sink(message)
         }
-        level = if (isDebuggable) LogLevel.ALL else LogLevel.NONE
+        level = if (isDebuggable) LogLevel.HEADERS else LogLevel.NONE
         sanitizeHeader { name ->
             name.equals(HttpHeaders.Authorization, ignoreCase = true) ||
-                name.equals("X-Plex-Token", ignoreCase = true)
+                name.equals("X-Plex-Token", ignoreCase = true) ||
+                name.equals("x-refresh-token", ignoreCase = true) ||
+                name.equals(HttpHeaders.Cookie, ignoreCase = true) ||
+                name.equals(HttpHeaders.SetCookie, ignoreCase = true)
         }
     }
 

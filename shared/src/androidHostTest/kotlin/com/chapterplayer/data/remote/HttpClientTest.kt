@@ -65,6 +65,33 @@ class HttpClientTest {
     }
 
     @Test
+    fun `debug logging never shows the refresh token or cookies`() = runTest {
+        val logs = mutableListOf<String>()
+        val client = HttpClient(
+            MockEngine {
+                respond(
+                    "{}",
+                    HttpStatusCode.OK,
+                    headersOf(
+                        HttpHeaders.ContentType to listOf("application/json"),
+                        HttpHeaders.SetCookie to listOf("refresh_token=secret-cookie2"),
+                    )
+                )
+            }
+        ) { installApiDefaults(isDebuggable = true, sink = { logs += it }) }
+
+        client.get("http://server.test/x") {
+            header("x-refresh-token", "secret-refresh")
+            header(HttpHeaders.Cookie, "sid=secret-cookie")
+        }
+
+        val text = logs.joinToString("\n")
+        assertFalse(text.contains("secret-refresh"), "refresh token leaked into the log")
+        assertFalse(text.contains("secret-cookie"), "cookie leaked into the log")
+        assertFalse(text.contains("secret-cookie2"), "set-cookie leaked into the log")
+    }
+
+    @Test
     fun `release builds log nothing`() = runTest {
         val logs = mutableListOf<String>()
 
