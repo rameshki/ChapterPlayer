@@ -60,6 +60,7 @@ kotlin {
             implementation(libs.jetbrains.navigation.compose)
             implementation(libs.compose.icons.extended.cmp)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.datastore.preferences)
         }
 
         getByName("androidHostTest").dependencies {
@@ -100,9 +101,6 @@ kotlin {
 
             // Coroutines
             implementation(libs.coroutines.android)
-
-            // DataStore (Settings persistence)
-            implementation(libs.datastore.preferences)
         }
     }
 }
