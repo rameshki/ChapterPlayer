@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.chapterplayer.data.settings.ThemeMode
 
 /**
  * ChapterPlayer uses a fixed dark theme — always dark, never light.
@@ -36,6 +37,13 @@ private val ChapterPlayerColorScheme = darkColorScheme(
     outline = Divider,
     outlineVariant = TextTertiary
 )
+
+/** Whether the app should draw in its dark colours. */
+fun resolveDarkTheme(mode: ThemeMode, systemIsDark: Boolean): Boolean = when (mode) {
+    ThemeMode.DARK -> true
+    ThemeMode.LIGHT -> false
+    ThemeMode.SYSTEM -> systemIsDark
+}
 
 @Composable
 fun ChapterPlayerTheme(
