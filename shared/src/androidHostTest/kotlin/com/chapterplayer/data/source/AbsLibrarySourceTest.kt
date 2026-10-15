@@ -70,6 +70,31 @@ class AbsLibrarySourceTest {
     }
 
     @Test
+    fun `skips excluded libraries`() = runTest {
+        source().fetchBooks(server.copy(excludedLibraryIds = setOf("lib_fixture_books")))
+
+        assertEquals(
+            listOf("/api/libraries", "/api/libraries/lib_fixture_more/items"),
+            requests.map { it.url.encodedPath }
+        )
+    }
+
+    @Test
+    fun `a configured library is read even if listed as excluded`() = runTest {
+        source().fetchBooks(server.copy(libraryId = "lib_fixture_more", excludedLibraryIds = setOf("lib_fixture_books")))
+
+        assertEquals(listOf("/api/libraries/lib_fixture_more/items"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `excluding every book library gives an empty list`() = runTest {
+        val books = source().fetchBooks(server.copy(excludedLibraryIds = setOf("lib_fixture_books", "lib_fixture_more")))
+
+        assertEquals(emptyList(), books)
+        assertEquals(listOf("/api/libraries"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
     fun `sends the bearer token on every request`() = runTest {
         source().fetchBooks(server)
 

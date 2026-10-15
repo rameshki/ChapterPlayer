@@ -46,7 +46,11 @@ class ServerSetupViewModelTest {
         )
         val viewModel = ServerSetupViewModel(
             ThrowingRepository(), plex,
-            object : PlexClientIdentifier { override val value = "client-1" }
+            object : PlexClientIdentifier { override val value = "client-1" },
+            object : com.chapterplayer.data.auth.AbsSignInPort {
+                override suspend fun withPassword(address: String, username: String, password: String) = error("unused")
+                override suspend fun withApiKey(address: String, apiKey: String) = error("unused")
+            }
         )
         viewModel.onNameChanged("Test")
         viewModel.onBaseUrlChanged("http://s.test")

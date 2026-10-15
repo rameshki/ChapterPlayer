@@ -19,13 +19,13 @@ class AbsLibrarySource(
 
     override suspend fun fetchBooks(server: ServerConfig): List<AudioBook> {
         // If a specific library ID was provided, use it.
-        // Otherwise, auto-discover all book-type libraries on this server.
+        // Otherwise, auto-discover the book-type libraries the user has not turned off.
         val libraryIds: List<String> = if (!server.libraryId.isNullOrBlank()) {
             listOf(server.libraryId)
         } else {
             authorizer.authorized(server) { bearerToken -> api.getLibraries(server.baseUrl, bearerToken) }
                 .libraries
-                .filter { it.mediaType == "book" }
+                .filter { it.mediaType == "book" && it.id !in server.excludedLibraryIds }
                 .map { it.id }
         }
 
