@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.IOException
 import java.net.ConnectException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -289,7 +290,7 @@ class AbsSessionManagerTest {
         val newToken = jwt(now + 7200)
         val r = rig(serverWith(jwt(now - 10)), accepted = setOf(newToken), refreshDelayMs = 200)
         val job = launch(Dispatchers.Default) { r.use() }
-        while (r.refreshCount.get() == 0) delay(5)
+        withTimeout(5_000) { while (r.refreshCount.get() == 0) delay(5) }
         job.cancel()
         job.join()
         assertEquals(newToken, r.servers.saves.single().token)
@@ -331,5 +332,70 @@ class AbsSessionManagerTest {
         assertEquals("Bearer $fresh", r.use(from = arg))
         assertEquals(0, r.refreshCount.get())
         assertEquals(listOf<String?>(fresh), r.protectedBearers.toList())
+    }
+
+    @Test
+    fun `a refused refresh marks the stored server as needing sign-in and keeps the rest`() = runTest {
+        val r = rig(serverWith(jwt(now - 10)), refreshStatus = HttpStatusCode.Unauthorized, refreshBody = "no")
+        assertFailsWith<SignInRequiredException> { r.use() }
+        val stored = r.servers.holder.value
+        assertTrue(stored.needsSignIn)
+        assertEquals(null, stored.refreshToken)
+        assertEquals("Home", stored.name)
+        assertEquals("http://abs.test", stored.baseUrl)
+        assertEquals(setOf("lib_off"), stored.excludedLibraryIds)
+    }
+
+    @Test
+    fun `a refresh answer with no token marks the server as needing sign-in`() = runTest {
+        val r = rig(serverWith(jwt(now - 10)), refreshBody = """{"user":{"id":"u","username":"x"}}""")
+        assertFailsWith<SignInRequiredException> { r.use() }
+        assertTrue(r.servers.holder.value.needsSignIn)
+    }
+
+    @Test
+    fun `a later call after a refused refresh fails without any request`() = runTest {
+        val r = rig(serverWith(jwt(now - 10)), refreshStatus = HttpStatusCode.Forbidden, refreshBody = "no")
+        assertFailsWith<SignInRequiredException> { r.use() }
+        val reread = r.servers.holder.value
+        assertFailsWith<SignInRequiredException> { r.use(from = reread) }
+        assertEquals(1, r.refreshCount.get())
+        assertEquals(0, r.protectedCount.get())
+    }
+
+    @Test
+    fun `a refresh answered 500 leaves the tokens untouched`() = runTest {
+        val start = serverWith(jwt(now - 10))
+        val r = rig(start, refreshStatus = HttpStatusCode.InternalServerError, refreshBody = "oops")
+        assertFailsWith<com.chapterplayer.data.remote.HttpStatusException> { r.use() }
+        assertTrue(r.servers.saves.isEmpty())
+        assertEquals(start, r.servers.holder.value)
+    }
+
+    @Test
+    fun `a refresh connect error leaves the tokens untouched`() = runTest {
+        val start = serverWith(jwt(now - 10))
+        val r = rig(start, refreshThrows = true)
+        assertFailsWith<IOException> { r.use() }
+        assertTrue(r.servers.saves.isEmpty())
+        assertEquals(start, r.servers.holder.value)
+    }
+
+    @Test
+    fun `an undecodable refresh answer leaves the tokens untouched`() = runTest {
+        val start = serverWith(jwt(now - 10))
+        val r = rig(start, refreshBody = "{not json")
+        assertFailsWith<IOException> { r.use() }
+        assertTrue(r.servers.saves.isEmpty())
+    }
+
+    @Test
+    fun `no refresh token plus a 401 marks the server as needing sign-in`() = runTest {
+        val r = rig(serverWith(jwt(now + 3600), refreshToken = null), accepted = emptySet())
+        assertFailsWith<SignInRequiredException> { r.use() }
+        val stored = r.servers.holder.value
+        assertTrue(stored.needsSignIn)
+        assertEquals(setOf("lib_off"), stored.excludedLibraryIds)
+        assertEquals("Home", stored.name)
     }
 }

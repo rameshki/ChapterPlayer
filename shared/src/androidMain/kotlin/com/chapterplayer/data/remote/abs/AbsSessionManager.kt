@@ -54,7 +54,10 @@ class AbsSessionManager(
             return call("Bearer $token")
         } catch (e: HttpStatusException) {
             if (e.status.value != 401 || server.refreshToken == null) {
-                if (e.status.value == 401) throw SignInRequiredException(server.name)
+                if (e.status.value == 401) {
+                    markSignedOut(server)
+                    throw SignInRequiredException(server.name)
+                }
                 throw e
             }
         }
@@ -64,6 +67,22 @@ class AbsSessionManager(
         } catch (e: HttpStatusException) {
             if (e.status.value == 401) throw SignInRequiredException(server.name)
             throw e
+        }
+    }
+
+    /** The server refused the sign-in for good: blank the tokens so Settings shows "Sign in again". */
+    private suspend fun markSignedOut(server: ServerConfig) {
+        locks.computeIfAbsent(server.id) { Mutex() }.withLock {
+            val current = servers.getById(server.id) ?: return@withLock
+            withContext(NonCancellable) { saveSignedOut(current) }
+        }
+    }
+
+    // Best effort: a failed save must not hide the sign-in problem from the caller.
+    private suspend fun saveSignedOut(current: ServerConfig) {
+        try {
+            servers.save(current.copy(token = "", refreshToken = null))
+        } catch (_: Exception) {
         }
     }
 
@@ -88,10 +107,17 @@ class AbsSessionManager(
 
             // Once the server rotates the tokens, saving them must not be cancelled half way.
             withContext(NonCancellable) {
-                val user = requestRefresh(current, refreshToken)
-                val newToken = (user.accessToken ?: user.token)?.takeIf { it.isNotBlank() }
-                    ?: throw SignInRequiredException(server.name)
-                servers.save(current.copy(token = newToken, refreshToken = user.refreshToken ?: refreshToken))
+                val newToken: String
+                try {
+                    val user = requestRefresh(current, refreshToken)
+                    newToken = (user.accessToken ?: user.token)?.takeIf { it.isNotBlank() }
+                        ?: throw SignInRequiredException(server.name)
+                    servers.save(current.copy(token = newToken, refreshToken = user.refreshToken ?: refreshToken))
+                } catch (e: SignInRequiredException) {
+                    // Refused for good (401/403 or no usable token): later calls fail without a request.
+                    saveSignedOut(current)
+                    throw e
+                }
                 newToken
             }
         }

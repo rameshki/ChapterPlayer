@@ -16,7 +16,9 @@ data class AbsStatusDto(
 data class AbsLoginRequest(
     @SerialName("username") val username: String,
     @SerialName("password") val password: String
-)
+) {
+    override fun toString() = "AbsLoginRequest(username=$username)"
+}
 
 /** POST /login and POST /auth/refresh. Servers before 2.26 return only [AbsUserDto.token]. */
 @Serializable
@@ -36,4 +38,6 @@ data class AbsUserDto(
     @SerialName("accessToken") val accessToken: String? = null,
     /** Valid for 30 days; rotates each time it is used. */
     @SerialName("refreshToken") val refreshToken: String? = null
-)
+) {
+    override fun toString() = "AbsUserDto(id=$id, type=$type)"
+}

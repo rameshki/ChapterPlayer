@@ -93,6 +93,21 @@ class AbsSignInTest {
     }
 
     @Test
+    fun `a blank access token with no usable legacy token is a server error`() = runTest {
+        val blank = """{"user":{"id":"u1","username":"x","accessToken":"  ","token":""}}"""
+        assertEquals(
+            AbsSignInError.ServerError(0),
+            errorOf { signIn(login = reply(blank)).withPassword("abs.test", "x", "pw") }
+        )
+    }
+
+    @Test
+    fun `a blank access token falls back to a usable legacy token`() = runTest {
+        val body = """{"user":{"id":"u1","username":"x","accessToken":"","token":"legacy.only.token"}}"""
+        assertEquals("legacy.only.token", signIn(login = reply(body)).withPassword("abs.test", "x", "pw").token)
+    }
+
+    @Test
     fun `OpenID-only status gives LocalLoginOff`() = runTest {
         val openId = reply("""{"app":"audiobookshelf","authMethods":["openid"]}""")
         assertEquals(AbsSignInError.LocalLoginOff, errorOf { signIn(status = openId).withPassword("abs.test", "u", "pw") })

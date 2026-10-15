@@ -356,7 +356,7 @@ class AbsSetupViewModelTest {
         vm.loadServer("s1")
         vm.onSourceChanged(ServerSource.PLEX)
         vm.onNameChanged("New")
-        vm.onBaseUrlChanged("http://new.test")
+        vm.onBaseUrlChanged("http://old.test")
 
         vm.saveServer("s1")
 
@@ -392,13 +392,13 @@ class AbsSetupViewModelTest {
         val vm = viewModel(port, repo)
         vm.loadServer("s1")
         vm.onNameChanged("New")
-        vm.onBaseUrlChanged("http://new.test/")
+        vm.onBaseUrlChanged("http://old.test/")
 
         vm.saveServer("s1")
 
         val saved = repo.saved.single()
         assertEquals("New", saved.name)
-        assertEquals("http://new.test", saved.baseUrl)
+        assertEquals("http://old.test", saved.baseUrl)
         assertEquals("token-1", saved.token)
         assertEquals("refresh-1", saved.refreshToken)
         assertEquals(setOf("lib2"), saved.excludedLibraryIds)
@@ -631,5 +631,57 @@ class AbsSetupViewModelTest {
         assertEquals(1, port.passwordCalls)
         assertEquals("token-1", repo.saved.single().token)
         assertTrue(vm.uiState.value.savedSuccessfully)
+    }
+
+    @Test
+    fun `save changes refuses a new address and tells the user to sign in again`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onBaseUrlChanged("http://other-host.test")
+
+        vm.saveServer("s1")
+
+        assertEquals("To change the address, sign in again below.", vm.uiState.value.saveError)
+        assertTrue(repo.saved.isEmpty())
+        assertFalse(vm.uiState.value.savedSuccessfully)
+        assertFalse(vm.uiState.value.isSaving)
+    }
+
+    @Test
+    fun `save changes with only a new name still works and keeps the tokens`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onNameChanged("Renamed")
+
+        vm.saveServer("s1")
+
+        val saved = repo.saved.single()
+        assertEquals("Renamed", saved.name)
+        assertEquals("old-token", saved.token)
+        assertEquals("old-refresh", saved.refreshToken)
+        assertTrue(vm.uiState.value.savedSuccessfully)
+    }
+
+    @Test
+    fun `sign in again with a new address saves the new address with the new tokens`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val port = FakePort { AbsSignInResult("http://new.test", "token-1", "refresh-1", libraries) }
+        val vm = viewModel(port, repo)
+        vm.loadServer("s1")
+        vm.onBaseUrlChanged("http://new.test")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+
+        vm.onAbsSignInAgain("s1")
+
+        val saved = repo.saved.single()
+        assertEquals("http://new.test", saved.baseUrl)
+        assertEquals("token-1", saved.token)
+        assertEquals("refresh-1", saved.refreshToken)
     }
 }

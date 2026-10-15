@@ -25,4 +25,9 @@ data class ServerConfig(
 ) {
     /** The stored token is gone or unreadable, so the user has to sign in again. */
     val needsSignIn: Boolean get() = token.isBlank()
+
+    /** Left out so tokens can never reach a log. */
+    override fun toString() =
+        "ServerConfig(id=$id, source=$source, name=$name, baseUrl=$baseUrl, libraryId=$libraryId, " +
+            "excluded=${excludedLibraryIds.size})"
 }

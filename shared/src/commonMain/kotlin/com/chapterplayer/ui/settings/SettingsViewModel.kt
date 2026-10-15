@@ -41,7 +41,10 @@ data class PlexServerOption(
     val name: String,
     val url: String,
     val accessToken: String
-)
+) {
+    /** Left out so the access token can never reach a log. */
+    override fun toString() = "PlexServerOption(name=$name)"
+}
 
 /** Tracks which step of the Plex OAuth flow we're in. */
 enum class PlexOAuthStep {
@@ -73,7 +76,10 @@ data class ServerSetupUiState(
 
     // ABS add flow (sign in, then choose libraries)
     val abs: AbsSetupState = AbsSetupState()
-)
+) {
+    /** Left out so a token can never reach a log. */
+    override fun toString() = "ServerSetupUiState(source=$source, name=$name, baseUrl=$baseUrl)"
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings ViewModel (server list + delete)
@@ -395,6 +401,11 @@ class ServerSetupViewModel(
                         val address = normalizeServerAddress(state.baseUrl)
                         if (address == null) {
                             fail("Enter a valid server address.")
+                            return@launch
+                        }
+                        if (address != stored.baseUrl) {
+                            // The tokens belong to the old host; only a new sign-in may move them.
+                            fail("To change the address, sign in again below.")
                             return@launch
                         }
                         stored.copy(name = state.name.trim(), baseUrl = address)

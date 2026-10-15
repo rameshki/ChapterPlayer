@@ -27,7 +27,8 @@ class AbsSignIn(private val api: AbsApiService) : AbsSignInPort {
             }
         }
         val user = call(loginHttp) { api.login(baseUrl, username, password) }.user
-        val token = user.accessToken ?: user.token ?: fail(AbsSignInError.ServerError(0))
+        val token = user.accessToken?.takeIf { it.isNotBlank() } ?: user.token?.takeIf { it.isNotBlank() }
+            ?: fail(AbsSignInError.ServerError(0))
         // A freshly issued token being refused is a server problem, not the user's.
         val libraries = bookLibraries(baseUrl, token) { AbsSignInError.ServerError(it) }
         return AbsSignInResult(baseUrl, token, user.refreshToken, libraries)

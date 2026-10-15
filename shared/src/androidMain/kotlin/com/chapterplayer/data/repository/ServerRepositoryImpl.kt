@@ -1,5 +1,6 @@
 package com.chapterplayer.data.repository
 
+import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.local.dao.ExcludedLibraryDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
 import com.chapterplayer.data.local.entity.ExcludedLibraryEntity
@@ -7,6 +8,7 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.security.CredentialStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Server list in Room, tokens in the encrypted [CredentialStore]: the token under the server id,
@@ -23,7 +26,8 @@ import kotlinx.coroutines.sync.withLock
 class ServerRepositoryImpl(
     private val serverConfigDao: ServerConfigDao,
     private val excludedLibraryDao: ExcludedLibraryDao,
-    private val credentials: CredentialStore
+    private val credentials: CredentialStore,
+    private val bookDao: BookDao
 ) : ServerRepository {
 
     private val migrationLock = Mutex()
@@ -61,8 +65,10 @@ class ServerRepositoryImpl(
             } catch (e: Throwable) {
                 if (isNew) {
                     // Don't leave tokens behind for a row that was never written.
-                    try { credentials.remove(config.id) } catch (_: Exception) {}
-                    try { credentials.remove(refreshKey(config.id)) } catch (_: Exception) {}
+                    withContext(NonCancellable) {
+                        try { credentials.remove(config.id) } catch (_: Exception) {}
+                        try { credentials.remove(refreshKey(config.id)) } catch (_: Exception) {}
+                    }
                 }
                 throw e
             }
@@ -77,11 +83,12 @@ class ServerRepositoryImpl(
 
     override suspend fun delete(id: String) {
         ensureTokensMigrated()
-        // Token first: a failure leaves a visible row the user can delete again.
+        // The row goes last: a failure earlier leaves a visible row the user can delete again.
         credentials.remove(id)
         credentials.remove(refreshKey(id))
-        serverConfigDao.deleteById(id)
         excludedLibraryDao.deleteForServer(id)
+        bookDao.deleteByServer(id)
+        serverConfigDao.deleteById(id)
     }
 
     // A row that still holds a token (not migrated yet) wins over the store.
