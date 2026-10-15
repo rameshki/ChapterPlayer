@@ -16,6 +16,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -69,16 +70,20 @@ class AbsSessionManagerTest {
     ) {
         val refreshCount = AtomicInteger()
         val protectedCount = AtomicInteger()
+        val refreshHeaders = CopyOnWriteArrayList<String?>()
+        val protectedBearers = CopyOnWriteArrayList<String?>()
         val servers = FakeServers(server)
         private val engine = MockEngine { request ->
             if (request.url.encodedPath == "/auth/refresh") {
                 refreshCount.incrementAndGet()
+                refreshHeaders += request.headers["x-refresh-token"]
                 if (refreshDelayMs > 0) delay(refreshDelayMs)
                 if (refreshThrows) throw ConnectException("refused")
                 respond(refreshBody, refreshStatus, headersOf(HttpHeaders.ContentType, "application/json"))
             } else {
                 protectedCount.incrementAndGet()
                 val bearer = request.headers[HttpHeaders.Authorization]?.removePrefix("Bearer ")
+                protectedBearers += bearer
                 if (bearer in accepted) {
                     respond("""{"libraries":[]}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 } else {
@@ -181,7 +186,8 @@ class AbsSessionManagerTest {
     @Test
     fun `a refresh answered 500 is rethrown and not sign-in required`() = runTest {
         val r = rig(serverWith(jwt(now - 10)), refreshStatus = HttpStatusCode.InternalServerError, refreshBody = "oops")
-        assertFailsWith<IOException> { r.use() } // SignInRequiredException is not an IOException
+        val e = assertFailsWith<com.chapterplayer.data.remote.HttpStatusException> { r.use() }
+        assertEquals(500, e.status.value)
     }
 
     @Test
@@ -190,7 +196,8 @@ class AbsSessionManagerTest {
         val e = assertFailsWith<IOException> { r.use() }
         assertEquals("The server sent an unexpected answer", e.message)
         assertFalse("secret-token-text" in e.toString())
-        assertEquals(null, e.cause)
+        // Coroutine stack-trace recovery may attach the original as cause; it carries the same fixed text.
+        assertTrue(generateSequence<Throwable>(e) { it.cause }.all { it.message == "The server sent an unexpected answer" })
     }
 
     @Test
@@ -275,5 +282,54 @@ class AbsSessionManagerTest {
         r.servers.holder.value = stale.copy(excludedLibraryIds = setOf("lib_off", "lib_two"))
         r.use(from = stale)
         assertEquals(setOf("lib_off", "lib_two"), r.servers.saves.single().excludedLibraryIds)
+    }
+
+    @Test
+    fun `cancelling the caller after the refresh arrived still saves the new tokens`() = runBlocking {
+        val newToken = jwt(now + 7200)
+        val r = rig(serverWith(jwt(now - 10)), accepted = setOf(newToken), refreshDelayMs = 200)
+        val job = launch(Dispatchers.Default) { r.use() }
+        while (r.refreshCount.get() == 0) delay(5)
+        job.cancel()
+        job.join()
+        assertEquals(newToken, r.servers.saves.single().token)
+        assertEquals("refresh-new", r.servers.saves.single().refreshToken)
+    }
+
+    @Test
+    fun `an ahead-of-expiry refresh that cannot connect continues with the current token`() = runTest {
+        val token = jwt(now + 30)
+        val r = rig(serverWith(token), accepted = setOf(token), refreshThrows = true)
+        assertEquals("Bearer $token", r.use())
+        assertTrue(r.servers.saves.isEmpty())
+    }
+
+    @Test
+    fun `a refresh error on an already expired token is rethrown`() = runTest {
+        val r = rig(serverWith(jwt(now - 10)), refreshStatus = HttpStatusCode.InternalServerError, refreshBody = "oops")
+        val e = assertFailsWith<com.chapterplayer.data.remote.HttpStatusException> { r.use() }
+        assertEquals(500, e.status.value)
+        assertEquals(0, r.protectedCount.get())
+    }
+
+    @Test
+    fun `the refresh uses the freshly read refresh token, not the argument`() = runTest {
+        val token = jwt(now - 10)
+        val arg = serverWith(token, refreshToken = "refresh-old")
+        val r = rig(arg, accepted = setOf(jwt(now + 7200)))
+        r.servers.holder.value = arg.copy(refreshToken = "refresh-newer")
+        r.use(from = arg)
+        assertEquals(listOf<String?>("refresh-newer"), r.refreshHeaders.toList())
+    }
+
+    @Test
+    fun `a stale expired argument with a fresh stored token makes no refresh request`() = runTest {
+        val fresh = jwt(now + 3600)
+        val arg = serverWith(jwt(now - 10))
+        val r = rig(arg, accepted = setOf(fresh))
+        r.servers.holder.value = arg.copy(token = fresh)
+        assertEquals("Bearer $fresh", r.use(from = arg))
+        assertEquals(0, r.refreshCount.get())
+        assertEquals(listOf<String?>(fresh), r.protectedBearers.toList())
     }
 }

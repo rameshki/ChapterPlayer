@@ -8,6 +8,8 @@ import com.chapterplayer.data.security.jwtExpiryEpochSeconds
 import io.ktor.client.call.NoTransformationFoundException
 import io.ktor.serialization.ContentConvertException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerializationException
@@ -39,7 +41,14 @@ class AbsSessionManager(
 
         var token = server.token
         if (server.refreshToken != null && expiresSoon(token)) {
-            token = refresh(server, failedToken = token)
+            val expiring = token
+            token = try {
+                refresh(server, failedToken = expiring)
+            } catch (e: IOException) {
+                // Offline or a server error: a token that has not expired yet still works.
+                if (isExpired(expiring)) throw e
+                expiring
+            }
         }
         try {
             return call("Bearer $token")
@@ -63,6 +72,11 @@ class AbsSessionManager(
         return exp - clock() <= REFRESH_AHEAD_SECONDS
     }
 
+    private fun isExpired(token: String): Boolean {
+        val exp = jwtExpiryEpochSeconds(token) ?: return true
+        return exp <= clock()
+    }
+
     /** Returns the access token to use after [failedToken] was found expired or refused. */
     private suspend fun refresh(server: ServerConfig, failedToken: String): String =
         locks.computeIfAbsent(server.id) { Mutex() }.withLock {
@@ -72,11 +86,14 @@ class AbsSessionManager(
             if (current.token != failedToken) return@withLock current.token
             val refreshToken = current.refreshToken ?: throw SignInRequiredException(server.name)
 
-            val user = requestRefresh(current, refreshToken)
-            val newToken = (user.accessToken ?: user.token)?.takeIf { it.isNotBlank() }
-                ?: throw SignInRequiredException(server.name)
-            servers.save(current.copy(token = newToken, refreshToken = user.refreshToken ?: refreshToken))
-            newToken
+            // Once the server rotates the tokens, saving them must not be cancelled half way.
+            withContext(NonCancellable) {
+                val user = requestRefresh(current, refreshToken)
+                val newToken = (user.accessToken ?: user.token)?.takeIf { it.isNotBlank() }
+                    ?: throw SignInRequiredException(server.name)
+                servers.save(current.copy(token = newToken, refreshToken = user.refreshToken ?: refreshToken))
+                newToken
+            }
         }
 
     private suspend fun requestRefresh(server: ServerConfig, refreshToken: String) =
@@ -96,6 +113,7 @@ class AbsSessionManager(
         } catch (_: NoTransformationFoundException) {
             throw unexpectedAnswer()
         } catch (_: IllegalArgumentException) {
+            // Ktor's IllegalHeaderValueException is one; its message holds the header value (the refresh token).
             throw unexpectedAnswer()
         }
 
