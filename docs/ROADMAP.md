@@ -106,7 +106,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 **Done when:** the Android app has the same features as today, running entirely on the shared module.
 
 ### Stage 2: Audiobookshelf core experience (priority 1)
-- [ ] Move the server token out of the Room database into encrypted storage (before sign-in is built)
+- [x] Move the server token out of the Room database into encrypted storage (before sign-in is built). After a phone restore the saved servers return without their tokens, so each token is entered again
 - [ ] Light theme and a Dark / Light / Follow system setting
 - [ ] ABS sign-in: username/password and API key; library picker
 - [ ] Combined library across servers with a Libraries check-list (grouped by server): untick a library to hide it everywhere; libraries added later show by default. Today there is one optional library id, or every book library
