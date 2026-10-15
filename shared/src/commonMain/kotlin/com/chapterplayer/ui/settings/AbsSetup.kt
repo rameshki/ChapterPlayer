@@ -6,6 +6,7 @@ import com.chapterplayer.data.auth.AbsSignInError
 import com.chapterplayer.data.auth.AbsSignInException
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.auth.AbsSignInResult
+import com.chapterplayer.data.auth.normalizeServerAddress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.ServerRepository
@@ -123,6 +124,66 @@ internal class AbsSetupHandler(
                 val message = if (e is AbsSignInException) absSignInMessage(e.error) else SIGN_IN_FAILED_MESSAGE
                 edit { copy(isSigningIn = false, signInError = message) }
             }
+        }
+    }
+
+    /**
+     * Edit mode: signs in against the address in the form and, on success, replaces only the
+     * tokens (and address, and name if edited) of the stored server. Id, libraries and
+     * exclusions stay. A failure saves nothing.
+     */
+    fun signInAgain(serverId: String) {
+        val current = state.value.abs
+        if (current.isSigningIn) return
+        val address = normalizeServerAddress(state.value.baseUrl)
+        if (address == null) {
+            edit { copy(signInError = "Enter a valid server address.") }
+            return
+        }
+        edit { copy(isSigningIn = true, signInError = null) }
+        state.update { it.copy(saveError = null) }
+        scope.launch {
+            val signedIn = try {
+                if (current.useApiKey) {
+                    port.withApiKey(address, current.apiKey.trim())
+                } else {
+                    port.withPassword(address, current.username.trim(), current.password)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                val message = if (e is AbsSignInException) absSignInMessage(e.error) else SIGN_IN_FAILED_MESSAGE
+                edit { copy(isSigningIn = false, signInError = message) }
+                return@launch
+            }
+            val stored = try {
+                serverRepository.getById(serverId)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                null
+            }
+            if (stored == null) {
+                edit { copy(isSigningIn = false) }
+                state.update { it.copy(saveError = SERVER_GONE_MESSAGE) }
+                return@launch
+            }
+            val typedName = state.value.name.trim()
+            try {
+                serverRepository.save(
+                    stored.copy(
+                        name = typedName.ifEmpty { stored.name },
+                        baseUrl = signedIn.baseUrl,
+                        token = signedIn.token,
+                        refreshToken = signedIn.refreshToken,
+                    )
+                )
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                edit { copy(isSigningIn = false) }
+                state.update { it.copy(saveError = SAVE_FAILED_MESSAGE) }
+                return@launch
+            }
+            edit { copy(isSigningIn = false, password = "", apiKey = "") }
+            state.update { it.copy(savedSuccessfully = true) }
         }
     }
 

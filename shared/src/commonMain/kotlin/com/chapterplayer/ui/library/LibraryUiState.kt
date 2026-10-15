@@ -15,7 +15,10 @@ data class LibraryUiState(
     val activeFilter: LibraryFilter = LibraryFilter.ALL,
     val isSyncing: Boolean = false,
     val syncError: String? = null,
-    val hasServersConfigured: Boolean = false
+    val hasServersConfigured: Boolean = false,
+    /** Display names of servers whose sign-in is gone (their stored token is blank). */
+    val signInRequiredNames: List<String> = emptyList(),
+    val allServersNeedSignIn: Boolean = false
 ) {
     /** Books to display in the grid, filtered by [activeFilter]. */
     val filteredBooks: List<AudioBook>

@@ -51,6 +51,42 @@ internal fun AbsAddSection(
     }
 }
 
+/** Edit mode: sign in again to replace the stored sign-in. The address is edited above, in the shared form. */
+@Composable
+internal fun AbsSignInAgainSection(
+    state: AbsSetupState,
+    onUsernameChanged: (String) -> Unit,
+    onPasswordChanged: (String) -> Unit,
+    onUseApiKeyChanged: (Boolean) -> Unit,
+    onApiKeyChanged: (String) -> Unit,
+    onSignIn: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Sign in again",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Text(
+            text = "Only needed if this server asks you to sign in again. " +
+                "Your libraries and choices stay as they are.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary
+        )
+        AbsSignInForm(
+            state = state,
+            onAddressChanged = {},
+            onUsernameChanged = onUsernameChanged,
+            onPasswordChanged = onPasswordChanged,
+            onUseApiKeyChanged = onUseApiKeyChanged,
+            onApiKeyChanged = onApiKeyChanged,
+            onSignIn = onSignIn,
+            showAddress = false,
+            buttonLabel = "Sign in again"
+        )
+    }
+}
+
 @Composable
 private fun AbsSignInForm(
     state: AbsSetupState,
@@ -60,11 +96,13 @@ private fun AbsSignInForm(
     onUseApiKeyChanged: (Boolean) -> Unit,
     onApiKeyChanged: (String) -> Unit,
     onSignIn: () -> Unit,
+    showAddress: Boolean = true,
+    buttonLabel: String? = null,
 ) {
     val submit = { if (!state.isSigningIn) onSignIn() }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        ChapterTextField(
+        if (showAddress) ChapterTextField(
             value = state.address,
             onValueChange = onAddressChanged,
             label = "Server address",
@@ -133,7 +171,7 @@ private fun AbsSignInForm(
                 )
             } else {
                 Text(
-                    text = if (state.useApiKey) "Connect" else "Sign in",
+                    text = buttonLabel ?: if (state.useApiKey) "Connect" else "Sign in",
                     style = MaterialTheme.typography.labelLarge
                 )
             }

@@ -404,4 +404,180 @@ class AbsSetupViewModelTest {
         assertEquals(setOf("lib2"), saved.excludedLibraryIds)
         assertEquals(0, port.passwordCalls)
     }
+
+    // ── Sign in again (edit mode) ───────────────────────────────────────────
+
+    private fun storedServer(repo: FakeRepository, token: String = "old-token") {
+        repo.stored["s1"] = ServerConfig(
+            "s1", ServerSource.ABS, "Home", "http://old.test", token,
+            libraryId = "libX", refreshToken = "old-refresh", excludedLibraryIds = setOf("lib2")
+        )
+    }
+
+    @Test
+    fun `signing in again keeps id name libraries and replaces both tokens`() {
+        val repo = FakeRepository()
+        storedServer(repo, token = "")
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+
+        vm.onAbsSignInAgain("s1")
+
+        val saved = repo.saved.single()
+        assertEquals("s1", saved.id)
+        assertEquals("Home", saved.name)
+        assertEquals("http://abs.test", saved.baseUrl)
+        assertEquals("token-1", saved.token)
+        assertEquals("refresh-1", saved.refreshToken)
+        assertEquals(setOf("lib2"), saved.excludedLibraryIds)
+        assertEquals("libX", saved.libraryId)
+        assertTrue(vm.uiState.value.savedSuccessfully)
+        assertEquals("", vm.uiState.value.abs.password)
+        assertFalse(vm.uiState.value.abs.isSigningIn)
+    }
+
+    @Test
+    fun `signing in again uses an edited display name`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onNameChanged("Renamed")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+
+        vm.onAbsSignInAgain("s1")
+
+        assertEquals("Renamed", repo.saved.single().name)
+    }
+
+    @Test
+    fun `the edit form never carries the stored token`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val vm = viewModel(FakePort { result() }, repo)
+
+        vm.loadServer("s1")
+
+        val abs = vm.uiState.value.abs
+        assertEquals("", abs.password)
+        assertEquals("", abs.apiKey)
+        assertEquals("", abs.username)
+        assertFalse(vm.uiState.value.toString().contains("old-token"))
+        assertFalse(abs.toString().contains("old-token"))
+    }
+
+    @Test
+    fun `signing in again with an api token drops the old refresh token`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val port = FakePort { result(refresh = null) }
+        val vm = viewModel(port, repo)
+        vm.loadServer("s1")
+        vm.onAbsUseApiKeyChanged(true)
+        vm.onAbsApiKeyChanged("key-made-up")
+
+        vm.onAbsSignInAgain("s1")
+
+        assertEquals(0, port.passwordCalls)
+        assertEquals("key-made-up", port.lastApiKey)
+        val saved = repo.saved.single()
+        assertEquals("token-1", saved.token)
+        assertNull(saved.refreshToken)
+        assertEquals(setOf("lib2"), saved.excludedLibraryIds)
+        assertEquals("", vm.uiState.value.abs.apiKey)
+    }
+
+    @Test
+    fun `a wrong password on sign in again shows the message and saves nothing`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val vm = viewModel(FakePort { throw AbsSignInException(AbsSignInError.WrongCredentials) }, repo)
+        vm.loadServer("s1")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+
+        vm.onAbsSignInAgain("s1")
+
+        val s = vm.uiState.value
+        assertEquals("The username or password is wrong.", s.abs.signInError)
+        assertTrue(repo.saved.isEmpty())
+        assertFalse(s.savedSuccessfully)
+        assertFalse(s.abs.isSigningIn)
+    }
+
+    @Test
+    fun `signing in again for a server that is gone says so and saves nothing`() {
+        val repo = FakeRepository()
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+        vm.onBaseUrlChanged("http://old.test")
+
+        vm.onAbsSignInAgain("gone")
+
+        val s = vm.uiState.value
+        assertEquals("That server no longer exists.", s.saveError)
+        assertTrue(repo.saved.isEmpty())
+        assertFalse(s.savedSuccessfully)
+        assertFalse(s.abs.isSigningIn)
+    }
+
+    @Test
+    fun `a failed save after signing in again shows the secure storage message`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val vm = viewModel(FakePort { result() }, repo)
+        vm.loadServer("s1")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+        repo.failSave = true
+
+        vm.onAbsSignInAgain("s1")
+
+        val s = vm.uiState.value
+        assertEquals("Couldn't save this server securely on your phone. Please try again.", s.saveError)
+        assertFalse(s.savedSuccessfully)
+        assertFalse(s.abs.isSigningIn)
+    }
+
+    @Test
+    fun `an invalid address on sign in again shows an error without a network call`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val port = FakePort { result() }
+        val vm = viewModel(port, repo)
+        vm.loadServer("s1")
+        vm.onBaseUrlChanged("ftp://bad")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+
+        vm.onAbsSignInAgain("s1")
+
+        assertEquals("Enter a valid server address.", vm.uiState.value.abs.signInError)
+        assertEquals(0, port.passwordCalls)
+        assertTrue(repo.saved.isEmpty())
+    }
+
+    @Test
+    fun `two quick taps on sign in again start one request`() {
+        val repo = FakeRepository()
+        storedServer(repo)
+        val port = FakePort { result() }
+        port.gate = CompletableDeferred()
+        val vm = viewModel(port, repo)
+        vm.loadServer("s1")
+        vm.onAbsUsernameChanged("reader")
+        vm.onAbsPasswordChanged("pw-made-up")
+
+        vm.onAbsSignInAgain("s1")
+        vm.onAbsSignInAgain("s1")
+        assertTrue(vm.uiState.value.abs.isSigningIn)
+        port.gate!!.complete(Unit)
+
+        assertEquals(1, port.passwordCalls)
+        assertEquals(1, repo.saved.size)
+    }
 }

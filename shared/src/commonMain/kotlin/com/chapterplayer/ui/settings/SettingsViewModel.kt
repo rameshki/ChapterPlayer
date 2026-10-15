@@ -155,6 +155,8 @@ class ServerSetupViewModel(
     fun onAbsSignIn() = absHandler.signIn()
     fun onAbsSave() = absHandler.save()
     fun onAbsBack() = absHandler.onBack()
+    fun onAbsSignInAgain(serverId: String) = absHandler.signInAgain(serverId)
+    fun onAbsSecretsDiscarded() = absHandler.clearSecrets()
 
     private var pollingJob: Job? = null
 
@@ -167,7 +169,8 @@ class ServerSetupViewModel(
                 name = config.name,
                 source = config.source,
                 baseUrl = config.baseUrl,
-                token = config.token,
+                // An Audiobookshelf edit never loads the stored token; saving keeps it from storage.
+                token = if (config.source == ServerSource.ABS) "" else config.token,
                 libraryId = config.libraryId ?: "",
                 plexClientId = plexClientIdentifier.value
             )

@@ -227,6 +227,13 @@ private fun ServerRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
+                if (server.needsSignIn) {
+                    Text(
+                        text = "Sign in again",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 if (server.libraryId != null) {
                     Text(
                         text = "Library: ${server.libraryId}",
@@ -325,6 +332,7 @@ fun ServerSetupScreen(
                             viewModel.onAbsBack()
                         } else {
                             viewModel.cancelPlexOAuth()
+                            viewModel.onAbsSecretsDiscarded()
                             onDone()
                         }
                     }) {
@@ -436,7 +444,7 @@ fun ServerSetupScreen(
             // Save button
             if (!isAbsAdd) Button(
                 onClick = { viewModel.saveServer(serverId) },
-                enabled = !uiState.isSaving,
+                enabled = !uiState.isSaving && !uiState.abs.isSigningIn,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AmberGold,
