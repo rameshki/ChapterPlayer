@@ -1,6 +1,5 @@
 package com.chapterplayer.data.security
 
-import java.security.GeneralSecurityException
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
@@ -28,9 +27,7 @@ class AesGcmTokenCipher(private val key: () -> SecretKey) : TokenCipher {
             return cipher.doFinal(data, IV_BYTES, data.size - IV_BYTES).decodeToString()
         } catch (e: TokenCipherException) {
             throw e
-        } catch (e: GeneralSecurityException) {
-            throw TokenCipherException(e)
-        } catch (e: IllegalArgumentException) { // bad Base64
+        } catch (e: Exception) { // bad Base64, bad data, wrong key, or the key supplier failing
             throw TokenCipherException(e)
         }
     }
