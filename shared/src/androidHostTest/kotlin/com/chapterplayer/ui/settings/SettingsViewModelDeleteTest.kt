@@ -2,6 +2,7 @@ package com.chapterplayer.ui.settings
 
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.repository.ServerRepository
+import com.chapterplayer.testing.FakeAppSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -34,7 +35,7 @@ class SettingsViewModelDeleteTest {
     @Test
     fun `a failed delete does not crash and the view model stays usable`() {
         val repo = ThrowingDeleteRepository()
-        val viewModel = SettingsViewModel(repo)
+        val viewModel = SettingsViewModel(repo, FakeAppSettings())
 
         viewModel.deleteServer("a")
         viewModel.deleteServer("a")
