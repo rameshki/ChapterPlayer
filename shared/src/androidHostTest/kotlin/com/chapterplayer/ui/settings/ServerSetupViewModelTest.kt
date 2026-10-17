@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.settings
 
+import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.remote.installApiDefaults
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
@@ -46,7 +47,11 @@ class ServerSetupViewModelTest {
         )
         val viewModel = ServerSetupViewModel(
             ThrowingRepository(), plex,
-            object : PlexClientIdentifier { override val value = "client-1" }
+            object : PlexClientIdentifier { override val value = "client-1" },
+            object : AbsSignInPort {
+                override suspend fun withPassword(address: String, username: String, password: String) = error("unused")
+                override suspend fun withApiKey(address: String, apiKey: String) = error("unused")
+            }
         )
         viewModel.onNameChanged("Test")
         viewModel.onBaseUrlChanged("http://s.test")

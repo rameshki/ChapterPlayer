@@ -4,6 +4,8 @@ package com.chapterplayer.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.chapterplayer.data.auth.AbsSignInPort
+import com.chapterplayer.data.auth.normalizeServerAddress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
@@ -39,7 +41,10 @@ data class PlexServerOption(
     val name: String,
     val url: String,
     val accessToken: String
-)
+) {
+    /** Left out so the access token can never reach a log. */
+    override fun toString() = "PlexServerOption(name=$name)"
+}
 
 /** Tracks which step of the Plex OAuth flow we're in. */
 enum class PlexOAuthStep {
@@ -67,8 +72,14 @@ data class ServerSetupUiState(
     val plexPinCode: String? = null,       // Set when browser should open; cleared after auth
     val plexClientId: String = "",
     val availablePlexServers: List<PlexServerOption> = emptyList(),
-    val plexOAuthError: String? = null
-)
+    val plexOAuthError: String? = null,
+
+    // ABS add flow (sign in, then choose libraries)
+    val abs: AbsSetupState = AbsSetupState()
+) {
+    /** Left out so a token can never reach a log. */
+    override fun toString() = "ServerSetupUiState(source=$source, name=$name, baseUrl=$baseUrl)"
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings ViewModel (server list + delete)
@@ -130,11 +141,28 @@ private const val POLL_MAX_ATTEMPTS = 150   // ~5 minutes
 class ServerSetupViewModel(
     private val serverRepository: ServerRepository,
     private val plexTvApiService: PlexTvApiService,
-    private val plexClientIdentifier: PlexClientIdentifier
+    private val plexClientIdentifier: PlexClientIdentifier,
+    absSignIn: AbsSignInPort
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ServerSetupUiState(plexClientId = plexClientIdentifier.value))
     val uiState: StateFlow<ServerSetupUiState> = _uiState
+
+    private val absHandler = AbsSetupHandler(viewModelScope, absSignIn, serverRepository, _uiState)
+
+    // ── Audiobookshelf add flow ──────────────────────────────────────────────
+
+    fun onAbsAddressChanged(value: String) = absHandler.onAddressChanged(value)
+    fun onAbsUsernameChanged(value: String) = absHandler.onUsernameChanged(value)
+    fun onAbsPasswordChanged(value: String) = absHandler.onPasswordChanged(value)
+    fun onAbsUseApiKeyChanged(value: Boolean) = absHandler.onUseApiKeyChanged(value)
+    fun onAbsApiKeyChanged(value: String) = absHandler.onApiKeyChanged(value)
+    fun onAbsLibraryToggled(id: String) = absHandler.onLibraryToggled(id)
+    fun onAbsSignIn() = absHandler.signIn()
+    fun onAbsSave() = absHandler.save()
+    fun onAbsBack() = absHandler.onBack()
+    fun onAbsSignInAgain(serverId: String) = absHandler.signInAgain(serverId)
+    fun onAbsSecretsDiscarded() = absHandler.clearSecrets()
 
     private var pollingJob: Job? = null
 
@@ -147,7 +175,8 @@ class ServerSetupViewModel(
                 name = config.name,
                 source = config.source,
                 baseUrl = config.baseUrl,
-                token = config.token,
+                // An Audiobookshelf edit never loads the stored token; saving keeps it from storage.
+                token = if (config.source == ServerSource.ABS) "" else config.token,
                 libraryId = config.libraryId ?: "",
                 plexClientId = plexClientIdentifier.value
             )
@@ -163,6 +192,7 @@ class ServerSetupViewModel(
     fun onSourceChanged(source: ServerSource) {
         // Cancel any in-flight OAuth when switching away from Plex
         if (source != ServerSource.PLEX) cancelPlexOAuth()
+        absHandler.clearSecrets()
         _uiState.value = _uiState.value.copy(
             source = source,
             baseUrl = "",
@@ -330,12 +360,11 @@ class ServerSetupViewModel(
     fun saveServer(existingId: String?) {
         val state = _uiState.value
 
-        // Validation
         if (state.name.isBlank()) {
             _uiState.value = state.copy(saveError = "Display name is required.")
             return
         }
-        if (state.baseUrl.isBlank() || state.token.isBlank()) {
+        if (existingId == null && (state.baseUrl.isBlank() || state.token.isBlank())) {
             val msg = if (state.source == ServerSource.PLEX)
                 "Please sign in with Plex and select a server first."
             else
@@ -346,22 +375,59 @@ class ServerSetupViewModel(
 
         viewModelScope.launch {
             _uiState.value = state.copy(isSaving = true, saveError = null)
-            val config = ServerConfig(
-                id = existingId ?: Uuid.random().toString(),
-                source = state.source,
-                name = state.name.trim(),
-                baseUrl = state.baseUrl.trimEnd('/'),
-                token = state.token.trim(),
-                libraryId = state.libraryId.takeIf { it.isNotBlank() }
-            )
+            fun fail(message: String) {
+                _uiState.value = _uiState.value.copy(isSaving = false, saveError = message)
+            }
             try {
+                // An edit starts from the stored server so its refresh token and
+                // turned-off libraries are never erased by changing a name or address.
+                val stored = existingId?.let { serverRepository.getById(it) }
+                if (existingId != null && stored == null) {
+                    fail(SERVER_GONE_MESSAGE)
+                    return@launch
+                }
+                val config = when {
+                    stored == null -> ServerConfig(
+                        id = Uuid.random().toString(),
+                        source = state.source,
+                        name = state.name.trim(),
+                        baseUrl = state.baseUrl.trimEnd('/'),
+                        token = state.token.trim(),
+                        libraryId = state.libraryId.takeIf { it.isNotBlank() }
+                    )
+                    // The stored server's own source decides, not the form's.
+                    stored.source == ServerSource.ABS -> {
+                        // The token is kept as stored, so only the address needs checking.
+                        val address = normalizeServerAddress(state.baseUrl)
+                        if (address == null) {
+                            fail("Enter a valid server address.")
+                            return@launch
+                        }
+                        // Servers saved by older builds may hold an address that was never normalised.
+                        if (address != (normalizeServerAddress(stored.baseUrl) ?: stored.baseUrl)) {
+                            // The tokens belong to the old host; only a new sign-in may move them.
+                            fail("To change the address, sign in again below.")
+                            return@launch
+                        }
+                        stored.copy(name = state.name.trim(), baseUrl = address)
+                    }
+                    else -> {
+                        if (state.baseUrl.isBlank() || state.token.isBlank()) {
+                            fail("Please sign in with Plex and select a server first.")
+                            return@launch
+                        }
+                        stored.copy(
+                            name = state.name.trim(),
+                            baseUrl = state.baseUrl.trimEnd('/'),
+                            token = state.token.trim(),
+                            libraryId = state.libraryId.takeIf { it.isNotBlank() }
+                        )
+                    }
+                }
                 serverRepository.save(config)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    saveError = "Couldn't save this server securely on your phone. Please try again."
-                )
+                fail(SAVE_FAILED_MESSAGE)
                 return@launch
             }
             _uiState.value = _uiState.value.copy(isSaving = false, savedSuccessfully = true)

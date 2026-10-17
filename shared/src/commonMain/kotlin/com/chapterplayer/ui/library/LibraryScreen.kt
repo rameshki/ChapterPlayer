@@ -113,6 +113,10 @@ fun LibraryScreen(
                     EmptyStateNoServers(modifier = Modifier.fillMaxSize())
                 }
 
+                uiState.allServersNeedSignIn && uiState.allBooks.isEmpty() -> {
+                    SignInNeededState(uiState.signInRequiredNames, Modifier.fillMaxSize())
+                }
+
                 uiState.isSyncing && uiState.allBooks.isEmpty() -> {
                     InitialLoadingState(modifier = Modifier.fillMaxSize())
                 }
@@ -245,6 +249,29 @@ private fun EmptyStateNoServers(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(8.dp))
         Text(
             text = "Go to Settings to add your Audiobookshelf or Plex server.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun SignInNeededState(names: List<String>, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Sign in again in Settings",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = names.joinToString("\n") { "$it: Sign in again in Settings" },
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = TextAlign.Center

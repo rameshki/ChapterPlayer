@@ -12,20 +12,26 @@ data class ServerConfigEntity(
     val name: String,
     val baseUrl: String,
     /**
-     * Empty. Tokens live in the encrypted credential store. The column stays so the database
-     * schema does not change; a later migration drops it. Older installs still hold the token
+     * Empty. Tokens live in the encrypted credential store. The column stays (a user upgrading
+     * straight from v0.1.0 may still have a token in it); a later migration drops it. Older installs still hold the token
      * here until [com.chapterplayer.data.repository.ServerRepositoryImpl] moves it.
      */
     val token: String,
     val libraryId: String?
 ) {
-    fun toDomain(token: String): ServerConfig = ServerConfig(
+    fun toDomain(
+        token: String,
+        refreshToken: String? = null,
+        excludedLibraryIds: Set<String> = emptySet()
+    ): ServerConfig = ServerConfig(
         id = id,
         source = ServerSource.valueOf(source),
         name = name,
         baseUrl = baseUrl,
         token = token,
-        libraryId = libraryId
+        libraryId = libraryId,
+        refreshToken = refreshToken,
+        excludedLibraryIds = excludedLibraryIds
     )
 
     companion object {

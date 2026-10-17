@@ -3,6 +3,7 @@ package com.chapterplayer.data.source
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.AbsApiService
+import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.installApiDefaults
 import io.ktor.client.HttpClient
@@ -27,6 +28,11 @@ class AbsLibrarySourceTest {
         id = "srv1", source = ServerSource.ABS, name = "Test", baseUrl = "http://abs.test", token = "tok", libraryId = null
     )
 
+    private object PassThroughAuthorizer : AbsAuthorizer {
+        override suspend fun <T> authorized(server: ServerConfig, call: suspend (bearerToken: String) -> T): T =
+            call("Bearer " + server.token)
+    }
+
     private fun source(items: String = fixture("abs/items-page-with-total.json")) = AbsLibrarySource(
         AbsApiService(
             HttpClient(
@@ -36,7 +42,8 @@ class AbsLibrarySourceTest {
                     respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
             ) { installApiDefaults(isDebuggable = false) }
-        )
+        ),
+        PassThroughAuthorizer
     )
 
     @Test
@@ -60,6 +67,31 @@ class AbsLibrarySourceTest {
         source().fetchBooks(server.copy(libraryId = "lib_fixture_more"))
 
         assertEquals(listOf("/api/libraries/lib_fixture_more/items"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `skips excluded libraries`() = runTest {
+        source().fetchBooks(server.copy(excludedLibraryIds = setOf("lib_fixture_books")))
+
+        assertEquals(
+            listOf("/api/libraries", "/api/libraries/lib_fixture_more/items"),
+            requests.map { it.url.encodedPath }
+        )
+    }
+
+    @Test
+    fun `a configured library is read even if listed as excluded`() = runTest {
+        source().fetchBooks(server.copy(libraryId = "lib_fixture_more", excludedLibraryIds = setOf("lib_fixture_books")))
+
+        assertEquals(listOf("/api/libraries/lib_fixture_more/items"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `excluding every book library gives an empty list`() = runTest {
+        val books = source().fetchBooks(server.copy(excludedLibraryIds = setOf("lib_fixture_books", "lib_fixture_more")))
+
+        assertEquals(emptyList(), books)
+        assertEquals(listOf("/api/libraries"), requests.map { it.url.encodedPath })
     }
 
     @Test

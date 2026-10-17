@@ -1,13 +1,16 @@
 package com.chapterplayer.data.local
 
+import androidx.room.AutoMigration
 import androidx.room.ConstructedBy
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.ExcludedLibraryDao
 import com.chapterplayer.data.local.dao.ProgressDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
 import com.chapterplayer.data.local.entity.BookEntity
+import com.chapterplayer.data.local.entity.ExcludedLibraryEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
 import com.chapterplayer.data.local.entity.ServerConfigEntity
 
@@ -15,9 +18,11 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
     entities = [
         BookEntity::class,
         ProgressEntity::class,
-        ServerConfigEntity::class
+        ServerConfigEntity::class,
+        ExcludedLibraryEntity::class
     ],
-    version = 1,
+    version = 2,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
 @ConstructedBy(ChapterPlayerDatabaseConstructor::class)
@@ -25,6 +30,7 @@ abstract class ChapterPlayerDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     abstract fun progressDao(): ProgressDao
     abstract fun serverConfigDao(): ServerConfigDao
+    abstract fun excludedLibraryDao(): ExcludedLibraryDao
 
     companion object {
         const val DATABASE_NAME = "chapter_player.db"

@@ -2,12 +2,19 @@ package com.chapterplayer.data.remote.abs
 
 import com.chapterplayer.data.remote.abs.dto.AbsLibrariesResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryItemsResponse
+import com.chapterplayer.data.remote.abs.dto.AbsLoginRequest
+import com.chapterplayer.data.remote.abs.dto.AbsLoginResponseDto
+import com.chapterplayer.data.remote.abs.dto.AbsStatusDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 
 /**
@@ -44,6 +51,24 @@ class AbsApiService(private val client: HttpClient) {
             parameter("limit", limit)
             parameter("page", page)
             parameter("include", include)
+        }.body()
+
+    /** Answers without a token: the server version and which sign-in methods are on. */
+    suspend fun getStatus(baseUrl: String): AbsStatusDto =
+        client.get(endpoint(baseUrl, "status")).body()
+
+    /** Signs in. The header makes the server put the refresh token in the response body. */
+    suspend fun login(baseUrl: String, username: String, password: String): AbsLoginResponseDto =
+        client.post(endpoint(baseUrl, "login")) {
+            contentType(ContentType.Application.Json)
+            header("x-return-tokens", "true")
+            setBody(AbsLoginRequest(username, password))
+        }.body()
+
+    /** Trades a refresh token for a new access token and a new refresh token. */
+    suspend fun refresh(baseUrl: String, refreshToken: String): AbsLoginResponseDto =
+        client.post(endpoint(baseUrl, "auth/refresh")) {
+            header("x-refresh-token", refreshToken)
         }.body()
 
     private fun endpoint(baseUrl: String, path: String) = baseUrl.trimEnd('/') + "/" + path

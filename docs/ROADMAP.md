@@ -108,7 +108,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 ### Stage 2: Audiobookshelf core experience (priority 1)
 - [x] Move the server token out of the Room database into encrypted storage (before sign-in is built). After a phone restore the saved servers return without their tokens, so each token is entered again
 - [x] Light theme and a Dark / Light / Follow system setting
-- [ ] ABS sign-in: username/password and API key; library picker
+- [x] ABS sign-in: username and password (the access token is refreshed before it expires; sign in again from Settings when the server asks) or an API token under Advanced; choose libraries when adding a server (only the ticked ones sync). The Room `token` column is still there, always empty, and is dropped in a later cleanup. Changing the library choice of a saved server comes with the Library tab (step 4)
 - [ ] Combined library across servers with a Libraries check-list (grouped by server): untick a library to hide it everywhere; libraries added later show by default. Today there is one optional library id, or every book library
 - [ ] Four tabs: Home (Resume card), Library (Authors, Narrators, Series and Collections views; large-cover, small-cover and list layouts with a remembered switch), Downloads (placeholder until Stage 3), Search
 - [ ] Downloaded state in the UI (built now, filled in by Stage 3): badges on covers, Downloaded filter chip and Filter sheet on every browse screen, Downloads tab empty state, offline dimming. Per-book download state, always "not downloaded" until Stage 3

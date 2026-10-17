@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -53,7 +54,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationEventHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -222,6 +227,13 @@ private fun ServerRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
+                if (server.needsSignIn) {
+                    Text(
+                        text = "Sign in again",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 if (server.libraryId != null) {
                     Text(
                         text = "Library: ${server.libraryId}",
@@ -294,6 +306,27 @@ fun ServerSetupScreen(
         )
     }
 
+    val isAbsAdd = serverId == null && uiState.source == ServerSource.ABS
+    val inLibraryStep = isAbsAdd && uiState.abs.step == AbsStep.LIBRARIES
+
+    // The system Back button does what the arrow in the top bar does on the libraries step.
+    NavigationEventHandler(
+        state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
+        isBackEnabled = inLibraryStep,
+        onBackCompleted = { viewModel.onAbsBack() }
+    )
+
+    // Leaving an Audiobookshelf edit by system Back drops typed secrets, like the top-bar arrow.
+    val isAbsEdit = serverId != null && uiState.source == ServerSource.ABS
+    NavigationEventHandler(
+        state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
+        isBackEnabled = isAbsEdit,
+        onBackCompleted = {
+            viewModel.onAbsSecretsDiscarded()
+            onDone()
+        }
+    )
+
     Scaffold(
         containerColor = BackgroundDeep,
         topBar = {
@@ -306,8 +339,13 @@ fun ServerSetupScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        viewModel.cancelPlexOAuth()
-                        onDone()
+                        if (isAbsAdd && uiState.abs.step == AbsStep.LIBRARIES) {
+                            viewModel.onAbsBack()
+                        } else {
+                            viewModel.cancelPlexOAuth()
+                            viewModel.onAbsSecretsDiscarded()
+                            onDone()
+                        }
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
                     }
@@ -327,12 +365,12 @@ fun ServerSetupScreen(
             Spacer(Modifier.height(8.dp))
 
             // Server type selector
-            Text(
+            if (!inLibraryStep && serverId == null) Text(
                 text = "Server Type",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onBackground
             )
-            Row(
+            if (!inLibraryStep && serverId == null) Row(
                 modifier = Modifier.selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -354,7 +392,7 @@ fun ServerSetupScreen(
             }
 
             // Display name — shared for both server types
-            ChapterTextField(
+            if (!inLibraryStep) ChapterTextField(
                 value = uiState.name,
                 onValueChange = viewModel::onNameChanged,
                 label = "Display Name",
@@ -362,27 +400,37 @@ fun ServerSetupScreen(
             )
 
             // ── ABS fields ────────────────────────────────────────────────
-            if (uiState.source == ServerSource.ABS) {
+            if (isAbsAdd) {
+                AbsAddSection(
+                    state = uiState.abs,
+                    onAddressChanged = viewModel::onAbsAddressChanged,
+                    onUsernameChanged = viewModel::onAbsUsernameChanged,
+                    onPasswordChanged = viewModel::onAbsPasswordChanged,
+                    onUseApiKeyChanged = viewModel::onAbsUseApiKeyChanged,
+                    onApiKeyChanged = viewModel::onAbsApiKeyChanged,
+                    onSignIn = viewModel::onAbsSignIn,
+                    onLibraryToggled = viewModel::onAbsLibraryToggled,
+                    onSave = viewModel::onAbsSave
+                )
+            } else if (uiState.source == ServerSource.ABS) {
+                // Editing keeps the stored sign-in; only the name and address change here.
                 ChapterTextField(
                     value = uiState.baseUrl,
                     onValueChange = viewModel::onBaseUrlChanged,
-                    label = "Server URL",
+                    label = "Server address",
                     placeholder = "http://192.168.1.10:8080",
                     keyboardType = KeyboardType.Uri
                 )
-                ChapterTextField(
-                    value = uiState.token,
-                    onValueChange = viewModel::onTokenChanged,
-                    label = "API Token",
-                    placeholder = "Paste your ABS token here",
-                    isPassword = true
-                )
-                ChapterTextField(
-                    value = uiState.libraryId,
-                    onValueChange = viewModel::onLibraryIdChanged,
-                    label = "Library ID (optional)",
-                    placeholder = "Leave blank to load all libraries"
-                )
+                if (serverId != null) {
+                    AbsSignInAgainSection(
+                        state = uiState.abs,
+                        onUsernameChanged = viewModel::onAbsUsernameChanged,
+                        onPasswordChanged = viewModel::onAbsPasswordChanged,
+                        onUseApiKeyChanged = viewModel::onAbsUseApiKeyChanged,
+                        onApiKeyChanged = viewModel::onAbsApiKeyChanged,
+                        onSignIn = { viewModel.onAbsSignInAgain(serverId) }
+                    )
+                }
             }
 
             // ── Plex OAuth flow ───────────────────────────────────────────
@@ -406,7 +454,7 @@ fun ServerSetupScreen(
 
             // Error message
             val errorMsg = uiState.saveError ?: uiState.plexOAuthError
-            if (errorMsg != null) {
+            if (!isAbsAdd && errorMsg != null) {
                 Text(
                     text = errorMsg,
                     style = MaterialTheme.typography.bodySmall,
@@ -415,9 +463,9 @@ fun ServerSetupScreen(
             }
 
             // Save button
-            Button(
+            if (!isAbsAdd) Button(
                 onClick = { viewModel.saveServer(serverId) },
-                enabled = !uiState.isSaving,
+                enabled = !uiState.isSaving && !uiState.abs.isSigningIn,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AmberGold,
@@ -617,13 +665,15 @@ private fun PlexServerPickerDialog(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ChapterTextField(
+internal fun ChapterTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
     placeholder: String,
     keyboardType: KeyboardType = KeyboardType.Text,
-    isPassword: Boolean = false
+    isPassword: Boolean = false,
+    imeAction: ImeAction = ImeAction.Default,
+    onImeAction: (() -> Unit)? = null
 ) {
     OutlinedTextField(
         value = value,
@@ -632,7 +682,21 @@ private fun ChapterTextField(
         placeholder = { Text(placeholder, color = TextSecondary) },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+        // Only the field's own action is customised; everything else keeps Compose's default
+        // (Next moves focus, Done hides the keyboard).
+        keyboardActions = when {
+            onImeAction == null -> KeyboardActions.Default
+            imeAction == ImeAction.Done -> KeyboardActions(onDone = {
+                defaultKeyboardAction(ImeAction.Done)
+                onImeAction()
+            })
+            imeAction == ImeAction.Next -> KeyboardActions(onNext = {
+                defaultKeyboardAction(ImeAction.Next)
+                onImeAction()
+            })
+            else -> KeyboardActions.Default
+        },
         visualTransformation = if (isPassword) PasswordVisualTransformation()
         else androidx.compose.ui.text.input.VisualTransformation.None,
         colors = OutlinedTextFieldDefaults.colors(

@@ -1,6 +1,10 @@
 package com.chapterplayer.data.repository
 
+import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.ExcludedLibraryDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
+import com.chapterplayer.data.local.entity.BookEntity
+import com.chapterplayer.data.local.entity.ExcludedLibraryEntity
 import com.chapterplayer.data.local.entity.ServerConfigEntity
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
@@ -18,7 +22,7 @@ import kotlin.test.assertTrue
 
 class ServerRepositoryTest {
 
-    private class FakeDao(initial: List<ServerConfigEntity> = emptyList(), var failInsert: Boolean = false) : ServerConfigDao {
+    private class FakeDao(initial: List<ServerConfigEntity> = emptyList(), var failInsert: Boolean = false, val events: MutableList<String> = mutableListOf()) : ServerConfigDao {
         val rows = MutableStateFlow(initial.associateBy { it.id })
         override fun observeAll(): Flow<List<ServerConfigEntity>> = rows.map { it.values.sortedBy { e -> e.name } }
         override suspend fun getAll(): List<ServerConfigEntity> = rows.value.values.toList()
@@ -27,8 +31,40 @@ class ServerRepositoryTest {
         override suspend fun insert(config: ServerConfigEntity) { if (failInsert) error("disk full"); rows.value = rows.value + (config.id to config) }
         override suspend fun update(config: ServerConfigEntity) { insert(config) }
         override suspend fun delete(config: ServerConfigEntity) { rows.value = rows.value - config.id }
-        override suspend fun deleteById(id: String) { rows.value = rows.value - id }
+        override suspend fun deleteById(id: String) { events += "row"; rows.value = rows.value - id }
     }
+
+    private class FakeExcludedDao(initial: List<ExcludedLibraryEntity> = emptyList()) : ExcludedLibraryDao {
+        val rows = MutableStateFlow(initial)
+        override fun observeAll(): Flow<List<ExcludedLibraryEntity>> = rows
+        override suspend fun getAll(): List<ExcludedLibraryEntity> = rows.value
+        override suspend fun insertAll(rows: List<ExcludedLibraryEntity>) { this.rows.value = (this.rows.value + rows).distinct() }
+        override suspend fun deleteForServer(serverId: String) { rows.value = rows.value.filter { it.serverId != serverId } }
+    }
+
+    private class FakeBookDao(
+        initial: List<BookEntity> = emptyList(),
+        val events: MutableList<String> = mutableListOf(),
+        var fail: Boolean = false
+    ) : BookDao {
+        val books = MutableStateFlow(initial)
+        override fun observeAll(): Flow<List<BookEntity>> = books
+        override fun observeBySource(source: String): Flow<List<BookEntity>> = books.map { it.filter { b -> b.source == source } }
+        override fun observeByServer(serverId: String): Flow<List<BookEntity>> = books.map { it.filter { b -> b.serverId == serverId } }
+        override suspend fun getById(id: String): BookEntity? = books.value.firstOrNull { it.id == id }
+        override suspend fun insertAll(books: List<BookEntity>) { this.books.value = this.books.value + books }
+        override suspend fun insert(book: BookEntity) { books.value = books.value + book }
+        override suspend fun deleteByServer(serverId: String) {
+            if (fail) error("db busy")
+            events += "books"
+            books.value = books.value.filter { it.serverId != serverId }
+        }
+        override suspend fun deleteAll() { books.value = emptyList() }
+        override suspend fun getLastCacheTime(serverId: String): Long? = null
+    }
+
+    private fun book(id: String, serverId: String) =
+        BookEntity(id, "T$id", "A", "N", 1L, "[]", "u", null, "ABS", serverId, 0L)
 
     private class FakeCredentials(val tokens: MutableMap<String, String> = mutableMapOf(), var failPutAfter: Int = Int.MAX_VALUE, var alwaysFail: Boolean = false) : CredentialStore {
         private var puts = 0
@@ -48,7 +84,7 @@ class ServerRepositoryTest {
     fun `saving keeps the token out of the database`() = runTest {
         val dao = FakeDao(); val creds = FakeCredentials()
 
-        ServerRepositoryImpl(dao, creds).save(config("a", "tok-a"))
+        ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao()).save(config("a", "tok-a"))
 
         assertEquals("", dao.rows.value.getValue("a").token)
         assertEquals("tok-a", creds.tokens["a"])
@@ -56,7 +92,7 @@ class ServerRepositoryTest {
 
     @Test
     fun `reading gives the token back`() = runTest {
-        val repo = ServerRepositoryImpl(FakeDao(), FakeCredentials())
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), FakeCredentials(), FakeBookDao())
         repo.save(config("a", "tok-a"))
 
         assertEquals("tok-a", repo.getById("a")?.token)
@@ -66,7 +102,7 @@ class ServerRepositoryTest {
     @Test
     fun `deleting a server removes its token`() = runTest {
         val dao = FakeDao(); val creds = FakeCredentials()
-        val repo = ServerRepositoryImpl(dao, creds)
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao())
         repo.save(config("a", "same")); repo.save(config("b", "same"))
 
         repo.delete("a")
@@ -79,7 +115,7 @@ class ServerRepositoryTest {
     @Test
     fun `a token the keystore can no longer decrypt reads as empty`() = runTest {
         val dao = FakeDao(listOf(entity("a", ""))) // migrated earlier, then the key was lost
-        val repo = ServerRepositoryImpl(dao, FakeCredentials())
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), FakeCredentials(), FakeBookDao())
 
         assertEquals("", repo.getById("a")?.token)
     }
@@ -88,7 +124,7 @@ class ServerRepositoryTest {
     fun `tokens already in the database move to the credential store on first use`() = runTest {
         val dao = FakeDao(listOf(entity("a", "legacy-a"), entity("b", "legacy-b")))
         val creds = FakeCredentials()
-        val repo = ServerRepositoryImpl(dao, creds)
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao())
 
         assertEquals("legacy-a", repo.getById("a")?.token)
 
@@ -101,9 +137,9 @@ class ServerRepositoryTest {
         val dao = FakeDao(listOf(entity("a", "legacy-a"), entity("b", "legacy-b")))
         val creds = FakeCredentials(failPutAfter = 1) // the second write fails
 
-        runCatching { ServerRepositoryImpl(dao, creds).getById("a") }
+        runCatching { ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao()).getById("a") }
         creds.failPutAfter = Int.MAX_VALUE
-        val second = ServerRepositoryImpl(dao, creds)
+        val second = ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao())
 
         assertEquals("legacy-b", second.getById("b")?.token)
         assertEquals("legacy-a", second.getById("a")?.token)
@@ -113,7 +149,7 @@ class ServerRepositoryTest {
 
     @Test
     fun `a token with unusual characters is kept exactly`() = runTest {
-        val repo = ServerRepositoryImpl(FakeDao(), FakeCredentials())
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), FakeCredentials(), FakeBookDao())
         val odd = "e30=.\"quoted\" 'x' \\ \n tab\t ✓ ${"y".repeat(5000)}"
 
         repo.save(config("a", odd))
@@ -124,7 +160,7 @@ class ServerRepositoryTest {
     @Test
     fun `a failing credential store does not stop a legacy token being read`() = runTest {
         val dao = FakeDao(listOf(entity("a", "legacy-a")))
-        val repo = ServerRepositoryImpl(dao, FakeCredentials(alwaysFail = true))
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), FakeCredentials(alwaysFail = true), FakeBookDao())
 
         assertEquals("legacy-a", repo.getById("a")?.token)
         assertEquals(listOf("legacy-a"), repo.observeAll().first().map { it.token })
@@ -135,7 +171,7 @@ class ServerRepositoryTest {
     fun `a migration that failed is retried on the same repository`() = runTest {
         val dao = FakeDao(listOf(entity("a", "legacy-a")))
         val creds = FakeCredentials(alwaysFail = true)
-        val repo = ServerRepositoryImpl(dao, creds)
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao())
         repo.getById("a")
 
         creds.alwaysFail = false
@@ -150,7 +186,7 @@ class ServerRepositoryTest {
         val dao = FakeDao(listOf(entity("a", "legacy-a")))
         val creds = FakeCredentials()
 
-        ServerRepositoryImpl(dao, creds).delete("a")
+        ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao()).delete("a")
 
         assertEquals(emptyMap(), dao.rows.value)
         assertEquals(emptyMap(), creds.tokens)
@@ -160,7 +196,7 @@ class ServerRepositoryTest {
     fun `a failed insert for a new server leaves no token behind`() = runTest {
         val dao = FakeDao(failInsert = true); val creds = FakeCredentials()
 
-        assertFailsWith<IllegalStateException> { ServerRepositoryImpl(dao, creds).save(config("a", "tok-a")) }
+        assertFailsWith<IllegalStateException> { ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao()).save(config("a", "tok-a")) }
 
         assertEquals(emptyMap(), creds.tokens)
     }
@@ -171,8 +207,133 @@ class ServerRepositoryTest {
         val creds = FakeCredentials(mutableMapOf("a" to "old"))
         dao.failInsert = true
 
-        assertFailsWith<IllegalStateException> { ServerRepositoryImpl(dao, creds).save(config("a", "new")) }
+        assertFailsWith<IllegalStateException> { ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao()).save(config("a", "new")) }
 
         assertTrue(creds.tokens.containsKey("a"))
+    }
+
+    @Test
+    fun `saving stores the refresh token under its own key and clears it when it becomes null`() = runTest {
+        val creds = FakeCredentials()
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), creds, FakeBookDao())
+
+        repo.save(config("a", "tok").copy(refreshToken = "ref"))
+        assertEquals("ref", creds.tokens["a.refresh"])
+        assertEquals("tok", creds.tokens["a"])
+
+        repo.save(config("a", "tok"))
+        assertNull(creds.tokens["a.refresh"])
+        assertEquals("tok", creds.tokens["a"])
+    }
+
+    @Test
+    fun `reads return the refresh token and the turned-off libraries`() = runTest {
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), FakeCredentials(), FakeBookDao())
+        repo.save(config("a", "tok").copy(refreshToken = "ref", excludedLibraryIds = setOf("l1", "l2")))
+        repo.save(config("b", "tok-b"))
+
+        val one = repo.getById("a")!!
+        assertEquals("ref", one.refreshToken)
+        assertEquals(setOf("l1", "l2"), one.excludedLibraryIds)
+        val all = repo.observeAll().first().associateBy { it.id }
+        assertEquals("ref", all.getValue("a").refreshToken)
+        assertEquals(setOf("l1", "l2"), all.getValue("a").excludedLibraryIds)
+        assertNull(all.getValue("b").refreshToken)
+        assertEquals(emptySet(), all.getValue("b").excludedLibraryIds)
+    }
+
+    @Test
+    fun `saving replaces the turned-off libraries instead of adding to them`() = runTest {
+        val excluded = FakeExcludedDao()
+        val repo = ServerRepositoryImpl(FakeDao(), excluded, FakeCredentials(), FakeBookDao())
+        repo.save(config("a", "t").copy(excludedLibraryIds = setOf("l1", "l2")))
+        repo.save(config("b", "t").copy(excludedLibraryIds = setOf("x")))
+
+        repo.save(config("a", "t").copy(excludedLibraryIds = setOf("l3")))
+
+        assertEquals(setOf("l3"), repo.getById("a")?.excludedLibraryIds)
+        assertEquals(setOf("x"), repo.getById("b")?.excludedLibraryIds)
+        assertEquals(2, excluded.rows.value.size)
+    }
+
+    @Test
+    fun `deleting removes both credential entries and the turned-off libraries`() = runTest {
+        val excluded = FakeExcludedDao(); val creds = FakeCredentials()
+        val repo = ServerRepositoryImpl(FakeDao(), excluded, creds, FakeBookDao())
+        repo.save(config("a", "t").copy(refreshToken = "r", excludedLibraryIds = setOf("l1")))
+        repo.save(config("b", "t2").copy(refreshToken = "r2", excludedLibraryIds = setOf("l2")))
+
+        repo.delete("a")
+
+        assertEquals(mapOf("b" to "t2", "b.refresh" to "r2"), creds.tokens)
+        assertEquals(listOf(ExcludedLibraryEntity("b", "l2")), excluded.rows.value)
+    }
+
+    @Test
+    fun `a missing refresh entry reads as null`() = runTest {
+        val repo = ServerRepositoryImpl(FakeDao(listOf(entity("a", ""))), FakeExcludedDao(), FakeCredentials(mutableMapOf("a" to "tok")), FakeBookDao())
+
+        assertNull(repo.getById("a")?.refreshToken)
+        assertEquals("tok", repo.getById("a")?.token)
+    }
+
+    @Test
+    fun `a failed insert for a new server leaves no refresh token behind`() = runTest {
+        val dao = FakeDao(failInsert = true); val creds = FakeCredentials()
+
+        assertFailsWith<IllegalStateException> {
+            ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao()).save(config("a", "t").copy(refreshToken = "r"))
+        }
+
+        assertEquals(emptyMap(), creds.tokens)
+    }
+
+    @Test
+    fun `a legacy token still in the database survives the version 2 schema change`() = runTest {
+        val dao = FakeDao(listOf(entity("a", "legacy-a")))
+        val creds = FakeCredentials()
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao())
+
+        val read = repo.getById("a")
+
+        assertEquals("legacy-a", read?.token)
+        assertNull(read?.refreshToken)
+        assertEquals("legacy-a", creds.tokens["a"])
+        assertEquals("", dao.rows.value.getValue("a").token)
+    }
+
+    @Test
+    fun `a server without a readable token needs sign in`() {
+        assertTrue(config("a", "").needsSignIn)
+        assertTrue(!config("a", "t").needsSignIn)
+    }
+
+    @Test
+    fun `deleting a server removes its books and keeps other servers' books`() = runTest {
+        val events = mutableListOf<String>()
+        val dao = FakeDao(listOf(entity("a", ""), entity("b", "")), events = events)
+        val books = FakeBookDao(listOf(book("1", "a"), book("2", "a"), book("3", "b")), events)
+        val creds = FakeCredentials(mutableMapOf("a" to "ta", "a.refresh" to "ra", "b" to "tb"))
+
+        ServerRepositoryImpl(dao, FakeExcludedDao(), creds, books).delete("a")
+
+        assertEquals(listOf("3"), books.books.value.map { it.id })
+        assertEquals(setOf("b"), dao.rows.value.keys)
+        assertEquals(mapOf("b" to "tb"), creds.tokens)
+        assertEquals(listOf("books", "row"), events)
+    }
+
+    @Test
+    fun `a failed book removal keeps the server row so the user can delete again`() = runTest {
+        val dao = FakeDao(listOf(entity("a", "")))
+        val books = FakeBookDao(listOf(book("1", "a")), fail = true)
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), FakeCredentials(), books)
+
+        assertFailsWith<IllegalStateException> { repo.delete("a") }
+
+        assertEquals(setOf("a"), dao.rows.value.keys)
+        books.fail = false
+        repo.delete("a")
+        assertEquals(emptySet(), dao.rows.value.keys)
     }
 }

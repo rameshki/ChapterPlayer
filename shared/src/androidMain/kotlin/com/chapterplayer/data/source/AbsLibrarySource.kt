@@ -5,37 +5,41 @@ import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.AbsApiService
+import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.dto.AbsChapterDto
 import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 
 /** Lists the books on an Audiobookshelf server. */
-class AbsLibrarySource(private val api: AbsApiService) : LibrarySource {
+class AbsLibrarySource(
+    private val api: AbsApiService,
+    private val authorizer: AbsAuthorizer,
+) : LibrarySource {
 
     override val type: ServerSource = ServerSource.ABS
 
     override suspend fun fetchBooks(server: ServerConfig): List<AudioBook> {
-        val bearerToken = "Bearer ${server.token}"
-
         // If a specific library ID was provided, use it.
-        // Otherwise, auto-discover all book-type libraries on this server.
+        // Otherwise, auto-discover the book-type libraries the user has not turned off.
         val libraryIds: List<String> = if (!server.libraryId.isNullOrBlank()) {
             listOf(server.libraryId)
         } else {
-            api.getLibraries(server.baseUrl, bearerToken)
+            authorizer.authorized(server) { bearerToken -> api.getLibraries(server.baseUrl, bearerToken) }
                 .libraries
-                .filter { it.mediaType == "book" }
+                .filter { it.mediaType == "book" && it.id !in server.excludedLibraryIds }
                 .map { it.id }
         }
 
         return libraryIds.flatMap { libraryId ->
             val items = fetchAllAbsItems { page, limit ->
-                api.getLibraryItems(
-                    baseUrl = server.baseUrl,
-                    bearerToken = bearerToken,
-                    libraryId = libraryId,
-                    limit = limit,
-                    page = page
-                )
+                authorizer.authorized(server) { bearerToken ->
+                    api.getLibraryItems(
+                        baseUrl = server.baseUrl,
+                        bearerToken = bearerToken,
+                        libraryId = libraryId,
+                        limit = limit,
+                        page = page
+                    )
+                }
             }
             items.map { item ->
                 val metadata = item.media.metadata

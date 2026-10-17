@@ -2,6 +2,7 @@ package com.chapterplayer.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.repository.BookRepository
@@ -67,7 +68,9 @@ class LibraryViewModel(
             activeFilter = filter,
             isSyncing = syncState.isSyncing,
             syncError = syncState.error,
-            hasServersConfigured = servers.isNotEmpty()
+            hasServersConfigured = servers.isNotEmpty(),
+            signInRequiredNames = servers.filter { it.needsSignIn }.map { it.name },
+            allServersNeedSignIn = servers.isNotEmpty() && servers.all { it.needsSignIn }
         )
     }.stateIn(
         scope = viewModelScope,
@@ -92,9 +95,17 @@ class LibraryViewModel(
 
         val errors = mutableListOf<String>()
         servers.forEach { server ->
+            if (server.needsSignIn) {
+                // The stored sign-in is gone, so there is nothing to send to the server.
+                errors.add(signInAgainMessage(server))
+                return@forEach
+            }
             bookRepository.syncBooksFromServer(server)
                 .onFailure { throwable ->
-                    errors.add("${server.name}: ${throwable.message ?: "Unknown error"}")
+                    errors.add(
+                        if (throwable is SignInRequiredException) signInAgainMessage(server)
+                        else "${server.name}: ${throwable.message ?: "Unknown error"}"
+                    )
                 }
         }
 
@@ -105,6 +116,8 @@ class LibraryViewModel(
             )
         }
     }
+
+    private fun signInAgainMessage(server: ServerConfig) = "${server.name}: Sign in again in Settings"
 
     fun onErrorDismissed() {
         _syncState.update { it.copy(error = null) }

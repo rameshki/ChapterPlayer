@@ -1,9 +1,13 @@
 package com.chapterplayer.di
 
 import androidx.room.Room
+import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.abs.AbsApiService
+import com.chapterplayer.data.remote.abs.AbsAuthorizer
+import com.chapterplayer.data.remote.abs.AbsSessionManager
+import com.chapterplayer.data.remote.abs.AbsSignIn
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
@@ -50,12 +54,14 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().bookDao() }
     single { get<ChapterPlayerDatabase>().progressDao() }
     single { get<ChapterPlayerDatabase>().serverConfigDao() }
+    single { get<ChapterPlayerDatabase>().excludedLibraryDao() }
 }
 
 val networkModule = module {
     // One HTTP client for every server. Debug builds log requests with auth headers hidden.
     single { createHttpClient(get<Boolean>(DebuggableQualifier)) }
     singleOf(::AbsApiService)
+    singleOf(::AbsSignIn) { bind<AbsSignInPort>() }
     singleOf(::PlexApiService)
     singleOf(::PlexTvApiService)
     singleOf(::AndroidPlexClientIdentifier) { bind<PlexClientIdentifier>() }
@@ -77,6 +83,7 @@ val sourceModule = module {
 val repositoryModule = module {
     single<BookRepository> { BookRepositoryImpl(get(), get(), getAll<LibrarySource>()) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
+    single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
 }
 
 val viewModelModule = module {
