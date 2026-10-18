@@ -110,7 +110,7 @@ val sourceModule = module {
 
 val repositoryModule = module {
     single<BookRepository> { BookRepositoryImpl(
-            get(), get(), get(), get(), getAll<LibrarySource>(),
+            get(), get(), get(), get(), get(), getAll<LibrarySource>(),
             inTransaction = { block ->
                 get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
             }

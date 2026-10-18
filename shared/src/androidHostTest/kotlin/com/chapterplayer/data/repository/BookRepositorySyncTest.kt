@@ -17,6 +17,7 @@ import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.source.LibrarySource
+import com.chapterplayer.testing.FakeServerList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -41,6 +42,7 @@ class BookRepositorySyncTest {
         override suspend fun getById(id: String): BookEntity? = stored[id]
         override suspend fun insertAll(books: List<BookEntity>) { calls += "insertAll:${books.size}"; books.forEach { stored[it.id] = it } }
         override suspend fun insert(book: BookEntity) { stored[book.id] = book }
+        override suspend fun updateChapters(id: String, json: String) { stored[id]?.let { stored[id] = it.copy(chaptersJson = json) } }
         override suspend fun deleteByServer(serverId: String) { calls += "deleteByServer:$serverId"; stored.values.removeAll { it.serverId == serverId } }
         override suspend fun deleteByLibrary(serverId: String, libraryId: String) { stored.values.removeAll { it.serverId == serverId && it.libraryId == libraryId } }
         override suspend fun deleteAll() { stored.clear() }
@@ -135,7 +137,7 @@ class BookRepositorySyncTest {
         collectionDao: CollectionDao = FakeCollectionDao(),
         inTransaction: suspend (suspend () -> Unit) -> Unit = { it() },
     ) = BookRepositoryImpl(
-        dao, FakeProgressDao(), libraryDao, collectionDao, sources.toList(), clock = { 1_234L }, inTransaction = inTransaction
+        dao, FakeProgressDao(), libraryDao, collectionDao, FakeServerList(), sources.toList(), clock = { 1_234L }, inTransaction = inTransaction
     )
 
     @Test

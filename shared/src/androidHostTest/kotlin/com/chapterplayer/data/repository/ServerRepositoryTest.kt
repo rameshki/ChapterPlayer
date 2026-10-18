@@ -58,6 +58,9 @@ class ServerRepositoryTest {
         override suspend fun getById(id: String): BookEntity? = books.value.firstOrNull { it.id == id }
         override suspend fun insertAll(books: List<BookEntity>) { this.books.value = this.books.value + books }
         override suspend fun insert(book: BookEntity) { books.value = books.value + book }
+        override suspend fun updateChapters(id: String, json: String) {
+            books.value = books.value.map { if (it.id == id) it.copy(chaptersJson = json) else it }
+        }
         override suspend fun deleteByServer(serverId: String) {
             if (fail) error("db busy")
             events += "books"

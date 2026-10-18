@@ -4,7 +4,11 @@ import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.AbsApiService
+import com.chapterplayer.data.model.SeriesRef
+import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
+import com.chapterplayer.data.remote.abs.AbsSessionManager
+import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.installApiDefaults
 import io.ktor.client.HttpClient
@@ -14,9 +18,14 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
+import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -353,5 +362,106 @@ class AbsLibrarySourceTest {
         assertEquals(listOf(0L, 10_500L), chapters.map { it.startMs })
         assertEquals(listOf(10_500L, 60_000L), chapters.map { it.endMs })
         assertEquals(listOf(3, 4), chapters.map { it.id })
+    }
+
+    // --- book details ---
+
+    private val detailRequests = mutableListOf<HttpRequestData>()
+
+    private fun detailSource(
+        authorizer: AbsAuthorizer = PassThroughAuthorizer,
+        status: (HttpRequestData) -> HttpStatusCode = { HttpStatusCode.OK },
+    ) = AbsLibrarySource(
+        AbsApiService(
+            HttpClient(
+                MockEngine { request ->
+                    detailRequests += request
+                    val code = status(request)
+                    respond(
+                        if (code == HttpStatusCode.OK) fixture("abs/item-detail.json") else "no",
+                        code, headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+            ) { installApiDefaults(isDebuggable = false) }
+        ),
+        authorizer
+    )
+
+    @Test
+    fun `book details ask for the raw item id expanded, with the bearer`() = runTest {
+        detailSource().fetchBookDetails(server, "abs_li_fixture01")
+
+        val request = detailRequests.single()
+        assertEquals("/api/items/li_fixture01", request.url.encodedPath)
+        assertEquals("1", request.url.parameters["expanded"])
+        assertEquals("Bearer tok", request.headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun `only the leading abs prefix is removed from the id`() {
+        assertEquals("li_1", "abs_li_1".toServerItemId())
+        assertEquals("abs_x", "abs_abs_x".toServerItemId())
+        assertEquals("li_1", "li_1".toServerItemId())
+    }
+
+    @Test
+    fun `book details map the fixture`() = runTest {
+        val details = detailSource().fetchBookDetails(server, "abs_li_fixture01")
+
+        assertEquals(3, details.chapters.size)
+        assertEquals("Opening", details.chapters.first().title)
+        assertEquals(1_800_250L, details.chapters.first().endMs)
+        assertEquals(listOf(SeriesRef("Fixture Saga", "2")), details.series)
+        assertEquals("An invented story.", details.description)
+    }
+
+    @Test
+    fun `book details fail on a server error`() = runTest {
+        assertFailsWith<HttpStatusException> {
+            detailSource(status = { HttpStatusCode.InternalServerError }).fetchBookDetails(server, "abs_li_fixture01")
+        }
+    }
+
+    @Test
+    fun `book details refresh once on a 401 and then succeed`() = runTest {
+        val enc = { s: String -> Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(s.encodeToByteArray()) }
+        fun jwt(exp: Long) = enc("""{"alg":"HS256"}""") + "." + enc("""{"userId":"u","exp":$exp}""") + ".sig"
+        val now = 1_000_000L
+        val oldToken = jwt(now + 3600)
+        val newToken = jwt(now + 7200)
+        var refreshes = 0
+        val stored = MutableStateFlow(server.copy(token = oldToken, refreshToken = "refresh-old"))
+        val servers = object : ServerRepository {
+            override fun observeAll(): Flow<List<ServerConfig>> = stored.map { listOf(it) }
+            override suspend fun getById(id: String): ServerConfig? = stored.value
+            override suspend fun save(config: ServerConfig) { stored.value = config }
+            override suspend fun delete(id: String) {}
+            override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
+        }
+        val api = AbsApiService(
+            HttpClient(
+                MockEngine { request ->
+                    val json = headersOf(HttpHeaders.ContentType, "application/json")
+                    if (request.url.encodedPath == "/auth/refresh") {
+                        refreshes++
+                        respond(
+                            """{"user":{"id":"u","username":"x","accessToken":"$newToken","refreshToken":"refresh-new"}}""",
+                            HttpStatusCode.OK, json
+                        )
+                    } else {
+                        detailRequests += request
+                        if (request.headers[HttpHeaders.Authorization] == "Bearer $newToken")
+                            respond(fixture("abs/item-detail.json"), HttpStatusCode.OK, json)
+                        else respond("no", HttpStatusCode.Unauthorized)
+                    }
+                }
+            ) { installApiDefaults(isDebuggable = false) }
+        )
+
+        val details = AbsLibrarySource(api, AbsSessionManager(api, servers) { now }).fetchBookDetails(stored.value, "abs_li_fixture01")
+
+        assertEquals(3, details.chapters.size)
+        assertEquals(1, refreshes)
+        assertEquals(listOf("Bearer $oldToken", "Bearer $newToken"), detailRequests.map { it.headers[HttpHeaders.Authorization] })
     }
 }

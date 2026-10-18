@@ -1,6 +1,7 @@
 package com.chapterplayer.data.remote.abs
 
 import com.chapterplayer.data.remote.abs.dto.AbsCollectionsResponse
+import com.chapterplayer.data.remote.abs.dto.AbsItemDetailDto
 import com.chapterplayer.data.remote.abs.dto.AbsLibrariesResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryItemsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLoginRequest
@@ -66,6 +67,13 @@ class AbsApiService(private val client: HttpClient) {
             header(HttpHeaders.Authorization, bearerToken)
             parameter("limit", limit)
             parameter("page", page)
+        }.body()
+
+    /** One item with its chapters and full metadata (GET /api/items/{id}?expanded=1). [itemId] is the server's own id. */
+    suspend fun getItem(baseUrl: String, bearerToken: String, itemId: String): AbsItemDetailDto =
+        client.get(endpoint(baseUrl, "api/items/${itemId.encodeURLPathPart()}")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            parameter("expanded", 1)
         }.body()
 
     /** Answers without a token: the server version and which sign-in methods are on. */

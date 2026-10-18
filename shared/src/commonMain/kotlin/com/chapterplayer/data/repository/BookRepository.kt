@@ -2,6 +2,7 @@ package com.chapterplayer.data.repository
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
@@ -35,6 +36,14 @@ interface BookRepository {
      * Returns a [Result] so callers can surface network errors to the UI.
      */
     suspend fun syncBooksFromServer(server: ServerConfig): Result<Unit>
+
+    /**
+     * Asks the book's server for its details and, when it answers, caches the chapters it returned for that
+     * book only (an empty list included, so removed chapters do not linger). Success with null: the server
+     * type has no details call, nothing is written. A failure (including an unknown book or server, or a
+     * sign-in that is needed again) leaves the cached chapters as they were; cancellation propagates.
+     */
+    suspend fun loadDetails(bookId: String): Result<BookDetails?>
 
     /** Progress tracking */
     fun observeProgress(bookId: String): Flow<ReadingProgress?>

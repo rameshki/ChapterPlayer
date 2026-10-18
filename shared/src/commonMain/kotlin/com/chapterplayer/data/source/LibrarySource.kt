@@ -2,6 +2,7 @@ package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
@@ -33,6 +34,12 @@ interface LibrarySource {
 
     /** The collections in the libraries [server] reads, in server order. Empty for a source without collections. */
     suspend fun fetchCollections(server: ServerConfig): List<BookCollection>
+
+    /**
+     * The details of one book ([bookId] is the app's id for it): chapters, description, genres, year, series.
+     * Null for a source that has no such call (Plex gets its chapters with its tracks). Throws when the call fails.
+     */
+    suspend fun fetchBookDetails(server: ServerConfig, bookId: String): BookDetails? = null
 
     /**
      * Everything one sync stores, read in one go. A source that can share work between the three reads

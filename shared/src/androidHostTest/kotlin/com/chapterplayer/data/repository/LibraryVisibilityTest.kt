@@ -61,6 +61,9 @@ class LibraryVisibilityTest {
         override suspend fun getById(id: String): BookEntity? = books.value.firstOrNull { it.id == id }
         override suspend fun insertAll(books: List<BookEntity>) { this.books.value = this.books.value + books }
         override suspend fun insert(book: BookEntity) { books.value = books.value + book }
+        override suspend fun updateChapters(id: String, json: String) {
+            books.value = books.value.map { if (it.id == id) it.copy(chaptersJson = json) else it }
+        }
         override suspend fun deleteByServer(serverId: String) { books.value = books.value.filter { it.serverId != serverId } }
         override suspend fun deleteByLibrary(serverId: String, libraryId: String) {
             events += "books"
@@ -201,6 +204,7 @@ class LibraryVisibilityTest {
         override fun observeBooksByServer(serverId: String) = error("unused")
         override fun observeCollections() = error("unused")
         override suspend fun syncBooksFromServer(server: ServerConfig) = error("unused")
+        override suspend fun loadDetails(bookId: String) = error("unused")
         override fun observeProgress(bookId: String) = error("unused")
         override fun observeInProgressBooks() = error("unused")
         override fun observeAllProgress() = error("unused")

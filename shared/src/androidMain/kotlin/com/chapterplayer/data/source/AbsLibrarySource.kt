@@ -2,6 +2,7 @@ package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
@@ -10,10 +11,17 @@ import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.dto.AbsChapterDto
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryDto
+import com.chapterplayer.data.remote.abs.dto.toBookDetails
 import com.chapterplayer.data.remote.abs.dto.toBookCollection
 import com.chapterplayer.data.remote.abs.fetchAllAbsCollections
 import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.domain.browse.parseSeriesName
+
+/** The app's book ids for Audiobookshelf items start with this; the server only knows the part after it. */
+internal const val ABS_ID_PREFIX = "abs_"
+
+/** The server's own item id for an app book id: the one place the prefix is removed. */
+internal fun String.toServerItemId(): String = removePrefix(ABS_ID_PREFIX)
 
 /** Lists the books on an Audiobookshelf server. */
 class AbsLibrarySource(
@@ -57,7 +65,7 @@ class AbsLibrarySource(
                 val metadata = item.media.metadata
                 val series = parseSeriesName(metadata.seriesName)
                 AudioBook(
-                    id = "abs_${item.id}",
+                    id = ABS_ID_PREFIX + item.id,
                     title = metadata.title ?: "Unknown Title",
                     author = metadata.authorName ?: "Unknown Author",
                     narrator = metadata.narratorName ?: "",
@@ -77,6 +85,11 @@ class AbsLibrarySource(
             }
         }
     }
+
+    override suspend fun fetchBookDetails(server: ServerConfig, bookId: String): BookDetails =
+        authorizer.authorized(server) { bearerToken ->
+            api.getItem(server.baseUrl, bearerToken, bookId.toServerItemId())
+        }.toBookDetails()
 
     override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> =
         librariesOf(server, readLibraries(server))

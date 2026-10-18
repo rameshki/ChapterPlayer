@@ -11,11 +11,13 @@ import com.chapterplayer.data.local.entity.LibraryEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.ChapterJson
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.source.LibrarySource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -29,6 +31,7 @@ class BookRepositoryImpl(
     private val progressDao: ProgressDao,
     private val libraryDao: LibraryDao,
     private val collectionDao: CollectionDao,
+    private val servers: ServerRepository,
     private val sources: List<LibrarySource>,
     private val clock: () -> Long = { System.currentTimeMillis() },
     /** Runs the block as one database write transaction; the default runs it as is (for fakes). */
@@ -98,6 +101,22 @@ class BookRepositoryImpl(
                     )
                 }
             }
+        }
+
+    /** Failure messages name no token or address. */
+    override suspend fun loadDetails(bookId: String): Result<BookDetails?> =
+        try {
+            val book = bookDao.getById(bookId) ?: error("Unknown book")
+            val server = servers.getById(book.serverId) ?: error("The book's server is no longer configured")
+            val source = sources.firstOrNull { it.type == server.source }
+                ?: error("No library source for ${server.source}")
+            val details = source.fetchBookDetails(server, bookId)
+            if (details != null) bookDao.updateChapters(bookId, ChapterJson.encode(details.chapters))
+            Result.success(details)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
 
     // -------------------------------------------------------------------------
