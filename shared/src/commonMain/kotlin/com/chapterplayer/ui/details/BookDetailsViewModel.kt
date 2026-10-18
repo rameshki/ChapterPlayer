@@ -62,7 +62,7 @@ class BookDetailsViewModel(
             val chapters = live.details?.chapters ?: book.chapters
             val timeLeft = when {
                 progress == null -> null
-                progress.isFinished -> "Finished"
+                progress.isFinished || progress.positionMs >= book.durationMs -> "Finished"
                 progress.positionMs > 0 -> formatTimeLeft(book.durationMs, progress.positionMs)
                 else -> null
             }
@@ -84,10 +84,7 @@ class BookDetailsViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookDetailsUiState())
 
     init {
-        viewModelScope.launch {
-            // An unknown or deleted book never asks the server.
-            if (books.observeAllBooks().first().any { it.id == bookId }) load()
-        }
+        loadJob = viewModelScope.launch { fetchIfCached() }
     }
 
     fun selectTab(tab: DetailsTab) {
@@ -96,11 +93,12 @@ class BookDetailsViewModel(
 
     fun retry() {
         if (loadJob?.isActive == true) return
-        loadJob = viewModelScope.launch { fetch() }
+        loadJob = viewModelScope.launch { fetchIfCached() }
     }
 
-    private fun load() {
-        loadJob = viewModelScope.launch { fetch() }
+    // An unknown or deleted book never asks the server.
+    private suspend fun fetchIfCached() {
+        if (books.observeAllBooks().first().any { it.id == bookId }) fetch()
     }
 
     private suspend fun fetch() {

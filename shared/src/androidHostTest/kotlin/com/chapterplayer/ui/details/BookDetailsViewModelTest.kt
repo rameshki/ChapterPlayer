@@ -158,6 +158,92 @@ class BookDetailsViewModelTest {
     }
 
     @Test
+    fun `details load once and not again when books, progress or downloads change`() = runTest {
+        val repo = DetailsRepo(listOf(cachedBook()))
+        val downloads = FakeDownloadStates()
+        val s = BookDetailsViewModel("a", repo, downloads, Dispatchers.Main)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.uiState.collect {} }
+        assertEquals(1, repo.calls)
+
+        repo.progress.value = listOf(progress("a", 500L))
+        downloads.states.value = mapOf("a" to DownloadState.DOWNLOADED)
+        repo.books.value = repo.books.value + testBook("b")
+        repo.books.value = repo.books.value.map { it.copy(chapters = chapters("Live 1")) }
+
+        assertEquals(1, repo.calls)
+    }
+
+    @Test
+    fun `retry while the first load is still running does not start a second one`() = runTest {
+        val repo = DetailsRepo(listOf(cachedBook()))
+        repo.gate = CompletableDeferred()
+        val s = Setup(repo, "a")
+        collect(s)
+
+        s.vm.retry()
+        repo.gate!!.complete(Unit)
+
+        assertEquals(1, repo.calls)
+    }
+
+    @Test
+    fun `retry on an unknown book does not call the server`() = runTest {
+        val repo = DetailsRepo(listOf(cachedBook()))
+        val s = Setup(repo, "zzz")
+        collect(s)
+
+        s.vm.retry()
+
+        assertEquals(0, repo.calls)
+    }
+
+    @Test
+    fun `a position at the end counts as Finished even without the flag`() = runTest {
+        val repo = DetailsRepo(listOf(cachedBook()))
+        val state = collect(Setup(repo, "a"))
+
+        repo.progress.value = listOf(progress("a", 2_000L))
+
+        assertEquals("Finished", state().timeLeft)
+    }
+
+    @Test
+    fun `a saved position of zero is not started`() = runTest {
+        val repo = DetailsRepo(listOf(cachedBook()))
+        repo.progress.value = listOf(progress("a", 0L))
+        val state = collect(Setup(repo, "a"))
+
+        assertNull(state().timeLeft)
+    }
+
+    @Test
+    fun `a sign-in error is cleared by a later successful retry`() = runTest {
+        val repo = DetailsRepo(listOf(cachedBook()))
+        repo.next = { Result.failure(SignInRequiredException("Server s1")) }
+        val s = Setup(repo, "a")
+        val state = collect(s)
+        assertNotNull(state().error)
+
+        repo.next = { Result.success(details("New 1")) }
+        s.vm.retry()
+
+        assertNull(state().error)
+    }
+
+    @Test
+    fun `finished and not downloaded books still appear in series and links`() = runTest {
+        val a = testBook("a", author = "Amy", seriesName = "Saga").copy(seriesSequence = "1")
+        val b = testBook("b", author = "Amy", seriesName = "Saga").copy(seriesSequence = "2")
+        val repo = DetailsRepo(listOf(a, b))
+        repo.progress.value = listOf(progress("b", 2_000L, finished = true))
+        val state = collect(Setup(repo, "a"))
+
+        assertEquals(listOf("a", "b"), state().series.map { it.item.book.id })
+        assertEquals(1, state().links.authors.single().otherBookCount)
+        assertEquals(2, state().links.series!!.bookCount)
+    }
+
+    @Test
     fun `a sign-in-required failure says to sign in again`() = runTest {
         val repo = DetailsRepo(listOf(cachedBook()))
         repo.next = { Result.failure(SignInRequiredException("Server s1")) }
