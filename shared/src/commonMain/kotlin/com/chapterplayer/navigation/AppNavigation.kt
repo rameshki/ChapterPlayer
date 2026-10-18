@@ -79,7 +79,12 @@ fun AppNavigation() {
     }
     // A book tap opens its details; the player is reached from there once playback exists.
     val openBook = { bookId: String ->
-        navController.navigate(Screen.BookDetails.createRoute(bookId)) { launchSingleTop = true }
+        val entry = navController.currentBackStackEntry
+        val shownId = entry?.arguments?.read { getStringOrNull(Screen.BookDetails.ARG_ID) }
+        // Single-top would replace a different book on top; push, except when this book is already showing.
+        if (!Screen.BookDetails.isShowing(entry?.destination?.route, shownId, bookId)) {
+            navController.navigate(Screen.BookDetails.createRoute(bookId))
+        }
     }
     val openGroup = { kind: LibraryView, key: String ->
         navController.navigate(Screen.GroupDetail.createRoute(kind, key))

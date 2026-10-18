@@ -144,7 +144,7 @@ fun BookDetailsContent(
                 )
             }
             state.error?.let { ErrorBanner(it, onRetry) }
-            LoadedList(state, book, onSelectTab, onOpenBook, onOpenGroup)
+            LoadedList(state, book, onSelectTab, onOpenBook, onOpenGroup, Modifier.weight(1f))
         }
     }
 }
@@ -155,12 +155,13 @@ private fun LoadedList(
     book: AudioBook,
     onSelectTab: (DetailsTab) -> Unit,
     onOpenBook: (String) -> Unit,
-    onOpenGroup: (LibraryView, String) -> Unit
+    onOpenGroup: (LibraryView, String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val hasSeries = state.series.isNotEmpty()
     val tab = effectiveTab(state.selectedTab, hasSeries)
     // One scroll container: the header and tabs are the first items, so they scroll away with the list.
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(modifier = modifier.fillMaxWidth()) {
         item(key = "header") { DetailsHeader(state, book, onOpenGroup) }
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {

@@ -6,6 +6,7 @@ import com.chapterplayer.navigation.Screen
 import com.chapterplayer.ui.library.decodeGroupKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -52,5 +53,16 @@ class DetailsTextTest {
             assertTrue(encoded.all { it in '0'..'9' || it in 'a'..'f' }, "only hex characters: $encoded")
             assertEquals(id, decodeGroupKey(encoded))
         }
+    }
+
+    @Test
+    fun `the same book on top is not opened again`() {
+        val route = Screen.BookDetails.route
+        val enc = Screen.BookDetails.createRoute("li_a/b").removePrefix("book/")
+        assertTrue(Screen.BookDetails.isShowing(route, enc, "li_a/b"))
+        assertFalse(Screen.BookDetails.isShowing(route, enc, "li_other"))
+        assertFalse(Screen.BookDetails.isShowing("home", enc, "li_a/b"))
+        assertFalse(Screen.BookDetails.isShowing(route, "zz", "li_a/b"))
+        assertFalse(Screen.BookDetails.isShowing(route, null, "li_a/b"))
     }
 }

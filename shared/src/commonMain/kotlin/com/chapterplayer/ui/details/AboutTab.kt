@@ -69,7 +69,7 @@ internal fun LazyListScope.aboutTab(
         }
     }
     if (links.authors.isNotEmpty() || links.narrators.isNotEmpty()) {
-        item(key = "about-more-title") { SectionTitle("Explore more") }
+        item(key = "about-more-title") { SectionTitle("More") }
         items(links.authors, key = { "more-author-${it.key}" }) { person ->
             MoreByRow(moreByText(person, asNarrator = false)) { onOpenGroup(LibraryView.AUTHORS, person.key) }
         }
