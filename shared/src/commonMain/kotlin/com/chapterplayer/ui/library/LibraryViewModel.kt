@@ -1,130 +1,144 @@
 package com.chapterplayer.ui.library
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.chapterplayer.data.auth.SignInRequiredException
-import com.chapterplayer.data.model.AudioBook
-import com.chapterplayer.data.model.ServerConfig
+import com.chapterplayer.data.DownloadStates
+import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.ServerRepository
-import com.chapterplayer.ui.components.LibraryFilter
+import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.data.settings.LibraryLayout
+import com.chapterplayer.data.sync.LibrarySyncCoordinator
+import com.chapterplayer.domain.browse.BookGroup
+import com.chapterplayer.domain.browse.BrowseItem
+import com.chapterplayer.domain.browse.BrowseQuery
+import com.chapterplayer.domain.browse.BrowseQueryStore
+import com.chapterplayer.domain.browse.BrowseSort
+import com.chapterplayer.domain.browse.DownloadFilter
+import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.domain.browse.ProgressFilter
+import com.chapterplayer.domain.browse.applyQuery
+import com.chapterplayer.domain.browse.queryFor
+import com.chapterplayer.ui.browse.observeBrowseItems
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChangedBy
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class LibraryViewModel(
-    private val bookRepository: BookRepository,
-    private val serverRepository: ServerRepository
+    books: BookRepository,
+    servers: ServerRepository,
+    downloads: DownloadStates,
+    private val queryStore: BrowseQueryStore,
+    connectivity: ConnectivityMonitor,
+    private val settings: AppSettings,
+    private val syncCoordinator: LibrarySyncCoordinator,
+    dispatcher: CoroutineDispatcher,
+    private val savedState: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
 
-    // Internal mutable state for things the UI can change (filter, sync status)
-    private val _syncState = MutableStateFlow(SyncState())
-    private val _activeFilter = MutableStateFlow(LibraryFilter.ALL)
-
-    init {
-        // Auto-sync any configured server that has nothing in the local cache yet
-        // (first launch, or a server was just added), so the user doesn't have to
-        // tap refresh manually.
-        viewModelScope.launch {
-            serverRepository.observeAll()
-                .distinctUntilChangedBy { servers -> servers.map { it.id }.toSet() }
-                .collect { servers ->
-                    val cachedServerIds = bookRepository.observeAllBooks().first()
-                        .mapTo(mutableSetOf()) { it.serverId }
-                    val uncached = servers.filter { it.id !in cachedServerIds }
-                    if (uncached.isNotEmpty()) syncServers(uncached)
-                }
-        }
-    }
-
-    // Exposed as StateFlow — the screen collects this
-    val uiState: StateFlow<LibraryUiState> = combine(
-        bookRepository.observeAllBooks(),
-        bookRepository.observeInProgressBooks(),
-        serverRepository.observeAll(),
-        _activeFilter,
-        _syncState
-    ) { books, inProgressEntries, servers, filter, syncState ->
-
-        // Build a map of bookId → ReadingProgress for quick lookup in the UI
-        val progressMap = inProgressEntries.associateBy { it.bookId }
-
-        // In-progress books in library order (only books we have cached)
-        val bookIndex = books.associateBy { it.id }
-        val inProgressBooks = inProgressEntries
-            .mapNotNull { bookIndex[it.bookId] }
-            .sortedByDescending { progressMap[it.id]?.lastPlayedAt ?: 0L }
-
-        LibraryUiState(
-            allBooks = books.sortedBy { it.title },
-            inProgressBooks = inProgressBooks,
-            progressMap = progressMap,
-            activeFilter = filter,
-            isSyncing = syncState.isSyncing,
-            syncError = syncState.error,
-            hasServersConfigured = servers.isNotEmpty(),
-            signInRequiredNames = servers.filter { it.needsSignIn }.map { it.name },
-            allServersNeedSignIn = servers.isNotEmpty() && servers.all { it.needsSignIn }
-        )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = LibraryUiState()
+    // Kept in the saved state so the chosen view comes back after the process was killed.
+    private val _view = MutableStateFlow(
+        LibraryView.entries.firstOrNull { it.name == savedState.get<String>(VIEW_KEY) } ?: LibraryView.LIBRARY
     )
 
-    // ─── User actions ──────────────────────────────────────────────────────
+    /** What the lists show, worked out off the main thread. */
+    private class Content(
+        val view: LibraryView,
+        val query: BrowseQuery,
+        val items: List<BrowseItem>,
+        val groups: List<BookGroup>,
+        val hasBooks: Boolean
+    )
 
-    fun onFilterSelected(filter: LibraryFilter) {
-        _activeFilter.value = filter
+    private class Device(
+        val layout: LibraryLayout,
+        val online: Boolean,
+        val downloadedOnly: Boolean
+    )
+
+    private val content = combine(
+        observeBrowseItems(books, downloads),
+        books.observeCollections(),
+        queryStore.query,
+        _view
+    ) { all, collections, query, view ->
+        val shown = applyQuery(all, query)
+        Content(
+            view = view,
+            query = query,
+            items = if (view.isGrouped) emptyList() else shown,
+            groups = groupsFor(view, shown, collections),
+            hasBooks = all.isNotEmpty()
+        )
+    }.flowOn(dispatcher)
+
+    private val device = combine(settings.libraryLayout, connectivity.isOnline, settings.downloadedOnly) { layout, online, downloadedOnly ->
+        Device(layout, online, downloadedOnly)
     }
+
+    private val librariesHidden = combine(books.observeLibraries(), servers.observeAll()) { libraries, serverList ->
+        allLibrariesHidden(libraries, serverList)
+    }
+
+    val uiState: StateFlow<LibraryUiState> = combine(
+        content, servers.observeAll(), device, syncCoordinator.state, librariesHidden
+    ) { content, serverList, device, sync, hidden ->
+        LibraryUiState(
+            view = content.view,
+            layout = device.layout,
+            query = content.query,
+            items = content.items,
+            groups = content.groups,
+            hasBooks = content.hasBooks,
+            hasServers = serverList.isNotEmpty(),
+            allLibrariesHidden = hidden,
+            isLoading = false,
+            isSyncing = sync.isSyncing,
+            syncError = sync.syncError,
+            signInRequiredNames = sync.signInRequiredNames,
+            allServersNeedSignIn = sync.allServersNeedSignIn,
+            online = device.online,
+            downloadedOnly = device.downloadedOnly
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
+
+    // User actions
+
+    fun onViewSelected(view: LibraryView) {
+        savedState[VIEW_KEY] = view.name
+        _view.value = view
+    }
+
+    fun onLayoutSelected(layout: LibraryLayout) {
+        viewModelScope.launch { settings.setLibraryLayout(layout) }
+    }
+
+    fun onChipSelected(chip: FilterChip) = queryStore.update { queryFor(chip, it) }
+
+    fun onProgressFilterSelected(filter: ProgressFilter) = queryStore.update { it.copy(progress = filter) }
+
+    fun onDownloadFilterSelected(filter: DownloadFilter) = queryStore.update { it.copy(download = filter) }
+
+    fun onSortSelected(sort: BrowseSort) = queryStore.update { it.copy(sort = sort) }
+
+    /** Back to no filters and the default sort. */
+    fun onClearFilters() = queryStore.update { BrowseQuery() }
 
     fun onRefreshRequested() {
-        viewModelScope.launch {
-            syncServers(serverRepository.observeAll().first())
-        }
+        viewModelScope.launch { syncCoordinator.refreshAll() }
     }
-
-    private suspend fun syncServers(servers: List<ServerConfig>) {
-        _syncState.update { it.copy(isSyncing = true, error = null) }
-
-        val errors = mutableListOf<String>()
-        servers.forEach { server ->
-            if (server.needsSignIn) {
-                // The stored sign-in is gone, so there is nothing to send to the server.
-                errors.add(signInAgainMessage(server))
-                return@forEach
-            }
-            bookRepository.syncBooksFromServer(server)
-                .onFailure { throwable ->
-                    errors.add(
-                        if (throwable is SignInRequiredException) signInAgainMessage(server)
-                        else "${server.name}: ${throwable.message ?: "Unknown error"}"
-                    )
-                }
-        }
-
-        _syncState.update {
-            it.copy(
-                isSyncing = false,
-                error = if (errors.isNotEmpty()) errors.joinToString("\n") else null
-            )
-        }
-    }
-
-    private fun signInAgainMessage(server: ServerConfig) = "${server.name}: Sign in again in Settings"
 
     fun onErrorDismissed() {
-        _syncState.update { it.copy(error = null) }
+        syncCoordinator.dismissError()
     }
 
-    private data class SyncState(
-        val isSyncing: Boolean = false,
-        val error: String? = null
-    )
+    private companion object {
+        const val VIEW_KEY = "library_view"
+    }
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +44,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -84,10 +87,12 @@ import com.chapterplayer.ui.theme.TextSecondary
 fun SettingsScreen(
     onAddServer: () -> Unit,
     onEditServer: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val uiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val downloadedOnly by viewModel.downloadedOnly.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = BackgroundDeep,
@@ -95,6 +100,13 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text("Settings", style = MaterialTheme.typography.headlineSmall)
+                },
+                navigationIcon = {
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDeep)
             )
@@ -124,6 +136,15 @@ fun SettingsScreen(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
             AppearanceCard(selected = themeMode, onSelect = viewModel::setThemeMode)
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                text = "Offline",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            DownloadedOnlyCard(checked = downloadedOnly, onChange = viewModel::setDownloadedOnly)
             Spacer(Modifier.height(16.dp))
 
             Text(
@@ -195,6 +216,42 @@ private fun AppearanceCard(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DownloadedOnlyCard(
+    checked: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Downloaded only",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Only downloaded books can play, even when online.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+            // The row is the single touch target; the Switch itself is not clickable.
+            Switch(checked = checked, onCheckedChange = null)
         }
     }
 }

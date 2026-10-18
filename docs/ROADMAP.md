@@ -109,9 +109,9 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [x] Move the server token out of the Room database into encrypted storage (before sign-in is built). After a phone restore the saved servers return without their tokens, so each token is entered again
 - [x] Light theme and a Dark / Light / Follow system setting
 - [x] ABS sign-in: username and password (the access token is refreshed before it expires; sign in again from Settings when the server asks) or an API token under Advanced; choose libraries when adding a server (only the ticked ones sync). The Room `token` column is still there, always empty, and is dropped in a later cleanup. Changing the library choice of a saved server comes with the Library tab (step 4)
-- [ ] Combined library across servers with a Libraries check-list (grouped by server): untick a library to hide it everywhere; libraries added later show by default. Today there is one optional library id, or every book library
-- [ ] Four tabs: Home (Resume card), Library (Authors, Narrators, Series and Collections views; large-cover, small-cover and list layouts with a remembered switch), Downloads (placeholder until Stage 3), Search
-- [ ] Downloaded state in the UI (built now, filled in by Stage 3): badges on covers, Downloaded filter chip and Filter sheet on every browse screen, Downloads tab empty state, offline dimming. Per-book download state, always "not downloaded" until Stage 3
+- [x] Combined library across servers with a Libraries check-list (grouped by server): untick a library to hide it everywhere; libraries added later show by default. Today there is one optional library id, or every book library
+- [x] Four tabs: Home (Resume card), Library (Authors, Narrators, Series and Collections views; large-cover, small-cover and list layouts with a remembered switch), Downloads (placeholder until Stage 3), Search (the Home Resume card comes with the player, step 7)
+- [x] Downloaded state in the UI (built now, filled in by Stage 3): badges on covers, Downloaded filter chip and Filter sheet on the Library views and group lists (Home and Search apply the saved filter), Downloads tab empty state, offline dimming. Per-book download state, always "not downloaded" until Stage 3
 - [ ] Book details screen (description, chapters, series, narrator)
 - [ ] Load chapters per book from `/api/items/{id}`: the library list response has none, only `numChapters`
 - [ ] Replace the ABS stream URL (`/api/items/{id}/play` starts a playback session, it is not an audio URL)

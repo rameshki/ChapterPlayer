@@ -50,6 +50,19 @@ class AbsPagingTest {
     }
 
     @Test
+    fun `stops when the server ignores the page number`() = runTest {
+        var calls = 0
+
+        val items = fetchAllAbsItems(pageSize = 100) { page, limit ->
+            calls++
+            response(ids(100), total = 1000, page = page, limit = limit)
+        }
+
+        assertEquals(100, items.size)
+        assertEquals(2, calls)
+    }
+
+    @Test
     fun `makes a single request when the library fits in one page`() = runTest {
         val all = ids(40)
         val library = FakeLibrary(all)

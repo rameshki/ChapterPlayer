@@ -38,6 +38,7 @@ class ServerSetupViewModelTest {
         override suspend fun getById(id: String): ServerConfig? = null
         override suspend fun save(config: ServerConfig) = error("keystore unavailable")
         override suspend fun delete(id: String) {}
+        override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
     }
 
     @Test

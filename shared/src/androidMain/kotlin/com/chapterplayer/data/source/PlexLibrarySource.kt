@@ -1,7 +1,9 @@
 package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.Chapter
+import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.plex.PlexApiService
@@ -13,17 +15,13 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
     override val type: ServerSource = ServerSource.PLEX
 
     override suspend fun fetchBooks(server: ServerConfig): List<AudioBook> {
-        // If a section ID was provided, use it.
-        // Otherwise, fetch all music sections (audiobooks live in music libraries in Plex).
+        // If a section ID was provided, use it (unless the user turned it off).
+        // Otherwise, fetch all music sections (audiobooks live in music libraries in Plex)
+        // except the ones the user turned off.
         val sectionIds: List<String> = if (!server.libraryId.isNullOrBlank()) {
-            listOf(server.libraryId)
+            listOf(server.libraryId).filter { it !in server.excludedLibraryIds }
         } else {
-            api.getLibrarySections(baseUrl = server.baseUrl, token = server.token)
-                .mediaContainer
-                .directories
-                ?.filter { it.type == "artist" }   // "artist" == music/audiobook section in Plex
-                ?.map { it.key }
-                ?: emptyList()
+            musicSections(server).map { it.key }.filter { it !in server.excludedLibraryIds }
         }
 
         return sectionIds.flatMap { sectionId ->
@@ -46,11 +44,33 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
                         "${server.baseUrl}${meta.thumb}?X-Plex-Token=${server.token}"
                     else null,
                     source = ServerSource.PLEX,
-                    serverId = server.id
+                    serverId = server.id,
+                    libraryId = sectionId,
+                    addedAt = (meta.addedAt ?: 0L) * 1000L   // Plex gives seconds
                 )
             } ?: emptyList()
         }
     }
+
+    override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> {
+        val sections = musicSections(server)
+        if (!server.libraryId.isNullOrBlank()) {
+            val name = sections.firstOrNull { it.key == server.libraryId }?.title ?: server.libraryId
+            return listOf(LibraryInfo(server.id, server.libraryId, name))
+        }
+        return sections.map { LibraryInfo(server.id, it.key, it.title) }
+    }
+
+    /** Plex has no collections in the app yet. */
+    override suspend fun fetchCollections(server: ServerConfig): List<BookCollection> = emptyList()
+
+    /** "artist" == music/audiobook section in Plex. */
+    private suspend fun musicSections(server: ServerConfig) =
+        api.getLibrarySections(baseUrl = server.baseUrl, token = server.token)
+            .mediaContainer
+            .directories
+            ?.filter { it.type == "artist" }
+            ?: emptyList()
 
     private fun PlexChapterDto.toChapter() = Chapter(
         id = id,

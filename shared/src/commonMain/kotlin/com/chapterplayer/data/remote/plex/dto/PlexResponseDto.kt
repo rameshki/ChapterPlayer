@@ -47,6 +47,7 @@ data class PlexMetadataDto(
     @SerialName("summary") val summary: String? = null,
     @SerialName("duration") val durationMs: Long? = null,        // Plex provides duration in ms
     @SerialName("thumb") val thumb: String? = null,              // Relative path — prepend server URL
+    @SerialName("addedAt") val addedAt: Long? = null,            // Plex gives epoch seconds
     @SerialName("Media") val media: List<PlexMediaDto>? = null,
     @SerialName("Chapter") val chapters: List<PlexChapterDto>? = null
 )

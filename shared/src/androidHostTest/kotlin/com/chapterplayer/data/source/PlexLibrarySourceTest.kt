@@ -1,5 +1,6 @@
 package com.chapterplayer.data.source
 
+import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.fixture
@@ -30,12 +31,12 @@ class PlexLibrarySourceTest {
         id = "srv1", source = ServerSource.PLEX, name = "Test", baseUrl = "http://plex.test", token = "tok", libraryId = null
     )
 
-    private fun source(items: String = fixture("plex/library-all-artists.json")) = PlexLibrarySource(
+    private fun source(items: String = fixture("plex/library-all-artists.json"), sections: String = fixture("plex/sections.json")) = PlexLibrarySource(
         PlexApiService(
             HttpClient(
                 MockEngine { request ->
                     requests += request
-                    val body = if (request.url.encodedPath == "/library/sections") fixture("plex/sections.json") else items
+                    val body = if (request.url.encodedPath == "/library/sections") sections else items
                     respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
             ) { installApiDefaults(isDebuggable = false) }
@@ -59,6 +60,37 @@ class PlexLibrarySourceTest {
         source().fetchBooks(server.copy(libraryId = "7"))
 
         assertEquals(listOf("/library/sections/7/all"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `skips a turned-off section and still reads the others`() = runTest {
+        val sections = """{"MediaContainer":{"size":2,"Directory":[{"key":"1","type":"artist","title":"One"},{"key":"4","type":"artist","title":"Four"}]}}"""
+
+        source(sections = sections).fetchBooks(server.copy(excludedLibraryIds = setOf("4")))
+
+        assertEquals(listOf("/library/sections", "/library/sections/1/all"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `reads no section when every music section is turned off`() = runTest {
+        source().fetchBooks(server.copy(excludedLibraryIds = setOf("4")))
+
+        assertEquals(listOf("/library/sections"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `a configured section is still read when another section is turned off`() = runTest {
+        source().fetchBooks(server.copy(libraryId = "4", excludedLibraryIds = setOf("1")))
+
+        assertEquals(listOf("/library/sections/4/all"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `a configured section that is turned off is not read`() = runTest {
+        val books = source().fetchBooks(server.copy(libraryId = "4", excludedLibraryIds = setOf("4")))
+
+        assertEquals(emptyList(), books)
+        assertTrue(requests.isEmpty())
     }
 
     @Test
@@ -96,6 +128,40 @@ class PlexLibrarySourceTest {
         assertEquals(listOf(false, false, true, false, false), covers.map { it != null })
         val cover = covers.filterNotNull().single()
         assertTrue(cover.startsWith("http://plex.test/library/metadata/") && cover.endsWith("?X-Plex-Token=tok"))
+    }
+
+    @Test
+    fun `converts the added date from seconds to milliseconds and records the section`() = runTest {
+        val books = source().fetchBooks(server.copy(libraryId = "4"))
+
+        assertTrue(books.all { it.addedAt == 1_700_000_000_000L })
+        assertTrue(books.all { it.libraryId == "4" })
+        assertNull(books.first().seriesName)
+        assertNull(books.first().seriesSequence)
+    }
+
+    @Test
+    fun `a missing added date is zero`() = runTest {
+        val page = """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"9","title":"T"}]}}"""
+
+        assertEquals(0L, source(page).fetchBooks(server.copy(libraryId = "4")).single().addedAt)
+    }
+
+    @Test
+    fun `lists the music sections as libraries`() = runTest {
+        assertEquals(listOf(LibraryInfo("srv1", "4", "Fixture title 3")), source().fetchLibraries(server))
+    }
+
+    @Test
+    fun `a configured section is the only library listed`() = runTest {
+        assertEquals(listOf(LibraryInfo("srv1", "4", "Fixture title 3")), source().fetchLibraries(server.copy(libraryId = "4")))
+        assertEquals(listOf(LibraryInfo("srv1", "7", "7")), source().fetchLibraries(server.copy(libraryId = "7")))
+    }
+
+    @Test
+    fun `has no collections`() = runTest {
+        assertEquals(emptyList(), source().fetchCollections(server))
+        assertTrue(requests.isEmpty())
     }
 
     @Test

@@ -31,6 +31,7 @@ class RoomSchemaTest {
     // 1.json is the record of what v0.1.0 shipped; it must never change.
     private val database: JsonObject by lazy { load(1) }
     private val database2: JsonObject by lazy { load(2) }
+    private val database3: JsonObject by lazy { load(3) }
 
     private fun entity(table: String, db: JsonObject = database): JsonObject =
         db.getValue("entities").jsonArray.map { it.jsonObject }
@@ -135,5 +136,48 @@ class RoomSchemaTest {
             assertEquals(columns(table), columns(table, database2), "$table columns")
             assertEquals(primaryKey(table), primaryKey(table, database2), "$table primary key")
         }
+    }
+
+    @Test
+    fun `version 3 adds the library and collection tables`() {
+        assertEquals(3, database3.getValue("version").jsonPrimitive.int)
+        assertEquals(
+            setOf("books", "progress", "server_configs", "excluded_libraries", "libraries", "collections", "collection_books"),
+            tables(database3)
+        )
+        assertEquals(mapOf("serverId" to "TEXT", "id" to "TEXT", "name" to "TEXT"), columns("libraries", database3))
+        assertEquals(listOf("serverId", "id"), primaryKey("libraries", database3))
+        assertEquals(mapOf("serverId" to "TEXT", "id" to "TEXT", "name" to "TEXT"), columns("collections", database3))
+        assertEquals(listOf("serverId", "id"), primaryKey("collections", database3))
+        assertEquals(
+            mapOf("serverId" to "TEXT", "collectionId" to "TEXT", "bookId" to "TEXT", "position" to "INTEGER"),
+            columns("collection_books", database3)
+        )
+        assertEquals(listOf("serverId", "collectionId", "bookId"), primaryKey("collection_books", database3))
+    }
+
+    @Test
+    fun `version 3 adds four book columns with defaults so the migration can fill old rows`() {
+        assertEquals(
+            columns("books", database2) + mapOf(
+                "libraryId" to "TEXT", "addedAt" to "INTEGER", "seriesName" to "TEXT?", "seriesSequence" to "TEXT?",
+            ),
+            columns("books", database3)
+        )
+        val defaults = entity("books", database3).getValue("fields").jsonArray.map { it.jsonObject }
+            .associate { it.getValue("columnName").jsonPrimitive.content to it["defaultValue"]?.jsonPrimitive?.content }
+        assertEquals("''", defaults["libraryId"])
+        assertEquals("0", defaults["addedAt"])
+    }
+
+    @Test
+    fun `version 3 leaves the older tables as they were`() {
+        for (table in listOf("progress", "server_configs", "excluded_libraries")) {
+            assertEquals(columns(table, database2), columns(table, database3), "$table columns")
+        }
+        assertEquals(listOf("id"), primaryKey("books", database3))
+        assertEquals(listOf("bookId"), primaryKey("progress", database3))
+        assertEquals(listOf("id"), primaryKey("server_configs", database3))
+        assertEquals(listOf("serverId", "libraryId"), primaryKey("excluded_libraries", database3))
     }
 }

@@ -1,0 +1,91 @@
+package com.chapterplayer.ui.library
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.ui.theme.AmberGold
+import com.chapterplayer.ui.theme.SurfaceSecondary
+import com.chapterplayer.ui.theme.TextSecondary
+
+internal fun FilterChip.label(): String = when (this) {
+    FilterChip.ALL -> "All"
+    FilterChip.DOWNLOADED -> "Downloaded"
+    FilterChip.IN_PROGRESS -> "In progress"
+    FilterChip.NOT_STARTED -> "Not started"
+    FilterChip.FINISHED -> "Finished"
+}
+
+/**
+ * The quick filters (single choice) and the button that opens the Filter sheet. [selected] is null
+ * when the sheet made a combination no chip stands for, so no chip is highlighted.
+ */
+@Composable
+fun FilterChipRow(
+    selected: FilterChip?,
+    onSelected: (FilterChip) -> Unit,
+    onOpenSheet: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LazyRow(
+            modifier = Modifier.weight(1f).selectableGroup(),
+            contentPadding = PaddingValues(start = 16.dp, end = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items(FilterChip.entries, key = { it.name }) { chip ->
+                ChipItem(label = chip.label(), selected = chip == selected, onClick = { onSelected(chip) })
+            }
+        }
+        IconButton(onClick = onOpenSheet) {
+            Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = TextSecondary)
+        }
+    }
+}
+
+/** A pill inside a 48dp touch target; one option of a single-choice group. */
+@Composable
+private fun ChipItem(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else TextSecondary,
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(if (selected) AmberGold else SurfaceSecondary)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}

@@ -1,7 +1,9 @@
 package com.chapterplayer.data.repository
 
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.CollectionDao
 import com.chapterplayer.data.local.dao.ExcludedLibraryDao
+import com.chapterplayer.data.local.dao.LibraryDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
 import com.chapterplayer.data.local.entity.ExcludedLibraryEntity
 import com.chapterplayer.data.local.entity.ServerConfigEntity
@@ -27,7 +29,9 @@ class ServerRepositoryImpl(
     private val serverConfigDao: ServerConfigDao,
     private val excludedLibraryDao: ExcludedLibraryDao,
     private val credentials: CredentialStore,
-    private val bookDao: BookDao
+    private val bookDao: BookDao,
+    private val libraryDao: LibraryDao,
+    private val collectionDao: CollectionDao
 ) : ServerRepository {
 
     private val migrationLock = Mutex()
@@ -88,7 +92,21 @@ class ServerRepositoryImpl(
         credentials.remove(refreshKey(id))
         excludedLibraryDao.deleteForServer(id)
         bookDao.deleteByServer(id)
+        libraryDao.deleteForServer(id)
+        collectionDao.deleteCollectionBooksForServer(id)
+        collectionDao.deleteCollectionsForServer(id)
         serverConfigDao.deleteById(id)
+    }
+
+    override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {
+        if (serverConfigDao.getById(serverId) == null) return
+        if (enabled) {
+            excludedLibraryDao.delete(serverId, libraryId)
+        } else {
+            // Exclusion first: if the book delete fails, a later sync leaves the library out anyway.
+            excludedLibraryDao.insertAll(listOf(ExcludedLibraryEntity(serverId, libraryId)))
+            bookDao.deleteByLibrary(serverId, libraryId)
+        }
     }
 
     // A row that still holds a token (not migrated yet) wins over the store.

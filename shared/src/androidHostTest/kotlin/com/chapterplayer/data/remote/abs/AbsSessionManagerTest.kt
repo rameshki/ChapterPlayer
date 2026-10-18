@@ -54,6 +54,7 @@ class AbsSessionManagerTest {
             holder.value = config
         }
         override suspend fun delete(id: String) {}
+        override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
     }
 
     private fun serverWith(token: String, refreshToken: String? = "refresh-old") = ServerConfig(

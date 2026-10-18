@@ -30,6 +30,7 @@ class SettingsViewModelDeleteTest {
         override suspend fun getById(id: String): ServerConfig? = null
         override suspend fun save(config: ServerConfig) {}
         override suspend fun delete(id: String) { deleteCalls++; error("storage unavailable") }
+        override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
     }
 
     @Test
