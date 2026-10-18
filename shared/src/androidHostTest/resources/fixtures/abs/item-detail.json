@@ -1,0 +1,33 @@
+{
+  "id": "li_fixture01",
+  "libraryId": "lib_fixture01",
+  "path": "/fixture/path/Fixture Book",
+  "addedAt": 1700000000000,
+  "mediaType": "book",
+  "media": {
+    "id": "bk_fixture01",
+    "coverPath": "/fixture/path/cover.jpg",
+    "tags": [],
+    "duration": 5400.5,
+    "numChapters": 3,
+    "metadata": {
+      "title": "Fixture Book",
+      "subtitle": null,
+      "authors": [{ "id": "au_fixture01", "name": "Fixture Author" }],
+      "narrators": ["Fixture Narrator"],
+      "series": [{ "id": "se_fixture01", "name": "Fixture Saga", "sequence": "2" }],
+      "genres": ["Fantasy", "Adventure"],
+      "publishedYear": "2019",
+      "description": "<p>An <b>invented</b> story.</p>",
+      "descriptionPlain": "An invented story.",
+      "language": "English",
+      "explicit": false
+    },
+    "chapters": [
+      { "id": 0, "start": 0, "end": 1800.25, "title": "Opening" },
+      { "id": 1, "start": 1800.25, "end": 3600, "title": "Middle" },
+      { "id": 2, "start": 3600, "end": 5400.5, "title": "Ending" }
+    ],
+    "audioFiles": [{ "index": 1, "ino": "1", "metadata": { "filename": "fixture.m4b" } }]
+  }
+}
