@@ -16,6 +16,12 @@ sealed class Screen(val route: String) {
     object Player : Screen("player/{bookId}") {
         fun createRoute(bookId: String) = "player/$bookId"
     }
+    object BookDetails : Screen("book/{id}") {
+        const val ARG_ID = "id"
+
+        /** [bookId] travels hex-encoded like a group key: ids hold underscores and may hold more. */
+        fun createRoute(bookId: String) = "book/${encodeGroupKey(bookId)}"
+    }
     object GroupDetail : Screen("group/{kind}/{key}") {
         const val ARG_KIND = "kind"
         const val ARG_KEY = "key"
