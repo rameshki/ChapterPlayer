@@ -47,7 +47,7 @@ data class AbsItemDetailChapterDto(
     @SerialName("id") val id: Int,
     @SerialName("start") val start: Double,
     @SerialName("end") val end: Double,
-    @SerialName("title") val title: String
+    @SerialName("title") val title: String = ""
 )
 
 /**
@@ -68,11 +68,12 @@ fun AbsItemDetailDto.toBookDetails(): BookDetails {
     val description = metadata.descriptionPlain?.trim()?.takeIf { it.isNotEmpty() }
         ?: metadata.description
             ?.replace(HTML_TAG, "")
-            ?.replace("&amp;", "&")
+            ?.replace("&nbsp;", " ")
             ?.replace("&lt;", "<")
             ?.replace("&gt;", ">")
             ?.replace("&quot;", "\"")
             ?.replace("&#39;", "'")
+            ?.replace("&amp;", "&")
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 

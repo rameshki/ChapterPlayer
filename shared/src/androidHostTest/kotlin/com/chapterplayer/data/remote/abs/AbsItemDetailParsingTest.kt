@@ -71,4 +71,16 @@ class AbsItemDetailParsingTest {
         assertEquals(listOf("G"), details.genres)
         assertEquals(listOf(SeriesRef("Saga", "1")), details.series)
     }
+
+    @Test
+    fun `entities are decoded once and a non breaking space becomes a space`() {
+        val json = """{"id":"x","media":{"metadata":{"description":"A&nbsp;B &amp;lt; C"}}}"""
+        assertEquals("A B &lt; C", ApiJson.decodeFromString<AbsItemDetailDto>(json).toBookDetails().description)
+    }
+
+    @Test
+    fun `a chapter without a title still parses with an empty title`() {
+        val json = """{"id":"x","media":{"chapters":[{"id":0,"start":0,"end":1}]}}"""
+        assertEquals(listOf(Chapter(0, "", 0, 1_000)), ApiJson.decodeFromString<AbsItemDetailDto>(json).toBookDetails().chapters)
+    }
 }
