@@ -91,7 +91,7 @@ fun groupBySeries(items: List<BrowseItem>): List<BookGroup> {
 fun groupByCollection(items: List<BrowseItem>, collections: List<BookCollection>): List<BookGroup> {
     val byServer: Map<String, Map<String, BrowseItem>> = items.groupBy { it.book.serverId }.mapValues { (_, list) ->
         val m = HashMap<String, BrowseItem>(list.size * 2)
-        for (i in list) m.putIfAbsent(i.book.id, i)
+        for (i in list) if (i.book.id !in m) m[i.book.id] = i
         m
     }
     
