@@ -55,3 +55,15 @@ fun sleepRemainingMs(
         }
     }
 }
+
+/**
+ * Wall-clock time until the book position reaches [targetEndMs], the end of the chapter that was playing
+ * when the timer was set. Unlike [sleepRemainingMs] the target is fixed, so crossing into the next chapter
+ * reads 0, not a whole chapter. Rounded up, never negative.
+ */
+fun sleepRemainingToMs(targetEndMs: Long, positionMs: Long, speed: Float): Long {
+    val remaining = targetEndMs - positionMs
+    if (remaining <= 0L) return 0L
+    val effectiveSpeed = if (speed <= 0f) 1.0f else speed
+    return kotlin.math.ceil(remaining.toDouble() / effectiveSpeed.toDouble()).toLong()
+}

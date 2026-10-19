@@ -2,6 +2,10 @@ package com.chapterplayer.data.playback
 
 import androidx.media3.common.PlaybackException
 
+/** Keys of the extras on each media item: where its file sits on the book timeline. */
+internal const val EXTRA_START_MS = "chapterplayer.startMs"
+internal const val EXTRA_DURATION_MS = "chapterplayer.durationMs"
+
 /** A configured server's address and the access token to use against it. Never logged. */
 class ServerBearer(val baseUrl: String, val token: String) {
     override fun toString() = "ServerBearer(baseUrl=$baseUrl)"
@@ -54,4 +58,26 @@ fun safePlaybackError(errorCode: Int, httpStatus: Int?, signInNeeded: Boolean): 
     errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
         errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Cannot reach the server"
     else -> "Playback failed"
+}
+
+private val OWN_START_MESSAGES = setOf(
+    "Unknown book",
+    "The book's server is no longer configured",
+    "This server cannot play books yet",
+)
+
+/**
+ * A fixed, safe text for why a playback session could not start. Raw exception text can hold an address
+ * or a piece of the server's answer, so only the repository's own fixed messages pass through.
+ */
+internal fun safeStartMessage(failure: Throwable): String = when {
+    failure is com.chapterplayer.data.auth.SignInRequiredException -> "Sign in again in Settings"
+    failure is com.chapterplayer.data.remote.HttpStatusException -> when (failure.status.value) {
+        401, 403 -> "Sign in again in Settings"
+        404 -> "This book is no longer on the server"
+        else -> "The server could not start playback"
+    }
+    failure is java.io.IOException -> "Cannot reach the server"
+    failure.message in OWN_START_MESSAGES -> failure.message!!
+    else -> PlaybackStartException.DEFAULT_MESSAGE
 }

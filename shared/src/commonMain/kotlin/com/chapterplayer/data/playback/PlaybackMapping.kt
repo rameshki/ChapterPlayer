@@ -14,6 +14,9 @@ data class TrackItemSpec(
     val mimeType: String,
     val title: String,
     val artist: String,
+    /** Where this file starts on the book's timeline, so the service can skip by time across files. */
+    val startMs: Long,
+    val durationMs: Long,
 )
 
 /** The player's items for [session], one per audio file, in file order. */
@@ -25,6 +28,8 @@ fun trackItemSpecs(book: AudioBook, session: PlaybackSession): List<TrackItemSpe
             mimeType = track.mimeType,
             title = book.title,
             artist = book.author,
+            startMs = track.startMs,
+            durationMs = track.durationMs,
         )
     }
 

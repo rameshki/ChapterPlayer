@@ -46,8 +46,8 @@ class PlaybackMappingTest {
         )
         assertEquals(
             listOf(
-                TrackItemSpec("abs_book1/0", "http://h/a", "audio/mp4", "Sample Book", "Sample Author"),
-                TrackItemSpec("abs_book1/1", "http://h/b", "audio/mpeg", "Sample Book", "Sample Author"),
+                TrackItemSpec("abs_book1/0", "http://h/a", "audio/mp4", "Sample Book", "Sample Author", 0, 1_000),
+                TrackItemSpec("abs_book1/1", "http://h/b", "audio/mpeg", "Sample Book", "Sample Author", 1_000, 2_000),
             ),
             specs,
         )

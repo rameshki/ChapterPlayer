@@ -2,6 +2,7 @@ package com.chapterplayer.data.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -16,10 +17,9 @@ import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.domain.playback.locate
-import com.chapterplayer.domain.playback.resumeStart
-import com.chapterplayer.domain.playback.skipBackTo
-import com.chapterplayer.domain.playback.skipForwardTo
+import com.chapterplayer.domain.browse.currentChapterIndex
 import com.chapterplayer.domain.playback.sleepRemainingMs
+import com.chapterplayer.domain.playback.sleepRemainingToMs
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CancellationException
@@ -69,10 +69,8 @@ class AndroidPlaybackController(
     private var listenedMs = 0L
     private var sleepPlayedMs = 0L
     private var lastTickAt: Long? = null
+    private var sleepTargetEndMs: Long? = null
     private var ticker: Job? = null
-
-    // When the player was paused, to decide how far to rewind on resume. Null on a fresh start.
-    private var pausedAt: Long? = null
 
     private val _state = MutableStateFlow(PlaybackState())
     override val state: StateFlow<PlaybackState> = _state.asStateFlow()
@@ -85,9 +83,6 @@ class AndroidPlaybackController(
             if (events.contains(Player.EVENT_IS_PLAYING_CHANGED)) {
                 accumulate()
                 if (player.isPlaying) startTicker() else ticker?.cancel()
-            }
-            if (events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED) && !player.playWhenReady && pausedAt == null) {
-                pausedAt = SystemClock.elapsedRealtime()
             }
             publish()
         }
@@ -115,7 +110,7 @@ class AndroidPlaybackController(
     override suspend fun load(book: AudioBook, startMs: Long) {
         val started = repository.startPlayback(book.id).getOrElse { failure ->
             if (failure is CancellationException) throw failure
-            throw PlaybackStartException(failure.message ?: PlaybackStartException.DEFAULT_MESSAGE)
+            throw PlaybackStartException(safeStartMessage(failure))
         }
         if (started.tracks.isEmpty()) {
             closeSession(started, 0L, 0L)
@@ -146,7 +141,6 @@ class AndroidPlaybackController(
         error = null
         listenedMs = 0L
         sleepPlayedMs = 0L
-        pausedAt = null
         lastTickAt = null
         publish()
     }
@@ -163,21 +157,20 @@ class AndroidPlaybackController(
                     .setArtist(spec.artist)
                     .setIsPlayable(true)
                     .setIsBrowsable(false)
+                    .setExtras(
+                        Bundle().apply {
+                            putLong(EXTRA_START_MS, spec.startMs)
+                            putLong(EXTRA_DURATION_MS, spec.durationMs)
+                        }
+                    )
                     .build()
             )
             .build()
 
     // -- Transport ---------------------------------------------------------------------------
 
+    // Rewinding after a pause is done by the service, so it applies to every way of resuming.
     override fun play() = withPlayer { player ->
-        val paused = pausedAt
-        if (paused != null && !player.isPlaying) {
-            val pausedFor = SystemClock.elapsedRealtime() - paused
-            val position = _state.value.positionMs
-            val resumeAt = resumeStart(position, pausedFor)
-            if (resumeAt != position) seekToBook(player, resumeAt)
-        }
-        pausedAt = null
         error = null
         player.play()
     }
@@ -188,12 +181,10 @@ class AndroidPlaybackController(
 
     override fun setSpeed(speed: Float) = withPlayer { it.setPlaybackSpeed(speed) }
 
-    override fun skipBack() = withPlayer { seekToBook(it, skipBackTo(_state.value.positionMs)) }
+    // The service skips on the book timeline across files, the same for the notification and the car.
+    override fun skipBack() = withPlayer { it.seekBack() }
 
-    override fun skipForward() = withPlayer {
-        val current = _state.value
-        seekToBook(it, skipForwardTo(current.positionMs, current.durationMs))
-    }
+    override fun skipForward() = withPlayer { it.seekForward() }
 
     override fun seekToChapter(index: Int) = withPlayer {
         val chapter = _state.value.chapters.getOrNull(index) ?: return@withPlayer
@@ -210,6 +201,11 @@ class AndroidPlaybackController(
     override fun setSleepTimer(timer: SleepTimer) {
         accumulate()
         sleepPlayedMs = 0L
+        // End of chapter means the chapter playing now: its end is fixed here, not looked up on every tick.
+        val now = _state.value
+        sleepTargetEndMs = if (timer == SleepTimer.EndOfChapter) {
+            currentChapterIndex(now.chapters, now.positionMs)?.let { now.chapters[it].endMs }
+        } else null
         _sleepTimer.value = timer
         publish()
     }
@@ -228,6 +224,7 @@ class AndroidPlaybackController(
                     controller?.pause()
                     _sleepTimer.value = SleepTimer.Off
                     sleepPlayedMs = 0L
+                    sleepTargetEndMs = null
                     publish()
                 }
             }
@@ -276,7 +273,12 @@ class AndroidPlaybackController(
             sleepRemainingMs = null,
             error = error,
         )
-        val remaining = sleepRemainingMs(_sleepTimer.value, sleepPlayedMs, book.positionMs, book.chapters, speed)
+        val target = sleepTargetEndMs
+        val remaining = if (_sleepTimer.value == SleepTimer.EndOfChapter) {
+            target?.let { sleepRemainingToMs(it, book.positionMs, speed) }
+        } else {
+            sleepRemainingMs(_sleepTimer.value, sleepPlayedMs, book.positionMs, book.chapters, speed)
+        }
         _state.value = book.copy(sleepRemainingMs = remaining)
     }
 

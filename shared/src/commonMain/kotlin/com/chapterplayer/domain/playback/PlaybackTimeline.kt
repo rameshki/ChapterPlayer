@@ -31,3 +31,14 @@ fun bookPosition(tracks: List<TrackSpan>, trackIndex: Int, offsetMs: Long): Long
     val validOffset = offsetMs.coerceIn(0, track.durationMs)
     return track.startMs + validOffset
 }
+
+/**
+ * Where a jump of [deltaMs] (negative goes back) from [offsetMs] in file [trackIndex] lands on the book's
+ * timeline, which may be in another file. Clamped to the start and the end of the book; null for no tracks.
+ */
+fun seekByTarget(tracks: List<TrackSpan>, trackIndex: Int, offsetMs: Long, deltaMs: Long): TrackPosition? {
+    val last = tracks.lastOrNull() ?: return null
+    val total = last.startMs + last.durationMs
+    val target = (bookPosition(tracks, trackIndex, offsetMs) + deltaMs).coerceIn(0L, total)
+    return locate(tracks, target)
+}
