@@ -93,3 +93,8 @@
 
 ## Delegation to the local models
 Task 6.1 (and any further pure function that appears) goes to gemma4:26b through OpenClaw with tests first; the DTO + mapper part of 6.2 likewise (one file per call, header dictated, "common Kotlin only" in the prompt). Service, controller, Compose and Koin work stay with Claude implementers.
+
+## For step 9 (Android Auto)
+- The service gate `isOwnTrackRequest` (in `LibraryCallback.onAddMediaItems`) blocks every foreign controller, Android Auto and the Assistant included. Step 9 must replace it with a resolver: our own ids pass, ids from the browse tree are resolved from the tree, and other controllers are allowed by an allowlist of Auto packages or `isTrusted`.
+- Starting a book from the car must go through the same load path as the phone (`PlaybackController.load`: server session, listened time, `PlaybackProgressSaver`), not straight into the player.
+- `onPlaybackResumption` must be implemented (resuming from the headset or system controls after the process died).

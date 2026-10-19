@@ -37,7 +37,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ExecutionException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -59,11 +61,11 @@ class AndroidPlaybackController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val connectLock = Mutex()
     private val loadLock = Mutex()
-    private var lastPositionMs = 0L
     private var controller: MediaController? = null
 
-    private var session: PlaybackSession? = null
-    private var spans = emptyList<com.chapterplayer.domain.playback.TrackSpan>()
+    private val loaded = CurrentBook()
+    private val session get() = loaded.session
+    private val spans get() = loaded.spans
     private var error: String? = null
 
     // Time played (wall clock) since the session began, for the server, and since the sleep timer was set.
@@ -115,7 +117,6 @@ class AndroidPlaybackController(
                 accumulate()
                 closeCurrentSession()
                 lastTickAt = null
-                spans = emptyList()
                 error = null
                 _state.value = PlaybackState()
             }
@@ -137,32 +138,40 @@ class AndroidPlaybackController(
             throw PlaybackStartException("This book has no audio to play")
         }
 
-        // A new server session replaces the old one, whichever book it was for.
-        closeCurrentSession()
-        // A timer belongs to the book it was set for.
-        sleep.reset()
-        _sleepTimer.value = SleepTimer.Off
-
         val specs = trackItemSpecs(book, started)
         val newSpans = trackSpans(started)
         val startAt = resolveStartMs(startMs, started.startPositionMs, started.durationMs)
         val target = locate(newSpans, startAt)
-        session = started
-        spans = newSpans
-        try {
-            // Not cancellable: once the player holds the items the new server session must stay open.
-            withContext(NonCancellable + Dispatchers.Main) {
-                val player = connect()
+
+        // All or nothing, and not cancellable: if the caller leaves meanwhile (Back during "Starting") the
+        // block still finishes, so the player and the book state agree. The new session stays open and
+        // published; only a real failure rolls back completely (player cleared, new session closed).
+        val failure = runToEnd(Dispatchers.Main) {
+            val player = try {
+                withTimeout(CONNECT_TIMEOUT_MS) { connect() }
+            } catch (e: TimeoutCancellationException) {
+                throw IllegalStateException("The player did not answer")
+            }
+            try {
+                // A new server session replaces the old one, whichever book it was for.
+                accumulate()
+                closeCurrentSession()
+                // A timer belongs to the book it was set for.
+                sleep.reset()
+                _sleepTimer.value = SleepTimer.Off
                 player.pause() // the old book stops (and is saved) before the new one is swapped in
                 player.setMediaItems(specs.map(::toMediaItem), target?.trackIndex ?: 0, target?.offsetMs ?: 0L)
                 player.prepare()
+                // Only now does the controller name the new book, so no state mixes the two.
+                loaded.begin(started, newSpans)
+            } catch (e: Exception) {
+                loaded.end()
+                try { player.clearMediaItems() } catch (_: Exception) { }
+                closeSession(started, 0L, 0L)
+                throw e
             }
-        } catch (e: Exception) {
-            session = null
-            closeSession(started, 0L, 0L)
-            if (e is CancellationException) throw e
-            throw PlaybackStartException("Could not start the player")
         }
+        if (failure != null) throw PlaybackStartException("Could not start the player")
         error = null
         listenedMs = 0L
         lastTickAt = null
@@ -195,6 +204,8 @@ class AndroidPlaybackController(
 
     // Rewinding after a pause is done by the service, so it applies to every way of resuming.
     override fun play() = withPlayer { player ->
+        // Nothing loaded (the session ended): there is nothing to play; the screen loads the book again.
+        if (!loaded.isLoaded) return@withPlayer
         error = null
         player.play()
     }
@@ -292,7 +303,7 @@ class AndroidPlaybackController(
             sleepRemainingMs = null,
             error = error,
         ).copy(playWhenReady = player.playWhenReady)
-        lastPositionMs = book.positionMs
+        loaded.seen(book.positionMs)
         val remaining = sleep.remainingMs(book.positionMs, book.chapters, speed)
         _state.value = book.copy(sleepRemainingMs = remaining)
     }
@@ -348,12 +359,9 @@ class AndroidPlaybackController(
     // -- Ending ------------------------------------------------------------------------------
 
     private fun closeCurrentSession() {
-        val ended = session ?: return
-        val position = lastPositionMs
+        val (ended, position) = loaded.end() ?: return
         accumulate()
-        val listened = listenedMs
-        session = null
-        closeSession(ended, position, listened)
+        closeSession(ended, position, listenedMs)
     }
 
     // Best effort and off the caller's path: the screen must not wait for the server.
@@ -367,6 +375,17 @@ class AndroidPlaybackController(
     fun endSession() {
         accumulate()
         closeCurrentSession()
+        // Back to "nothing loaded": the next Resume loads the book again (fresh session, saved position).
+        ticker?.cancel()
+        lastTickAt = null
+        error = null
+        sleep.reset()
+        _sleepTimer.value = SleepTimer.Off
+        controller?.takeIf { it.isConnected }?.let {
+            it.pause()
+            it.clearMediaItems()
+        }
+        _state.value = PlaybackState()
     }
 
     override fun release() {
@@ -382,6 +401,7 @@ class AndroidPlaybackController(
     }
 
     private companion object {
+        const val CONNECT_TIMEOUT_MS = 15_000L
         const val TICK_MS = 500L
         const val MIN_TICK_MS = 20L
     }

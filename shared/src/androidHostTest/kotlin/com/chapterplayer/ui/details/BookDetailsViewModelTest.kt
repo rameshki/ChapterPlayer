@@ -724,4 +724,18 @@ class BookDetailsViewModelTest {
 
         assertTrue(s.controller.seeks.isEmpty())
     }
+
+    @Test
+    fun `the same player error shows again after it went away and came back`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState().copy(error = "Playback failed")
+        val state = collect(s)
+        s.vm.dismissPlayError()
+        assertNull(state().playError)
+
+        s.controller.playback.value = loadedState() // fixed by playing again
+        s.controller.playback.value = loadedState().copy(error = "Playback failed")
+
+        assertEquals("Playback failed", state().playError)
+    }
 }

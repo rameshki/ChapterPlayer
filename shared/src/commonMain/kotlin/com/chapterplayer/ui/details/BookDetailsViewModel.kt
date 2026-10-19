@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -141,6 +142,13 @@ class BookDetailsViewModel(
 
     init {
         loadJob = viewModelScope.launch { fetchIfCached() }
+        // When the player error goes away, a dismissal is forgotten so the same text can show again.
+        viewModelScope.launch {
+            controller.state.map { it.error }.distinctUntilChanged().collect { error ->
+                val now = local.value
+                if (error == null && now.dismissedPlayerError != null) local.value = Local(now.starting, now.error)
+            }
+        }
     }
 
     /** The play control: starts, pauses or resumes this book. */
