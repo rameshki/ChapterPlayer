@@ -114,8 +114,8 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [x] Downloaded state in the UI (built now, filled in by Stage 3): badges on covers, Downloaded filter chip and Filter sheet on the Library views and group lists (Home and Search apply the saved filter), Downloads tab empty state, offline dimming. Per-book download state, always "not downloaded" until Stage 3
 - [x] Book details screen (description, chapters, series, narrator), with links to the series and to more books by the author and narrator. Resume and chapter taps stay inactive until playback (steps 6-7)
 - [x] Load chapters per book from `/api/items/{id}`: the library list response has none, only `numChapters`
-- [ ] Replace the ABS stream URL (`/api/items/{id}/play` starts a playback session, it is not an audio URL)
-- [ ] Media3 playback: chapters, speed, sleep timer, ±30s skip, lock-screen controls
+- [x] Replace the ABS stream URL (`/api/items/{id}/play` starts a playback session, it is not an audio URL)
+- [x] Media3 playback: chapters, speed, sleep timer, ±30s skip, lock-screen controls (the service and controller support speed, sleep timer, skips and chapter jumps; the controls for speed and sleep timer appear on screen with the full player in step 7; today Play/Pause and chapter taps are on the book details screen)
 - [ ] Full player sheet + mini player
 - [ ] ABS playback sessions and progress sync: save locally first, sync every ~10s, queue while offline and retry with backoff (AudioBooth's approach)
 - [ ] Bookmarks synced with ABS
