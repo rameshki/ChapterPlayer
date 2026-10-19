@@ -77,11 +77,18 @@ class BookRepositoryImpl(
                 ?: error("No library source for ${server.source}")
             val now = clock()
             val snapshot = source.fetchSnapshot(server)
-            val books = snapshot.books.map { BookEntity.fromDomain(it, cachedAt = now) }
+            val incoming = snapshot.books.map { BookEntity.fromDomain(it, cachedAt = now) }
             val libraries = snapshot.libraries
             val collections = snapshot.collections
             // All fetching is done; every write below is one transaction, so a cancel or a crash keeps the old rows.
             inTransaction {
+                // The library list carries no chapters: keep the ones details cached for books still on the server.
+                val cached = bookDao.getByServer(server.id).associate { it.id to it.chaptersJson }
+                val noChapters = ChapterJson.encode(emptyList())
+                val books = incoming.map { row ->
+                    val old = cached[row.id]
+                    if (row.chaptersJson == noChapters && old != null) row.copy(chaptersJson = old) else row
+                }
                 bookDao.deleteByServer(server.id)
                 bookDao.insertAll(books)
                 if (libraries != null) {

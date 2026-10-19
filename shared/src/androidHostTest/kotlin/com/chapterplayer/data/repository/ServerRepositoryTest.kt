@@ -56,7 +56,8 @@ class ServerRepositoryTest {
         override fun observeBySource(source: String): Flow<List<BookEntity>> = books.map { it.filter { b -> b.source == source } }
         override fun observeByServer(serverId: String): Flow<List<BookEntity>> = books.map { it.filter { b -> b.serverId == serverId } }
         override suspend fun getById(id: String): BookEntity? = books.value.firstOrNull { it.id == id }
-        override suspend fun insertAll(books: List<BookEntity>) { this.books.value = this.books.value + books }
+        override suspend fun getByServer(serverId: String): List<BookEntity> = books.value.filter { it.serverId == serverId }
+        override suspend fun insertAll(books: List<BookEntity>) { val ids = books.map { it.id }.toSet(); this.books.value = this.books.value.filter { it.id !in ids } + books }
         override suspend fun insert(book: BookEntity) { books.value = books.value + book }
         override suspend fun updateChapters(id: String, json: String) {
             books.value = books.value.map { if (it.id == id) it.copy(chaptersJson = json) else it }
