@@ -165,7 +165,7 @@ private fun LoadedList(
         item(key = "header") { DetailsHeader(state, book, onOpenGroup) }
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
-            DetailsTab.CHAPTERS -> chaptersTab(state.chapters)
+            DetailsTab.CHAPTERS -> chaptersTab(state.chapters, emptyChaptersText(state.detailsLoaded, state.loadingDetails))
             DetailsTab.ABOUT -> aboutTab(state.about, state.links, onOpenGroup)
             DetailsTab.SERIES -> seriesTab(state.series, state.links.series, onOpenBook, onOpenGroup)
         }

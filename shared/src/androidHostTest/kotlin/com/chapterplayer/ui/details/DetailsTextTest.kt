@@ -65,4 +65,24 @@ class DetailsTextTest {
         assertFalse(Screen.BookDetails.isShowing(route, "zz", "li_a/b"))
         assertFalse(Screen.BookDetails.isShowing(route, null, "li_a/b"))
     }
+
+    @Test
+    fun `an empty chapter list says loading, needs a connection or none by what happened`() {
+        assertEquals("Loading chapters...", emptyChaptersText(detailsLoaded = false, loadingDetails = true))
+        assertEquals("Chapters need a connection", emptyChaptersText(detailsLoaded = false, loadingDetails = false))
+        assertEquals("No chapters in this book", emptyChaptersText(detailsLoaded = true, loadingDetails = false))
+        assertEquals("No chapters in this book", emptyChaptersText(detailsLoaded = true, loadingDetails = true))
+    }
+
+    @Test
+    fun `more by links are capped to three with a toggle`() {
+        val five = listOf(1, 2, 3, 4, 5)
+        assertEquals(listOf(1, 2, 3), cappedLinks(five, expanded = false))
+        assertEquals(five, cappedLinks(five, expanded = true))
+        assertEquals(listOf(1, 2, 3), cappedLinks(listOf(1, 2, 3), expanded = false))
+        assertEquals("Show all (5)", linksToggleLabel(5, expanded = false))
+        assertEquals("Show less", linksToggleLabel(5, expanded = true))
+        assertNull(linksToggleLabel(3, expanded = false))
+        assertNull(linksToggleLabel(0, expanded = true))
+    }
 }

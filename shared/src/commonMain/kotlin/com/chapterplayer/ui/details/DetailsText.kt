@@ -35,3 +35,30 @@ internal fun tabLabel(tab: DetailsTab): String = when (tab) {
 /** The length and time-left line under the author, or null when there is nothing to say. */
 internal fun lengthLine(lengthText: String, timeLeft: String?): String? =
     listOfNotNull(lengthText.takeIf { it.isNotBlank() }, timeLeft).joinToString(" · ").ifEmpty { null }
+
+internal const val NO_CHAPTERS_TEXT = "No chapters in this book"
+internal const val LOADING_CHAPTERS_TEXT = "Loading chapters..."
+internal const val CHAPTERS_NEED_CONNECTION_TEXT = "Chapters need a connection"
+
+/**
+ * What an empty chapter list says: "none" only once the server answered, "loading" while it is asked,
+ * and "need a connection" when nothing was cached and the call failed or never ran.
+ */
+internal fun emptyChaptersText(detailsLoaded: Boolean, loadingDetails: Boolean): String = when {
+    detailsLoaded -> NO_CHAPTERS_TEXT
+    loadingDetails -> LOADING_CHAPTERS_TEXT
+    else -> CHAPTERS_NEED_CONNECTION_TEXT
+}
+
+internal const val MORE_LINKS_LIMIT = 3
+
+/** The links to draw: the first [limit] unless [expanded]. */
+internal fun <T> cappedLinks(links: List<T>, expanded: Boolean, limit: Int = MORE_LINKS_LIMIT): List<T> =
+    if (expanded || links.size <= limit) links else links.take(limit)
+
+/** The toggle under a capped list, or null when everything already fits. */
+internal fun linksToggleLabel(total: Int, expanded: Boolean, limit: Int = MORE_LINKS_LIMIT): String? = when {
+    total <= limit -> null
+    expanded -> "Show less"
+    else -> "Show all ($total)"
+}

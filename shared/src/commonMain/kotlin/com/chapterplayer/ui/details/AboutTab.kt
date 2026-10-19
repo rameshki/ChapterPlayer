@@ -5,12 +5,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.domain.browse.AboutInfo
 import com.chapterplayer.domain.browse.BookLinks
+import com.chapterplayer.domain.browse.PersonLink
 import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -70,11 +71,11 @@ internal fun LazyListScope.aboutTab(
     }
     if (links.authors.isNotEmpty() || links.narrators.isNotEmpty()) {
         item(key = "about-more-title") { SectionTitle("More") }
-        items(links.authors, key = { "more-author-${it.key}" }) { person ->
-            MoreByRow(moreByText(person, asNarrator = false)) { onOpenGroup(LibraryView.AUTHORS, person.key) }
+        if (links.authors.isNotEmpty()) item(key = "more-authors") {
+            MoreBySection(links.authors, asNarrator = false) { onOpenGroup(LibraryView.AUTHORS, it) }
         }
-        items(links.narrators, key = { "more-narrator-${it.key}" }) { person ->
-            MoreByRow(moreByText(person, asNarrator = true)) { onOpenGroup(LibraryView.NARRATORS, person.key) }
+        if (links.narrators.isNotEmpty()) item(key = "more-narrators") {
+            MoreBySection(links.narrators, asNarrator = true) { onOpenGroup(LibraryView.NARRATORS, it) }
         }
     }
 }
@@ -138,6 +139,23 @@ private fun Genres(genres: List<String>) {
                     .background(SurfaceElevated)
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             )
+        }
+    }
+}
+
+/** One role's link rows, capped to the first few with a Show all / Show less toggle. */
+@Composable
+private fun MoreBySection(people: List<PersonLink>, asNarrator: Boolean, onOpen: (key: String) -> Unit) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column {
+        cappedLinks(people, expanded).forEach { person ->
+            MoreByRow(moreByText(person, asNarrator)) { onOpen(person.key) }
+        }
+        linksToggleLabel(people.size, expanded)?.let { label ->
+            TextButton(
+                onClick = { expanded = !expanded },
+                modifier = Modifier.padding(horizontal = 8.dp).heightIn(min = 48.dp)
+            ) { Text(label, color = AmberGold) }
         }
     }
 }

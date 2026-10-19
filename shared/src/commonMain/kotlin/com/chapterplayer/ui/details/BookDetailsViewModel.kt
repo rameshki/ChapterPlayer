@@ -76,6 +76,7 @@ class BookDetailsViewModel(
                 timeLeft = timeLeft,
                 lengthText = formatLength(book.durationMs),
                 loadingDetails = live.loading,
+                detailsLoaded = live.details != null,
                 error = live.error,
                 selectedTab = tab,
                 resumeEnabled = false
@@ -98,7 +99,8 @@ class BookDetailsViewModel(
 
     // An unknown or deleted book never asks the server.
     private suspend fun fetchIfCached() {
-        if (books.observeAllBooks().first().any { it.id == bookId }) fetch()
+        // `whole` already runs on the injected dispatcher, so the lookup stays off the main thread.
+        if (whole.first().book != null) fetch()
     }
 
     private suspend fun fetch() {

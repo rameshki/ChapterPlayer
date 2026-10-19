@@ -21,6 +21,8 @@ data class BookDetailsUiState(
     val timeLeft: String? = null,
     val lengthText: String = "",
     val loadingDetails: Boolean = false,
+    /** True once the server has answered with this book's details (then an empty chapter list is real). */
+    val detailsLoaded: Boolean = false,
     val error: String? = null,
     val selectedTab: DetailsTab = DetailsTab.CHAPTERS,
     /** Playback arrives in steps 6-7. */

@@ -261,7 +261,24 @@ class BookDetailsViewModelTest {
         assertNull(state().error)
         assertFalse(state().loadingDetails)
         assertTrue(state().about!!.needsConnection)
+        assertFalse(state().detailsLoaded)
         assertEquals(listOf("Old 1", "Old 2"), state().chapters.map { it.title })
+    }
+
+    @Test
+    fun `details count as loaded only after a successful answer, even with no chapters`() = runTest {
+        val repo = DetailsRepo(listOf(testBook("a")))
+        repo.next = { Result.failure(java.io.IOException("offline")) }
+        val s = Setup(repo, "a")
+        val state = collect(s)
+        assertFalse(state().detailsLoaded)
+        assertTrue(state().chapters.isEmpty())
+
+        repo.next = { Result.success(details()) }
+        s.vm.retry()
+
+        assertTrue(state().detailsLoaded)
+        assertTrue(state().chapters.isEmpty())
     }
 
     @Test

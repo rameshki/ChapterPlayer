@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -32,11 +34,11 @@ import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
 
 /** The chapter list as rows of the details list; keys are chapter indexes so hundreds of rows stay cheap. */
-internal fun LazyListScope.chaptersTab(chapters: List<ChapterRow>) {
+internal fun LazyListScope.chaptersTab(chapters: List<ChapterRow>, emptyText: String) {
     if (chapters.isEmpty()) {
         item(key = "chapters-empty") {
             Text(
-                text = "No chapters in this book",
+                text = emptyText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
@@ -68,6 +70,8 @@ private fun ChapterListRow(row: ChapterRow) {
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
+            // Gives the accent bar a bounded height to fill.
+            .height(IntrinsicSize.Min)
             .background(if (row.isCurrent) SurfaceElevated else Color.Transparent)
             .semantics(mergeDescendants = true) {
                 selected = row.isCurrent
