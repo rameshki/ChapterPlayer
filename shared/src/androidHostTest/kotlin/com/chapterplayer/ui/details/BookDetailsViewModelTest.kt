@@ -6,7 +6,12 @@ import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.data.playback.PlaybackStartException
+import com.chapterplayer.data.playback.PlaybackState
+import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
+import com.chapterplayer.testing.FakeConnectivity
+import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.FakeDownloadStates
 import com.chapterplayer.testing.testBook
 import kotlinx.coroutines.CompletableDeferred
@@ -52,8 +57,17 @@ class BookDetailsViewModelTest {
     private fun cachedBook(id: String = "a") =
         testBook(id).copy(chapters = chapters("Old 1", "Old 2"), durationMs = 2_000L)
 
-    private class Setup(val repo: DetailsRepo, id: String) {
-        val vm = BookDetailsViewModel(id, repo, FakeDownloadStates(), Dispatchers.Main)
+    private class Setup(
+        val repo: DetailsRepo,
+        id: String,
+        val downloads: FakeDownloadStates = FakeDownloadStates(),
+        val controller: FakePlaybackController = FakePlaybackController(),
+        val connectivity: FakeConnectivity = FakeConnectivity(),
+        val settings: FakeAppSettings = FakeAppSettings()
+    ) {
+        val vm = BookDetailsViewModel(
+            id, repo, downloads, controller, connectivity, settings, Dispatchers.Main, nowMs = { 777L }
+        )
     }
 
     private fun TestScope.collect(s: Setup): () -> BookDetailsUiState {
@@ -64,11 +78,11 @@ class BookDetailsViewModelTest {
     private fun progress(id: String, pos: Long, finished: Boolean = false) = ReadingProgress(id, pos, 2_000L, 1L, finished)
 
     @Test
-    fun `opens on the Chapters tab and playback is not enabled yet`() = runTest {
+    fun `opens on the Chapters tab and nothing is playing`() = runTest {
         val s = Setup(DetailsRepo(listOf(cachedBook())), "a")
         val state = collect(s)
         assertEquals(DetailsTab.CHAPTERS, state().selectedTab)
-        assertFalse(state().resumeEnabled)
+        assertEquals(DetailsPlayback.NOT_PLAYING, state().playback)
         assertEquals(DetailsPhase.LOADED, state().phase)
     }
 
@@ -161,8 +175,8 @@ class BookDetailsViewModelTest {
     fun `details load once and not again when books, progress or downloads change`() = runTest {
         val repo = DetailsRepo(listOf(cachedBook()))
         val downloads = FakeDownloadStates()
-        val s = BookDetailsViewModel("a", repo, downloads, Dispatchers.Main)
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.uiState.collect {} }
+        val s = Setup(repo, "a", downloads)
+        collect(s)
         assertEquals(1, repo.calls)
 
         repo.progress.value = listOf(progress("a", 500L))
@@ -317,10 +331,10 @@ class BookDetailsViewModelTest {
     fun `series entries carry download state`() = runTest {
         val repo = DetailsRepo(listOf(testBook("a", seriesName = "Saga"), testBook("b", seriesName = "Saga")))
         val downloads = FakeDownloadStates(mapOf("a" to DownloadState.DOWNLOADED))
-        val s = BookDetailsViewModel("a", repo, downloads, Dispatchers.Main)
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.uiState.collect {} }
+        val s = Setup(repo, "a", downloads)
+        collect(s)
 
-        assertEquals(DownloadState.DOWNLOADED, s.uiState.value.series.first { it.item.book.id == "a" }.item.downloadState)
+        assertEquals(DownloadState.DOWNLOADED, s.vm.uiState.value.series.first { it.item.book.id == "a" }.item.downloadState)
     }
 
     @Test
@@ -356,5 +370,353 @@ class BookDetailsViewModelTest {
 
         repo.progress.value = listOf(ReadingProgress("a", 3_600_000L, 3_600_000L, 1L, isFinished = true))
         assertEquals("Finished", state().timeLeft)
+    }
+
+    // ---- playback ----
+
+    private fun longBook(id: String = "a") = cachedBook(id).copy(durationMs = 100_000L)
+
+    private fun fresh(book: AudioBook = longBook(), id: String = book.id) = Setup(DetailsRepo(listOf(book)), id)
+
+    private fun loadedState(bookId: String = "a", playing: Boolean = false, positionMs: Long = 0L, durationMs: Long = 100_000L) =
+        PlaybackState(bookId = bookId, isPlaying = playing, positionMs = positionMs, durationMs = durationMs)
+
+    @Test
+    fun `resume starts at the saved position and plays`() = runTest {
+        val s = fresh()
+        s.repo.progress.value = listOf(ReadingProgress("a", 40_000L, 100_000L, 1L))
+        val state = collect(s)
+        assertEquals(40_000L, state().resumePositionMs)
+
+        s.vm.onResumeClicked()
+
+        assertEquals(listOf("a" to 40_000L), s.controller.loads)
+        assertEquals(1, s.controller.plays)
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+    }
+
+    @Test
+    fun `no progress or a finished book starts at zero`() = runTest {
+        val s = fresh()
+        val state = collect(s)
+        s.vm.onResumeClicked()
+        assertEquals(listOf("a" to 0L), s.controller.loads)
+
+        val finished = fresh()
+        finished.repo.progress.value = listOf(ReadingProgress("a", 99_000L, 100_000L, 1L, isFinished = true))
+        collect(finished)
+        finished.vm.onResumeClicked()
+        assertEquals(listOf("a" to 0L), finished.controller.loads)
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+    }
+
+    @Test
+    fun `starting blocks a second click`() = runTest {
+        val s = fresh()
+        val gate = CompletableDeferred<Unit>()
+        s.controller.onLoad = { _, _ -> gate.await() }
+        val state = collect(s)
+
+        s.vm.onResumeClicked()
+        assertEquals(DetailsPlayback.STARTING, state().playback)
+        s.vm.onResumeClicked()
+        s.vm.onChapterClicked(1)
+        gate.complete(Unit)
+
+        assertEquals(1, s.controller.loads.size)
+        assertEquals(1, s.controller.plays)
+    }
+
+    @Test
+    fun `a playback start failure shows its message and returns to not playing`() = runTest {
+        val s = fresh()
+        s.controller.onLoad = { _, _ -> throw PlaybackStartException("Sign in again in Settings") }
+        val state = collect(s)
+
+        s.vm.onResumeClicked()
+
+        assertEquals("Sign in again in Settings", state().playError)
+        assertEquals(DetailsPlayback.NOT_PLAYING, state().playback)
+        assertEquals(0, s.controller.plays)
+    }
+
+    @Test
+    fun `an unexpected failure shows the generic text without its own message`() = runTest {
+        val s = fresh()
+        s.controller.onLoad = { _, _ -> throw IllegalStateException("secret http://host token=abc") }
+        val state = collect(s)
+
+        s.vm.onResumeClicked()
+
+        assertEquals("Could not start playback", state().playError)
+        assertEquals(DetailsPlayback.NOT_PLAYING, state().playback)
+    }
+
+    @Test
+    fun `a retry after a failure clears the error and starts again`() = runTest {
+        val s = fresh()
+        s.controller.onLoad = { _, _ -> throw PlaybackStartException("No luck") }
+        val state = collect(s)
+        s.vm.onResumeClicked()
+        assertNotNull(state().playError)
+
+        s.controller.onLoad = { book, _ -> s.controller.playback.value = loadedState(book.id) }
+        s.vm.onResumeClicked()
+
+        assertNull(state().playError)
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+    }
+
+    @Test
+    fun `dismissing the error clears it`() = runTest {
+        val s = fresh()
+        s.controller.onLoad = { _, _ -> throw PlaybackStartException("No luck") }
+        val state = collect(s)
+        s.vm.onResumeClicked()
+
+        s.vm.dismissPlayError()
+
+        assertNull(state().playError)
+    }
+
+    @Test
+    fun `cancellation is not turned into an error`() = runTest {
+        val s = fresh()
+        s.controller.onLoad = { _, _ -> throw kotlinx.coroutines.CancellationException("cancelled") }
+        val state = collect(s)
+
+        s.vm.onResumeClicked()
+
+        assertNull(state().playError)
+        assertEquals(DetailsPlayback.NOT_PLAYING, state().playback)
+        assertEquals(0, s.controller.plays)
+    }
+
+    @Test
+    fun `clicking while playing pauses and clicking while paused plays`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(playing = true)
+        val state = collect(s)
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+
+        s.vm.onResumeClicked()
+        assertEquals(1, s.controller.pauses)
+        assertEquals(DetailsPlayback.PAUSED, state().playback)
+
+        s.vm.onResumeClicked()
+        assertEquals(1, s.controller.plays)
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+        assertTrue(s.controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `another book playing is replaced and does not count as this book`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(bookId = "other", playing = true)
+        val state = collect(s)
+        assertEquals(DetailsPlayback.NOT_PLAYING, state().playback)
+
+        s.vm.onResumeClicked()
+
+        assertEquals(listOf("a" to 0L), s.controller.loads)
+        assertEquals(0, s.controller.pauses)
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+    }
+
+    @Test
+    fun `offline and not downloaded cannot play and says why`() = runTest {
+        val s = fresh()
+        s.connectivity.online.value = false
+        val state = collect(s)
+
+        assertFalse(state().canPlay)
+        assertEquals("Needs a connection to play", state().cannotPlayReason)
+        s.vm.onResumeClicked()
+        assertTrue(s.controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `offline but downloaded can play`() = runTest {
+        val s = fresh()
+        s.connectivity.online.value = false
+        s.downloads.states.value = mapOf("a" to DownloadState.DOWNLOADED)
+        val state = collect(s)
+
+        assertTrue(state().canPlay)
+        assertNull(state().cannotPlayReason)
+    }
+
+    @Test
+    fun `downloaded only blocks a book that is not downloaded`() = runTest {
+        val s = fresh()
+        s.settings.downloadedOnlyFlow.value = true
+        val state = collect(s)
+
+        assertFalse(state().canPlay)
+        assertEquals("Needs a connection to play", state().cannotPlayReason)
+
+        s.downloads.states.value = mapOf("a" to DownloadState.DOWNLOADED)
+        assertTrue(state().canPlay)
+    }
+
+    @Test
+    fun `online with a book that is not downloaded can play`() = runTest {
+        val state = collect(fresh())
+
+        assertTrue(state().canPlay)
+        assertNull(state().cannotPlayReason)
+    }
+
+    @Test
+    fun `pausing works even when the connection is gone`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(playing = true)
+        s.connectivity.online.value = false
+        collect(s)
+
+        s.vm.onResumeClicked()
+
+        assertEquals(1, s.controller.pauses)
+    }
+
+    @Test
+    fun `a chapter click while the book is loaded seeks to that chapter`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(playing = true)
+        collect(s)
+
+        s.vm.onChapterClicked(1)
+
+        assertEquals(listOf(1), s.controller.chapterSeeks)
+        assertTrue(s.controller.loads.isEmpty())
+        assertEquals(0, s.controller.pauses)
+        assertEquals(0, s.controller.plays)
+    }
+
+    @Test
+    fun `a chapter click while paused seeks and keeps it paused`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(playing = false)
+        val state = collect(s)
+
+        s.vm.onChapterClicked(0)
+
+        assertEquals(listOf(0), s.controller.chapterSeeks)
+        assertEquals(DetailsPlayback.PAUSED, state().playback)
+    }
+
+    @Test
+    fun `a chapter click with nothing playing loads at the chapter start and plays`() = runTest {
+        val s = fresh()
+        val state = collect(s)
+
+        s.vm.onChapterClicked(1)
+
+        assertEquals(listOf("a" to 1_000L), s.controller.loads)
+        assertEquals(1, s.controller.plays)
+        assertTrue(s.controller.chapterSeeks.isEmpty())
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+    }
+
+    @Test
+    fun `a chapter click is ignored when the book cannot play or the index is unknown`() = runTest {
+        val s = fresh()
+        s.connectivity.online.value = false
+        collect(s)
+
+        s.vm.onChapterClicked(1)
+        assertTrue(s.controller.loads.isEmpty())
+
+        s.connectivity.online.value = true
+        s.vm.onChapterClicked(9)
+        s.vm.onChapterClicked(-1)
+        assertTrue(s.controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `the highlight follows the live position of this book`() = runTest {
+        val s = fresh()
+        s.repo.progress.value = listOf(ReadingProgress("a", 100L, 100_000L, 1L))
+        s.controller.playback.value = loadedState(positionMs = 1_500L)
+        val state = collect(s)
+
+        assertEquals(listOf(false, true), state().chapters.map { it.isCurrent })
+        assertEquals(1_500L, state().currentPositionMs)
+
+        s.controller.playback.value = loadedState(positionMs = 200L)
+        assertEquals(listOf(true, false), state().chapters.map { it.isCurrent })
+    }
+
+    @Test
+    fun `the highlight ignores another book that is playing`() = runTest {
+        val s = fresh()
+        s.repo.progress.value = listOf(ReadingProgress("a", 100L, 100_000L, 1L))
+        s.controller.playback.value = loadedState(bookId = "other", playing = true, positionMs = 1_500L)
+        val state = collect(s)
+
+        assertEquals(listOf(true, false), state().chapters.map { it.isCurrent })
+        assertEquals(100L, state().currentPositionMs)
+    }
+
+    @Test
+    fun `progress is saved when playing stops`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(playing = true, positionMs = 30_000L)
+        collect(s)
+
+        s.controller.playback.value = loadedState(playing = false, positionMs = 31_000L)
+
+        assertEquals(listOf(ReadingProgress("a", 31_000L, 100_000L, 777L, isFinished = false)), s.repo.saved)
+    }
+
+    @Test
+    fun `progress within five seconds of the end is saved as finished`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(playing = true, positionMs = 90_000L)
+        collect(s)
+
+        s.controller.playback.value = loadedState(playing = false, positionMs = 95_000L)
+
+        assertTrue(s.repo.saved.single().isFinished)
+    }
+
+    @Test
+    fun `progress is not saved on other changes`() = runTest {
+        val s = fresh()
+        collect(s)
+
+        // Loading, starting, ticking, and a pause that was never a play.
+        s.controller.playback.value = loadedState(playing = false, positionMs = 5_000L)
+        s.controller.playback.value = loadedState(playing = true, positionMs = 5_000L)
+        s.controller.playback.value = loadedState(playing = true, positionMs = 6_000L)
+        assertTrue(s.repo.saved.isEmpty())
+        s.controller.playback.value = loadedState(playing = false, positionMs = 6_000L)
+        s.controller.playback.value = loadedState(playing = false, positionMs = 7_000L)
+
+        assertEquals(1, s.repo.saved.size)
+    }
+
+    @Test
+    fun `progress is not saved for another book or at position zero`() = runTest {
+        val s = fresh()
+        collect(s)
+
+        s.controller.playback.value = loadedState(bookId = "other", playing = true, positionMs = 5_000L)
+        s.controller.playback.value = loadedState(bookId = "other", playing = false, positionMs = 6_000L)
+        s.controller.playback.value = loadedState(playing = true, positionMs = 0L)
+        s.controller.playback.value = loadedState(playing = false, positionMs = 0L)
+
+        assertTrue(s.repo.saved.isEmpty())
+    }
+
+    @Test
+    fun `progress is saved when another book takes over`() = runTest {
+        val s = fresh()
+        s.controller.playback.value = loadedState(playing = true, positionMs = 20_000L)
+        collect(s)
+
+        s.controller.playback.value = loadedState(bookId = "other", playing = false, positionMs = 0L)
+
+        assertEquals(20_000L, s.repo.saved.single().positionMs)
     }
 }

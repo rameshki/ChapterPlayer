@@ -62,3 +62,34 @@ internal fun linksToggleLabel(total: Int, expanded: Boolean, limit: Int = MORE_L
     expanded -> "Show less"
     else -> "Show all ($total)"
 }
+
+internal const val NEEDS_CONNECTION_TEXT = "Needs a connection to play"
+internal const val CHAPTERS_TAP_NOTE = "Tap a chapter to jump to it"
+
+/** The play button's label: Resume when there is somewhere to resume from, Play for a fresh book. */
+internal fun playButtonLabel(playback: DetailsPlayback, hasProgress: Boolean): String = when (playback) {
+    DetailsPlayback.PLAYING -> "Pause"
+    DetailsPlayback.PAUSED -> "Resume"
+    DetailsPlayback.NOT_PLAYING, DetailsPlayback.STARTING -> if (hasProgress) "Resume" else "Play"
+}
+
+/** Pausing is always possible; starting needs [canPlay]; nothing happens while a start is under way. */
+internal fun playButtonEnabled(playback: DetailsPlayback, canPlay: Boolean): Boolean = when (playback) {
+    DetailsPlayback.PLAYING -> true
+    DetailsPlayback.STARTING -> false
+    DetailsPlayback.NOT_PLAYING, DetailsPlayback.PAUSED -> canPlay
+}
+
+/** The line under the play button: why it is disabled, or nothing. */
+internal fun playCaption(playback: DetailsPlayback, canPlay: Boolean, reason: String?): String? =
+    if (canPlay || playback == DetailsPlayback.PLAYING) null else reason
+
+/** Chapter rows can be tapped while this book is loaded, or when it can be started. */
+internal fun chapterTapsEnabled(playback: DetailsPlayback, canPlay: Boolean): Boolean = when (playback) {
+    DetailsPlayback.PLAYING, DetailsPlayback.PAUSED -> true
+    DetailsPlayback.NOT_PLAYING -> canPlay
+    DetailsPlayback.STARTING -> false
+}
+
+/** The note above the chapter list; hidden when the rows cannot be tapped. */
+internal fun chaptersNote(tapsEnabled: Boolean): String? = if (tapsEnabled) CHAPTERS_TAP_NOTE else null

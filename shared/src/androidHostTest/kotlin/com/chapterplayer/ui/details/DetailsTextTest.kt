@@ -85,4 +85,44 @@ class DetailsTextTest {
         assertNull(linksToggleLabel(3, expanded = false))
         assertNull(linksToggleLabel(0, expanded = true))
     }
+
+    @Test
+    fun `the play button label follows the state and the saved progress`() {
+        assertEquals("Resume", playButtonLabel(DetailsPlayback.NOT_PLAYING, hasProgress = true))
+        assertEquals("Play", playButtonLabel(DetailsPlayback.NOT_PLAYING, hasProgress = false))
+        assertEquals("Pause", playButtonLabel(DetailsPlayback.PLAYING, hasProgress = true))
+        assertEquals("Pause", playButtonLabel(DetailsPlayback.PLAYING, hasProgress = false))
+        assertEquals("Resume", playButtonLabel(DetailsPlayback.PAUSED, hasProgress = false))
+        assertEquals("Resume", playButtonLabel(DetailsPlayback.PAUSED, hasProgress = true))
+        assertEquals("Resume", playButtonLabel(DetailsPlayback.STARTING, hasProgress = true))
+        assertEquals("Play", playButtonLabel(DetailsPlayback.STARTING, hasProgress = false))
+    }
+
+    @Test
+    fun `the play button is enabled by state and permission`() {
+        assertTrue(playButtonEnabled(DetailsPlayback.NOT_PLAYING, canPlay = true))
+        assertFalse(playButtonEnabled(DetailsPlayback.NOT_PLAYING, canPlay = false))
+        assertTrue(playButtonEnabled(DetailsPlayback.PAUSED, canPlay = true))
+        assertFalse(playButtonEnabled(DetailsPlayback.PAUSED, canPlay = false))
+        assertTrue(playButtonEnabled(DetailsPlayback.PLAYING, canPlay = false))
+        assertFalse(playButtonEnabled(DetailsPlayback.STARTING, canPlay = true))
+    }
+
+    @Test
+    fun `the caption shows the reason only when playing is not possible`() {
+        assertEquals(NEEDS_CONNECTION_TEXT, playCaption(DetailsPlayback.NOT_PLAYING, false, NEEDS_CONNECTION_TEXT))
+        assertNull(playCaption(DetailsPlayback.NOT_PLAYING, true, null))
+        assertNull(playCaption(DetailsPlayback.PLAYING, false, NEEDS_CONNECTION_TEXT))
+    }
+
+    @Test
+    fun `chapter taps and their note follow the same rule`() {
+        assertTrue(chapterTapsEnabled(DetailsPlayback.NOT_PLAYING, canPlay = true))
+        assertFalse(chapterTapsEnabled(DetailsPlayback.NOT_PLAYING, canPlay = false))
+        assertTrue(chapterTapsEnabled(DetailsPlayback.PLAYING, canPlay = false))
+        assertTrue(chapterTapsEnabled(DetailsPlayback.PAUSED, canPlay = false))
+        assertFalse(chapterTapsEnabled(DetailsPlayback.STARTING, canPlay = true))
+        assertEquals("Tap a chapter to jump to it", chaptersNote(true))
+        assertNull(chaptersNote(false))
+    }
 }

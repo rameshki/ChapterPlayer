@@ -39,7 +39,8 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override fun observeInProgressBooks(): Flow<List<ReadingProgress>> =
         progress.map { list -> list.filter { it.positionMs > 0 && !it.isFinished }.sortedByDescending { it.lastPlayedAt } }
     override fun observeAllProgress(): Flow<List<ReadingProgress>> = progress
-    override suspend fun saveProgress(progress: ReadingProgress) {}
+    val saved = mutableListOf<ReadingProgress>()
+    override suspend fun saveProgress(progress: ReadingProgress) { saved += progress }
 }
 
 class FakeDownloadStates(initial: Map<String, DownloadState> = emptyMap()) : DownloadStates {

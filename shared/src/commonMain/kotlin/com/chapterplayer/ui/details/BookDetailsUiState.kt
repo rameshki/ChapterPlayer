@@ -8,6 +8,9 @@ import com.chapterplayer.domain.browse.SeriesEntry
 
 enum class DetailsTab { ABOUT, CHAPTERS, SERIES }
 
+/** What the play control does for this book. */
+enum class DetailsPlayback { NOT_PLAYING, STARTING, PLAYING, PAUSED }
+
 enum class DetailsPhase { LOADING, LOADED, NOT_FOUND }
 
 data class BookDetailsUiState(
@@ -25,6 +28,16 @@ data class BookDetailsUiState(
     val detailsLoaded: Boolean = false,
     val error: String? = null,
     val selectedTab: DetailsTab = DetailsTab.CHAPTERS,
-    /** Playback arrives in steps 6-7. */
-    val resumeEnabled: Boolean = false
+    /** The play control's state for THIS book. */
+    val playback: DetailsPlayback = DetailsPlayback.NOT_PLAYING,
+    /** Playing is allowed: the book is downloaded, or the device is online and Downloaded only is off. */
+    val canPlay: Boolean = false,
+    /** Why [canPlay] is false, in words for the person; null when it is true. */
+    val cannotPlayReason: String? = null,
+    /** Why playback could not start, safe to show. */
+    val playError: String? = null,
+    /** Where this book is: the live position while it is loaded in the player, else the saved one. */
+    val currentPositionMs: Long = 0L,
+    /** Where Resume starts: the saved position, 0 for no progress or a finished book. */
+    val resumePositionMs: Long = 0L
 )

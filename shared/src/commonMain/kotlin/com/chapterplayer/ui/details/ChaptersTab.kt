@@ -1,6 +1,7 @@
 package com.chapterplayer.ui.details
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -34,7 +36,12 @@ import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
 
 /** The chapter list as rows of the details list; keys are chapter indexes so hundreds of rows stay cheap. */
-internal fun LazyListScope.chaptersTab(chapters: List<ChapterRow>, emptyText: String) {
+internal fun LazyListScope.chaptersTab(
+    chapters: List<ChapterRow>,
+    emptyText: String,
+    tapsEnabled: Boolean,
+    onChapterClick: (index: Int) -> Unit
+) {
     if (chapters.isEmpty()) {
         item(key = "chapters-empty") {
             Text(
@@ -47,19 +54,21 @@ internal fun LazyListScope.chaptersTab(chapters: List<ChapterRow>, emptyText: St
         }
         return
     }
-    item(key = "chapters-note") {
-        Text(
-            text = "Tap a chapter to jump to it once playback is added",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-        )
+    chaptersNote(tapsEnabled)?.let { note ->
+        item(key = "chapters-note") {
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+        }
     }
-    items(chapters, key = { "chapter-${it.index}" }) { ChapterListRow(it) }
+    items(chapters, key = { "chapter-${it.index}" }) { ChapterListRow(it, tapsEnabled, onChapterClick) }
 }
 
 @Composable
-private fun ChapterListRow(row: ChapterRow) {
+private fun ChapterListRow(row: ChapterRow, tapsEnabled: Boolean, onClick: (Int) -> Unit) {
     val start = formatClock(row.startMs)
     val length = formatLength(row.durationMs)
     val description = buildString {
@@ -73,6 +82,7 @@ private fun ChapterListRow(row: ChapterRow) {
             // Gives the accent bar a bounded height to fill.
             .height(IntrinsicSize.Min)
             .background(if (row.isCurrent) SurfaceElevated else Color.Transparent)
+            .clickable(enabled = tapsEnabled, onClickLabel = "Play from this chapter", role = Role.Button) { onClick(row.index) }
             .semantics(mergeDescendants = true) {
                 selected = row.isCurrent
                 contentDescription = description
