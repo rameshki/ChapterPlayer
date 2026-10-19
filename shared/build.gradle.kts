@@ -101,6 +101,12 @@ kotlin {
 
             // Coroutines
             implementation(libs.coroutines.android)
+
+            // Media3: the playback service and its player
+            implementation(libs.media3.exoplayer)
+            implementation(libs.media3.session)
+            implementation(libs.media3.common)
+            implementation(libs.media3.datasource)
         }
     }
 }
