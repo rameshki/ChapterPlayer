@@ -103,4 +103,15 @@ class BookSeekAndResumeTest {
         // The old form never reads zero for these ticks: it jumps to the whole next chapter.
         assertEquals(true, sleepRemainingMs(SleepTimer.EndOfChapter, 0, 600_300, chapters, 1f)!! > 0)
     }
+
+    @Test
+    fun `a seek while paused forgets the pause so there is no rewind into the previous chapter`() {
+        val r = ResumeRewind()
+        r.paused(0)
+        r.seeked()
+        assertNull(r.resumed(60_000, 60_000))
+        // A later pause counts again.
+        r.paused(100_000)
+        assertEquals(55_000L, r.resumed(60_000, 100_000 + 60_000))
+    }
 }

@@ -93,3 +93,7 @@ internal fun chapterTapsEnabled(playback: DetailsPlayback, canPlay: Boolean): Bo
 
 /** The note above the chapter list; hidden when the rows cannot be tapped. */
 internal fun chaptersNote(tapsEnabled: Boolean): String? = if (tapsEnabled) CHAPTERS_TAP_NOTE else null
+
+/** The details-load error to show: none while a play error is showing, so only one error banner appears. */
+internal fun detailsErrorToShow(playError: String?, loadError: String?): String? =
+    if (playError != null) null else loadError

@@ -37,8 +37,8 @@ class OpenAuthorizedTest {
         override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
     }
 
-    private fun server(id: String, base: String, source: ServerSource = ServerSource.ABS) = ServerConfig(
-        id = id, source = source, name = id, baseUrl = base, token = "old", refreshToken = "refresh-old",
+    private fun server(id: String, base: String, source: ServerSource = ServerSource.ABS, token: String = "old") = ServerConfig(
+        id = id, source = source, name = id, baseUrl = base, token = token, refreshToken = "refresh-old",
     )
 
     private fun manager(servers: FakeServers, refreshCount: IntArray): AbsSessionManager {
@@ -117,10 +117,12 @@ class OpenAuthorizedTest {
     }
 
     @Test
-    fun `the header goes only to the server the address belongs to`() {
+    fun `the header goes only to the server the address belongs to, with that server's token`() {
         val attempts = mutableListOf<String?>()
-        val two = FakeServers(listOf(server("a", "http://other.test"), server("b", "http://abs.test")))
-        run(two, setOf("Bearer old"), attempts)
-        assertEquals(listOf<String?>("Bearer old"), attempts)
+        val two = FakeServers(
+            listOf(server("a", "http://other.test", token = "tokA"), server("b", "http://abs.test", token = "tokB"))
+        )
+        run(two, setOf("Bearer tokB"), attempts)
+        assertEquals(listOf<String?>("Bearer tokB"), attempts)
     }
 }

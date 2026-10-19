@@ -137,4 +137,43 @@ class AbsLibraryPlaybackTest {
         assertEquals(1, refreshes)
         assertEquals(listOf("Bearer $oldToken", "Bearer $newToken"), playRequests.map { it.headers[HttpHeaders.Authorization] })
     }
+
+    @Test
+    fun `close refreshes once on a 401 and then succeeds`() = runTest {
+        val enc = { s: String -> Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(s.encodeToByteArray()) }
+        fun jwt(exp: Long) = enc("""{"alg":"HS256"}""") + "." + enc("""{"userId":"u","exp":$exp}""") + ".sig"
+        val now = 1_000_000L
+        val oldToken = jwt(now + 3600)
+        val newToken = jwt(now + 7200)
+        var refreshes = 0
+        val stored = MutableStateFlow(server.copy(token = oldToken, refreshToken = "refresh-old"))
+        val servers = object : ServerRepository {
+            override fun observeAll(): Flow<List<ServerConfig>> = stored.map { listOf(it) }
+            override suspend fun getById(id: String): ServerConfig? = stored.value
+            override suspend fun save(config: ServerConfig) { stored.value = config }
+            override suspend fun delete(id: String) {}
+            override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
+        }
+        val closeRequests = mutableListOf<HttpRequestData>()
+        val api = AbsApiService(
+            HttpClient(MockEngine { request ->
+                if (request.url.encodedPath == "/auth/refresh") {
+                    refreshes++
+                    respond(
+                        """{"user":{"id":"u","username":"x","accessToken":"$newToken","refreshToken":"refresh-new"}}""",
+                        HttpStatusCode.OK, json
+                    )
+                } else {
+                    closeRequests += request
+                    if (request.headers[HttpHeaders.Authorization] == "Bearer $newToken") respond("{}", HttpStatusCode.OK, json)
+                    else respond("no", HttpStatusCode.Unauthorized)
+                }
+            }) { installApiDefaults(isDebuggable = false) }
+        )
+
+        AbsLibrarySource(api, AbsSessionManager(api, servers) { now }).closePlayback(stored.value, "play_fixture01", 1_000, 500)
+
+        assertEquals(1, refreshes)
+        assertEquals(listOf("Bearer $oldToken", "Bearer $newToken"), closeRequests.map { it.headers[HttpHeaders.Authorization] })
+    }
 }

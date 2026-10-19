@@ -146,7 +146,7 @@ class BookRepositoryImpl(
             val server = servers.getById(session.serverId) ?: error("The book's server is no longer configured")
             val source = sources.firstOrNull { it.type == server.source }
                 ?: error("No library source for ${server.source}")
-            Result.success(source.closePlayback(server, session.sessionId, positionMs, listenedMs))
+            Result.success(source.closePlayback(server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L)))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

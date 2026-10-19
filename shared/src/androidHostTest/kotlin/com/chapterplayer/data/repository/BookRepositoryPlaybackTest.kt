@@ -4,6 +4,7 @@ import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.local.dao.ProgressDao
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
+import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.LibraryInfo
@@ -23,6 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /** Starting and closing a playback session through the repository. */
@@ -147,5 +149,21 @@ class BookRepositoryPlaybackTest {
         val failing = PlaySource(ServerSource.ABS, { session }, { throw IOException("down") })
         assertTrue(repo(failing).closePlayback(session, 1, 1).isFailure)
         assertTrue(repo(ok, servers = emptyList()).closePlayback(session, 1, 1).isFailure)
+    }
+
+    @Test
+    fun `a sign-in problem from the source reaches the caller as the same instance`() = runTest {
+        val signIn = SignInRequiredException("S")
+        val source = PlaySource(ServerSource.ABS, { throw signIn }, { throw signIn })
+
+        assertSame(signIn, repo(source).startPlayback("abs_a").exceptionOrNull())
+        assertSame(signIn, repo(source).closePlayback(session, 1, 1).exceptionOrNull())
+    }
+
+    @Test
+    fun `close never sends a negative position or listened time`() = runTest {
+        val source = PlaySource(ServerSource.ABS, { session })
+        repo(source).closePlayback(session, -5, -7)
+        assertEquals(listOf(Triple("sess1", 0L, 0L)), source.closed)
     }
 }

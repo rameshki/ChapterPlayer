@@ -17,6 +17,9 @@ class ResumeRewind {
         pausedAtMs = null
     }
 
+    /** The listener jumped to another place: the pause no longer says where to rewind from. */
+    fun seeked() = reset()
+
     /**
      * Playback is resuming at [positionMs] at [nowMs]. Returns the position to seek to first, or null when
      * no seek is needed. Forgets the pause either way.

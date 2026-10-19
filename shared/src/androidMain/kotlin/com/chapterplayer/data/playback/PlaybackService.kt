@@ -165,6 +165,15 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
                     if (playWhenReady) rewind.reset() else rewind.paused(SystemClock.elapsedRealtime())
                 }
 
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    // Jumping somewhere while paused (a chapter tap) is a fresh place: no rewind from it.
+                    if (reason == Player.DISCONTINUITY_REASON_SEEK && !exo.playWhenReady) rewind.seeked()
+                }
+
                 override fun onTimelineChanged(timeline: Timeline, reason: Int) {
                     // A new book is a fresh start: no rewind.
                     if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) rewind.reset()

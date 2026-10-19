@@ -12,14 +12,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.SleepTimer
+import com.chapterplayer.domain.playback.SleepTimerEngine
+import com.chapterplayer.domain.playback.bookPosition
 import com.chapterplayer.domain.playback.locate
-import com.chapterplayer.domain.browse.currentChapterIndex
-import com.chapterplayer.domain.playback.sleepRemainingMs
-import com.chapterplayer.domain.playback.sleepRemainingToMs
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CancellationException
@@ -67,9 +65,8 @@ class AndroidPlaybackController(
 
     // Time played (wall clock) since the session began, for the server, and since the sleep timer was set.
     private var listenedMs = 0L
-    private var sleepPlayedMs = 0L
     private var lastTickAt: Long? = null
-    private var sleepTargetEndMs: Long? = null
+    private val sleep = SleepTimerEngine()
     private var ticker: Job? = null
 
     private val _state = MutableStateFlow(PlaybackState())
@@ -85,6 +82,18 @@ class AndroidPlaybackController(
                 if (player.isPlaying) startTicker() else ticker?.cancel()
             }
             publish()
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            // The listener moved the position (seek, skip, chapter jump): "end of chapter" follows them.
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                val at = bookPosition(spans, newPosition.mediaItemIndex, newPosition.positionMs)
+                sleep.userSeeked(at, _state.value.chapters)
+            }
         }
 
         override fun onPlayerError(playerError: PlaybackException) {
@@ -119,6 +128,9 @@ class AndroidPlaybackController(
 
         // A new server session replaces the old one, whichever book it was for.
         closeCurrentSession()
+        // A timer belongs to the book it was set for.
+        sleep.reset()
+        _sleepTimer.value = SleepTimer.Off
 
         val specs = trackItemSpecs(book, started)
         val newSpans = trackSpans(started)
@@ -140,7 +152,6 @@ class AndroidPlaybackController(
         }
         error = null
         listenedMs = 0L
-        sleepPlayedMs = 0L
         lastTickAt = null
         publish()
     }
@@ -200,12 +211,8 @@ class AndroidPlaybackController(
 
     override fun setSleepTimer(timer: SleepTimer) {
         accumulate()
-        sleepPlayedMs = 0L
-        // End of chapter means the chapter playing now: its end is fixed here, not looked up on every tick.
         val now = _state.value
-        sleepTargetEndMs = if (timer == SleepTimer.EndOfChapter) {
-            currentChapterIndex(now.chapters, now.positionMs)?.let { now.chapters[it].endMs }
-        } else null
+        sleep.set(timer, now.positionMs, now.chapters)
         _sleepTimer.value = timer
         publish()
     }
@@ -220,11 +227,10 @@ class AndroidPlaybackController(
                 delay(nextTickDelay())
                 accumulate()
                 publish()
-                if (_sleepTimer.value != SleepTimer.Off && _state.value.sleepRemainingMs == 0L) {
+                val now = _state.value
+                if (sleep.tick(now.positionMs, now.chapters, now.speed)) {
                     controller?.pause()
                     _sleepTimer.value = SleepTimer.Off
-                    sleepPlayedMs = 0L
-                    sleepTargetEndMs = null
                     publish()
                 }
             }
@@ -245,7 +251,7 @@ class AndroidPlaybackController(
         if (last != null) {
             val delta = (now - last).coerceAtLeast(0L)
             listenedMs += delta
-            sleepPlayedMs += delta
+            sleep.addPlayed(delta)
         }
         lastTickAt = if (playing) now else null
     }
@@ -273,29 +279,23 @@ class AndroidPlaybackController(
             sleepRemainingMs = null,
             error = error,
         )
-        val target = sleepTargetEndMs
-        val remaining = if (_sleepTimer.value == SleepTimer.EndOfChapter) {
-            target?.let { sleepRemainingToMs(it, book.positionMs, speed) }
-        } else {
-            sleepRemainingMs(_sleepTimer.value, sleepPlayedMs, book.positionMs, book.chapters, speed)
-        }
+        val remaining = sleep.remainingMs(book.positionMs, book.chapters, speed)
         _state.value = book.copy(sleepRemainingMs = remaining)
     }
 
     // -- Errors ------------------------------------------------------------------------------
 
+    // Over the session connection only the error code and each cause's class name and message are
+    // certain to arrive, so the text is chosen from those (see describeError).
     private fun describe(e: PlaybackException): String {
-        var signIn = false
-        var status: Int? = null
-        var cause: Throwable? = e
-        var depth = 0
-        while (cause != null && depth < 10) {
-            if (cause is SignInRequiredException) signIn = true
-            if (cause is HttpDataSource.InvalidResponseCodeException) status = cause.responseCode
-            cause = cause.cause
-            depth++
-        }
-        return safePlaybackError(e.errorCode, status, signIn)
+        val chain = generateSequence<Throwable>(e) { it.cause }.take(10).map {
+            ErrorLink(
+                className = it.javaClass.name,
+                message = it.message,
+                httpStatus = (it as? HttpDataSource.InvalidResponseCodeException)?.responseCode,
+            )
+        }.toList()
+        return describeError(e.errorCode, chain)
     }
 
     // -- Connection --------------------------------------------------------------------------

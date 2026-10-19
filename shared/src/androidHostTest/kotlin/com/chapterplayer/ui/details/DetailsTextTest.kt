@@ -125,4 +125,12 @@ class DetailsTextTest {
         assertEquals("Tap a chapter to jump to it", chaptersNote(true))
         assertNull(chaptersNote(false))
     }
+
+    @Test
+    fun `only one error banner at a time, the play error wins`() {
+        assertEquals(null, detailsErrorToShow("Sign in again in Settings", "Could not load details."))
+        assertEquals("Could not load details.", detailsErrorToShow(null, "Could not load details."))
+        assertEquals(null, detailsErrorToShow(null, null))
+        assertEquals(null, detailsErrorToShow("Play failed", null))
+    }
 }

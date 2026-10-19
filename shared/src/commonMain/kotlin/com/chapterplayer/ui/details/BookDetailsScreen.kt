@@ -151,7 +151,7 @@ fun BookDetailsContent(
                 )
             }
             state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
-            state.error?.let { ErrorBanner(it, onRetry) }
+            detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
             LoadedList(state, book, onPlayClick, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, Modifier.weight(1f))
         }
     }

@@ -21,8 +21,11 @@ import kotlinx.coroutines.runBlocking
  * refresh-once-and-retry-once path as the API calls ([AbsAuthorizer]); a second 401 is a
  * [com.chapterplayer.data.auth.SignInRequiredException], which the loader treats as fatal (no retry loop).
  *
- * Redirects: [DefaultHttpDataSource] lets the platform follow them, so the header is not re-added by us.
- * Never enable cross-protocol redirects here: its own redirect loop resends every request header.
+ * Redirects: [DefaultHttpDataSource] follows them inside `open`, so the request header cannot be kept
+ * from a redirect target beforehand. What is guaranteed is that no audio is played from another host:
+ * when the answer came from a different host than the request, the stream is closed and fails with
+ * [UnsafeRedirectException]. Never enable cross-protocol redirects here: that redirect loop resends
+ * every request header.
  */
 @UnstableApi
 class AuthorizingDataSourceFactory(
@@ -32,6 +35,23 @@ class AuthorizingDataSourceFactory(
 
     override fun createDataSource(): DataSource =
         AuthorizingDataSource(DefaultHttpDataSource.Factory().createDataSource(), servers, authorizer)
+}
+
+/** The audio stream opened for one request was answered from another host. Fixed text, no address. */
+class UnsafeRedirectException : RuntimeException("The audio moved to another address")
+
+/** What the authorizing opener needs from the real HTTP source; a fake stands in for it in tests. */
+internal interface Upstream {
+    /** Opens the stream with [authorization] as the Authorization header (none when null). */
+    fun open(authorization: String?): Long
+
+    fun close()
+
+    /** The address that answered, after [open]. */
+    fun resolvedUrl(): String?
+
+    /** The failure is the server refusing the token (HTTP 401). */
+    fun isUnauthorized(e: Exception): Boolean
 }
 
 @UnstableApi
@@ -44,21 +64,25 @@ private class AuthorizingDataSource(
     override fun addTransferListener(transferListener: TransferListener) = upstream.addTransferListener(transferListener)
 
     override fun open(dataSpec: DataSpec): Long =
-        openAuthorized(
+        openStream(
             url = dataSpec.uri.toString(),
             servers = servers,
             authorizer = authorizer,
-            isUnauthorized = { it is HttpDataSource.InvalidResponseCodeException && it.responseCode == 401 },
-        ) { authorization ->
-            val spec = if (authorization == null) dataSpec
-            else dataSpec.withAdditionalHeaders(mapOf("Authorization" to authorization))
-            try {
-                upstream.open(spec)
-            } catch (e: Exception) {
-                upstream.close()
-                throw e
-            }
-        }
+            upstream = object : Upstream {
+                override fun open(authorization: String?): Long =
+                    upstream.open(
+                        if (authorization == null) dataSpec
+                        else dataSpec.withAdditionalHeaders(mapOf("Authorization" to authorization))
+                    )
+
+                override fun close() = upstream.close()
+
+                override fun resolvedUrl(): String? = upstream.uri?.toString()
+
+                override fun isUnauthorized(e: Exception) =
+                    e is HttpDataSource.InvalidResponseCodeException && e.responseCode == 401
+            },
+        )
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int = upstream.read(buffer, offset, length)
 
@@ -67,6 +91,30 @@ private class AuthorizingDataSource(
     override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
 
     override fun close() = upstream.close()
+}
+
+/**
+ * Opens [url] through [upstream] with the right authorization (see [openAuthorized]): the upstream is
+ * closed after any failure, and a stream answered from another host than [url] is closed and refused
+ * when the request carried a token.
+ */
+internal fun openStream(
+    url: String,
+    servers: ServerRepository,
+    authorizer: AbsAuthorizer,
+    upstream: Upstream,
+): Long = openAuthorized(url, servers, authorizer, upstream::isUnauthorized) { authorization ->
+    try {
+        val length = upstream.open(authorization)
+        val answeredFrom = upstream.resolvedUrl()
+        if (authorization != null && answeredFrom != null && !sameHost(url, answeredFrom)) {
+            throw UnsafeRedirectException()
+        }
+        length
+    } catch (e: Exception) {
+        upstream.close()
+        throw e
+    }
 }
 
 /**
@@ -95,4 +143,16 @@ internal fun <T> openAuthorized(
             }
         }
     }
+}
+
+/** Whether two addresses have the same scheme, host and port (case-insensitive). */
+internal fun sameHost(a: String, b: String): Boolean = originOf(a) == originOf(b)
+
+private fun originOf(address: String): String {
+    val trimmed = address.trim()
+    val schemeEnd = trimmed.indexOf("://")
+    if (schemeEnd < 0) return trimmed.lowercase()
+    var end = schemeEnd + 3
+    while (end < trimmed.length && trimmed[end] !in "/?#") end++
+    return trimmed.substring(0, end).lowercase()
 }
