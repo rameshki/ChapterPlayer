@@ -32,6 +32,10 @@ interface BookDao {
     @Query("DELETE FROM books WHERE serverId = :serverId")
     suspend fun deleteByServer(serverId: String)
 
+    /** Remove the cached books of one library on a server (progress rows are separate and stay). */
+    @Query("DELETE FROM books WHERE serverId = :serverId AND libraryId = :libraryId")
+    suspend fun deleteByLibrary(serverId: String, libraryId: String)
+
     @Query("DELETE FROM books")
     suspend fun deleteAll()
 

@@ -127,6 +127,24 @@ class SettingsViewModel(
             }
         }
     }
+
+    val downloadedOnly: StateFlow<Boolean> =
+        appSettings.downloadedOnly.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = false
+        )
+
+    fun setDownloadedOnly(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                appSettings.setDownloadedOnly(enabled)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

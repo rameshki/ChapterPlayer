@@ -1,6 +1,8 @@
 package com.chapterplayer.data.repository
 
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +24,12 @@ interface BookRepository {
     /** Live stream of books from a specific server. */
     fun observeBooksByServer(serverId: String): Flow<List<AudioBook>>
 
+    /** Live stream of every cached collection; each lists its book ids in server order. */
+    fun observeCollections(): Flow<List<BookCollection>>
+
+    /** Live stream of every cached library across all servers. */
+    fun observeLibraries(): Flow<List<LibraryInfo>>
+
     /**
      * Fetch fresh books from the given server's API and update the local cache.
      * Returns a [Result] so callers can surface network errors to the UI.
@@ -31,5 +39,8 @@ interface BookRepository {
     /** Progress tracking */
     fun observeProgress(bookId: String): Flow<ReadingProgress?>
     fun observeInProgressBooks(): Flow<List<ReadingProgress>>
+
+    /** Progress of every book that has any, including finished ones. */
+    fun observeAllProgress(): Flow<List<ReadingProgress>>
     suspend fun saveProgress(progress: ReadingProgress)
 }

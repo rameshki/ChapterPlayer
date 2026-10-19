@@ -41,6 +41,24 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `downloaded only is off by default, can be turned on and off, and leaves other settings alone`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertEquals(false, settings.downloadedOnly.first())
+
+        settings.setDownloadedOnly(true)
+        settings.setThemeMode(ThemeMode.DARK)
+        assertEquals(true, settings.downloadedOnly.first())
+        assertEquals(true, DataStoreAppSettings(store).downloadedOnly.first())
+        assertEquals(ThemeMode.DARK, settings.themeMode.first())
+        assertEquals(true, settings.resumeOnCarConnect.first())
+
+        settings.setDownloadedOnly(false)
+        assertEquals(false, settings.downloadedOnly.first())
+        assertEquals(ThemeMode.DARK, settings.themeMode.first())
+    }
+
+    @Test
     fun `an unknown stored value falls back to the default`() = runTest {
         val store = InMemoryPreferencesDataStore()
         store.edit { it[stringPreferencesKey("theme_mode")] = "PURPLE" }

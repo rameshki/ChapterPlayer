@@ -19,6 +19,9 @@ interface ExcludedLibraryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(rows: List<ExcludedLibraryEntity>)
 
+    @Query("DELETE FROM excluded_libraries WHERE serverId = :serverId AND libraryId = :libraryId")
+    suspend fun delete(serverId: String, libraryId: String)
+
     @Query("DELETE FROM excluded_libraries WHERE serverId = :serverId")
     suspend fun deleteForServer(serverId: String)
 }

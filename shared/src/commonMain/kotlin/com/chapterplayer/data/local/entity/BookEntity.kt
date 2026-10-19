@@ -1,5 +1,6 @@
 package com.chapterplayer.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.chapterplayer.data.model.AudioBook
@@ -24,7 +25,11 @@ data class BookEntity(
     val coverUrl: String?,
     val source: String,           // ServerSource.name()
     val serverId: String,
-    val cachedAt: Long            // Unix timestamp ms — used for cache invalidation
+    val cachedAt: Long,           // Unix timestamp ms — used for cache invalidation
+    @ColumnInfo(defaultValue = "''") val libraryId: String = "",
+    @ColumnInfo(defaultValue = "0") val addedAt: Long = 0L,   // epoch ms; 0 when unknown
+    val seriesName: String? = null,
+    val seriesSequence: String? = null
 ) {
     fun toDomain(chapters: List<Chapter>): AudioBook = AudioBook(
         id = id,
@@ -36,7 +41,11 @@ data class BookEntity(
         streamUrl = streamUrl,
         coverUrl = coverUrl,
         source = ServerSource.valueOf(source),
-        serverId = serverId
+        serverId = serverId,
+        libraryId = libraryId,
+        addedAt = addedAt,
+        seriesName = seriesName,
+        seriesSequence = seriesSequence
     )
 
     companion object {
@@ -52,7 +61,11 @@ data class BookEntity(
             coverUrl = book.coverUrl,
             source = book.source.name,
             serverId = book.serverId,
-            cachedAt = cachedAt
+            cachedAt = cachedAt,
+            libraryId = book.libraryId,
+            addedAt = book.addedAt,
+            seriesName = book.seriesName,
+            seriesSequence = book.seriesSequence
         )
     }
 }

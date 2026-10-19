@@ -27,5 +27,12 @@ data class AudioBook(
     val streamUrl: String,
     val coverUrl: String?,
     val source: ServerSource,
-    val serverId: String
+    val serverId: String,
+    /** The server library this book lives in; empty until the library is known. */
+    val libraryId: String = "",
+    /** When the server added the book, in epoch milliseconds; 0 when unknown. */
+    val addedAt: Long = 0L,
+    val seriesName: String? = null,
+    /** Position in the series as the server wrote it ("3", "3.5"); null when unknown. */
+    val seriesSequence: String? = null
 )

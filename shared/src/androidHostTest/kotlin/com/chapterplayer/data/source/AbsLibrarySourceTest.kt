@@ -1,5 +1,6 @@
 package com.chapterplayer.data.source
 
+import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.AbsApiService
@@ -33,12 +34,20 @@ class AbsLibrarySourceTest {
             call("Bearer " + server.token)
     }
 
-    private fun source(items: String = fixture("abs/items-page-with-total.json")) = AbsLibrarySource(
+    private fun source(
+        items: String = fixture("abs/items-page-with-total.json"),
+        collections: String = fixture("abs/collections-page.json"),
+    ) = AbsLibrarySource(
         AbsApiService(
             HttpClient(
                 MockEngine { request ->
                     requests += request
-                    val body = if (request.url.encodedPath == "/api/libraries") fixture("abs/libraries.json") else items
+                    val path = request.url.encodedPath
+                    val body = when {
+                        path == "/api/libraries" -> fixture("abs/libraries.json")
+                        path.endsWith("/collections") -> collections
+                        else -> items
+                    }
                     respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
             ) { installApiDefaults(isDebuggable = false) }
@@ -80,10 +89,27 @@ class AbsLibrarySourceTest {
     }
 
     @Test
-    fun `a configured library is read even if listed as excluded`() = runTest {
+    fun `a configured library is still read when another library is excluded`() = runTest {
         source().fetchBooks(server.copy(libraryId = "lib_fixture_more", excludedLibraryIds = setOf("lib_fixture_books")))
 
         assertEquals(listOf("/api/libraries/lib_fixture_more/items"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `a configured library that is turned off is not read`() = runTest {
+        val books = source().fetchBooks(server.copy(libraryId = "lib_fixture_more", excludedLibraryIds = setOf("lib_fixture_more")))
+
+        assertEquals(emptyList(), books)
+        assertTrue(requests.none { it.url.encodedPath.endsWith("/items") })
+    }
+
+    @Test
+    fun `a snapshot of a configured library that is turned off has no books or collections`() = runTest {
+        val snapshot = source().fetchSnapshot(server.copy(libraryId = "lib_fixture_more", excludedLibraryIds = setOf("lib_fixture_more")))
+
+        assertEquals(emptyList(), snapshot.books)
+        assertEquals(emptyList(), snapshot.collections)
+        assertTrue(requests.none { it.url.encodedPath.endsWith("/items") || it.url.encodedPath.endsWith("/collections") })
     }
 
     @Test
@@ -139,6 +165,180 @@ class AbsLibrarySourceTest {
         assertEquals("Unknown Title", book.title)
         assertEquals("Unknown Author", book.author)
         assertEquals("", book.narrator)
+    }
+
+    @Test
+    fun `maps the library, the added date and the series of a book`() = runTest {
+        val books = source().fetchBooks(server.copy(libraryId = "lib_fixture_books"))
+
+        val first = books.first()
+        assertEquals("lib_fixture_books", first.libraryId)
+        assertEquals(1_700_000_001_000L, first.addedAt) // milliseconds, as the server gives them
+        assertEquals("Fixture Series", first.seriesName)
+        assertEquals("1", first.seriesSequence)
+    }
+
+    @Test
+    fun `the library of a book is the library that was read`() = runTest {
+        val books = source().fetchBooks(server)
+
+        assertEquals(setOf("lib_fixture_books", "lib_fixture_more"), books.map { it.libraryId }.toSet())
+    }
+
+    @Test
+    fun `a blank series name gives no series`() = runTest {
+        val book = source().fetchBooks(server.copy(libraryId = "lib_fixture_books"))[2]
+
+        assertNull(book.seriesName)
+        assertNull(book.seriesSequence)
+    }
+
+    @Test
+    fun `a series name without a hash has no sequence`() = runTest {
+        val page = """{"results":[{"id":"x","addedAt":5,"media":{"metadata":{"title":"T","seriesName":"Plain Series"}}}],"limit":100,"page":0}"""
+
+        val book = source(page).fetchBooks(server.copy(libraryId = "lib")).single()
+
+        assertEquals("Plain Series", book.seriesName)
+        assertNull(book.seriesSequence)
+    }
+
+    @Test
+    fun `a book without a series or a date gets the defaults`() = runTest {
+        val page = """{"results":[{"id":"x","media":{"metadata":{"title":"T"}}}],"limit":100,"page":0}"""
+
+        val book = source(page).fetchBooks(server.copy(libraryId = "lib")).single()
+
+        assertNull(book.seriesName)
+        assertEquals(0L, book.addedAt)
+        assertEquals("lib", book.libraryId)
+    }
+
+    @Test
+    fun `lists every book library including turned-off ones and skips podcasts`() = runTest {
+        val libraries = source().fetchLibraries(server.copy(excludedLibraryIds = setOf("lib_fixture_more")))
+
+        assertEquals(
+            listOf(
+                LibraryInfo("srv1", "lib_fixture_books", "Fixture Books"),
+                LibraryInfo("srv1", "lib_fixture_more", "Fixture More Books"),
+            ),
+            libraries
+        )
+    }
+
+    @Test
+    fun `a configured library is the only one listed, with its name`() = runTest {
+        val libraries = source().fetchLibraries(server.copy(libraryId = "lib_fixture_more"))
+
+        assertEquals(listOf(LibraryInfo("srv1", "lib_fixture_more", "Fixture More Books")), libraries)
+    }
+
+    @Test
+    fun `a configured library the server does not list uses its id as the name`() = runTest {
+        val libraries = source().fetchLibraries(server.copy(libraryId = "lib_unknown"))
+
+        assertEquals(listOf(LibraryInfo("srv1", "lib_unknown", "lib_unknown")), libraries)
+    }
+
+    @Test
+    fun `one sync asks the server for its libraries once`() = runTest {
+        val snapshot = source().fetchSnapshot(server.copy(excludedLibraryIds = setOf("lib_fixture_more")))
+
+        assertEquals(1, requests.count { it.url.encodedPath == "/api/libraries" })
+        assertTrue(snapshot.books.isNotEmpty())
+        assertEquals(
+            listOf(
+                LibraryInfo("srv1", "lib_fixture_books", "Fixture Books"),
+                LibraryInfo("srv1", "lib_fixture_more", "Fixture More Books"),
+            ),
+            snapshot.libraries
+        )
+        assertEquals(listOf("col_fixture01", "col_fixture02", "col_fixture03"), snapshot.collections?.map { it.id })
+        assertTrue(snapshot.books.all { it.libraryId == "lib_fixture_books" })
+    }
+
+    @Test
+    fun `a sync of a configured library asks for the library list once and reads only that library`() = runTest {
+        val snapshot = source().fetchSnapshot(server.copy(libraryId = "lib_fixture_more"))
+
+        assertEquals(1, requests.count { it.url.encodedPath == "/api/libraries" })
+        assertEquals(listOf(LibraryInfo("srv1", "lib_fixture_more", "Fixture More Books")), snapshot.libraries)
+        assertTrue(snapshot.books.all { it.libraryId == "lib_fixture_more" })
+    }
+
+    @Test
+    fun `reads the collections of every library that is turned on, in server order`() = runTest {
+        val collections = source().fetchCollections(server.copy(excludedLibraryIds = setOf("lib_fixture_more")))
+
+        assertEquals(
+            listOf("/api/libraries", "/api/libraries/lib_fixture_books/collections"),
+            requests.map { it.url.encodedPath }
+        )
+        assertEquals(listOf("col_fixture01", "col_fixture02", "col_fixture03"), collections.map { it.id })
+        assertEquals(listOf("abs_li_fixture01", "abs_li_fixture02"), collections.first().bookIds)
+        assertEquals("srv1", collections.first().serverId)
+        assertEquals("Fixture Favourites", collections.first().name)
+        assertEquals(emptyList(), collections[2].bookIds)
+    }
+
+    @Test
+    fun `an empty collections page gives no collections`() = runTest {
+        val collections = source(collections = """{"results":[],"total":0,"limit":100,"page":0}""")
+            .fetchCollections(server.copy(libraryId = "lib_fixture_books"))
+
+        assertEquals(emptyList(), collections)
+        assertEquals(listOf("/api/libraries/lib_fixture_books/collections"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `reads collections page by page until a short page`() = runTest {
+        val full = (0 until 100).joinToString(",", "[", "]") { """{"id":"c$it","name":"N$it"}""" }
+        val seenPages = mutableListOf<String?>()
+        val paged = AbsLibrarySource(
+            AbsApiService(
+                HttpClient(
+                    MockEngine { request ->
+                        val page = request.url.parameters["page"]
+                        seenPages += page
+                        val body = if (page == "0") """{"results":$full,"total":101,"limit":100,"page":0}"""
+                        else """{"results":[{"id":"last","name":"Last"}],"total":101,"limit":100,"page":1}"""
+                        respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                    }
+                ) { installApiDefaults(isDebuggable = false) }
+            ),
+            PassThroughAuthorizer
+        )
+
+        val collections = paged.fetchCollections(server.copy(libraryId = "lib"))
+
+        assertEquals(101, collections.size)
+        assertEquals(listOf<String?>("0", "1"), seenPages)
+    }
+
+    @Test
+    fun `stops reading collections when a page adds nothing new`() = runTest {
+        val full = (0 until 100).joinToString(",", "[", "]") { "{\"id\":\"c$it\",\"name\":\"N$it\"}" }
+        var calls = 0
+        val ignoresPage = AbsLibrarySource(
+            AbsApiService(
+                HttpClient(
+                    MockEngine {
+                        calls++
+                        respond(
+                            "{\"results\":$full,\"total\":1000,\"limit\":100,\"page\":0}",
+                            HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    }
+                ) { installApiDefaults(isDebuggable = false) }
+            ),
+            PassThroughAuthorizer
+        )
+
+        val collections = ignoresPage.fetchCollections(server.copy(libraryId = "lib"))
+
+        assertEquals(100, collections.size)
+        assertEquals(2, calls)
     }
 
     @Test

@@ -24,6 +24,10 @@ interface ProgressDao {
     """)
     fun observeInProgress(): Flow<List<ProgressEntity>>
 
+    /** Every progress row, finished or not. */
+    @Query("SELECT * FROM progress")
+    fun observeAll(): Flow<List<ProgressEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(progress: ProgressEntity)
 

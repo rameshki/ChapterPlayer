@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,28 +22,33 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
-import com.chapterplayer.ui.theme.AmberGold
+import com.chapterplayer.domain.browse.DownloadBadgeKind
+import com.chapterplayer.domain.browse.coverOverlay
 import com.chapterplayer.ui.theme.SurfaceElevated
-import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.theme.TextSecondary
 
 /**
  * Grid card for a single audiobook in the Library screen.
  * Displays cover art (or gradient placeholder), source badge,
- * title, author, and reading progress bar.
+ * title, author, reading progress, download state and the offline dimming.
  */
 @Composable
 fun BookCard(
     book: AudioBook,
-    progress: ReadingProgress?,
+    progress: ReadingProgress? = null,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    downloadState: DownloadState = DownloadState.NOT_DOWNLOADED,
+    dimmed: Boolean = false
 ) {
+    val overlay = coverOverlay(progress, downloadState, dimmed)
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            // A dimmed book cannot play now (offline, not downloaded), so the tap does nothing.
+            .clickable(enabled = !dimmed, onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -77,6 +81,17 @@ fun BookCard(
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                 )
+
+                if (overlay.badge != DownloadBadgeKind.NONE) {
+                    DownloadBadge(downloadState, Modifier.align(Alignment.TopEnd).padding(6.dp))
+                }
+                if (overlay.finished) {
+                    FinishedCheck(Modifier.align(Alignment.BottomEnd).padding(6.dp))
+                }
+                overlay.progressFraction?.let {
+                    ReadingProgressBar(it, Modifier.align(Alignment.BottomCenter))
+                }
+                DimmedCoverOverlay(overlay.cloud)
             }
 
             // Metadata
@@ -98,20 +113,6 @@ fun BookCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-
-                // Progress bar — only shown if the book has been started
-                if (progress != null && progress.positionMs > 0) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { progress.fraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = AmberGold,
-                        trackColor = SurfaceSecondary
-                    )
-                }
             }
         }
     }

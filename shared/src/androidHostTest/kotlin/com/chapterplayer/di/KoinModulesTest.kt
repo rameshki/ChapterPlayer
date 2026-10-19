@@ -1,11 +1,18 @@
 package com.chapterplayer.di
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
+import com.chapterplayer.ui.library.LibraryView
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.HttpClientEngine
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.koin.test.verify.verify
 import kotlin.test.Test
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /**
  * Hilt failed the build when a binding was missing. Koin only fails when a screen opens,
@@ -18,7 +25,11 @@ class KoinModulesTest {
     private val providedByApp = listOf(Context::class, Boolean::class) +
         // HttpClient is built by createHttpClient, not through its constructor, so the
         // engine and config its constructor mentions are not bindings of ours.
-        listOf(HttpClientEngine::class, HttpClientConfig::class)
+        listOf(HttpClientEngine::class, HttpClientConfig::class) +
+        // The group detail screen passes its kind and key with parametersOf.
+        listOf(LibraryView::class, String::class) +
+        // The library view keeps its chosen view in the saved state; the view model owner provides it.
+        listOf(SavedStateHandle::class)
 
     @Test
     fun `the database module resolves`() {
@@ -36,6 +47,11 @@ class KoinModulesTest {
     }
 
     @Test
+    fun `the device module resolves`() {
+        deviceModule.verify(extraTypes = providedByApp)
+    }
+
+    @Test
     fun `the repository module resolves`() {
         // Repositories need the DAOs and API services, which other modules declare.
         module { includes(databaseModule, networkModule, securityModule, repositoryModule) }.verify(extraTypes = providedByApp)
@@ -43,12 +59,21 @@ class KoinModulesTest {
 
     @Test
     fun `every screen's view model can be built`() {
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, viewModelModule) }
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, browseModule, viewModelModule) }
             .verify(extraTypes = providedByApp)
     }
 
     @Test
     fun `the whole shared graph resolves`() {
         module { includes(sharedModules) }.verify(extraTypes = providedByApp)
+    }
+
+    @Test
+    fun `the app scope and the io dispatcher are only found by their names`() {
+        val koin = koinApplication { modules(repositoryModule, browseModule) }.koin
+        assertNotNull(koin.get<CoroutineScope>(AppScopeQualifier))
+        assertNotNull(koin.get<CoroutineDispatcher>(IoDispatcherQualifier))
+        assertNull(koin.getOrNull<CoroutineScope>())
+        assertNull(koin.getOrNull<CoroutineDispatcher>())
     }
 }

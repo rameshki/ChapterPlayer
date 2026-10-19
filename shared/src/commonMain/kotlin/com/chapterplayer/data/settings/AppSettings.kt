@@ -22,6 +22,10 @@ interface AppSettings {
     /** Whether Android Auto resumes the book when the car connects. */
     val resumeOnCarConnect: Flow<Boolean>
     suspend fun setResumeOnCarConnect(enabled: Boolean)
+
+    /** Offline-style browsing: only downloaded books play, even with a network. */
+    val downloadedOnly: Flow<Boolean>
+    suspend fun setDownloadedOnly(enabled: Boolean)
 }
 
 class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSettings {
@@ -30,6 +34,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val theme = stringPreferencesKey("theme_mode")
         val layout = stringPreferencesKey("library_layout")
         val carResume = booleanPreferencesKey("resume_on_car_connect")
+        val downloadedOnly = booleanPreferencesKey("downloaded_only")
     }
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
@@ -47,7 +52,10 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val resumeOnCarConnect: Flow<Boolean> = prefs.map { it[Keys.carResume] ?: true }
 
+    override val downloadedOnly: Flow<Boolean> = prefs.map { it[Keys.downloadedOnly] ?: false }
+
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
+    override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }
 }

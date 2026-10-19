@@ -78,6 +78,7 @@ class AbsSetupViewModelTest {
             stored[config.id] = config
         }
         override suspend fun delete(id: String) {}
+        override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
     }
 
     private fun viewModel(port: AbsSignInPort, repo: ServerRepository = FakeRepository()): ServerSetupViewModel {

@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "id": "col_fixture01",
+      "libraryId": "lib_fixture_books",
+      "userId": "usr_fixture01",
+      "name": "Fixture Favourites",
+      "description": null,
+      "books": [
+        { "id": "li_fixture01", "libraryId": "lib_fixture_books", "addedAt": 1700000000000, "media": { "metadata": { "title": "Fixture Book One" }, "duration": 3600.5 } },
+        { "id": "li_fixture02", "libraryId": "lib_fixture_books", "addedAt": 1700000100000, "media": { "metadata": { "title": "Fixture Book Two" }, "duration": 7200.0 } }
+      ],
+      "lastUpdate": 1700000200000,
+      "createdAt": 1700000000000
+    },
+    { "id": "col_fixture02", "libraryId": "lib_fixture_books", "name": "Fixture Empty", "books": [] },
+    { "id": "col_fixture03", "libraryId": "lib_fixture_books", "name": "Fixture Without Books" }
+  ],
+  "total": 3,
+  "limit": 100,
+  "page": 0,
+  "sortDesc": false,
+  "minified": false,
+  "include": ""
+}

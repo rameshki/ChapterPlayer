@@ -35,14 +35,16 @@ import com.chapterplayer.ui.theme.TextSecondary
 
 /**
  * Horizontally scrollable strip showing in-progress books.
- * Appears at the top of the Library screen.
+ * Appears at the top of the Library and Home screens. Books in [dimmedIds] cannot play now
+ * (offline and not downloaded): they get the cloud overlay and ignore taps.
  */
 @Composable
 fun ContinueReadingStrip(
     books: List<AudioBook>,
     progressMap: Map<String, ReadingProgress>,
     onBookClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dimmedIds: Set<String> = emptySet()
 ) {
     Column(modifier = modifier) {
         Text(
@@ -63,6 +65,7 @@ fun ContinueReadingStrip(
                 ContinueReadingCard(
                     book = book,
                     progress = progress,
+                    dimmed = book.id in dimmedIds,
                     onClick = { onBookClick(book.id) }
                 )
             }
@@ -75,14 +78,15 @@ private fun ContinueReadingCard(
     book: AudioBook,
     progress: ReadingProgress?,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dimmed: Boolean = false
 ) {
     Column(
         modifier = modifier
             .width(120.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(SurfaceElevated)
-            .clickable(onClick = onClick)
+            .clickable(enabled = !dimmed, onClick = onClick)
     ) {
         // Cover
         Box(
@@ -101,6 +105,7 @@ private fun ContinueReadingCard(
             } else {
                 BookCoverPlaceholder(title = book.title, modifier = Modifier.fillMaxWidth())
             }
+            DimmedCoverOverlay(dimmed)
         }
 
         // Progress bar at bottom of cover

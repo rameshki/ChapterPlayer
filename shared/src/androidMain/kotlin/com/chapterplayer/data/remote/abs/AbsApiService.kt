@@ -1,5 +1,6 @@
 package com.chapterplayer.data.remote.abs
 
+import com.chapterplayer.data.remote.abs.dto.AbsCollectionsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLibrariesResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryItemsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLoginRequest
@@ -51,6 +52,20 @@ class AbsApiService(private val client: HttpClient) {
             parameter("limit", limit)
             parameter("page", page)
             parameter("include", include)
+        }.body()
+
+    /** One page of the collections in a library (GET /api/libraries/{id}/collections). */
+    suspend fun getLibraryCollections(
+        baseUrl: String,
+        bearerToken: String,
+        libraryId: String,
+        limit: Int = 100,
+        page: Int = 0,
+    ): AbsCollectionsResponse =
+        client.get(endpoint(baseUrl, "api/libraries/${libraryId.encodeURLPathPart()}/collections")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            parameter("limit", limit)
+            parameter("page", page)
         }.body()
 
     /** Answers without a token: the server version and which sign-in methods are on. */

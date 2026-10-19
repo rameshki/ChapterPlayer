@@ -25,6 +25,7 @@ class SettingsViewModelTest {
         override suspend fun getById(id: String): ServerConfig? = null
         override suspend fun save(config: ServerConfig) {}
         override suspend fun delete(id: String) {}
+        override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
     }
 
     @BeforeTest fun setUp() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
@@ -51,6 +52,21 @@ class SettingsViewModelTest {
     fun `the saved theme is shown when the screen opens`() = runTest {
         val vm = SettingsViewModel(FakeServers(), FakeAppSettings(initialTheme = ThemeMode.DARK))
         assertEquals(ThemeMode.DARK, vm.themeMode.value)
+    }
+
+    @Test
+    fun `downloaded only can be switched on and off from settings`() = runTest {
+        val settings = FakeAppSettings()
+        val vm = SettingsViewModel(FakeServers(), settings)
+        assertEquals(false, vm.downloadedOnly.value)
+
+        vm.setDownloadedOnly(true)
+        assertEquals(true, settings.downloadedOnlyFlow.value)
+        assertEquals(true, vm.downloadedOnly.value)
+
+        vm.setDownloadedOnly(false)
+        assertEquals(false, settings.downloadedOnlyFlow.value)
+        assertEquals(false, vm.downloadedOnly.value)
     }
 
     @Test

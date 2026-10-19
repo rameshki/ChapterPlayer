@@ -5,10 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryBooks
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -17,8 +17,11 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -26,7 +29,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.savedstate.read
+import org.koin.compose.koinInject
+import com.chapterplayer.data.sync.LibrarySyncCoordinator
+import com.chapterplayer.ui.downloads.DownloadsScreen
+import com.chapterplayer.ui.home.HomeScreen
+import com.chapterplayer.ui.library.GroupDetailScreen
 import com.chapterplayer.ui.library.LibraryScreen
+import com.chapterplayer.ui.library.LibraryView
+import com.chapterplayer.ui.library.decodeGroupKey
+import com.chapterplayer.ui.search.SearchScreen
 import com.chapterplayer.ui.settings.SettingsScreen
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -37,62 +48,57 @@ import com.chapterplayer.ui.theme.TextSecondary
 data class BottomNavItem(
     val label: String,
     val screen: Screen,
-    val icon: @Composable () -> Unit
+    val icon: ImageVector
+)
+
+/** The tabs, in bar order. Player and Settings are destinations, not tabs. */
+val bottomNavItems = listOf(
+    BottomNavItem("Home", Screen.Home, Icons.Default.Home),
+    BottomNavItem("Library", Screen.Library, Icons.Default.LibraryBooks),
+    BottomNavItem("Downloads", Screen.Downloads, Icons.Default.Download),
+    BottomNavItem("Search", Screen.Search, Icons.Default.Search)
 )
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
 
-    val bottomNavItems = listOf(
-        BottomNavItem("Library", Screen.Library) {
-            Icon(Icons.Default.LibraryBooks, contentDescription = "Library")
-        },
-        BottomNavItem("Player", Screen.Player) {
-            Icon(Icons.Default.PlayCircle, contentDescription = "Player")
-        },
-        BottomNavItem("Search", Screen.Library) {   // Placeholder until Search screen is built
-            Icon(Icons.Default.Search, contentDescription = "Search")
-        },
-        BottomNavItem("Settings", Screen.Settings) {
-            Icon(Icons.Default.Settings, contentDescription = "Settings")
-        }
-    )
+    // Starts the app-wide library sync once, so a new install fills in whichever tab is open.
+    val syncCoordinator = koinInject<LibrarySyncCoordinator>()
+    LaunchedEffect(syncCoordinator) { syncCoordinator.start() }
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+
+    // The bar belongs to the four tabs; Settings, server setup and the player cover the screen.
+    val showBottomBar = currentDestination == null ||
+        bottomNavItems.any { item -> currentDestination.hierarchy.any { it.route == item.screen.route } }
+
+    val openSettings = {
+        navController.navigate(Screen.Settings.route) { launchSingleTop = true }
+    }
+    val openPlayer = { bookId: String ->
+        navController.navigate(Screen.Player.createRoute(bookId))
+    }
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = NavBarSurface
-            ) {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-
-                bottomNavItems.forEach { item ->
-                    val isSelected = currentDestination?.hierarchy?.any {
-                        it.route == item.screen.route
-                    } == true
-
-                    NavigationBarItem(
-                        selected = isSelected,
-                        onClick = {
-                            navController.navigate(item.screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = item.icon,
-                        label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = AmberGold,
-                            selectedTextColor = AmberGold,
-                            unselectedIconColor = TextSecondary,
-                            unselectedTextColor = TextSecondary,
-                            indicatorColor = SurfaceElevated
+            if (showBottomBar) {
+                NavigationBar(containerColor = NavBarSurface) {
+                    bottomNavItems.forEach { item ->
+                        NavigationBarItem(
+                            selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true,
+                            onClick = { navController.openTab(item.screen) },
+                            icon = { Icon(item.icon, contentDescription = null) },
+                            label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = AmberGold,
+                                selectedTextColor = AmberGold,
+                                unselectedIconColor = TextSecondary,
+                                unselectedTextColor = TextSecondary,
+                                indicatorColor = SurfaceElevated
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -105,14 +111,46 @@ fun AppNavigation() {
         ) {
             NavHost(
                 navController = navController,
-                startDestination = Screen.Library.route
+                startDestination = Screen.Home.route
             ) {
+                composable(Screen.Home.route) {
+                    HomeScreen(onBookClick = openPlayer, onOpenSettings = { openSettings() })
+                }
+
                 composable(Screen.Library.route) {
                     LibraryScreen(
-                        onBookClick = { bookId ->
-                            navController.navigate(Screen.Player.createRoute(bookId))
-                        }
+                        onBookClick = openPlayer,
+                        onGroupClick = { view, key ->
+                            navController.navigate(Screen.GroupDetail.createRoute(view, key))
+                        },
+                        onOpenSettings = { openSettings() }
                     )
+                }
+
+                composable(Screen.GroupDetail.route) { backStackEntry ->
+                    val args = backStackEntry.arguments
+                    val kind = args?.read { getStringOrNull(Screen.GroupDetail.ARG_KIND) }
+                        ?.let { name -> LibraryView.entries.firstOrNull { it.name == name && it.isGrouped } }
+                    val key = args?.read { getStringOrNull(Screen.GroupDetail.ARG_KEY) }?.let(::decodeGroupKey)
+                    if (kind != null && key != null) {
+                        GroupDetailScreen(
+                            kind = kind,
+                            groupKey = key,
+                            onBookClick = openPlayer,
+                            onBack = { navController.popBackStack() }
+                        )
+                    } else {
+                        // A damaged link: leave rather than show an empty page.
+                        LaunchedEffect(Unit) { navController.popBackStack() }
+                    }
+                }
+
+                composable(Screen.Downloads.route) {
+                    DownloadsScreen(onOpenSettings = { openSettings() })
+                }
+
+                composable(Screen.Search.route) {
+                    SearchScreen(onBookClick = openPlayer, onOpenSettings = { openSettings() })
                 }
 
                 composable(Screen.Player.route) {
@@ -127,7 +165,8 @@ fun AppNavigation() {
                         },
                         onEditServer = { serverId ->
                             navController.navigate(Screen.ServerSetup.createRoute(serverId))
-                        }
+                        },
+                        onBack = { navController.popBackStack() }
                     )
                 }
 
@@ -140,5 +179,14 @@ fun AppNavigation() {
                 }
             }
         }
+    }
+}
+
+/** Switch tab without stacking: back to the start, keep each tab's state, reuse the top entry. */
+private fun NavController.openTab(screen: Screen) {
+    navigate(screen.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }

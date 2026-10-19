@@ -18,7 +18,8 @@ data class AbsLibraryItemsResponse(
 @Serializable
 data class AbsLibraryItemDto(
     @SerialName("id") val id: String,
-    @SerialName("media") val media: AbsMediaDto
+    @SerialName("media") val media: AbsMediaDto,
+    @SerialName("addedAt") val addedAt: Long? = null          // epoch milliseconds
 )
 
 @Serializable
@@ -33,7 +34,8 @@ data class AbsMediaDto(
 data class AbsMetadataDto(
     @SerialName("title") val title: String? = null,
     @SerialName("authorName") val authorName: String? = null,
-    @SerialName("narratorName") val narratorName: String? = null
+    @SerialName("narratorName") val narratorName: String? = null,
+    @SerialName("seriesName") val seriesName: String? = null   // "Name #3"
 )
 
 @Serializable
