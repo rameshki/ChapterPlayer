@@ -16,6 +16,7 @@ import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.domain.playback.SleepTimerEngine
+import com.chapterplayer.domain.playback.resolveStartMs
 import com.chapterplayer.domain.playback.bookPosition
 import com.chapterplayer.domain.playback.locate
 import com.google.common.util.concurrent.ListenableFuture
@@ -57,6 +58,8 @@ class AndroidPlaybackController(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val connectLock = Mutex()
+    private val loadLock = Mutex()
+    private var lastPositionMs = 0L
     private var controller: MediaController? = null
 
     private var session: PlaybackSession? = null
@@ -108,15 +111,23 @@ class AndroidPlaybackController(
             if (this@AndroidPlaybackController.controller === controller) {
                 this@AndroidPlaybackController.controller = null
                 ticker?.cancel()
+                // Give the server what was heard, then forget the book: the new player is empty.
+                accumulate()
+                closeCurrentSession()
                 lastTickAt = null
-                _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+                spans = emptyList()
+                error = null
+                _state.value = PlaybackState()
             }
         }
     }
 
     // -- Starting a book ---------------------------------------------------------------------
 
-    override suspend fun load(book: AudioBook, startMs: Long) {
+    // One load at a time: a second waits for the first, so the last request is the one heard.
+    override suspend fun load(book: AudioBook, startMs: Long) = loadLock.withLock { loadLocked(book, startMs) }
+
+    private suspend fun loadLocked(book: AudioBook, startMs: Long) {
         val started = repository.startPlayback(book.id).getOrElse { failure ->
             if (failure is CancellationException) throw failure
             throw PlaybackStartException(safeStartMessage(failure))
@@ -134,13 +145,15 @@ class AndroidPlaybackController(
 
         val specs = trackItemSpecs(book, started)
         val newSpans = trackSpans(started)
-        val startAt = if (startMs < 0) started.startPositionMs else startMs
+        val startAt = resolveStartMs(startMs, started.startPositionMs, started.durationMs)
         val target = locate(newSpans, startAt)
         session = started
         spans = newSpans
         try {
-            withContext(Dispatchers.Main) {
+            // Not cancellable: once the player holds the items the new server session must stay open.
+            withContext(NonCancellable + Dispatchers.Main) {
                 val player = connect()
+                player.pause() // the old book stops (and is saved) before the new one is swapped in
                 player.setMediaItems(specs.map(::toMediaItem), target?.trackIndex ?: 0, target?.offsetMs ?: 0L)
                 player.prepare()
             }
@@ -278,7 +291,8 @@ class AndroidPlaybackController(
             chapters = current.chapters,
             sleepRemainingMs = null,
             error = error,
-        )
+        ).copy(playWhenReady = player.playWhenReady)
+        lastPositionMs = book.positionMs
         val remaining = sleep.remainingMs(book.positionMs, book.chapters, speed)
         _state.value = book.copy(sleepRemainingMs = remaining)
     }
@@ -335,7 +349,7 @@ class AndroidPlaybackController(
 
     private fun closeCurrentSession() {
         val ended = session ?: return
-        val position = _state.value.positionMs
+        val position = lastPositionMs
         accumulate()
         val listened = listenedMs
         session = null
@@ -347,6 +361,12 @@ class AndroidPlaybackController(
         appScope.launch {
             withContext(NonCancellable) { repository.closePlayback(ended, positionMs, listened) }
         }
+    }
+
+    /** Ends the server session now (the service stopped itself), with the last position and time heard. */
+    fun endSession() {
+        accumulate()
+        closeCurrentSession()
     }
 
     override fun release() {

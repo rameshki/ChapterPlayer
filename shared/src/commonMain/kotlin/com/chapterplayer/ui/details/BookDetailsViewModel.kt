@@ -24,7 +24,6 @@ import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.browse.isPlayable
 import com.chapterplayer.domain.browse.seriesNeighbours
 import com.chapterplayer.domain.playback.isFinishedAt
-import com.chapterplayer.domain.playback.shouldSaveProgress
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -38,7 +37,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
 
 /** One book's details: the cached chapters at once, the live chapters and description when the server answers. */
 class BookDetailsViewModel(
@@ -48,8 +46,7 @@ class BookDetailsViewModel(
     private val controller: PlaybackController,
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
-    dispatcher: CoroutineDispatcher,
-    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() }
+    dispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -61,8 +58,11 @@ class BookDetailsViewModel(
         val downloadState: DownloadState = DownloadState.NOT_DOWNLOADED
     )
 
-    /** The play control's own state: a start under way and the last start failure. */
-    private class Local(val starting: Boolean = false, val error: String? = null)
+    /**
+     * The play control's own state: a start under way, the last start failure, and a player error the
+     * person has dismissed (so the same text does not come back until playback is tried again).
+     */
+    private class Local(val starting: Boolean = false, val error: String? = null, val dismissedPlayerError: String? = null)
 
     private class Env(val player: PlaybackState, val local: Local, val online: Boolean, val downloadedOnly: Boolean)
 
@@ -100,7 +100,8 @@ class BookDetailsViewModel(
             val loaded = env.player.bookId == bookId
             val playback = when {
                 env.local.starting -> DetailsPlayback.STARTING
-                loaded && env.player.isPlaying -> DetailsPlayback.PLAYING
+                // Buffering before the first sound still counts as playing: Pause is offered at once.
+                loaded && (env.player.isPlaying || (env.player.isBuffering && env.player.playWhenReady)) -> DetailsPlayback.PLAYING
                 loaded -> DetailsPlayback.PAUSED
                 else -> DetailsPlayback.NOT_PLAYING
             }
@@ -109,7 +110,9 @@ class BookDetailsViewModel(
             // While this book is loaded in the player the highlight follows the live position.
             val shown = if (loaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
             val savedStart = when {
-                progress == null || progress.isFinished || progress.positionMs >= book.durationMs -> 0L
+                // No local progress: let the server say where (-1); a book finished here starts over.
+                progress == null -> USE_SERVER_POSITION
+                progress.isFinished || progress.positionMs >= book.durationMs -> 0L
                 else -> progress.positionMs.coerceAtLeast(0L)
             }
             BookDetailsUiState(
@@ -128,7 +131,8 @@ class BookDetailsViewModel(
                 playback = playback,
                 canPlay = canPlay,
                 cannotPlayReason = if (canPlay) null else NEEDS_CONNECTION_TEXT,
-                playError = env.local.error,
+                playError = env.local.error
+                    ?: env.player.error?.takeIf { loaded && it != env.local.dismissedPlayerError },
                 currentPositionMs = if (loaded) env.player.positionMs else progress?.positionMs ?: 0L,
                 resumePositionMs = savedStart
             )
@@ -137,7 +141,6 @@ class BookDetailsViewModel(
 
     init {
         loadJob = viewModelScope.launch { fetchIfCached() }
-        viewModelScope.launch { saveOnPause() }
     }
 
     /** The play control: starts, pauses or resumes this book. */
@@ -151,6 +154,8 @@ class BookDetailsViewModel(
             DetailsPlayback.PAUSED -> {
                 if (!state.canPlay) return
                 local.value = Local()
+                // A book that played to its end starts again from the beginning of the whole book.
+                if (isFinishedAt(state.currentPositionMs, book.durationMs)) controller.seekTo(0L)
                 controller.play()
             }
             DetailsPlayback.NOT_PLAYING -> if (state.canPlay) start(book, state.resumePositionMs)
@@ -165,14 +170,17 @@ class BookDetailsViewModel(
         val row = state.chapters.getOrNull(index) ?: return
         if (!chapterTapsEnabled(state.playback, state.canPlay)) return
         when (state.playback) {
-            DetailsPlayback.PLAYING, DetailsPlayback.PAUSED -> controller.seekToChapter(index)
+            DetailsPlayback.PLAYING, DetailsPlayback.PAUSED -> controller.seekTo(row.startMs)
             DetailsPlayback.NOT_PLAYING -> start(book, row.startMs)
             DetailsPlayback.STARTING -> Unit
         }
     }
 
     fun dismissPlayError() {
-        if (!local.value.starting) local.value = Local()
+        if (local.value.starting) return
+        // A start failure is cleared; a player error is remembered as dismissed.
+        val playerError = uiState.value.playError.takeIf { local.value.error == null }
+        local.value = Local(dismissedPlayerError = playerError)
     }
 
     // `starting` is set before the coroutine runs, so a second tap cannot start a second load.
@@ -190,29 +198,6 @@ class BookDetailsViewModel(
                 Local(error = e.message ?: PlaybackStartException.DEFAULT_MESSAGE)
             } catch (e: Exception) {
                 Local(error = PlaybackStartException.DEFAULT_MESSAGE)
-            }
-        }
-    }
-
-    // Saves this book's position when its playback goes from playing to not playing.
-    private suspend fun saveOnPause() {
-        var previous: PlaybackState? = null
-        controller.state.collect { current ->
-            val before = previous
-            previous = current
-            if (before == null || !before.isPlaying || current.isPlaying || before.bookId != bookId) return@collect
-            // Another book took over: the last position seen for this one is the best there is.
-            val last = if (current.bookId == bookId) current else before
-            val duration = last.durationMs
-            if (!shouldSaveProgress(bookId, last.positionMs, duration)) return@collect
-            try {
-                books.saveProgress(
-                    ReadingProgress(bookId, last.positionMs, duration, nowMs(), isFinishedAt(last.positionMs, duration))
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // A failed local save must not stop the observation; the next pause tries again.
             }
         }
     }
@@ -251,3 +236,5 @@ class BookDetailsViewModel(
         if (error is SignInRequiredException) "Could not load details. Sign in again in Settings."
         else "Could not load details. Showing what is saved."
 }
+
+private const val USE_SERVER_POSITION = -1L

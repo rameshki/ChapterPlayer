@@ -29,17 +29,23 @@ class FakePlaybackController : PlaybackController {
         onLoad(book, startMs)
     }
 
+    /** Like the real player: play asks for playback and buffers; [soundStarts] is when it is really playing. */
     override fun play() {
         plays++
-        playback.value = playback.value.copy(isPlaying = true)
+        playback.value = playback.value.copy(playWhenReady = true, isBuffering = true, isPlaying = false)
+    }
+
+    fun soundStarts() {
+        playback.value = playback.value.copy(isBuffering = false, isPlaying = true)
     }
 
     override fun pause() {
         pauses++
-        playback.value = playback.value.copy(isPlaying = false)
+        playback.value = playback.value.copy(isPlaying = false, isBuffering = false, playWhenReady = false)
     }
 
-    override fun seekTo(positionMs: Long) {}
+    val seeks = mutableListOf<Long>()
+    override fun seekTo(positionMs: Long) { seeks += positionMs }
     override fun setSpeed(speed: Float) {}
     override fun setSleepTimer(timer: SleepTimer) {}
     override fun skipBack() {}

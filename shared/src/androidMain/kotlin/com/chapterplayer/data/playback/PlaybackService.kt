@@ -24,6 +24,7 @@ import com.chapterplayer.domain.playback.TrackSpan
 import com.chapterplayer.domain.playback.bookPosition
 import com.chapterplayer.domain.playback.locate
 import com.chapterplayer.domain.playback.seekByTarget
+import com.chapterplayer.domain.playback.isOwnTrackRequest
 import com.chapterplayer.data.repository.ServerRepository
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -37,6 +38,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
+import org.koin.core.component.inject
 
 /**
  * Hosts the app's one player. Screens, the notification, the lock screen and (later) Android Auto all
@@ -50,6 +52,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     private var session: MediaLibrarySession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var pausedStopJob: Job? = null
+    private val playbackController: PlaybackController by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -82,7 +85,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
                 this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
         }
-        val builder = MediaLibrarySession.Builder(this, SkipByTimePlayer(exo), LibraryCallback())
+        val builder = MediaLibrarySession.Builder(this, SkipByTimePlayer(exo), LibraryCallback(packageName))
         if (openApp != null) builder.setSessionActivity(openApp)
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
@@ -111,9 +114,19 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         } else if (pausedStopJob?.isActive != true) {
             pausedStopJob = scope.launch {
                 delay(PAUSED_STOP_AFTER_MS)
-                pauseAllPlayersAndStopSelf()
+                stopAndEndSession()
             }
         }
+    }
+
+    // Stops the service and tells the server the listening session is over (best effort).
+    private fun stopAndEndSession() {
+        endSession()
+        pauseAllPlayersAndStopSelf()
+    }
+
+    private fun endSession() {
+        (playbackController as? AndroidPlaybackController)?.endSession()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -121,10 +134,11 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Keep playing when the app is swiped away; with nothing playing there is no reason to stay.
         val p = player
-        if (p == null || !p.playWhenReady) pauseAllPlayersAndStopSelf()
+        if (p == null || !p.playWhenReady) stopAndEndSession()
     }
 
     override fun onDestroy() {
+        endSession()
         scope.cancel()
         session?.release()
         session = null
@@ -134,7 +148,19 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     }
 
     /** Only the root item for now: Android Auto's browse tree arrives in a later step. */
-    private class LibraryCallback : MediaLibrarySession.Callback {
+    private class LibraryCallback(private val ownPackage: String) : MediaLibrarySession.Callback {
+        // The service is exported, so only this app may queue audio, and only our own tracks.
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+        ): ListenableFuture<MutableList<MediaItem>> =
+            if (mediaItems.all { isOwnTrackRequest(controller.packageName, ownPackage, it.mediaId) }) {
+                Futures.immediateFuture(mediaItems)
+            } else {
+                Futures.immediateFailedFuture(UnsupportedOperationException("Not allowed"))
+            }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,

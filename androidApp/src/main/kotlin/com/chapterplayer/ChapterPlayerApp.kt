@@ -1,10 +1,12 @@
 package com.chapterplayer
 
 import android.app.Application
+import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.di.appModule
 import com.chapterplayer.di.sharedModules
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 
@@ -18,5 +20,7 @@ class ChapterPlayerApp : Application() {
             androidContext(this@ChapterPlayerApp)
             modules(sharedModules + appModule)
         }
+        // Progress is saved for any playing book, whichever screen is open.
+        GlobalContext.get().get<PlaybackProgressSaver>().start()
     }
 }

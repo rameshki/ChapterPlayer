@@ -34,10 +34,10 @@ data class BookDetailsUiState(
     val canPlay: Boolean = false,
     /** Why [canPlay] is false, in words for the person; null when it is true. */
     val cannotPlayReason: String? = null,
-    /** Why playback could not start, safe to show. */
+    /** Why playback could not start or stopped, safe to show. */
     val playError: String? = null,
     /** Where this book is: the live position while it is loaded in the player, else the saved one. */
     val currentPositionMs: Long = 0L,
-    /** Where Resume starts: the saved position, 0 for no progress or a finished book. */
+    /** Where Resume starts: the saved position, 0 for a finished book, -1 (the server decides) with no progress. */
     val resumePositionMs: Long = 0L
 )

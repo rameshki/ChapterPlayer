@@ -66,7 +66,7 @@ class BookDetailsViewModelTest {
         val settings: FakeAppSettings = FakeAppSettings()
     ) {
         val vm = BookDetailsViewModel(
-            id, repo, downloads, controller, connectivity, settings, Dispatchers.Main, nowMs = { 777L }
+            id, repo, downloads, controller, connectivity, settings, Dispatchers.Main
         )
     }
 
@@ -396,11 +396,11 @@ class BookDetailsViewModelTest {
     }
 
     @Test
-    fun `no progress or a finished book starts at zero`() = runTest {
+    fun `no progress asks for the server position and a finished book starts at zero`() = runTest {
         val s = fresh()
         val state = collect(s)
         s.vm.onResumeClicked()
-        assertEquals(listOf("a" to 0L), s.controller.loads)
+        assertEquals(listOf("a" to -1L), s.controller.loads)
 
         val finished = fresh()
         finished.repo.progress.value = listOf(ReadingProgress("a", 99_000L, 100_000L, 1L, isFinished = true))
@@ -518,7 +518,7 @@ class BookDetailsViewModelTest {
 
         s.vm.onResumeClicked()
 
-        assertEquals(listOf("a" to 0L), s.controller.loads)
+        assertEquals(listOf("a" to -1L), s.controller.loads)
         assertEquals(0, s.controller.pauses)
         assertEquals(DetailsPlayback.PLAYING, state().playback)
     }
@@ -587,7 +587,7 @@ class BookDetailsViewModelTest {
 
         s.vm.onChapterClicked(1)
 
-        assertEquals(listOf(1), s.controller.chapterSeeks)
+        assertEquals(listOf(1_000L), s.controller.seeks)
         assertTrue(s.controller.loads.isEmpty())
         assertEquals(0, s.controller.pauses)
         assertEquals(0, s.controller.plays)
@@ -601,7 +601,7 @@ class BookDetailsViewModelTest {
 
         s.vm.onChapterClicked(0)
 
-        assertEquals(listOf(0), s.controller.chapterSeeks)
+        assertEquals(listOf(0L), s.controller.seeks)
         assertEquals(DetailsPlayback.PAUSED, state().playback)
     }
 
@@ -614,7 +614,7 @@ class BookDetailsViewModelTest {
 
         assertEquals(listOf("a" to 1_000L), s.controller.loads)
         assertEquals(1, s.controller.plays)
-        assertTrue(s.controller.chapterSeeks.isEmpty())
+        assertTrue(s.controller.seeks.isEmpty())
         assertEquals(DetailsPlayback.PLAYING, state().playback)
     }
 
@@ -659,64 +659,69 @@ class BookDetailsViewModelTest {
     }
 
     @Test
-    fun `progress is saved when playing stops`() = runTest {
+    fun `buffering after play still offers Pause, buffering without a wish to play does not`() = runTest {
         val s = fresh()
-        s.controller.playback.value = loadedState(playing = true, positionMs = 30_000L)
-        collect(s)
+        s.controller.playback.value = loadedState()
+        val state = collect(s)
+        assertEquals(DetailsPlayback.PAUSED, state().playback)
 
-        s.controller.playback.value = loadedState(playing = false, positionMs = 31_000L)
+        s.controller.play() // the real player buffers before the first sound
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
+        s.controller.soundStarts()
+        assertEquals(DetailsPlayback.PLAYING, state().playback)
 
-        assertEquals(listOf(ReadingProgress("a", 31_000L, 100_000L, 777L, isFinished = false)), s.repo.saved)
+        s.controller.playback.value = loadedState().copy(isBuffering = true, playWhenReady = false)
+        assertEquals(DetailsPlayback.PAUSED, state().playback)
     }
 
     @Test
-    fun `progress within five seconds of the end is saved as finished`() = runTest {
+    fun `a failure while playing shows its text, Dismiss hides it and trying again clears it`() = runTest {
         val s = fresh()
-        s.controller.playback.value = loadedState(playing = true, positionMs = 90_000L)
-        collect(s)
+        s.controller.playback.value = loadedState().copy(error = "Sign in again in Settings")
+        val state = collect(s)
+        assertEquals("Sign in again in Settings", state().playError)
 
-        s.controller.playback.value = loadedState(playing = false, positionMs = 95_000L)
+        s.vm.dismissPlayError()
+        assertNull(state().playError)
 
-        assertTrue(s.repo.saved.single().isFinished)
+        s.controller.playback.value = loadedState().copy(error = "The audio was not found on the server")
+        assertEquals("The audio was not found on the server", state().playError)
+
+        s.vm.onResumeClicked() // Retry plays again
+        assertEquals(1, s.controller.plays)
     }
 
     @Test
-    fun `progress is not saved on other changes`() = runTest {
+    fun `another book's failure is not shown here and a start failure wins`() = runTest {
         val s = fresh()
-        collect(s)
+        s.controller.playback.value = loadedState(bookId = "other").copy(error = "Playback failed")
+        val state = collect(s)
+        assertNull(state().playError)
 
-        // Loading, starting, ticking, and a pause that was never a play.
-        s.controller.playback.value = loadedState(playing = false, positionMs = 5_000L)
-        s.controller.playback.value = loadedState(playing = true, positionMs = 5_000L)
-        s.controller.playback.value = loadedState(playing = true, positionMs = 6_000L)
-        assertTrue(s.repo.saved.isEmpty())
-        s.controller.playback.value = loadedState(playing = false, positionMs = 6_000L)
-        s.controller.playback.value = loadedState(playing = false, positionMs = 7_000L)
-
-        assertEquals(1, s.repo.saved.size)
+        s.controller.playback.value = loadedState().copy(error = "Playback failed")
+        assertEquals("Playback failed", state().playError)
     }
 
     @Test
-    fun `progress is not saved for another book or at position zero`() = runTest {
+    fun `resume on a book that played to its end starts again at the beginning`() = runTest {
         val s = fresh()
+        s.controller.playback.value = loadedState(positionMs = 99_000L)
         collect(s)
 
-        s.controller.playback.value = loadedState(bookId = "other", playing = true, positionMs = 5_000L)
-        s.controller.playback.value = loadedState(bookId = "other", playing = false, positionMs = 6_000L)
-        s.controller.playback.value = loadedState(playing = true, positionMs = 0L)
-        s.controller.playback.value = loadedState(playing = false, positionMs = 0L)
+        s.vm.onResumeClicked()
 
-        assertTrue(s.repo.saved.isEmpty())
+        assertEquals(listOf(0L), s.controller.seeks)
+        assertEquals(1, s.controller.plays)
     }
 
     @Test
-    fun `progress is saved when another book takes over`() = runTest {
+    fun `resume in the middle of a loaded book does not seek`() = runTest {
         val s = fresh()
-        s.controller.playback.value = loadedState(playing = true, positionMs = 20_000L)
+        s.controller.playback.value = loadedState(positionMs = 50_000L)
         collect(s)
 
-        s.controller.playback.value = loadedState(bookId = "other", playing = false, positionMs = 0L)
+        s.vm.onResumeClicked()
 
-        assertEquals(20_000L, s.repo.saved.single().positionMs)
+        assertTrue(s.controller.seeks.isEmpty())
     }
 }

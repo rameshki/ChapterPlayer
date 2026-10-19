@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Plays one audiobook at a time. Each platform provides an implementation: Media3 on
  * Android ([com.chapterplayer.data.playback.AndroidPlaybackController]) and AVPlayer on iOS (Stage 5).
+ * Call it from the main thread.
  */
 interface PlaybackController {
 
@@ -61,6 +62,8 @@ data class PlaybackState(
     val chapterIndex: Int? = null,
     /** The player is waiting for audio to arrive. */
     val isBuffering: Boolean = false,
+    /** Playing was asked for: true while buffering before the first sound, false once paused. */
+    val playWhenReady: Boolean = false,
     /** Why playback stopped, in words that are safe to show. Never holds a token or an address. */
     val error: String? = null,
     /** Playing time left before the sleep timer pauses playback; null when no timer runs. */
