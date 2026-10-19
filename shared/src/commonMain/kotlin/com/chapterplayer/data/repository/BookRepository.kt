@@ -6,6 +6,7 @@ import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
+import com.chapterplayer.data.playback.PlaybackSession
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -44,6 +45,16 @@ interface BookRepository {
      * sign-in that is needed again) leaves the cached chapters as they were; cancellation propagates.
      */
     suspend fun loadDetails(bookId: String): Result<BookDetails?>
+
+    /**
+     * Opens a playback session for the book on its server. A failure (unknown book or server, a source that
+     * cannot play, a failed call, a sign-in needed again) carries a message without tokens or addresses;
+     * cancellation propagates.
+     */
+    suspend fun startPlayback(bookId: String): Result<PlaybackSession>
+
+    /** Ends [session] on its server with the stop position and the time listened. Best effort: a failure is returned, never thrown; cancellation propagates. */
+    suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit>
 
     /** Progress tracking */
     fun observeProgress(bookId: String): Flow<ReadingProgress?>

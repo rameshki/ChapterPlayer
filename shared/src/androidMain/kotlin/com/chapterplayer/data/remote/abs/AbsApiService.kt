@@ -1,11 +1,15 @@
 package com.chapterplayer.data.remote.abs
 
+import com.chapterplayer.data.remote.abs.dto.AbsCloseSessionRequest
 import com.chapterplayer.data.remote.abs.dto.AbsCollectionsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsItemDetailDto
 import com.chapterplayer.data.remote.abs.dto.AbsLibrariesResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryItemsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLoginRequest
 import com.chapterplayer.data.remote.abs.dto.AbsLoginResponseDto
+import com.chapterplayer.data.remote.abs.dto.AbsPlayDeviceInfo
+import com.chapterplayer.data.remote.abs.dto.AbsPlayRequest
+import com.chapterplayer.data.remote.abs.dto.AbsPlaySessionDto
 import com.chapterplayer.data.remote.abs.dto.AbsStatusDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -76,6 +80,23 @@ class AbsApiService(private val client: HttpClient) {
             parameter("expanded", 1)
         }.body()
 
+    /** Opens a playback session for one item (POST /api/items/{id}/play). [itemId] is the server's own id. */
+    suspend fun startPlayback(baseUrl: String, bearerToken: String, itemId: String): AbsPlaySessionDto =
+        client.post(endpoint(baseUrl, "api/items/${itemId.encodeURLPathPart()}/play")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            contentType(ContentType.Application.Json)
+            setBody(AbsPlayRequest(AbsPlayDeviceInfo(clientName = "ChapterPlayer", deviceId = DEVICE_ID)))
+        }.body()
+
+    /** Ends a playback session (POST /api/session/{id}/close) with where listening stopped and how long it ran, in seconds. */
+    suspend fun closeSession(baseUrl: String, bearerToken: String, sessionId: String, positionSec: Double, listenedSec: Double) {
+        client.post(endpoint(baseUrl, "api/session/${sessionId.encodeURLPathPart()}/close")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            contentType(ContentType.Application.Json)
+            setBody(AbsCloseSessionRequest(currentTime = positionSec, timeListened = listenedSec))
+        }
+    }
+
     /** Answers without a token: the server version and which sign-in methods are on. */
     suspend fun getStatus(baseUrl: String): AbsStatusDto =
         client.get(endpoint(baseUrl, "status")).body()
@@ -93,6 +114,11 @@ class AbsApiService(private val client: HttpClient) {
         client.post(endpoint(baseUrl, "auth/refresh")) {
             header("x-refresh-token", refreshToken)
         }.body()
+
+    private companion object {
+        /** The app sends no per-install id at sign-in, so one constant names the Android client. */
+        const val DEVICE_ID = "chapterplayer-android"
+    }
 
     private fun endpoint(baseUrl: String, path: String) = baseUrl.trimEnd('/') + "/" + path
 }

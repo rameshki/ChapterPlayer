@@ -4,6 +4,7 @@ import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
+import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.LibraryInfo
@@ -31,6 +32,8 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override fun observeLibraries(): Flow<List<LibraryInfo>> = libraries
     override suspend fun syncBooksFromServer(server: ServerConfig): Result<Unit> = Result.success(Unit)
     override suspend fun loadDetails(bookId: String): Result<BookDetails?> = Result.success(null)
+    override suspend fun startPlayback(bookId: String): Result<PlaybackSession> = Result.failure(IllegalStateException("unused"))
+    override suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> = Result.success(Unit)
     override fun observeProgress(bookId: String): Flow<ReadingProgress?> =
         progress.map { list -> list.firstOrNull { it.bookId == bookId } }
     override fun observeInProgressBooks(): Flow<List<ReadingProgress>> =

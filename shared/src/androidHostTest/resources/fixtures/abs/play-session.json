@@ -1,0 +1,43 @@
+{
+  "id": "play_fixture01",
+  "userId": "usr_fixture",
+  "libraryId": "lib_fixture_books",
+  "libraryItemId": "li_fixture01",
+  "playMethod": 0,
+  "mediaType": "book",
+  "displayTitle": "Fixture Book One",
+  "displayAuthor": "Fixture Author 01",
+  "duration": 5400.5,
+  "startTime": 12.5,
+  "currentTime": 1735.25,
+  "deviceInfo": { "clientName": "ChapterPlayer", "deviceId": "fixture-device" },
+  "audioTracks": [
+    {
+      "index": 2,
+      "startOffset": 3000.125,
+      "duration": 2400.375,
+      "title": "part2.m4b",
+      "contentUrl": "/api/items/li_fixture01/file/ino_fixture_2",
+      "mimeType": "audio/mp4",
+      "codec": "aac",
+      "metadata": { "filename": "part2.m4b", "size": 123 }
+    },
+    {
+      "index": 1,
+      "startOffset": 0,
+      "duration": 3000.125,
+      "title": "part1.m4b",
+      "contentUrl": "/api/items/li_fixture01/file/ino_fixture_1",
+      "mimeType": "audio/mp4",
+      "codec": "aac",
+      "metadata": { "filename": "part1.m4b", "size": 456 }
+    }
+  ],
+  "chapters": [
+    { "id": 0, "start": 0, "end": 1735.25, "title": "Chapter One" },
+    { "id": 1, "start": 1735.25, "end": 5400.5, "title": "Chapter Two" }
+  ],
+  "coverPath": "/fixture/cover.jpg",
+  "date": "2026-01-01",
+  "dayOfWeek": "Thursday"
+}

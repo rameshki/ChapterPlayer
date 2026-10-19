@@ -206,6 +206,8 @@ class LibraryVisibilityTest {
         override fun observeCollections() = error("unused")
         override suspend fun syncBooksFromServer(server: ServerConfig) = error("unused")
         override suspend fun loadDetails(bookId: String) = error("unused")
+        override suspend fun startPlayback(bookId: String) = error("unused")
+        override suspend fun closePlayback(session: com.chapterplayer.data.playback.PlaybackSession, positionMs: Long, listenedMs: Long) = error("unused")
         override fun observeProgress(bookId: String) = error("unused")
         override fun observeInProgressBooks() = error("unused")
         override fun observeAllProgress() = error("unused")
