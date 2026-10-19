@@ -56,6 +56,7 @@ dependencies {
     implementation(project(":shared"))
 
     implementation(libs.activity.compose)
+    implementation(libs.core.ktx)
 
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
