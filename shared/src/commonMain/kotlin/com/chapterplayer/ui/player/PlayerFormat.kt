@@ -1,6 +1,9 @@
 package com.chapterplayer.ui.player
 
 import com.chapterplayer.domain.browse.formatClock
+import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.historyAgoLabel
 import kotlin.math.abs
 
 /** The elapsed and remaining texts under a slider. */
@@ -24,3 +27,18 @@ fun seekSettled(released: Float, actual: Float, totalMs: Long): Boolean {
     val tolerance = maxOf(0.005f, 2_000f / totalMs.toFloat())
     return abs(released - actual) <= tolerance
 }
+
+/** The clock time shown on a bookmark row. */
+fun bookmarkTimeLabel(bookmark: Bookmark): String = formatClock(bookmark.timeSec * 1000L)
+
+/** What a screen reader says for a bookmark row. */
+fun bookmarkRowDescription(bookmark: Bookmark): String =
+    "Bookmark ${bookmark.title}, at ${bookmarkTimeLabel(bookmark)}"
+
+/** A history row: where the person was, and how long ago they left it. */
+fun historyRowLabel(entry: HistoryEntry, nowMs: Long): String =
+    "${formatClock(entry.positionMs)} \u00B7 ${historyAgoLabel(entry.recordedAt, nowMs)}"
+
+/** What a screen reader says for a history row. */
+fun historyRowDescription(entry: HistoryEntry, nowMs: Long): String =
+    "Jump back to ${formatClock(entry.positionMs)}, ${historyAgoLabel(entry.recordedAt, nowMs)}"

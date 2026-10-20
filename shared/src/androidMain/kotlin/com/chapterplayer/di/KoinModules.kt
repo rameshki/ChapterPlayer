@@ -13,6 +13,8 @@ import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.playback.AndroidPlaybackController
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackProgressSaver
+import com.chapterplayer.data.bookmarks.BookmarkSyncer
+import com.chapterplayer.data.bookmarks.HistoryRecorder
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
 import com.chapterplayer.data.progress.ServerProgressRefresher
@@ -94,6 +96,8 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().libraryDao() }
     single { get<ChapterPlayerDatabase>().collectionDao() }
     single { get<ChapterPlayerDatabase>().pendingProgressDao() }
+    single { get<ChapterPlayerDatabase>().bookmarkDao() }
+    single { get<ChapterPlayerDatabase>().historyDao() }
 }
 
 val networkModule = module {
@@ -121,7 +125,7 @@ val sourceModule = module {
 
 val repositoryModule = module {
     single<BookRepository> { BookRepositoryImpl(
-            get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(),
+            get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(), bookmarkDao = get(), historyDao = get(),
             inTransaction = { block ->
                 get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
             }
@@ -153,6 +157,8 @@ val playbackModule = module {
     single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
     single { PendingProgressFlusher(get(), get(), get(AppScopeQualifier)) }
     single { ServerProgressRefresher(get(), get(), get(), get(AppScopeQualifier)) }
+    single { BookmarkSyncer(get(), get(), get(), get(AppScopeQualifier)) }
+    single { HistoryRecorder(get(), get(), get(AppScopeQualifier)) }
     // Starts a book (position, saved speed, play) for details, Home and the player.
     singleOf(::PlaybackStarter)
     // A tapped notification asks the navigation host to open the player once.

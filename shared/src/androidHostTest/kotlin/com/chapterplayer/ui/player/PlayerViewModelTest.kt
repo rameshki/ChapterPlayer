@@ -4,6 +4,9 @@ import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.BookmarkState
+import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
@@ -410,5 +413,116 @@ class PlayerViewModelTest {
         assertFalse(fresh.uiState.value.nothingPlaying)
         assertEquals("Two", fresh.uiState.value.chapterTitle)
         assertTrue(fresh.uiState.value.showPause)
+    }
+
+    private fun TestScope.collectLists(s: Setup) {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.vm.bookmarks.collect {} }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.vm.history.collect {} }
+    }
+
+    private fun mark(book: String, sec: Long, title: String = "T$sec") =
+        Bookmark(book, sec, title, 0L, BookmarkState.SYNCED)
+
+    @Test
+    fun `add bookmark uses the position at the moment of the call`() = runTest {
+        val s = Setup(book)
+        collectLists(s)
+        s.controller.playback.value = playing(position = 12_345L)
+        s.vm.addBookmark(null)
+        s.controller.playback.value = playing(position = 20_000L)
+        s.vm.addBookmark("  Named  ")
+        assertEquals(listOf(12L to "Bookmark at 0:12", 20L to "Named"), s.vm.bookmarks.value.map { it.timeSec to it.title })
+    }
+
+    @Test
+    fun `add bookmark with nothing loaded does nothing`() = runTest {
+        val s = Setup(book)
+        collectLists(s)
+        s.vm.addBookmark("x")
+        assertTrue(s.repo.bookmarks.value.isEmpty())
+    }
+
+    @Test
+    fun `rename and delete call through to the repository for the current book`() = runTest {
+        val s = Setup(book)
+        collectLists(s)
+        s.controller.playback.value = playing()
+        s.repo.bookmarks.value = listOf(mark("a", 5), mark("a", 9))
+        s.vm.renameBookmark("a", 5, "New")
+        s.vm.deleteBookmark("a", 9)
+        assertEquals(listOf(5L to "New"), s.vm.bookmarks.value.map { it.timeSec to it.title })
+    }
+
+    @Test
+    fun `rename and delete use the bookmark's own book, not the loaded one`() = runTest {
+        val s = Setup(book)
+        collectLists(s)
+        s.controller.playback.value = playing().copy(bookId = "other")
+        s.repo.bookmarks.value = listOf(mark("a", 5), mark("a", 9), mark("other", 5))
+        s.vm.renameBookmark("a", 5, "New")
+        s.vm.deleteBookmark("a", 9)
+        assertEquals(
+            setOf(Triple("a", 5L, "New"), Triple("other", 5L, "T5")),
+            s.repo.bookmarks.value.map { Triple(it.bookId, it.timeSec, it.title) }.toSet()
+        )
+        assertEquals(2, s.repo.bookmarks.value.size)
+    }
+
+    @Test
+    fun `add bookmark reports whether it was saved`() = runTest {
+        val s = Setup(book)
+        val results = mutableListOf<Boolean>()
+        s.vm.addBookmark("x") { results += it }
+        assertEquals(listOf(false), results)
+        s.controller.playback.value = playing()
+        s.vm.addBookmark("x") { results += it }
+        val failing = object : FakeBookRepository(listOf(book)) {
+            override suspend fun addBookmark(bookId: String, positionMs: Long, title: String?): Bookmark = error("Unknown book")
+        }
+        PlayerViewModel(s.controller, failing, s.settings, Dispatchers.Main).addBookmark("y") { results += it }
+        assertEquals(listOf(false, true, false), results)
+    }
+
+    @Test
+    fun `jump to seeks to the position`() = runTest {
+        val s = Setup(book)
+        collectLists(s)
+        s.controller.playback.value = playing()
+        s.vm.jumpTo(7_000L)
+        s.vm.jumpTo(-5L)
+        assertEquals(listOf(7_000L, 0L), s.controller.seeks)
+    }
+
+    @Test
+    fun `bookmarks and history follow the playing book and are empty with none`() = runTest {
+        val s = Setup(book)
+        collectLists(s)
+        s.repo.bookmarks.value = listOf(mark("a", 5), mark("other", 6))
+        s.repo.history.value = listOf(HistoryEntry("a", 1_000L, 1L), HistoryEntry("other", 2_000L, 2L))
+        assertTrue(s.vm.bookmarks.value.isEmpty())
+        assertTrue(s.vm.history.value.isEmpty())
+
+        s.controller.playback.value = playing()
+        assertEquals(listOf(5L), s.vm.bookmarks.value.map { it.timeSec })
+        assertEquals(listOf(1_000L), s.vm.history.value.map { it.positionMs })
+
+        s.controller.playback.value = playing().copy(bookId = "other")
+        assertEquals(listOf(6L), s.vm.bookmarks.value.map { it.timeSec })
+        assertEquals(listOf(2_000L), s.vm.history.value.map { it.positionMs })
+
+        s.controller.playback.value = PlaybackState()
+        assertTrue(s.vm.bookmarks.value.isEmpty())
+        assertTrue(s.vm.history.value.isEmpty())
+    }
+
+    @Test
+    fun `a repository failure on add is swallowed`() = runTest {
+        val s = Setup(book)
+        val failing = object : FakeBookRepository(listOf(book)) {
+            override suspend fun addBookmark(bookId: String, positionMs: Long, title: String?): Bookmark = error("disk full")
+        }
+        val vm = PlayerViewModel(s.controller, failing, s.settings, Dispatchers.Main)
+        s.controller.playback.value = playing()
+        vm.addBookmark("x")
     }
 }

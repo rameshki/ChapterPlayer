@@ -10,6 +10,8 @@ data class PlayerUiState(
     val author: String = "",
     val coverUrl: String? = null,
     val chapterTitle: String? = null,
+    /** Position in the whole book in ms (for the default bookmark name). */
+    val positionMs: Long = 0L,
     val bookFraction: Float = 0f,
     /** Length of the whole book in ms; 0 when unknown (the sliders are then disabled). */
     val durationMs: Long = 0L,

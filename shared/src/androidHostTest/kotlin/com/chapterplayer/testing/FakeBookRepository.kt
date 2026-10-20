@@ -12,7 +12,13 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.BookmarkState
+import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.PendingProgress
+import com.chapterplayer.domain.playback.addToHistory
+import com.chapterplayer.domain.playback.bookmarkTitleOrDefault
+import com.chapterplayer.domain.playback.visibleBookmarks
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.data.repository.ServerRepository
 import kotlinx.coroutines.flow.Flow
@@ -99,6 +105,50 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override fun observeAllProgress(): Flow<List<ReadingProgress>> = progress
     val saved = mutableListOf<ReadingProgress>()
     override suspend fun saveProgress(progress: ReadingProgress) { saved += progress }
+
+    /** Bookmark and history state for view model tests; the real rules are tested on the repository. */
+    val bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
+    override fun observeBookmarks(bookId: String): Flow<List<Bookmark>> =
+        bookmarks.map { list -> visibleBookmarks(list.filter { it.bookId == bookId }) }
+    override suspend fun addBookmark(bookId: String, positionMs: Long, title: String?): Bookmark {
+        val bookmark = Bookmark(
+            bookId, positionMs.coerceAtLeast(0L) / 1000, bookmarkTitleOrDefault(title, positionMs.coerceAtLeast(0L)), 0L, BookmarkState.PENDING_CREATE
+        )
+        bookmarks.value = bookmarks.value.filterNot { it.bookId == bookId && it.timeSec == bookmark.timeSec } + bookmark
+        return bookmark
+    }
+    override suspend fun renameBookmark(bookId: String, timeSec: Long, title: String) {
+        bookmarks.value = bookmarks.value.map { if (it.bookId == bookId && it.timeSec == timeSec) it.copy(title = title) else it }
+    }
+    override suspend fun deleteBookmark(bookId: String, timeSec: Long) {
+        bookmarks.value = bookmarks.value.filterNot { it.bookId == bookId && it.timeSec == timeSec }
+    }
+    override fun observePendingBookmarks(): Flow<List<Bookmark>> = bookmarks.map { list -> list.filter { it.state != BookmarkState.SYNCED } }
+    val pulledBookmarks = mutableListOf<String>()
+    /** Every pull and push in order, e.g. "pull s1" then "push s1". */
+    val bookmarkCalls = mutableListOf<String>()
+    var onPullBookmarks: suspend (String) -> Result<Unit> = { Result.success(Unit) }
+    override suspend fun pullBookmarks(serverId: String): Result<Unit> {
+        pulledBookmarks += serverId
+        bookmarkCalls += "pull $serverId"
+        return onPullBookmarks(serverId)
+    }
+    val pushedBookmarks = mutableListOf<String>()
+    var onPushBookmarks: suspend (String) -> Result<Unit> = { Result.success(Unit) }
+    override suspend fun pushPendingBookmarks(serverId: String): Result<Unit> {
+        pushedBookmarks += serverId
+        bookmarkCalls += "push $serverId"
+        return onPushBookmarks(serverId)
+    }
+    val history = MutableStateFlow<List<HistoryEntry>>(emptyList())
+    var onRecordHistory: suspend (HistoryEntry) -> Unit = {}
+    val recordAttempts = mutableListOf<HistoryEntry>()
+    override fun observeHistory(bookId: String): Flow<List<HistoryEntry>> = history.map { list -> list.filter { it.bookId == bookId } }
+    override suspend fun recordHistory(entry: HistoryEntry) {
+        recordAttempts += entry
+        onRecordHistory(entry)
+        history.value = addToHistory(history.value.filter { it.bookId == entry.bookId }, entry) + history.value.filter { it.bookId != entry.bookId }
+    }
 }
 
 class FakeDownloadStates(initial: Map<String, DownloadState> = emptyMap()) : DownloadStates {

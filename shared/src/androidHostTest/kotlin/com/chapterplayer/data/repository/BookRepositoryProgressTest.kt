@@ -110,7 +110,7 @@ class BookRepositoryProgressTest {
         val pendingDao = InMemoryPendingProgressDao(queued)
         val repo = BookRepositoryImpl(
             FakeBookDao(books), progressDao, InMemoryLibraryDao(), InMemoryCollectionDao(),
-            FakeServerList(servers), listOf(source), pendingDao = pendingDao
+            FakeServerList(servers), listOf(source), pendingDao = pendingDao, bookmarkDao = InMemoryBookmarkDao(), historyDao = InMemoryHistoryDao()
         )
         return Fixture(repo, source, progressDao, pendingDao)
     }
@@ -272,7 +272,7 @@ class BookRepositoryProgressTest {
         }
         val repo = BookRepositoryImpl(
             FakeBookDao(emptyList()), InMemoryProgressDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
-            FakeServerList(), listOf(ProgressSource()), pendingDao = pendingDao,
+            FakeServerList(), listOf(ProgressSource()), pendingDao = pendingDao, bookmarkDao = InMemoryBookmarkDao(), historyDao = InMemoryHistoryDao(),
             inTransaction = { block -> events += "begin"; block(); events += "end" }
         )
 
@@ -297,7 +297,7 @@ class BookRepositoryProgressTest {
         }
         val repo = BookRepositoryImpl(
             FakeBookDao(listOf(entity("abs_a"))), progressDao, InMemoryLibraryDao(), InMemoryCollectionDao(),
-            FakeServerList(), listOf(ProgressSource()), pendingDao = pendingDao,
+            FakeServerList(), listOf(ProgressSource()), pendingDao = pendingDao, bookmarkDao = InMemoryBookmarkDao(), historyDao = InMemoryHistoryDao(),
             inTransaction = { block -> events += "begin"; block(); events += "end" }
         )
 

@@ -1,7 +1,10 @@
 package com.chapterplayer.data.remote.abs
 
 import com.chapterplayer.data.remote.HttpStatusException
+import com.chapterplayer.data.remote.abs.dto.AbsBookmarkDto
+import com.chapterplayer.data.remote.abs.dto.AbsBookmarkRequest
 import com.chapterplayer.data.remote.abs.dto.AbsCloseSessionRequest
+import com.chapterplayer.data.remote.abs.dto.AbsMeBookmarksDto
 import com.chapterplayer.data.remote.abs.dto.AbsCollectionsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsItemDetailDto
 import com.chapterplayer.data.remote.abs.dto.AbsLibrariesResponse
@@ -18,6 +21,7 @@ import com.chapterplayer.data.remote.abs.dto.AbsPlaySessionDto
 import com.chapterplayer.data.remote.abs.dto.AbsStatusDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
@@ -144,6 +148,41 @@ class AbsApiService(private val client: HttpClient) {
         client.get(endpoint(baseUrl, "api/me")) {
             header(HttpHeaders.Authorization, bearerToken)
         }.body<AbsMeDto>().mediaProgress
+
+    /** The user's bookmarks on every item (GET /api/me, the `bookmarks` list only). */
+    suspend fun getMeBookmarks(baseUrl: String, bearerToken: String): List<AbsBookmarkDto> =
+        client.get(endpoint(baseUrl, "api/me")) {
+            header(HttpHeaders.Authorization, bearerToken)
+        }.body<AbsMeBookmarksDto>().bookmarks
+
+    /** Creates a bookmark (POST /api/me/item/{id}/bookmark) at a whole second. [itemId] is the server's own id. */
+    suspend fun createBookmark(baseUrl: String, bearerToken: String, itemId: String, timeSec: Long, title: String) {
+        client.post(endpoint(baseUrl, "api/me/item/${itemId.encodeURLPathPart()}/bookmark")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            contentType(ContentType.Application.Json)
+            setBody(AbsBookmarkRequest(timeSec, title))
+        }
+    }
+
+    /** Renames the bookmark at a whole second (PATCH /api/me/item/{id}/bookmark, the verb Audiobookshelf documents). */
+    suspend fun renameBookmark(baseUrl: String, bearerToken: String, itemId: String, timeSec: Long, title: String) {
+        client.patch(endpoint(baseUrl, "api/me/item/${itemId.encodeURLPathPart()}/bookmark")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            contentType(ContentType.Application.Json)
+            setBody(AbsBookmarkRequest(timeSec, title))
+        }
+    }
+
+    /** Deletes the bookmark at a whole second (DELETE /api/me/item/{id}/bookmark/{time}); a 404 means it is already gone. */
+    suspend fun deleteBookmark(baseUrl: String, bearerToken: String, itemId: String, timeSec: Long) {
+        try {
+            client.delete(endpoint(baseUrl, "api/me/item/${itemId.encodeURLPathPart()}/bookmark/$timeSec")) {
+                header(HttpHeaders.Authorization, bearerToken)
+            }
+        } catch (e: HttpStatusException) {
+            if (e.status != HttpStatusCode.NotFound) throw e
+        }
+    }
 
     /** Answers without a token: the server version and which sign-in methods are on. */
     suspend fun getStatus(baseUrl: String): AbsStatusDto =

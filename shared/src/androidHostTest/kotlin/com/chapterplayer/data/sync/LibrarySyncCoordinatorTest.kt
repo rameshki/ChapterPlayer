@@ -569,4 +569,67 @@ class LibrarySyncCoordinatorTest {
         assertTrue(job.isCancelled)
         assertFalse(finished)
     }
+
+    @Test
+    fun `after a successful sync of an Audiobookshelf server its bookmarks are pulled`() = runTest {
+        val books = RecordingBooks()
+        val c = coordinator(books, FakeServerList(listOf(server("a"))))
+
+        c.requestSync("a")
+
+        assertEquals(listOf("a"), books.pulledBookmarks)
+    }
+
+    @Test
+    fun `a failed sync pulls no bookmarks`() = runTest {
+        val books = RecordingBooks(outcome = { Result.failure(IllegalStateException("down")) })
+        val c = coordinator(books, FakeServerList(listOf(server("a"))))
+
+        c.requestSync("a")
+
+        assertTrue(books.pulledBookmarks.isEmpty())
+    }
+
+    @Test
+    fun `a Plex server pulls no bookmarks`() = runTest {
+        val books = RecordingBooks()
+        val plex = ServerConfig("p", ServerSource.PLEX, "Plex", "http://p.test", "t")
+        val c = coordinator(books, FakeServerList(listOf(plex)))
+
+        c.requestSync("p")
+
+        assertTrue(books.pulledBookmarks.isEmpty())
+    }
+
+    @Test
+    fun `a bookmark pull that throws or fails neither fails the sync nor shows an error`() = runTest {
+        val books = RecordingBooks()
+        books.onPullBookmarks = { error("pull broke") }
+        val c = coordinator(books, FakeServerList(listOf(server("a"), server("b"))))
+
+        c.refreshAll()
+
+        assertEquals(listOf("a", "b"), books.pulledBookmarks)
+        assertEquals(null, c.state.value.syncError)
+        books.onPullBookmarks = { Result.failure(IllegalStateException("down")) }
+        c.refreshAll()
+        assertEquals(null, c.state.value.syncError)
+    }
+
+    @Test
+    fun `cancellation inside the bookmark pull is not swallowed`() = runTest {
+        val books = RecordingBooks()
+        books.onPullBookmarks = { throw kotlinx.coroutines.CancellationException("stop") }
+        val c = coordinator(books, FakeServerList(listOf(server("a"))))
+
+        var finished = false
+        val job = launch {
+            c.refreshAll()
+            finished = true
+        }
+        job.join()
+
+        assertTrue(job.isCancelled)
+        assertFalse(finished)
+    }
 }

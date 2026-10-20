@@ -1,6 +1,8 @@
 package com.chapterplayer.data.repository
 
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.BookmarkDao
+import com.chapterplayer.data.local.dao.HistoryDao
 import com.chapterplayer.data.local.dao.CollectionDao
 import com.chapterplayer.data.local.dao.ExcludedLibraryDao
 import com.chapterplayer.data.local.dao.LibraryDao
@@ -31,7 +33,9 @@ class ServerRepositoryImpl(
     private val credentials: CredentialStore,
     private val bookDao: BookDao,
     private val libraryDao: LibraryDao,
-    private val collectionDao: CollectionDao
+    private val collectionDao: CollectionDao,
+    private val bookmarkDao: BookmarkDao,
+    private val historyDao: HistoryDao
 ) : ServerRepository {
 
     private val migrationLock = Mutex()
@@ -91,6 +95,10 @@ class ServerRepositoryImpl(
         credentials.remove(id)
         credentials.remove(refreshKey(id))
         excludedLibraryDao.deleteForServer(id)
+        // The book ids are read before the books go: the history rows are found through them.
+        val bookIds = bookDao.getByServer(id).map { it.id }
+        for (chunk in bookIds.chunked(HISTORY_DELETE_CHUNK)) historyDao.deleteForBooks(chunk)
+        bookmarkDao.deleteForServer(id)
         bookDao.deleteByServer(id)
         libraryDao.deleteForServer(id)
         collectionDao.deleteCollectionBooksForServer(id)
@@ -125,6 +133,11 @@ class ServerRepositoryImpl(
             if (e is CancellationException) throw e
             null
         }
+
+    private companion object {
+        // Stays under SQLite's limit on bound variables.
+        const val HISTORY_DELETE_CHUNK = 500
+    }
 
     private fun refreshKey(id: String) = "$id.refresh"
 
