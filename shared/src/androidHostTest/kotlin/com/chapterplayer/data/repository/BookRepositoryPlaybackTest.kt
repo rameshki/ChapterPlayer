@@ -85,7 +85,7 @@ class BookRepositoryPlaybackTest {
     private fun repo(source: LibrarySource, servers: List<ServerConfig> = listOf(server()), books: List<BookEntity> = listOf(entity("abs_a"))) =
         BookRepositoryImpl(
             FakeBookDao(books), NoProgressDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
-            FakeServerList(servers), listOf(source)
+            FakeServerList(servers), listOf(source), pendingDao = InMemoryPendingProgressDao()
         )
 
     @Test

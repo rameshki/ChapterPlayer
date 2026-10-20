@@ -3,11 +3,13 @@ package com.chapterplayer.data.repository
 import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.local.dao.CollectionDao
 import com.chapterplayer.data.local.dao.LibraryDao
+import com.chapterplayer.data.local.dao.PendingProgressDao
 import com.chapterplayer.data.local.dao.ProgressDao
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.CollectionBookEntity
 import com.chapterplayer.data.local.entity.CollectionEntity
 import com.chapterplayer.data.local.entity.LibraryEntity
+import com.chapterplayer.data.local.entity.PendingProgressEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
@@ -18,6 +20,11 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.source.LibrarySource
+import com.chapterplayer.domain.playback.PendingProgress
+import com.chapterplayer.domain.playback.ServerProgress
+import com.chapterplayer.domain.playback.coalescePending
+import com.chapterplayer.domain.playback.isFinishedAt
+import com.chapterplayer.domain.playback.mergeServerProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -34,6 +41,7 @@ class BookRepositoryImpl(
     private val collectionDao: CollectionDao,
     private val servers: ServerRepository,
     private val sources: List<LibrarySource>,
+    private val pendingDao: PendingProgressDao,
     private val clock: () -> Long = { System.currentTimeMillis() },
     /** Runs the block as one database write transaction; the default runs it as is (for fakes). */
     private val inTransaction: suspend (suspend () -> Unit) -> Unit = { it() }
@@ -152,6 +160,100 @@ class BookRepositoryImpl(
         } catch (e: Exception) {
             Result.failure(e)
         }
+
+    override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> =
+        try {
+            val (server, source) = serverAndSource(session.serverId)
+            Result.success(
+                source.syncPlayback(
+                    server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L), session.durationMs
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    override suspend fun fetchServerProgress(bookId: String): Result<ServerProgress?> =
+        try {
+            val book = bookDao.getById(bookId) ?: error("Unknown book")
+            val (server, source) = serverAndSource(book.serverId)
+            Result.success(source.fetchProgress(server, bookId))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    override suspend fun pushProgress(pending: PendingProgress): Result<Unit> =
+        try {
+            val (server, source) = serverAndSource(pending.serverId)
+            Result.success(
+                source.pushProgress(
+                    server, pending.bookId, pending.positionMs, pending.durationMs,
+                    isFinished = isFinishedAt(pending.positionMs, pending.durationMs)
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    /** The book's server and the source for its type; the messages name no token or address. */
+    private suspend fun serverAndSource(serverId: String): Pair<ServerConfig, LibrarySource> {
+        val server = servers.getById(serverId) ?: error("The book's server is no longer configured")
+        val source = sources.firstOrNull { it.type == server.source } ?: error("No library source for ${server.source}")
+        return server to source
+    }
+
+    // -------------------------------------------------------------------------
+    // Pending progress queue
+    // -------------------------------------------------------------------------
+
+    override suspend fun queueProgress(pending: PendingProgress) {
+        inTransaction {
+            val existing = pendingDao.get(pending.bookId)
+            val merged = coalescePending(existing?.toDomain(), pending)
+            // A reset retry state starts at once; a kept one keeps its wait.
+            val nextAttemptAtMs = if (merged.attempts == 0) 0L else existing?.nextAttemptAtMs ?: 0L
+            pendingDao.upsert(PendingProgressEntity.fromDomain(merged, nextAttemptAtMs))
+        }
+    }
+
+    override suspend fun pendingProgress(): List<PendingProgress> = pendingDao.getAll().map { it.toDomain() }
+
+    override suspend fun deletePending(bookId: String) = pendingDao.delete(bookId)
+
+    override suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long) =
+        pendingDao.updateAttempt(bookId, attempts, nextAttemptAtMs)
+
+    override suspend fun saveServerProgress(bookId: String, server: ServerProgress) {
+        // Read, decide and write together, so a save from the player cannot slip in between.
+        inTransaction {
+            val merged = mergeServerProgress(
+                bookId, progressDao.get(bookId)?.toDomain(), server, hasPendingLocal = pendingDao.get(bookId) != null
+            )
+            if (merged != null) progressDao.upsert(ProgressEntity.fromDomain(merged))
+        }
+    }
+
+    override suspend fun mergeAllServerProgress(serverId: String) {
+        try {
+            val (server, source) = serverAndSource(serverId)
+            val all = source.fetchAllProgress(server)
+            if (all.isEmpty()) return
+            val cached = bookDao.getByServer(serverId).map { it.id }.toSet()
+            for ((bookId, progress) in all) {
+                if (bookId in cached) saveServerProgress(bookId, progress)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best effort: the library sync never fails over progress.
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Progress

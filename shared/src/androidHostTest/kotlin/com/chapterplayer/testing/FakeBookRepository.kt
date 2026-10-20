@@ -12,6 +12,8 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.domain.playback.PendingProgress
+import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.data.repository.ServerRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +36,16 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override suspend fun loadDetails(bookId: String): Result<BookDetails?> = Result.success(null)
     override suspend fun startPlayback(bookId: String): Result<PlaybackSession> = Result.failure(IllegalStateException("unused"))
     override suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> = Result.success(Unit)
+    override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> = Result.success(Unit)
+    override suspend fun fetchServerProgress(bookId: String): Result<ServerProgress?> = Result.success(null)
+    val queued = mutableListOf<PendingProgress>()
+    override suspend fun queueProgress(pending: PendingProgress) { queued += pending }
+    override suspend fun pendingProgress(): List<PendingProgress> = queued.toList()
+    override suspend fun deletePending(bookId: String) { queued.removeAll { it.bookId == bookId } }
+    override suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long) {}
+    override suspend fun pushProgress(pending: PendingProgress): Result<Unit> = Result.success(Unit)
+    override suspend fun saveServerProgress(bookId: String, server: ServerProgress) {}
+    override suspend fun mergeAllServerProgress(serverId: String) {}
     override fun observeProgress(bookId: String): Flow<ReadingProgress?> =
         progress.map { list -> list.firstOrNull { it.bookId == bookId } }
     override fun observeInProgressBooks(): Flow<List<ReadingProgress>> =

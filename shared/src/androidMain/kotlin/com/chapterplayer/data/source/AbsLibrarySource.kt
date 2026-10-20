@@ -18,6 +18,7 @@ import com.chapterplayer.data.remote.abs.dto.toBookCollection
 import com.chapterplayer.data.remote.abs.fetchAllAbsCollections
 import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.domain.browse.parseSeriesName
+import com.chapterplayer.domain.playback.ServerProgress
 
 /** The app's book ids for Audiobookshelf items start with this; the server only knows the part after it. */
 internal const val ABS_ID_PREFIX = "abs_"
@@ -103,6 +104,29 @@ class AbsLibrarySource(
             api.closeSession(server.baseUrl, bearerToken, sessionId, positionMs / 1000.0, listenedMs / 1000.0)
         }
     }
+
+    override suspend fun syncPlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long, durationMs: Long) {
+        authorizer.authorized(server) { bearerToken ->
+            api.syncSession(server.baseUrl, bearerToken, sessionId, positionMs / 1000.0, listenedMs / 1000.0, durationMs / 1000.0)
+        }
+    }
+
+    override suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? =
+        authorizer.authorized(server) { bearerToken ->
+            api.getProgress(server.baseUrl, bearerToken, bookId.toServerItemId())
+        }?.toServerProgress()
+
+    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {
+        authorizer.authorized(server) { bearerToken ->
+            api.patchProgress(server.baseUrl, bearerToken, bookId.toServerItemId(), positionMs / 1000.0, durationMs / 1000.0, isFinished)
+        }
+    }
+
+    /** Book progress only: entries without an item id or for a podcast episode are skipped. */
+    override suspend fun fetchAllProgress(server: ServerConfig): Map<String, ServerProgress> =
+        authorizer.authorized(server) { bearerToken -> api.getMeProgress(server.baseUrl, bearerToken) }
+            .filter { it.libraryItemId.isNotEmpty() && it.episodeId.isNullOrEmpty() }
+            .associate { ABS_ID_PREFIX + it.libraryItemId to it.toServerProgress() }
 
     override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> =
         librariesOf(server, readLibraries(server))

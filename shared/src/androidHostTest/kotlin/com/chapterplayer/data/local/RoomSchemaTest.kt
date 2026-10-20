@@ -32,6 +32,7 @@ class RoomSchemaTest {
     private val database: JsonObject by lazy { load(1) }
     private val database2: JsonObject by lazy { load(2) }
     private val database3: JsonObject by lazy { load(3) }
+    private val database4: JsonObject by lazy { load(4) }
 
     private fun entity(table: String, db: JsonObject = database): JsonObject =
         db.getValue("entities").jsonArray.map { it.jsonObject }
@@ -179,5 +180,36 @@ class RoomSchemaTest {
         assertEquals(listOf("bookId"), primaryKey("progress", database3))
         assertEquals(listOf("id"), primaryKey("server_configs", database3))
         assertEquals(listOf("serverId", "libraryId"), primaryKey("excluded_libraries", database3))
+    }
+
+    @Test
+    fun `version 4 adds the pending progress queue`() {
+        assertEquals(4, database4.getValue("version").jsonPrimitive.int)
+        assertEquals(
+            setOf(
+                "books", "progress", "server_configs", "excluded_libraries", "libraries", "collections",
+                "collection_books", "pending_progress"
+            ),
+            tables(database4)
+        )
+        assertEquals(
+            mapOf(
+                "bookId" to "TEXT", "serverId" to "TEXT", "positionMs" to "INTEGER", "durationMs" to "INTEGER",
+                "listenedMs" to "INTEGER", "updatedAtMs" to "INTEGER", "attempts" to "INTEGER", "nextAttemptAtMs" to "INTEGER",
+            ),
+            columns("pending_progress", database4)
+        )
+        assertEquals(listOf("bookId"), primaryKey("pending_progress", database4))
+        val defaults = entity("pending_progress", database4).getValue("fields").jsonArray.map { it.jsonObject }
+            .associate { it.getValue("columnName").jsonPrimitive.content to it["defaultValue"]?.jsonPrimitive?.content }
+        assertEquals("0", defaults["nextAttemptAtMs"])
+    }
+
+    @Test
+    fun `version 4 leaves the older tables as they were`() {
+        for (table in listOf("books", "progress", "server_configs", "excluded_libraries", "libraries", "collections", "collection_books")) {
+            assertEquals(columns(table, database3), columns(table, database4), "$table columns")
+            assertEquals(primaryKey(table, database3), primaryKey(table, database4), "$table primary key")
+        }
     }
 }

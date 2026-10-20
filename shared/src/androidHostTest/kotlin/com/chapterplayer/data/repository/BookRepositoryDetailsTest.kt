@@ -91,7 +91,7 @@ class BookRepositoryDetailsTest {
     private fun repo(dao: BookDao, source: LibrarySource, servers: List<ServerConfig> = listOf(server())) =
         BookRepositoryImpl(
             dao, NoProgressDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
-            FakeServerList(servers), listOf(source)
+            FakeServerList(servers), listOf(source), pendingDao = InMemoryPendingProgressDao()
         )
 
     @Test
