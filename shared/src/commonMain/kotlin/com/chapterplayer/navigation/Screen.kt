@@ -1,6 +1,7 @@
 package com.chapterplayer.navigation
 
 import com.chapterplayer.ui.library.LibraryView
+import com.chapterplayer.ui.library.decodeGroupKey
 import com.chapterplayer.ui.library.encodeGroupKey
 
 /**
@@ -15,6 +16,16 @@ sealed class Screen(val route: String) {
     object Search : Screen("search")
     object Player : Screen("player/{bookId}") {
         fun createRoute(bookId: String) = "player/$bookId"
+    }
+    object BookDetails : Screen("book/{id}") {
+        const val ARG_ID = "id"
+
+        /** [bookId] travels hex-encoded like a group key: ids hold underscores and may hold more. */
+        fun createRoute(bookId: String) = "book/${encodeGroupKey(bookId)}"
+
+        /** True when the entry on top is this route showing [bookId] ([encodedId] is its raw argument). */
+        fun isShowing(currentRoute: String?, encodedId: String?, bookId: String): Boolean =
+            currentRoute == route && encodedId != null && decodeGroupKey(encodedId) == bookId
     }
     object GroupDetail : Screen("group/{kind}/{key}") {
         const val ARG_KIND = "kind"

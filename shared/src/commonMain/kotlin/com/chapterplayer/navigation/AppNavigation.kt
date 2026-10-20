@@ -31,6 +31,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.savedstate.read
 import org.koin.compose.koinInject
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
+import com.chapterplayer.ui.details.BookDetailsScreen
 import com.chapterplayer.ui.downloads.DownloadsScreen
 import com.chapterplayer.ui.home.HomeScreen
 import com.chapterplayer.ui.library.GroupDetailScreen
@@ -76,8 +77,17 @@ fun AppNavigation() {
     val openSettings = {
         navController.navigate(Screen.Settings.route) { launchSingleTop = true }
     }
-    val openPlayer = { bookId: String ->
-        navController.navigate(Screen.Player.createRoute(bookId))
+    // A book tap opens its details; the player is reached from there once playback exists.
+    val openBook = { bookId: String ->
+        val entry = navController.currentBackStackEntry
+        val shownId = entry?.arguments?.read { getStringOrNull(Screen.BookDetails.ARG_ID) }
+        // Single-top would replace a different book on top; push, except when this book is already showing.
+        if (!Screen.BookDetails.isShowing(entry?.destination?.route, shownId, bookId)) {
+            navController.navigate(Screen.BookDetails.createRoute(bookId))
+        }
+    }
+    val openGroup = { kind: LibraryView, key: String ->
+        navController.navigate(Screen.GroupDetail.createRoute(kind, key))
     }
 
     Scaffold(
@@ -114,15 +124,13 @@ fun AppNavigation() {
                 startDestination = Screen.Home.route
             ) {
                 composable(Screen.Home.route) {
-                    HomeScreen(onBookClick = openPlayer, onOpenSettings = { openSettings() })
+                    HomeScreen(onBookClick = openBook, onOpenSettings = { openSettings() })
                 }
 
                 composable(Screen.Library.route) {
                     LibraryScreen(
-                        onBookClick = openPlayer,
-                        onGroupClick = { view, key ->
-                            navController.navigate(Screen.GroupDetail.createRoute(view, key))
-                        },
+                        onBookClick = openBook,
+                        onGroupClick = openGroup,
                         onOpenSettings = { openSettings() }
                     )
                 }
@@ -136,11 +144,26 @@ fun AppNavigation() {
                         GroupDetailScreen(
                             kind = kind,
                             groupKey = key,
-                            onBookClick = openPlayer,
+                            onBookClick = openBook,
                             onBack = { navController.popBackStack() }
                         )
                     } else {
                         // A damaged link: leave rather than show an empty page.
+                        LaunchedEffect(Unit) { navController.popBackStack() }
+                    }
+                }
+
+                composable(Screen.BookDetails.route) { backStackEntry ->
+                    val id = backStackEntry.arguments?.read { getStringOrNull(Screen.BookDetails.ARG_ID) }
+                        ?.let(::decodeGroupKey)
+                    if (id != null) {
+                        BookDetailsScreen(
+                            bookId = id,
+                            onBack = { navController.popBackStack() },
+                            onOpenBook = openBook,
+                            onOpenGroup = openGroup
+                        )
+                    } else {
                         LaunchedEffect(Unit) { navController.popBackStack() }
                     }
                 }
@@ -150,7 +173,7 @@ fun AppNavigation() {
                 }
 
                 composable(Screen.Search.route) {
-                    SearchScreen(onBookClick = openPlayer, onOpenSettings = { openSettings() })
+                    SearchScreen(onBookClick = openBook, onOpenSettings = { openSettings() })
                 }
 
                 composable(Screen.Player.route) {

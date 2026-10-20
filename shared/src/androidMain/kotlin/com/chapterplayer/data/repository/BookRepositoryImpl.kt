@@ -11,11 +11,13 @@ import com.chapterplayer.data.local.entity.LibraryEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.ChapterJson
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.source.LibrarySource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -29,6 +31,7 @@ class BookRepositoryImpl(
     private val progressDao: ProgressDao,
     private val libraryDao: LibraryDao,
     private val collectionDao: CollectionDao,
+    private val servers: ServerRepository,
     private val sources: List<LibrarySource>,
     private val clock: () -> Long = { System.currentTimeMillis() },
     /** Runs the block as one database write transaction; the default runs it as is (for fakes). */
@@ -74,11 +77,18 @@ class BookRepositoryImpl(
                 ?: error("No library source for ${server.source}")
             val now = clock()
             val snapshot = source.fetchSnapshot(server)
-            val books = snapshot.books.map { BookEntity.fromDomain(it, cachedAt = now) }
+            val incoming = snapshot.books.map { BookEntity.fromDomain(it, cachedAt = now) }
             val libraries = snapshot.libraries
             val collections = snapshot.collections
             // All fetching is done; every write below is one transaction, so a cancel or a crash keeps the old rows.
             inTransaction {
+                // The library list carries no chapters: keep the ones details cached for books still on the server.
+                val cached = bookDao.getByServer(server.id).associate { it.id to it.chaptersJson }
+                val noChapters = ChapterJson.encode(emptyList())
+                val books = incoming.map { row ->
+                    val old = cached[row.id]
+                    if (row.chaptersJson == noChapters && old != null) row.copy(chaptersJson = old) else row
+                }
                 bookDao.deleteByServer(server.id)
                 bookDao.insertAll(books)
                 if (libraries != null) {
@@ -98,6 +108,22 @@ class BookRepositoryImpl(
                     )
                 }
             }
+        }
+
+    /** Failure messages name no token or address. */
+    override suspend fun loadDetails(bookId: String): Result<BookDetails?> =
+        try {
+            val book = bookDao.getById(bookId) ?: error("Unknown book")
+            val server = servers.getById(book.serverId) ?: error("The book's server is no longer configured")
+            val source = sources.firstOrNull { it.type == server.source }
+                ?: error("No library source for ${server.source}")
+            val details = source.fetchBookDetails(server, bookId)
+            if (details != null) bookDao.updateChapters(bookId, ChapterJson.encode(details.chapters))
+            Result.success(details)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
 
     // -------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 package com.chapterplayer.data.remote.abs.dto
 
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.source.ABS_ID_PREFIX
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -37,4 +38,4 @@ data class AbsCollectionBookDto(
  * Maps this collection DTO to a domain [BookCollection], prefixing book IDs with "abs_"
  */
 fun AbsCollectionDto.toBookCollection(serverId: String): BookCollection =
-    BookCollection(serverId, id, name, books.map { "abs_" + it.id })
+    BookCollection(serverId, id, name, books.map { ABS_ID_PREFIX + it.id })

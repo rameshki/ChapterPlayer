@@ -86,7 +86,7 @@ private fun ContinueReadingCard(
             .width(120.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(SurfaceElevated)
-            .clickable(enabled = !dimmed, onClick = onClick)
+            .clickable(onClick = onClick)
     ) {
         // Cover
         Box(

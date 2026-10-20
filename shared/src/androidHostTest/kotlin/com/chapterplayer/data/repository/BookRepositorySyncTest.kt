@@ -17,6 +17,7 @@ import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.source.LibrarySource
+import com.chapterplayer.testing.FakeServerList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -39,8 +40,10 @@ class BookRepositorySyncTest {
         override fun observeBySource(source: String): Flow<List<BookEntity>> = flowOf(stored.values.filter { it.source == source })
         override fun observeByServer(serverId: String): Flow<List<BookEntity>> = flowOf(stored.values.filter { it.serverId == serverId })
         override suspend fun getById(id: String): BookEntity? = stored[id]
+        override suspend fun getByServer(serverId: String): List<BookEntity> = stored.values.filter { it.serverId == serverId }
         override suspend fun insertAll(books: List<BookEntity>) { calls += "insertAll:${books.size}"; books.forEach { stored[it.id] = it } }
         override suspend fun insert(book: BookEntity) { stored[book.id] = book }
+        override suspend fun updateChapters(id: String, json: String) { stored[id]?.let { stored[id] = it.copy(chaptersJson = json) } }
         override suspend fun deleteByServer(serverId: String) { calls += "deleteByServer:$serverId"; stored.values.removeAll { it.serverId == serverId } }
         override suspend fun deleteByLibrary(serverId: String, libraryId: String) { stored.values.removeAll { it.serverId == serverId && it.libraryId == libraryId } }
         override suspend fun deleteAll() { stored.clear() }
@@ -135,7 +138,7 @@ class BookRepositorySyncTest {
         collectionDao: CollectionDao = FakeCollectionDao(),
         inTransaction: suspend (suspend () -> Unit) -> Unit = { it() },
     ) = BookRepositoryImpl(
-        dao, FakeProgressDao(), libraryDao, collectionDao, sources.toList(), clock = { 1_234L }, inTransaction = inTransaction
+        dao, FakeProgressDao(), libraryDao, collectionDao, FakeServerList(), sources.toList(), clock = { 1_234L }, inTransaction = inTransaction
     )
 
     @Test
@@ -434,5 +437,51 @@ class BookRepositorySyncTest {
         repository(dao, FakeSource(ServerSource.ABS, emptyList())).syncBooksFromServer(server())
 
         assertTrue(dao.stored.isEmpty())
+    }
+
+    private fun cached(id: String, serverId: String, chapters: List<Chapter>) =
+        entity(id, serverId).copy(chaptersJson = ChapterJson.encode(chapters))
+
+    private val details = listOf(Chapter(1, "Cached one", 0, 500), Chapter(2, "Cached two", 500, 1_000))
+
+    @Test
+    fun `a sync keeps the chapters details cached for a book the list has none for`() = runTest {
+        val dao = FakeBookDao(listOf(cached("a", "srv1", details)))
+        val noChapters = book("a").copy(chapters = emptyList())
+
+        repository(dao, FakeSource(ServerSource.ABS, listOf(noChapters))).syncBooksFromServer(server())
+
+        assertEquals(details, ChapterJson.decode(dao.stored.getValue("a").chaptersJson))
+        assertEquals("Title a", dao.stored.getValue("a").title)
+    }
+
+    @Test
+    fun `a sync replaces cached chapters when the list brings its own`() = runTest {
+        val dao = FakeBookDao(listOf(cached("a", "srv1", details)))
+
+        repository(dao, FakeSource(ServerSource.ABS, listOf(book("a")))).syncBooksFromServer(server())
+
+        assertEquals(listOf(Chapter(1, "One", 0, 1_000)), ChapterJson.decode(dao.stored.getValue("a").chaptersJson))
+    }
+
+    @Test
+    fun `a book that had no chapters stays empty and a removed book is gone`() = runTest {
+        val dao = FakeBookDao(listOf(entity("fresh", "srv1"), cached("gone", "srv1", details)))
+        val fresh = book("fresh").copy(chapters = emptyList())
+
+        repository(dao, FakeSource(ServerSource.ABS, listOf(fresh))).syncBooksFromServer(server())
+
+        assertEquals(emptyList(), ChapterJson.decode(dao.stored.getValue("fresh").chaptersJson))
+        assertEquals(setOf("fresh"), dao.stored.keys)
+    }
+
+    @Test
+    fun `a sync leaves another server's chapters alone`() = runTest {
+        val dao = FakeBookDao(listOf(cached("a", "srv1", details), cached("z", "srv2", details)))
+
+        repository(dao, FakeSource(ServerSource.ABS, listOf(book("a").copy(chapters = emptyList())))).syncBooksFromServer(server())
+
+        assertEquals(details, ChapterJson.decode(dao.stored.getValue("z").chaptersJson))
+        assertEquals(details, ChapterJson.decode(dao.stored.getValue("a").chaptersJson))
     }
 }

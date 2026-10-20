@@ -47,8 +47,8 @@ fun BookCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            // A dimmed book cannot play now (offline, not downloaded), so the tap does nothing.
-            .clickable(enabled = !dimmed, onClick = onClick),
+            // A dimmed book cannot play now (offline, not downloaded), but its details still open.
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
         shape = RoundedCornerShape(12.dp)
     ) {

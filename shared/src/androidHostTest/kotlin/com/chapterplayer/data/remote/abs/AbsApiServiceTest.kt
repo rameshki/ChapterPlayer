@@ -1,6 +1,7 @@
 package com.chapterplayer.data.remote.abs
 
 import com.chapterplayer.data.remote.HttpStatusException
+import com.chapterplayer.data.remote.abs.dto.toBookDetails
 import com.chapterplayer.data.remote.installApiDefaults
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -67,5 +68,26 @@ class AbsApiServiceTest {
         }
 
         assertEquals("HTTP 401 Unauthorized", error.message)
+    }
+
+    @Test
+    fun `reads one item expanded with the bearer token`() = runTest {
+        val item = service(fixture("abs/item-detail.json")).getItem("http://abs.test", "Bearer abc", "li_fixture01")
+
+        val request = requests.single()
+        assertEquals(HttpMethod.Get, request.method)
+        assertEquals("/api/items/li_fixture01", request.url.encodedPath)
+        assertEquals("1", request.url.parameters["expanded"])
+        assertEquals("Bearer abc", request.headers[HttpHeaders.Authorization])
+        assertEquals(3, item.toBookDetails().chapters.size)
+    }
+
+    @Test
+    fun `an item request that the server fails throws with the status`() = runTest {
+        val error = assertFailsWith<HttpStatusException> {
+            service("oops", HttpStatusCode.InternalServerError).getItem("http://abs.test", "Bearer abc", "li_1")
+        }
+
+        assertEquals("HTTP 500 Internal Server Error", error.message)
     }
 }

@@ -39,6 +39,7 @@ import com.chapterplayer.data.sync.LibrarySync
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.ui.home.HomeViewModel
+import com.chapterplayer.ui.details.BookDetailsViewModel
 import com.chapterplayer.ui.library.GroupDetailViewModel
 import com.chapterplayer.ui.library.LibrariesViewModel
 import com.chapterplayer.ui.library.LibraryView
@@ -110,7 +111,7 @@ val sourceModule = module {
 
 val repositoryModule = module {
     single<BookRepository> { BookRepositoryImpl(
-            get(), get(), get(), get(), getAll<LibrarySource>(),
+            get(), get(), get(), get(), get(), getAll<LibrarySource>(),
             inTransaction = { block ->
                 get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
             }
@@ -146,6 +147,8 @@ val viewModelModule = module {
             params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)
         )
     }
+    // Built with parametersOf(bookId) by the book details screen.
+    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(IoDispatcherQualifier)) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)
