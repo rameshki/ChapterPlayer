@@ -579,7 +579,7 @@ class BookRepositoryBookmarkTest {
 
         f.repo.pushPendingBookmarks("srv1")
 
-        assertEquals(listOf(bm("abs_a", 1, "again", state = BookmarkState.PENDING_RENAME)), f.domain())
+        assertEquals(listOf(bm("abs_a", 1, "again", state = BookmarkState.PENDING_CREATE)), f.domain())
     }
 
     @Test

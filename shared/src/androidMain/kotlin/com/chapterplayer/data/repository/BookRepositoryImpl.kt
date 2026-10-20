@@ -404,7 +404,13 @@ class BookRepositoryImpl(
             }
             BookmarkState.PENDING_DELETE -> {
                 source.deleteBookmark(server, row.bookId, row.timeSec)
-                bookmarkDao.deleteIf(row.bookId, row.timeSec, row.state, row.title)
+                if (bookmarkDao.deleteIf(row.bookId, row.timeSec, row.state, row.title) == 0) {
+                    val now = bookmarkDao.get(row.bookId, row.timeSec)
+                    if (now != null && now.state == BookmarkState.PENDING_RENAME.name) {
+                        // Brought back while the delete was on its way: the server no longer has it, so it must be created again.
+                        bookmarkDao.updateStateIf(row.bookId, row.timeSec, BookmarkState.PENDING_CREATE.name, now.state, now.title)
+                    }
+                }
             }
             BookmarkState.SYNCED -> Unit
         }
