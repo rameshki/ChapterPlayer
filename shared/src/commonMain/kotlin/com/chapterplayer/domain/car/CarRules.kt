@@ -95,7 +95,7 @@ fun titleInRange(title: String, range: LetterRange): Boolean {
 
 private fun rank(c: Char): Char = if (c == '#') ' ' else c
 
-private fun normalize(s: String): String {
+internal fun normalize(s: String): String {
     val sb = StringBuilder()
     for (c in s.lowercase()) sb.append(if (c.isLetterOrDigit()) c else ' ')
     return sb.toString().split(' ').filter { it.isNotEmpty() }.joinToString(" ")
