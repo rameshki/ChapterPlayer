@@ -18,7 +18,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
+import android.content.Intent
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
+import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.navigation.AppNavigation
 import com.chapterplayer.ui.theme.ChapterPlayerTheme
 import com.chapterplayer.ui.theme.DarkPalette
@@ -35,6 +38,7 @@ import org.koin.android.ext.android.inject
 class MainActivity : ComponentActivity() {
 
     private val settings: AppSettings by inject()
+    private val openPlayerRequest: OpenPlayerRequest by inject()
 
     // The answer is not used: playback works without notifications, the person can allow them in Settings.
     private val notificationPermission =
@@ -43,6 +47,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         askForNotificationsOnce()
+        handleOpenPlayer(intent)
         // Read the saved choice before the first frame so a dark-theme user never sees a light flash.
         val saved = runBlocking { settings.themeMode.first() }
         // Paint the window and set the bars for the first frame, before Compose draws anything.
@@ -63,6 +68,21 @@ class MainActivity : ComponentActivity() {
             ChapterPlayerTheme(mode) {
                 AppNavigation()
             }
+        }
+    }
+
+    // singleTop: a tap on the notification while the app is open arrives here, not in onCreate.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOpenPlayer(intent)
+    }
+
+    private fun handleOpenPlayer(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) {
+            // Consumed: a rotation re-creates the activity with the same intent and must not open the player again.
+            intent.removeExtra(EXTRA_OPEN_PLAYER)
+            openPlayerRequest.request()
         }
     }
 

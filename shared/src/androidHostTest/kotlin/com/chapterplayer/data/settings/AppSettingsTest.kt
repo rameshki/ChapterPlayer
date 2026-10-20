@@ -75,4 +75,32 @@ class AppSettingsTest {
         assertEquals(ThemeMode.SYSTEM, settings.themeMode.first())
         assertEquals(true, settings.resumeOnCarConnect.first())
     }
+
+    @Test
+    fun `playback speed defaults to normal, is saved and read back, and leaves other settings alone`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertEquals(1.0f, settings.playbackSpeed.first())
+
+        settings.setThemeMode(ThemeMode.DARK)
+        settings.setPlaybackSpeed(1.25f)
+
+        assertEquals(1.25f, settings.playbackSpeed.first())
+        assertEquals(1.25f, DataStoreAppSettings(store).playbackSpeed.first())
+        assertEquals(ThemeMode.DARK, settings.themeMode.first())
+    }
+
+    @Test
+    fun `a speed outside the supported range is clamped, and one between presets is kept`() = runTest {
+        val settings = DataStoreAppSettings(InMemoryPreferencesDataStore())
+
+        settings.setPlaybackSpeed(0.1f)
+        assertEquals(0.5f, settings.playbackSpeed.first())
+        settings.setPlaybackSpeed(9f)
+        assertEquals(3.0f, settings.playbackSpeed.first())
+        settings.setPlaybackSpeed(1.1f)
+        assertEquals(1.1f, settings.playbackSpeed.first())
+        settings.setPlaybackSpeed(Float.NaN)
+        assertEquals(1.1f, settings.playbackSpeed.first())
+    }
 }

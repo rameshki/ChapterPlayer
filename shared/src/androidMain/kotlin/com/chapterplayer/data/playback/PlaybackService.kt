@@ -19,6 +19,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
+import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
 import com.chapterplayer.domain.playback.ResumeRewind
 import com.chapterplayer.domain.playback.TrackSpan
 import com.chapterplayer.domain.playback.bookPosition
@@ -81,6 +82,8 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         updateStopTimer(exo)
 
         val openApp = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            // Tapping the notification opens the full player, not just the app.
+            it.putExtra(EXTRA_OPEN_PLAYER, true)
             PendingIntent.getActivity(
                 this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )

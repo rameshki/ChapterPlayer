@@ -26,4 +26,7 @@ class FakeAppSettings(
     val downloadedOnlyFlow = MutableStateFlow(false)
     override val downloadedOnly: Flow<Boolean> = downloadedOnlyFlow
     override suspend fun setDownloadedOnly(enabled: Boolean) { downloadedOnlyFlow.value = enabled }
+    val speed = MutableStateFlow(1.0f)
+    override val playbackSpeed: Flow<Float> = speed
+    override suspend fun setPlaybackSpeed(speed: Float) { this.speed.value = speed }
 }

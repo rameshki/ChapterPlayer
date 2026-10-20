@@ -35,3 +35,16 @@ fun isOwnTrackRequest(callerPackage: String?, ownPackage: String, mediaId: Strin
     if (slash <= 0 || slash == mediaId.length - 1) return false
     return mediaId.substring(slash + 1).all { it in '0'..'9' }
 }
+
+/** What [startPositionFor] returns for a book with no local progress: let the server say where to resume. */
+const val USE_SERVER_POSITION = -1L
+
+/**
+ * Where a book starts from this phone's own [progress]: [USE_SERVER_POSITION] when there is none, 0 when the
+ * book was finished (or the saved position is at its end), otherwise the saved position.
+ */
+fun startPositionFor(progress: com.chapterplayer.data.model.ReadingProgress?, durationMs: Long): Long = when {
+    progress == null -> USE_SERVER_POSITION
+    progress.isFinished || progress.positionMs >= durationMs -> 0L
+    else -> progress.positionMs.coerceAtLeast(0L)
+}

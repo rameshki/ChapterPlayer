@@ -7,6 +7,7 @@ import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackStartException
+import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
@@ -66,7 +67,7 @@ class BookDetailsViewModelTest {
         val settings: FakeAppSettings = FakeAppSettings()
     ) {
         val vm = BookDetailsViewModel(
-            id, repo, downloads, controller, connectivity, settings, Dispatchers.Main
+            id, repo, downloads, controller, PlaybackStarter(controller, repo, settings), connectivity, settings, Dispatchers.Main
         )
     }
 

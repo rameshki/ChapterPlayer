@@ -66,6 +66,7 @@ fun BookDetailsScreen(
     onBack: () -> Unit,
     onOpenBook: (bookId: String) -> Unit,
     onOpenGroup: (kind: LibraryView, key: String) -> Unit,
+    onOpenPlayer: () -> Unit,
     viewModel: BookDetailsViewModel = koinViewModel(parameters = { parametersOf(bookId) })
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -81,7 +82,8 @@ fun BookDetailsScreen(
             onChapterClick = viewModel::onChapterClicked,
             onSelectTab = viewModel::selectTab,
             onOpenBook = onOpenBook,
-            onOpenGroup = onOpenGroup
+            onOpenGroup = onOpenGroup,
+            onOpenPlayer = onOpenPlayer
         )
     }
 }
@@ -112,6 +114,7 @@ fun BookDetailsContent(
     onSelectTab: (DetailsTab) -> Unit,
     onOpenBook: (bookId: String) -> Unit,
     onOpenGroup: (kind: LibraryView, key: String) -> Unit,
+    onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val book = state.book
@@ -152,7 +155,7 @@ fun BookDetailsContent(
             }
             state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
             detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
-            LoadedList(state, book, onPlayClick, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, Modifier.weight(1f))
+            LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, Modifier.weight(1f))
         }
     }
 }
@@ -162,6 +165,7 @@ private fun LoadedList(
     state: BookDetailsUiState,
     book: AudioBook,
     onPlayClick: () -> Unit,
+    onOpenPlayer: () -> Unit,
     onChapterClick: (Int) -> Unit,
     onSelectTab: (DetailsTab) -> Unit,
     onOpenBook: (String) -> Unit,
@@ -172,7 +176,7 @@ private fun LoadedList(
     val tab = effectiveTab(state.selectedTab, hasSeries)
     // One scroll container: the header and tabs are the first items, so they scroll away with the list.
     LazyColumn(modifier = modifier.fillMaxWidth()) {
-        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenGroup) }
+        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenPlayer, onOpenGroup) }
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
             DetailsTab.CHAPTERS -> {
@@ -190,6 +194,7 @@ private fun DetailsHeader(
     state: BookDetailsUiState,
     book: AudioBook,
     onPlayClick: () -> Unit,
+    onOpenPlayer: () -> Unit,
     onOpenGroup: (LibraryView, String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -250,6 +255,12 @@ private fun DetailsHeader(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
             )
+        }
+        if (state.playback == DetailsPlayback.PLAYING || state.playback == DetailsPlayback.PAUSED) {
+            TextButton(
+                onClick = onOpenPlayer,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            ) { Text("Open player", color = AmberGold, style = MaterialTheme.typography.titleSmall) }
         }
         Spacer(Modifier.height(8.dp))
     }

@@ -13,7 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
 class FakePlaybackController : PlaybackController {
     val playback = MutableStateFlow(PlaybackState())
     override val state: StateFlow<PlaybackState> = playback
-    override val sleepTimer: StateFlow<SleepTimer> = MutableStateFlow(SleepTimer.Off)
+    val sleep = MutableStateFlow<SleepTimer>(SleepTimer.Off)
+    override val sleepTimer: StateFlow<SleepTimer> = sleep
 
     /** Runs inside [load]; suspend on a gate or throw to simulate a slow or failing start. */
     var onLoad: suspend (AudioBook, Long) -> Unit = { book, _ ->
@@ -26,12 +27,14 @@ class FakePlaybackController : PlaybackController {
 
     override suspend fun load(book: AudioBook, startMs: Long) {
         loads += book.id to startMs
+        calls += "load"
         onLoad(book, startMs)
     }
 
     /** Like the real player: play asks for playback and buffers; [soundStarts] is when it is really playing. */
     override fun play() {
         plays++
+        calls += "play"
         playback.value = playback.value.copy(playWhenReady = true, isBuffering = true, isPlaying = false)
     }
 
@@ -46,10 +49,16 @@ class FakePlaybackController : PlaybackController {
 
     val seeks = mutableListOf<Long>()
     override fun seekTo(positionMs: Long) { seeks += positionMs }
-    override fun setSpeed(speed: Float) {}
-    override fun setSleepTimer(timer: SleepTimer) {}
-    override fun skipBack() {}
-    override fun skipForward() {}
+    val speeds = mutableListOf<Float>()
+    val sleepSets = mutableListOf<SleepTimer>()
+    var skipBacks = 0
+    var skipForwards = 0
+    /** Every control call in order, for checks like "speed was set after load and before play". */
+    val calls = mutableListOf<String>()
+    override fun setSpeed(speed: Float) { speeds += speed; calls += "speed" }
+    override fun setSleepTimer(timer: SleepTimer) { sleepSets += timer }
+    override fun skipBack() { skipBacks++ }
+    override fun skipForward() { skipForwards++ }
     override fun seekToChapter(index: Int) { chapterSeeks += index }
     override fun release() {}
 }
