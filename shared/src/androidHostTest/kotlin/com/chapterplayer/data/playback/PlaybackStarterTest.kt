@@ -183,6 +183,15 @@ class PlaybackStarterTest {
     }
 
     @Test
+    fun `a loaded book whose player failed is reloaded instead of just played`() = runTest {
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a", error = "Playback failed")
+
+        assertTrue(starter.start(book, null).isSuccess)
+
+        assertEquals(listOf("a"), controller.loads.map { it.first })
+    }
+
+    @Test
     fun `another book loaded means a normal load`() = runTest {
         controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "other", isPlaying = true)
 

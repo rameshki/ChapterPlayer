@@ -19,12 +19,12 @@ class PlaybackStarter(
 
     /**
      * Starts [book] at [atMs] when given. Otherwise it starts where this phone left off
-     * (see [startPositionFor]); a book that is already loaded in the player is never reloaded: it plays on
+     * (see [startPositionFor]); a book that is already loaded in the player (and not in an error) is never reloaded: it plays on
      * from where it is (nothing happens when it is already playing). A failure carries a message that is safe to show; cancellation is rethrown.
      * The saved speed is a nicety: if it cannot be read or applied the book still plays.
      */
     suspend fun start(book: AudioBook, atMs: Long? = null): Result<Unit> = try {
-        if (atMs == null && controller.state.value.bookId == book.id) {
+        if (atMs == null && controller.state.value.let { it.bookId == book.id && it.error == null }) {
             // Already loaded: carry on from the live position. A reload would restart from the last saved one.
             continueLoaded()
             return Result.success(Unit)
