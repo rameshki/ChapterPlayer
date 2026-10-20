@@ -224,12 +224,14 @@ class BookRepositoryImpl(
 
     override suspend fun pendingProgress(): List<PendingProgress> = pendingDao.getAll().map { it.toDomain() }
 
-    override suspend fun deletePending(bookId: String) = pendingDao.delete(bookId)
+    override suspend fun deletePending(bookId: String, ifUpdatedAtMs: Long?) = pendingDao.delete(bookId, ifUpdatedAtMs)
 
-    override suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long) =
-        pendingDao.updateAttempt(bookId, attempts, nextAttemptAtMs)
+    override suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long, ifUpdatedAtMs: Long?) =
+        pendingDao.updateAttempt(bookId, attempts, nextAttemptAtMs, ifUpdatedAtMs)
 
     override suspend fun saveServerProgress(bookId: String, server: ServerProgress) {
+        // A book that is not in the library gets no orphan progress row.
+        if (bookDao.getById(bookId) == null) return
         // Read, decide and write together, so a save from the player cannot slip in between.
         inTransaction {
             val merged = mergeServerProgress(

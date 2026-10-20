@@ -29,10 +29,14 @@ class InMemoryPendingProgressDao(initial: List<PendingProgressEntity> = emptyLis
         rows.value = rows.value.filter { it.bookId != row.bookId } + row
     }
     override suspend fun get(bookId: String): PendingProgressEntity? = rows.value.firstOrNull { it.bookId == bookId }
-    override suspend fun getAll(): List<PendingProgressEntity> = rows.value.sortedBy { it.updatedAtMs }
+    override suspend fun getAll(): List<PendingProgressEntity> = rows.value.sortedWith(compareBy({ it.updatedAtMs }, { it.bookId }))
     override fun observeCount(): Flow<Int> = rows.map { it.size }
-    override suspend fun delete(bookId: String) { rows.value = rows.value.filter { it.bookId != bookId } }
-    override suspend fun updateAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long) {
-        rows.value = rows.value.map { if (it.bookId == bookId) it.copy(attempts = attempts, nextAttemptAtMs = nextAttemptAtMs) else it }
+    override suspend fun delete(bookId: String, ifUpdatedAtMs: Long?) {
+        rows.value = rows.value.filter { !(it.bookId == bookId && (ifUpdatedAtMs == null || it.updatedAtMs == ifUpdatedAtMs)) }
+    }
+    override suspend fun updateAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long, ifUpdatedAtMs: Long?) {
+        rows.value = rows.value.map {
+            if (it.bookId == bookId && (ifUpdatedAtMs == null || it.updatedAtMs == ifUpdatedAtMs)) it.copy(attempts = attempts, nextAttemptAtMs = nextAttemptAtMs) else it
+        }
     }
 }

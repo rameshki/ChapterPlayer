@@ -65,11 +65,14 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override suspend fun pendingProgress(): List<PendingProgress> = queued.toList()
     /** Every call that changed the stored state, in order, e.g. "delete a" or "saveServer a". */
     val events = mutableListOf<String>()
-    override suspend fun deletePending(bookId: String) { events += "delete $bookId"; queued.removeAll { it.bookId == bookId } }
+    override suspend fun deletePending(bookId: String, ifUpdatedAtMs: Long?) {
+        events += "delete $bookId"
+        queued.removeAll { it.bookId == bookId && (ifUpdatedAtMs == null || it.updatedAtMs == ifUpdatedAtMs) }
+    }
     val attempts = mutableListOf<Triple<String, Int, Long>>()
-    override suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long) {
+    override suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long, ifUpdatedAtMs: Long?) {
         this.attempts += Triple(bookId, attempts, nextAttemptAtMs)
-        val i = queued.indexOfFirst { it.bookId == bookId }
+        val i = queued.indexOfFirst { it.bookId == bookId && (ifUpdatedAtMs == null || it.updatedAtMs == ifUpdatedAtMs) }
         if (i >= 0) queued[i] = queued[i].copy(attempts = attempts, nextAttemptAtMs = nextAttemptAtMs)
     }
     val pushed = mutableListOf<PendingProgress>()

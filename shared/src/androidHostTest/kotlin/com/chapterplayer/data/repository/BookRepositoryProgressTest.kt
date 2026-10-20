@@ -2,6 +2,8 @@ package com.chapterplayer.data.repository
 
 import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.PendingProgressDao
+import com.chapterplayer.data.local.dao.ProgressDao
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.PendingProgressEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
@@ -263,7 +265,11 @@ class BookRepositoryProgressTest {
     @Test
     fun `queueing reads merges and writes inside one transaction`() = runTest {
         val events = mutableListOf<String>()
-        val pendingDao = InMemoryPendingProgressDao()
+        val inner = InMemoryPendingProgressDao()
+        val pendingDao = object : PendingProgressDao by inner {
+            override suspend fun get(bookId: String): PendingProgressEntity? { events += "get"; return inner.get(bookId) }
+            override suspend fun upsert(row: PendingProgressEntity) { events += "upsert"; inner.upsert(row) }
+        }
         val repo = BookRepositoryImpl(
             FakeBookDao(emptyList()), InMemoryProgressDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
             FakeServerList(), listOf(ProgressSource()), pendingDao = pendingDao,
@@ -272,8 +278,41 @@ class BookRepositoryProgressTest {
 
         repo.queueProgress(pending())
 
-        assertEquals(listOf("begin", "end"), events)
-        assertEquals(1, pendingDao.rows.value.size)
+        // The read and the write are BOTH between begin and end: nothing can slip in between them.
+        assertEquals(listOf("begin", "get", "upsert", "end"), events)
+        assertEquals(1, inner.rows.value.size)
+    }
+
+    @Test
+    fun `saving server progress reads, decides and writes inside one transaction`() = runTest {
+        val events = mutableListOf<String>()
+        val innerProgress = InMemoryProgressDao()
+        val progressDao = object : ProgressDao by innerProgress {
+            override suspend fun get(bookId: String): ProgressEntity? { events += "getProgress"; return innerProgress.get(bookId) }
+            override suspend fun upsert(progress: ProgressEntity) { events += "upsertProgress"; innerProgress.upsert(progress) }
+        }
+        val innerPending = InMemoryPendingProgressDao()
+        val pendingDao = object : PendingProgressDao by innerPending {
+            override suspend fun get(bookId: String): PendingProgressEntity? { events += "getPending"; return innerPending.get(bookId) }
+        }
+        val repo = BookRepositoryImpl(
+            FakeBookDao(listOf(entity("abs_a"))), progressDao, InMemoryLibraryDao(), InMemoryCollectionDao(),
+            FakeServerList(), listOf(ProgressSource()), pendingDao = pendingDao,
+            inTransaction = { block -> events += "begin"; block(); events += "end" }
+        )
+
+        repo.saveServerProgress("abs_a", ServerProgress(5_000, 9_000, false, 200))
+
+        assertEquals(listOf("begin", "getProgress", "getPending", "upsertProgress", "end"), events)
+    }
+
+    @Test
+    fun `saving server progress for a book that is not in the library writes nothing`() = runTest {
+        val f = fixture(books = listOf(entity("abs_a")))
+
+        f.repo.saveServerProgress("abs_gone", ServerProgress(5_000, 9_000, false, 200))
+
+        assertTrue(f.progressDao.rows.value.isEmpty())
     }
 
     @Test

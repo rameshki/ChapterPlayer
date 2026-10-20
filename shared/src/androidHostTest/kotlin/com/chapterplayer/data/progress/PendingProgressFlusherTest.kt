@@ -32,8 +32,8 @@ class PendingProgressFlusherTest {
         online
     )
 
-    private fun row(book: String = "a", at: Long = 100, attempts: Int = 0, next: Long = 0, pos: Long = 5_000) =
-        PendingProgress(book, "s1", pos, 100_000, 3_000, at, attempts, next)
+    private fun row(book: String = "a", at: Long = 100, attempts: Int = 0, next: Long = 0, pos: Long = 5_000, server: String = "s1") =
+        PendingProgress(book, server, pos, 100_000, 3_000, at, attempts, next)
 
     private fun server(updatedAt: Long) = ServerProgress(9_000, 100_000, false, updatedAt)
 
@@ -278,5 +278,58 @@ class PendingProgressFlusherTest {
         flusher.kick()
         runCurrent()
         assertEquals(1, repo.pushed.size)
+    }
+
+    @Test
+    fun `a refused sign-in on one server does not stop the rows of another server`() = runTest {
+        val r = rig()
+        r.repo.queued += row("a", at = 100, server = "s1")
+        r.repo.queued += row("b", at = 200, server = "s2")
+        r.repo.onFetchServerProgress = { id -> if (id == "a") Result.failure(SignInRequiredException("S")) else Result.success(null) }
+        r.flusher.start()
+        runCurrent()
+        assertEquals(listOf("a", "b"), r.repo.fetchedProgress)
+        assertEquals(listOf("b"), r.repo.pushed.map { it.bookId })
+        assertEquals(listOf("a"), r.repo.queued.map { it.bookId })
+        assertTrue(r.repo.attempts.isEmpty())
+    }
+
+    @Test
+    fun `a position queued again while the old one is being sent is not deleted`() = runTest {
+        val r = rig()
+        r.repo.queued += row("a", at = 100, pos = 5_000)
+        r.repo.onPushProgress = {
+            r.repo.queueProgress(row("a", at = 300, pos = 9_000))
+            Result.success(Unit)
+        }
+        r.flusher.start()
+        runCurrent()
+        assertEquals(listOf(300L), r.repo.queued.map { it.updatedAtMs })
+        assertEquals(listOf(9_000L), r.repo.queued.map { it.positionMs })
+    }
+
+    @Test
+    fun `a failure is not recorded on a row that was queued again meanwhile`() = runTest {
+        val r = rig()
+        r.repo.queued += row("a", at = 100, pos = 5_000)
+        r.repo.onPushProgress = {
+            r.repo.queueProgress(row("a", at = 300, pos = 9_000))
+            Result.failure(RuntimeException("down"))
+        }
+        r.flusher.start()
+        runCurrent()
+        assertEquals(0, r.repo.queued.single().attempts)
+    }
+
+    @Test
+    fun `rows older than thirty days are dropped without contacting the server`() = runTest {
+        val r = rig()
+        advanceTimeBy(40L * 24 * 60 * 60 * 1000)
+        r.repo.queued += row("old", at = 100)
+        r.repo.queued += row("fresh", at = testScheduler.currentTime - 1_000)
+        r.flusher.start()
+        runCurrent()
+        assertEquals(listOf("fresh"), r.repo.pushed.map { it.bookId })
+        assertTrue(r.repo.queued.isEmpty())
     }
 }

@@ -7,6 +7,7 @@ import com.chapterplayer.domain.playback.FlushDecision
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.flushDecision
+import com.chapterplayer.domain.playback.isPendingExpired
 import com.chapterplayer.domain.playback.nextBackoffMs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +27,8 @@ import kotlin.time.Clock
  *
  * Per row: ask the server for its progress; a server that is newer than the row wins (the row is dropped
  * and the server's position stored here), otherwise the row is pushed and removed. A failure keeps the
- * row and schedules the next try ([nextBackoffMs]); a refused sign-in stops the pass quietly.
+ * row and schedules the next try ([nextBackoffMs]); a refused sign-in skips the rest of that SERVER's rows for this
+ * pass (other servers are still delivered). Rows older than 30 days are dropped ([isPendingExpired]).
  */
 class PendingProgressFlusher(
     private val books: BookRepository,
@@ -70,14 +72,19 @@ class PendingProgressFlusher(
     private suspend fun pass() = passLock.withLock {
         if (!online) return@withLock
         val now = nowMs()
+        val blocked = HashSet<String>() // servers whose sign-in was refused during this pass
         for (row in books.pendingProgress()) {
-            if (row.nextAttemptAtMs > now) continue
-            if (!flushOne(row)) break
+            if (isPendingExpired(row.updatedAtMs, now)) {
+                books.deletePending(row.bookId, row.updatedAtMs)
+                continue
+            }
+            if (row.nextAttemptAtMs > now || row.serverId in blocked) continue
+            if (!flushOne(row)) blocked += row.serverId
         }
         scheduleNext()
     }
 
-    /** Delivers one row. False when the whole pass must stop (the sign-in is refused). */
+    /** Delivers one row. False when the sign-in of the row's server is refused (its other rows wait for the next pass). */
     private suspend fun flushOne(row: PendingProgress): Boolean {
         val server: ServerProgress? = books.fetchServerProgressOrFailure(row.bookId).getOrElse { error ->
             if (error is SignInRequiredException) return false
@@ -99,19 +106,18 @@ class PendingProgressFlusher(
                     fail(row)
                     return true
                 }
-                if (unchanged(row)) books.deletePending(row.bookId)
+                books.deletePending(row.bookId, row.updatedAtMs)
             }
             FlushDecision.DROP_SERVER_NEWER -> {
-                if (unchanged(row)) {
-                    // The data layer refuses to store the server's position while a row is queued, so the row goes first.
-                    books.deletePending(row.bookId)
-                    try {
-                        books.saveServerProgress(row.bookId, server!!)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // The next library sync stores it again.
-                    }
+                // The data layer refuses to store the server's position while a row is queued, so the row goes first
+                // (only if it is still this row: a position queued again meanwhile keeps its place and the save is refused).
+                books.deletePending(row.bookId, row.updatedAtMs)
+                try {
+                    books.saveServerProgress(row.bookId, server!!)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // The next library sync stores it again.
                 }
             }
         }
@@ -126,14 +132,10 @@ class PendingProgressFlusher(
         Result.failure(e)
     }
 
-    /** False when the position was queued again while this pass worked on [row]: the newer row has its own turn. */
-    private suspend fun unchanged(row: PendingProgress): Boolean =
-        books.pendingProgress().firstOrNull { it.bookId == row.bookId }?.updatedAtMs == row.updatedAtMs
-
+    /** Records the failure on [row] only if it is still the queued one (a newer position has its own turn). */
     private suspend fun fail(row: PendingProgress) {
-        if (!unchanged(row)) return
         val attempts = row.attempts + 1
-        books.markPendingAttempt(row.bookId, attempts, nowMs() + nextBackoffMs(attempts))
+        books.markPendingAttempt(row.bookId, attempts, nowMs() + nextBackoffMs(attempts), row.updatedAtMs)
     }
 
     /** Wakes the flusher at the earliest retry time of a row that has to wait. */

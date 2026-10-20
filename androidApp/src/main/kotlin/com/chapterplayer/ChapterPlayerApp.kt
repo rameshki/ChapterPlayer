@@ -4,6 +4,7 @@ import android.app.Application
 import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
+import com.chapterplayer.data.progress.ServerProgressRefresher
 import com.chapterplayer.di.appModule
 import com.chapterplayer.di.sharedModules
 import org.koin.android.ext.koin.androidContext
@@ -27,5 +28,6 @@ class ChapterPlayerApp : Application() {
         // The server hears about it too, and what it missed (offline, errors) is delivered later.
         GlobalContext.get().get<ProgressSyncer>().start()
         GlobalContext.get().get<PendingProgressFlusher>().start()
+        GlobalContext.get().get<ServerProgressRefresher>().start()
     }
 }

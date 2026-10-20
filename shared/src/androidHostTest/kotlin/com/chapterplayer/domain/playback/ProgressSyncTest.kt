@@ -149,4 +149,14 @@ class ProgressSyncTest {
         assertNull(mergeServerProgress("a", local(100_000, 100), server(999_999, 200), hasPendingLocal = true))
         assertNull(mergeServerProgress("a", null, server(999_999, 200), hasPendingLocal = true))
     }
+
+    @Test
+    fun `a queued position expires after thirty days and not before`() {
+        val day = 24L * 60 * 60 * 1000
+        assertFalse(isPendingExpired(updatedAtMs = 0, nowMs = 30 * day))
+        assertTrue(isPendingExpired(updatedAtMs = 0, nowMs = 30 * day + 1))
+        assertFalse(isPendingExpired(updatedAtMs = 5 * day, nowMs = 10 * day))
+        assertFalse(isPendingExpired(updatedAtMs = 100, nowMs = 50))
+        assertTrue(isPendingExpired(updatedAtMs = 0, nowMs = 10_001, maxAgeMs = 10_000))
+    }
 }

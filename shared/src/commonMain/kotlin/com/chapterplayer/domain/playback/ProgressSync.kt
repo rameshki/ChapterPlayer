@@ -33,6 +33,13 @@ fun chooseStartPosition(local: ReadingProgress?, server: ServerProgress?): Long?
     return if (finished || isFinishedAt(pos, dur)) 0L else pos.coerceAtLeast(0L)
 }
 
+/** How long a queued position is kept before it is given up: a server that is gone for good must not retry forever. */
+const val PENDING_MAX_AGE_MS = 30L * 24 * 60 * 60 * 1000
+
+/** True when a position queued at [updatedAtMs] is older than [maxAgeMs] at [nowMs]; a time in the future is never expired. */
+fun isPendingExpired(updatedAtMs: Long, nowMs: Long, maxAgeMs: Long = PENDING_MAX_AGE_MS): Boolean =
+    nowMs - updatedAtMs > maxAgeMs
+
 /**
  * Determines if a local progress save operation should be triggered based on time and playback state.
  */

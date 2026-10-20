@@ -70,11 +70,17 @@ interface BookRepository {
     /** Every queued row, oldest position first. */
     suspend fun pendingProgress(): List<PendingProgress>
 
-    /** Removes the queued row of [bookId], if any. */
-    suspend fun deletePending(bookId: String)
+    /**
+     * Removes the queued row of [bookId], if any. With [ifUpdatedAtMs] only when the row still has that time:
+     * a position queued again while the old one was being delivered survives.
+     */
+    suspend fun deletePending(bookId: String, ifUpdatedAtMs: Long? = null)
 
-    /** Records a failed delivery of the queued row of [bookId]: the attempt count and the earliest time to try again. */
-    suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long)
+    /**
+     * Records a failed delivery of the queued row of [bookId]: the attempt count and the earliest time to try again.
+     * With [ifUpdatedAtMs] only when the row still has that time.
+     */
+    suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long, ifUpdatedAtMs: Long? = null)
 
     /** Delivers a queued position to its server without a session. A failure is returned, never thrown; cancellation propagates. */
     suspend fun pushProgress(pending: PendingProgress): Result<Unit>

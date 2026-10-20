@@ -15,6 +15,7 @@ import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
+import com.chapterplayer.data.progress.ServerProgressRefresher
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
@@ -151,6 +152,7 @@ val playbackModule = module {
     // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
     single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
     single { PendingProgressFlusher(get(), get(), get(AppScopeQualifier)) }
+    single { ServerProgressRefresher(get(), get(), get(), get(AppScopeQualifier)) }
     // Starts a book (position, saved speed, play) for details, Home and the player.
     singleOf(::PlaybackStarter)
     // A tapped notification asks the navigation host to open the player once.

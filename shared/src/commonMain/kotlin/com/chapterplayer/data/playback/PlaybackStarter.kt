@@ -98,6 +98,6 @@ class PlaybackStarter(
     }
 
     private companion object {
-        const val SERVER_WAIT_MS = 2_000L
+        const val SERVER_WAIT_MS = 4_000L
     }
 }

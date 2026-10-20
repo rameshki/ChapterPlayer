@@ -290,14 +290,14 @@ class PlaybackStarterTest {
     }
 
     @Test
-    fun `a server that takes more than two seconds is given up on`() = runTest {
+    fun `a server that takes more than four seconds is given up on`() = runTest {
         repo.progress.value = listOf(local(10_000L, at = 100L))
         repo.onFetchServerProgress = { CompletableDeferred<Unit>().await(); Result.success(remote(60_000L, at = 200L)) }
 
         starter.start(book)
 
         assertEquals(listOf("a" to 10_000L), controller.loads)
-        assertEquals(2_000L, testScheduler.currentTime)
+        assertEquals(4_000L, testScheduler.currentTime)
     }
 
     @Test
