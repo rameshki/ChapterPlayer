@@ -70,6 +70,21 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `resume when connected to the car starts on and can be switched off and on`() = runTest {
+        val settings = FakeAppSettings()
+        val vm = SettingsViewModel(FakeServers(), settings)
+        assertEquals(true, vm.resumeOnCarConnect.value)
+
+        vm.setResumeOnCarConnect(false)
+        assertEquals(false, settings.carResume.value)
+        assertEquals(false, vm.resumeOnCarConnect.value)
+
+        vm.setResumeOnCarConnect(true)
+        assertEquals(true, settings.carResume.value)
+        assertEquals(true, vm.resumeOnCarConnect.value)
+    }
+
+    @Test
     fun `a failed save does not crash and the view model stays usable`() = runTest {
         val vm = SettingsViewModel(FakeServers(), FakeAppSettings(failOnSet = true))
 
