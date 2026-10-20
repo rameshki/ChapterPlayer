@@ -7,11 +7,13 @@ import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.dto.AbsChapterDto
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryDto
 import com.chapterplayer.data.remote.abs.dto.toBookDetails
+import com.chapterplayer.data.remote.abs.dto.toPlaybackSession
 import com.chapterplayer.data.remote.abs.dto.toBookCollection
 import com.chapterplayer.data.remote.abs.fetchAllAbsCollections
 import com.chapterplayer.data.remote.abs.fetchAllAbsItems
@@ -90,6 +92,17 @@ class AbsLibrarySource(
         authorizer.authorized(server) { bearerToken ->
             api.getItem(server.baseUrl, bearerToken, bookId.toServerItemId())
         }.toBookDetails()
+
+    override suspend fun startPlayback(server: ServerConfig, bookId: String): PlaybackSession =
+        authorizer.authorized(server) { bearerToken ->
+            api.startPlayback(server.baseUrl, bearerToken, bookId.toServerItemId())
+        }.toPlaybackSession(server.id, bookId, server.baseUrl)
+
+    override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
+        authorizer.authorized(server) { bearerToken ->
+            api.closeSession(server.baseUrl, bearerToken, sessionId, positionMs / 1000.0, listenedMs / 1000.0)
+        }
+    }
 
     override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> =
         librariesOf(server, readLibraries(server))

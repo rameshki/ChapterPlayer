@@ -16,6 +16,7 @@ import com.chapterplayer.data.model.ChapterJson
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
+import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.source.LibrarySource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -120,6 +121,32 @@ class BookRepositoryImpl(
             val details = source.fetchBookDetails(server, bookId)
             if (details != null) bookDao.updateChapters(bookId, ChapterJson.encode(details.chapters))
             Result.success(details)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    /** Failure messages name no token or address. */
+    override suspend fun startPlayback(bookId: String): Result<PlaybackSession> =
+        try {
+            val book = bookDao.getById(bookId) ?: error("Unknown book")
+            val server = servers.getById(book.serverId) ?: error("The book's server is no longer configured")
+            val source = sources.firstOrNull { it.type == server.source }
+                ?: error("No library source for ${server.source}")
+            Result.success(source.startPlayback(server, bookId) ?: error("This server cannot play books yet"))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    override suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> =
+        try {
+            val server = servers.getById(session.serverId) ?: error("The book's server is no longer configured")
+            val source = sources.firstOrNull { it.type == server.source }
+                ?: error("No library source for ${server.source}")
+            Result.success(source.closePlayback(server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L)))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

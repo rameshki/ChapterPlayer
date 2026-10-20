@@ -77,14 +77,7 @@ fun AbsItemDetailDto.toBookDetails(): BookDetails {
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
-    val chapters = media.chapters.map {
-        Chapter(
-            id = it.id,
-            title = it.title,
-            startMs = (it.start * 1000).roundToLong(),
-            endMs = (it.end * 1000).roundToLong()
-        )
-    }
+    val chapters = media.chapters.map { it.toChapter() }
 
     val series = metadata.series
         .filter { it.name.isNotBlank() }
@@ -98,3 +91,12 @@ fun AbsItemDetailDto.toBookDetails(): BookDetails {
         series = series
     )
 }
+
+
+/** A chapter in milliseconds; shared by the details and the play session. */
+internal fun AbsItemDetailChapterDto.toChapter() = Chapter(
+    id = id,
+    title = title,
+    startMs = (start * 1000).roundToLong(),
+    endMs = (end * 1000).roundToLong()
+)

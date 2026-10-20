@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,6 +76,9 @@ fun BookDetailsScreen(
             state = state,
             onBack = onBack,
             onRetry = viewModel::retry,
+            onPlayClick = viewModel::onResumeClicked,
+            onDismissPlayError = viewModel::dismissPlayError,
+            onChapterClick = viewModel::onChapterClicked,
             onSelectTab = viewModel::selectTab,
             onOpenBook = onOpenBook,
             onOpenGroup = onOpenGroup
@@ -102,6 +106,9 @@ fun BookDetailsContent(
     state: BookDetailsUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
+    onPlayClick: () -> Unit,
+    onDismissPlayError: () -> Unit,
+    onChapterClick: (index: Int) -> Unit,
     onSelectTab: (DetailsTab) -> Unit,
     onOpenBook: (bookId: String) -> Unit,
     onOpenGroup: (kind: LibraryView, key: String) -> Unit,
@@ -143,8 +150,9 @@ fun BookDetailsContent(
                     trackColor = SurfaceElevated
                 )
             }
-            state.error?.let { ErrorBanner(it, onRetry) }
-            LoadedList(state, book, onSelectTab, onOpenBook, onOpenGroup, Modifier.weight(1f))
+            state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
+            detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
+            LoadedList(state, book, onPlayClick, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, Modifier.weight(1f))
         }
     }
 }
@@ -153,6 +161,8 @@ fun BookDetailsContent(
 private fun LoadedList(
     state: BookDetailsUiState,
     book: AudioBook,
+    onPlayClick: () -> Unit,
+    onChapterClick: (Int) -> Unit,
     onSelectTab: (DetailsTab) -> Unit,
     onOpenBook: (String) -> Unit,
     onOpenGroup: (LibraryView, String) -> Unit,
@@ -162,10 +172,13 @@ private fun LoadedList(
     val tab = effectiveTab(state.selectedTab, hasSeries)
     // One scroll container: the header and tabs are the first items, so they scroll away with the list.
     LazyColumn(modifier = modifier.fillMaxWidth()) {
-        item(key = "header") { DetailsHeader(state, book, onOpenGroup) }
+        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenGroup) }
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
-            DetailsTab.CHAPTERS -> chaptersTab(state.chapters, emptyChaptersText(state.detailsLoaded, state.loadingDetails))
+            DetailsTab.CHAPTERS -> {
+                val taps = chapterTapsEnabled(state.playback, state.canPlay)
+                chaptersTab(state.chapters, emptyChaptersText(state.detailsLoaded, state.loadingDetails), taps, onChapterClick)
+            }
             DetailsTab.ABOUT -> aboutTab(state.about, state.links, onOpenGroup)
             DetailsTab.SERIES -> seriesTab(state.series, state.links.series, onOpenBook, onOpenGroup)
         }
@@ -176,6 +189,7 @@ private fun LoadedList(
 private fun DetailsHeader(
     state: BookDetailsUiState,
     book: AudioBook,
+    onPlayClick: () -> Unit,
     onOpenGroup: (LibraryView, String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -205,8 +219,8 @@ private fun DetailsHeader(
         }
         Spacer(Modifier.height(16.dp))
         Button(
-            onClick = {},
-            enabled = state.resumeEnabled,
+            onClick = onPlayClick,
+            enabled = playButtonEnabled(state.playback, state.canPlay),
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = AmberGold,
@@ -214,10 +228,23 @@ private fun DetailsHeader(
                 disabledContainerColor = AmberGold.copy(alpha = 0.4f),
                 disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
             )
-        ) { Text("Resume", style = MaterialTheme.typography.titleMedium) }
-        if (!state.resumeEnabled) {
+        ) {
+            if (state.playback == DetailsPlayback.STARTING) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             Text(
-                text = "Playback arrives in a later update",
+                playButtonLabel(state.playback, state.resumePositionMs > 0L),
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        playCaption(state.playback, state.canPlay, state.cannotPlayReason)?.let {
+            Text(
+                text = it,
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
@@ -287,7 +314,7 @@ private fun DetailsTabs(selected: DetailsTab, hasSeries: Boolean, onSelect: (Det
 }
 
 @Composable
-private fun ErrorBanner(message: String, onRetry: () -> Unit) {
+private fun ErrorBanner(message: String, onRetry: () -> Unit, onDismiss: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -305,6 +332,11 @@ private fun ErrorBanner(message: String, onRetry: () -> Unit) {
         )
         TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
             Text("Retry", color = AmberGold)
+        }
+        if (onDismiss != null) {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Dismiss", color = TextSecondary)
+            }
         }
     }
 }

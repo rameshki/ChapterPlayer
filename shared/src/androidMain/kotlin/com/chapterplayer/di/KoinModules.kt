@@ -10,6 +10,9 @@ import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
+import com.chapterplayer.data.playback.AndroidPlaybackController
+import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.AbsSessionManager
@@ -134,6 +137,13 @@ val browseModule = module {
     single<CoroutineDispatcher>(IoDispatcherQualifier) { Dispatchers.Default }
 }
 
+val playbackModule = module {
+    // One controller for the app; the service itself finds its parts through Koin too.
+    single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier)) }
+    // Saves listening progress whichever screen is open; the application starts it.
+    single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
+}
+
 val deviceModule = module {
     single<ConnectivityMonitor> { AndroidConnectivityMonitor(androidContext()) }
 }
@@ -148,7 +158,7 @@ val viewModelModule = module {
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
-    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)
@@ -157,4 +167,4 @@ val viewModelModule = module {
 }
 
 /** Everything the shared module declares. The app adds what only it knows. */
-val sharedModules = listOf(databaseModule, networkModule, securityModule, sourceModule, repositoryModule, deviceModule, browseModule, viewModelModule)
+val sharedModules = listOf(databaseModule, networkModule, securityModule, sourceModule, repositoryModule, deviceModule, playbackModule, browseModule, viewModelModule)

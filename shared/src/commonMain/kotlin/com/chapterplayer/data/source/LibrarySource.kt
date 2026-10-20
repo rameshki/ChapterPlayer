@@ -1,6 +1,7 @@
 package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.LibraryInfo
@@ -40,6 +41,15 @@ interface LibrarySource {
      * Null for a source that has no such call (Plex gets its chapters with its tracks). Throws when the call fails.
      */
     suspend fun fetchBookDetails(server: ServerConfig, bookId: String): BookDetails? = null
+
+    /**
+     * Opens a playback session for [bookId] (the app's id): the audio files with absolute addresses, the chapters and
+     * where to resume. Null for a source that cannot yet. Throws when the call fails.
+     */
+    suspend fun startPlayback(server: ServerConfig, bookId: String): PlaybackSession? = null
+
+    /** Ends the session [sessionId] with the stop position and the time listened, both in milliseconds. A source without sessions does nothing. */
+    suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {}
 
     /**
      * Everything one sync stores, read in one go. A source that can share work between the three reads

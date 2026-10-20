@@ -1,18 +1,23 @@
 package com.chapterplayer
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.content.ContextCompat
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.navigation.AppNavigation
 import com.chapterplayer.ui.theme.ChapterPlayerTheme
@@ -31,8 +36,13 @@ class MainActivity : ComponentActivity() {
 
     private val settings: AppSettings by inject()
 
+    // The answer is not used: playback works without notifications, the person can allow them in Settings.
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        askForNotificationsOnce()
         // Read the saved choice before the first frame so a dark-theme user never sees a light flash.
         val saved = runBlocking { settings.themeMode.first() }
         // Paint the window and set the bars for the first frame, before Compose draws anything.
@@ -54,6 +64,17 @@ class MainActivity : ComponentActivity() {
                 AppNavigation()
             }
         }
+    }
+
+    /** Android 13 and later: ask for notifications on the first launch only. */
+    private fun askForNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        val prefs = getSharedPreferences("startup", MODE_PRIVATE)
+        if (granted || prefs.getBoolean("asked_notifications", false)) return
+        prefs.edit().putBoolean("asked_notifications", true).apply()
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun applyBarStyle(dark: Boolean) {
