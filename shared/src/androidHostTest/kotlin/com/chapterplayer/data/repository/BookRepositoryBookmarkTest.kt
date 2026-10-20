@@ -12,6 +12,8 @@ import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.data.remote.HttpStatusException
+import io.ktor.http.HttpStatusCode
 import com.chapterplayer.data.source.LibrarySource
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
@@ -21,6 +23,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -53,6 +57,8 @@ class BookRepositoryBookmarkTest {
     private class BookmarkSource(override val type: ServerSource = ServerSource.ABS) : LibrarySource {
         var onServer: List<Bookmark> = emptyList()
         var fetchFailure: Throwable? = null
+        /** Runs after the server list is read and before fetchBookmarks returns it. */
+        var afterFetch: suspend () -> Unit = {}
         /** Called before each write, with the call text; throw to fail it, or change the DAO to simulate a change meanwhile. */
         var beforeWrite: suspend (String) -> Unit = {}
         val calls = mutableListOf<String>()
@@ -62,7 +68,9 @@ class BookRepositoryBookmarkTest {
         override suspend fun fetchBookmarks(server: ServerConfig): List<Bookmark> {
             calls += "fetch"
             fetchFailure?.let { throw it }
-            return onServer
+            val snapshot = onServer
+            afterFetch()
+            return snapshot
         }
         override suspend fun createBookmark(server: ServerConfig, bookId: String, timeSec: Long, title: String) {
             val call = "create $bookId $timeSec $title"
@@ -385,6 +393,35 @@ class BookRepositoryBookmarkTest {
     }
 
     @Test
+    fun `a pull replaces only the rows of its own server for a book`() = runTest {
+        val other = BookmarkEntity.fromDomain(bm("abs_a", 99), "srv2")
+        val f = fixture(local = listOf(bm("abs_a", 1)))
+        f.bookmarks.upsert(other)
+
+        f.repo.pullBookmarks("srv1")
+
+        assertTrue(other in f.bookmarks.rows.value)
+    }
+
+    @Test
+    fun `a push started while a pull is between its fetch and its write waits, so the pull cannot undo it`() = runTest {
+        val f = fixture(local = listOf(bm("abs_a", 10, "mine", at = 50, state = BookmarkState.PENDING_CREATE)))
+        // The server snapshot the pull took has no such bookmark.
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        f.source.afterFetch = { gate.await() }
+        val pull = launch { f.repo.pullBookmarks("srv1") }
+        runCurrent()
+        val push = launch { f.repo.pushPendingBookmarks("srv1") }
+        runCurrent()
+        assertEquals(listOf("fetch"), f.source.calls)
+        gate.complete(Unit)
+        pull.join()
+        push.join()
+        assertEquals(listOf("fetch", "create abs_a 10 mine"), f.source.calls)
+        assertEquals(listOf(bm("abs_a", 10, "mine", at = 50, state = BookmarkState.SYNCED)), f.domain())
+    }
+
+    @Test
     fun `a failed fetch is returned and the rows stay as they were`() = runTest {
         val local = listOf(bm("abs_a", 1), bm("abs_a", 2, state = BookmarkState.PENDING_CREATE))
         val f = fixture(source = BookmarkSource().apply { fetchFailure = IOException("boom") }, local = local)
@@ -426,7 +463,7 @@ class BookRepositoryBookmarkTest {
         val inner = InMemoryBookmarkDao(listOf(row(bm("abs_a", 1))))
         val dao = object : BookmarkDao by inner {
             override suspend fun getByServer(serverId: String): List<BookmarkEntity> { events += "read"; return inner.getByServer(serverId) }
-            override suspend fun deleteForBook(bookId: String) { events += "deleteBook $bookId"; inner.deleteForBook(bookId) }
+            override suspend fun deleteForBook(bookId: String, serverId: String) { events += "deleteBook $bookId"; inner.deleteForBook(bookId, serverId) }
             override suspend fun insertAll(rows: List<BookmarkEntity>) { events += "insert ${rows.size}"; inner.insertAll(rows) }
         }
         val repo = BookRepositoryImpl(
@@ -480,6 +517,29 @@ class BookRepositoryBookmarkTest {
         f.repo.pushPendingBookmarks("srv1")
 
         assertEquals(listOf("create abs_b 2 y", "create abs_a 3 z", "create abs_a 1 x"), f.source.calls)
+    }
+
+    @Test
+    fun `a create or rename the server answers with not found is dropped, any other failure stays pending`() = runTest {
+        val source = BookmarkSource().apply {
+            beforeWrite = { call ->
+                when {
+                    call.startsWith("create abs_a") -> throw HttpStatusException(HttpStatusCode.NotFound)
+                    call.startsWith("rename abs_a") -> throw HttpStatusException(HttpStatusCode.NotFound)
+                    call.startsWith("create abs_b") -> throw HttpStatusException(HttpStatusCode.InternalServerError)
+                }
+            }
+        }
+        val f = fixture(source = source, local = listOf(
+            bm("abs_a", 1, "c", at = 10, state = BookmarkState.PENDING_CREATE),
+            bm("abs_a", 2, "r", at = 20, state = BookmarkState.PENDING_RENAME),
+            bm("abs_b", 3, "k", at = 30, state = BookmarkState.PENDING_CREATE),
+        ))
+
+        val result = f.repo.pushPendingBookmarks("srv1")
+
+        assertTrue(result.isFailure)
+        assertEquals(listOf(bm("abs_b", 3, "k", at = 30, state = BookmarkState.PENDING_CREATE)), f.domain())
     }
 
     @Test

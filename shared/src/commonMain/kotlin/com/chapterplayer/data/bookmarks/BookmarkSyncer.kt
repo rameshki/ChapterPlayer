@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 
 /**
@@ -37,13 +38,15 @@ class BookmarkSyncer(
     private val minIntervalMs: Long = 300_000,
     private val debounceMs: Long = 3_000,
 ) {
+    // Guards lastPull, attempts and retries; the app scope runs on several threads. online and pendingCount are single values
+    // written by one collector and read by others, so they are volatile.
     private val passLock = Mutex()
     private val lastPull = mutableMapOf<String, Long>()
     private val attempts = mutableMapOf<String, Int>()
     private val retries = mutableMapOf<String, Job>()
     private var started = false
-    private var online = false
-    private var pendingCount = 0
+    @Volatile private var online = false
+    @Volatile private var pendingCount = 0
 
     fun start() {
         if (started) return
@@ -57,9 +60,11 @@ class BookmarkSyncer(
         }
         scope.launch {
             try {
-                books.observePendingBookmarkCount().distinctUntilChanged().collectLatest { count ->
-                    pendingCount = count
-                    if (count > 0) {
+                // The pending rows themselves, not their number: an edit that keeps the number (a rename of a row whose
+                // rename is on its way) is a change too.
+                books.observePendingBookmarks().distinctUntilChanged().collectLatest { pending ->
+                    pendingCount = pending.size
+                    if (pending.isNotEmpty()) {
                         delay(debounceMs)
                         if (online) scope.launch { runPass(fullPass = false, only = null, force = false) }
                     }
@@ -67,7 +72,7 @@ class BookmarkSyncer(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // The count is a trigger only; the other triggers still work.
+                // The pending rows are a trigger only; the other triggers still work.
             }
         }
     }
@@ -130,7 +135,7 @@ class BookmarkSyncer(
         retries[serverId] = scope.launch {
             delay(nextBackoffMs(count))
             // This job is done waiting; a failure of the pass below schedules the next one.
-            retries.remove(serverId)
+            passLock.withLock { retries.remove(serverId) }
             if (online) runPass(fullPass = true, only = serverId, force = true)
         }
     }

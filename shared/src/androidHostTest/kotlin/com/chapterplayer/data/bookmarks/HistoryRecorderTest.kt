@@ -21,10 +21,10 @@ class HistoryRecorderTest {
         val controller = FakePlaybackController()
         val recorder = HistoryRecorder(controller, repo, scope, now)
         fun emit(
-            pos: Long, book: String? = "a", playing: Boolean = true, speed: Float = 1f, duration: Long = 3_600_000
+            pos: Long, book: String? = "a", playing: Boolean = true, speed: Float = 1f, duration: Long = 3_600_000, buffering: Boolean = false
         ) {
             controller.playback.value = PlaybackState(
-                bookId = book, isPlaying = playing, positionMs = pos, durationMs = duration, speed = speed
+                bookId = book, isPlaying = playing, positionMs = pos, durationMs = duration, speed = speed, isBuffering = buffering
             )
         }
     }
@@ -33,6 +33,28 @@ class HistoryRecorderTest {
         CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)),
         { testScheduler.currentTime }
     ).also { it.recorder.start() }
+
+    @Test
+    fun `resuming after a long pause without a seek records nothing`() = runTest {
+        val r = rig()
+        r.emit(100_000)
+        advanceTimeBy(1_000)
+        r.emit(101_000, playing = false)
+        advanceTimeBy(600_000)
+        r.emit(101_000, playing = true)
+        assertTrue(r.repo.recordAttempts.isEmpty())
+    }
+
+    @Test
+    fun `a buffering stall records nothing`() = runTest {
+        val r = rig()
+        r.emit(100_000)
+        advanceTimeBy(1_000)
+        r.emit(101_000, playing = true, buffering = true)
+        advanceTimeBy(90_000)
+        r.emit(101_000, playing = true)
+        assertTrue(r.repo.recordAttempts.isEmpty())
+    }
 
     @Test
     fun `normal playback records nothing`() = runTest {

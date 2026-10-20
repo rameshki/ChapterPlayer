@@ -448,9 +448,39 @@ class PlayerViewModelTest {
         collectLists(s)
         s.controller.playback.value = playing()
         s.repo.bookmarks.value = listOf(mark("a", 5), mark("a", 9))
-        s.vm.renameBookmark(5, "New")
-        s.vm.deleteBookmark(9)
+        s.vm.renameBookmark("a", 5, "New")
+        s.vm.deleteBookmark("a", 9)
         assertEquals(listOf(5L to "New"), s.vm.bookmarks.value.map { it.timeSec to it.title })
+    }
+
+    @Test
+    fun `rename and delete use the bookmark's own book, not the loaded one`() = runTest {
+        val s = Setup(book)
+        collectLists(s)
+        s.controller.playback.value = playing().copy(bookId = "other")
+        s.repo.bookmarks.value = listOf(mark("a", 5), mark("a", 9), mark("other", 5))
+        s.vm.renameBookmark("a", 5, "New")
+        s.vm.deleteBookmark("a", 9)
+        assertEquals(
+            setOf(Triple("a", 5L, "New"), Triple("other", 5L, "T5")),
+            s.repo.bookmarks.value.map { Triple(it.bookId, it.timeSec, it.title) }.toSet()
+        )
+        assertEquals(2, s.repo.bookmarks.value.size)
+    }
+
+    @Test
+    fun `add bookmark reports whether it was saved`() = runTest {
+        val s = Setup(book)
+        val results = mutableListOf<Boolean>()
+        s.vm.addBookmark("x") { results += it }
+        assertEquals(listOf(false), results)
+        s.controller.playback.value = playing()
+        s.vm.addBookmark("x") { results += it }
+        val failing = object : FakeBookRepository(listOf(book)) {
+            override suspend fun addBookmark(bookId: String, positionMs: Long, title: String?): Bookmark = error("Unknown book")
+        }
+        PlayerViewModel(s.controller, failing, s.settings, Dispatchers.Main).addBookmark("y") { results += it }
+        assertEquals(listOf(false, true, false), results)
     }
 
     @Test

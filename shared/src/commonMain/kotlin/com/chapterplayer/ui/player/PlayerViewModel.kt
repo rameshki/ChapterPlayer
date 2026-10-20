@@ -179,21 +179,38 @@ class PlayerViewModel(
         }
     }
 
-    /** Saves a bookmark at the position of this moment; a blank [name] means the default title. */
-    fun addBookmark(name: String?) {
+    /**
+     * Saves a bookmark at the position of this moment; a blank [name] means the default title. [onDone] is told whether it
+     * was saved, so the caller can keep what the user typed when it was not.
+     */
+    fun addBookmark(name: String?, onDone: (saved: Boolean) -> Unit = {}) {
         val state = controller.state.value
-        val bookId = state.bookId ?: return
+        val bookId = state.bookId
+        if (bookId == null) {
+            onDone(false)
+            return
+        }
         val position = state.positionMs
-        launchQuietly { books.addBookmark(bookId, position, name) }
+        viewModelScope.launch {
+            val saved = try {
+                books.addBookmark(bookId, position, name)
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Bookmarks are saved locally first; a failure leaves the list as it was.
+                false
+            }
+            onDone(saved)
+        }
     }
 
-    fun renameBookmark(timeSec: Long, name: String) {
-        val bookId = controller.state.value.bookId ?: return
+    /** [bookId] is the bookmark's own book, which is not always the one that is loaded now. */
+    fun renameBookmark(bookId: String, timeSec: Long, name: String) {
         launchQuietly { books.renameBookmark(bookId, timeSec, name) }
     }
 
-    fun deleteBookmark(timeSec: Long) {
-        val bookId = controller.state.value.bookId ?: return
+    fun deleteBookmark(bookId: String, timeSec: Long) {
         launchQuietly { books.deleteBookmark(bookId, timeSec) }
     }
 

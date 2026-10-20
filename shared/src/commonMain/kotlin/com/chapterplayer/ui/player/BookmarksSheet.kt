@@ -61,9 +61,9 @@ import com.chapterplayer.ui.theme.TextSecondary
 fun BookmarksSheet(
     bookmarks: List<Bookmark>,
     currentPositionMs: Long,
-    onAdd: (name: String?) -> Unit,
-    onRename: (timeSec: Long, name: String) -> Unit,
-    onDelete: (timeSec: Long) -> Unit,
+    onAdd: (name: String?, onDone: (saved: Boolean) -> Unit) -> Unit,
+    onRename: (bookId: String, timeSec: Long, name: String) -> Unit,
+    onDelete: (bookId: String, timeSec: Long) -> Unit,
     onJump: (positionMs: Long) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -94,7 +94,7 @@ fun BookmarksSheet(
                                 onDismiss()
                             },
                             onRename = { renaming = bookmark },
-                            onDelete = { onDelete(bookmark.timeSec) }
+                            onDelete = { onDelete(bookmark.bookId, bookmark.timeSec) }
                         )
                     }
                     item(key = "end-space") { Box(Modifier.height(24.dp)) }
@@ -106,7 +106,7 @@ fun BookmarksSheet(
         RenameBookmarkDialog(
             initial = target.title,
             onConfirm = { name ->
-                onRename(target.timeSec, name)
+                onRename(target.bookId, target.timeSec, name)
                 renaming = null
             },
             onDismiss = { renaming = null }
@@ -115,11 +115,12 @@ fun BookmarksSheet(
 }
 
 @Composable
-private fun AddBookmarkRow(hint: String, onAdd: (String?) -> Unit) {
+private fun AddBookmarkRow(hint: String, onAdd: (String?, (Boolean) -> Unit) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
     val submit = {
-        onAdd(name.ifBlank { null })
-        name = ""
+        val typed = name
+        // The field is cleared once the bookmark is saved; if saving fails the typed name stays for another try.
+        onAdd(typed.ifBlank { null }) { saved -> if (saved && name == typed) name = "" }
     }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(

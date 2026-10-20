@@ -92,7 +92,7 @@ class LibraryVisibilityTest {
         val bookDao = FakeBookDao(
             listOf(book("a1", "a", "lib1"), book("a2", "a", "lib1"), book("a3", "a", "lib2"), book("b1", "b", "lib1"))
         )
-        val repo = ServerRepositoryImpl(FakeServerDao(), excludedDao, creds, bookDao, InMemoryLibraryDao(), InMemoryCollectionDao())
+        val repo = ServerRepositoryImpl(FakeServerDao(), excludedDao, creds, bookDao, InMemoryLibraryDao(), InMemoryCollectionDao(), InMemoryBookmarkDao(), InMemoryHistoryDao())
         fun bookIds() = bookDao.books.value.map { it.id }
     }
 
@@ -225,7 +225,7 @@ class LibraryVisibilityTest {
         override suspend fun addBookmark(bookId: String, positionMs: Long, title: String?) = error("unused")
         override suspend fun renameBookmark(bookId: String, timeSec: Long, title: String) = error("unused")
         override suspend fun deleteBookmark(bookId: String, timeSec: Long) = error("unused")
-        override fun observePendingBookmarkCount() = error("unused")
+        override fun observePendingBookmarks() = error("unused")
         override suspend fun pullBookmarks(serverId: String) = error("unused")
         override suspend fun pushPendingBookmarks(serverId: String) = error("unused")
         override fun observeHistory(bookId: String) = error("unused")

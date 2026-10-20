@@ -26,9 +26,13 @@ interface BookmarkDao {
     @Query("DELETE FROM bookmarks WHERE bookId = :bookId AND timeSec = :timeSec")
     suspend fun delete(bookId: String, timeSec: Long)
 
-    /** Removes every row of the book (the first half of replacing them with a merge result, in one transaction). */
-    @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
-    suspend fun deleteForBook(bookId: String)
+    /** Removes every row of the book on that server (the first half of replacing them with a merge result, in one transaction). */
+    @Query("DELETE FROM bookmarks WHERE bookId = :bookId AND serverId = :serverId")
+    suspend fun deleteForBook(bookId: String, serverId: String)
+
+    /** Removes every row of the server (when the server is removed). */
+    @Query("DELETE FROM bookmarks WHERE serverId = :serverId")
+    suspend fun deleteForServer(serverId: String)
 
     @Query("SELECT * FROM bookmarks WHERE serverId = :serverId")
     suspend fun getByServer(serverId: String): List<BookmarkEntity>
@@ -37,9 +41,9 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE serverId = :serverId AND state <> 'SYNCED' ORDER BY createdAt ASC, timeSec ASC, bookId ASC")
     suspend fun getPendingByServer(serverId: String): List<BookmarkEntity>
 
-    /** How many rows (of any server) the server has not heard yet. */
-    @Query("SELECT COUNT(*) FROM bookmarks WHERE state <> 'SYNCED'")
-    fun observePendingCount(): Flow<Int>
+    /** The rows (of any server) the server has not heard yet. */
+    @Query("SELECT * FROM bookmarks WHERE state <> 'SYNCED' ORDER BY createdAt ASC, timeSec ASC, bookId ASC")
+    fun observePending(): Flow<List<BookmarkEntity>>
 
     /** Sets [newState] only if the row still has [ifState] and [ifTitle] (it was not changed meanwhile). Returns the rows changed. */
     @Query("UPDATE bookmarks SET state = :newState WHERE bookId = :bookId AND timeSec = :timeSec AND state = :ifState AND title = :ifTitle")

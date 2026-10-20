@@ -39,10 +39,14 @@ import com.chapterplayer.domain.playback.isFinishedAt
 import com.chapterplayer.domain.playback.mergeBookmarks
 import com.chapterplayer.domain.playback.mergeServerProgress
 import com.chapterplayer.domain.playback.visibleBookmarks
+import com.chapterplayer.data.remote.HttpStatusException
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Keeps a local copy of every server's books and the listening progress.
@@ -325,7 +329,17 @@ class BookRepositoryImpl(
         }
     }
 
+    // A pull works from a snapshot of the server and a push changes what the server holds: they must not overlap, or the
+    // pull could drop a row that was just pushed or bring back one that was just deleted. One lock for all servers is enough.
+    private val bookmarkSyncLock = Mutex()
+
     override suspend fun pullBookmarks(serverId: String): Result<Unit> =
+        bookmarkSyncLock.withLock { pullBookmarksLocked(serverId) }
+
+    override suspend fun pushPendingBookmarks(serverId: String): Result<Unit> =
+        bookmarkSyncLock.withLock { pushPendingBookmarksLocked(serverId) }
+
+    private suspend fun pullBookmarksLocked(serverId: String): Result<Unit> =
         try {
             val (server, source) = serverAndSource(serverId)
             if (server.source != ServerSource.ABS) {
@@ -344,7 +358,7 @@ class BookRepositoryImpl(
                             // Not in the library: no rows from the server, and the synced rows go; pending local changes stay.
                             local.filter { it.state != BookmarkState.SYNCED }
                         }
-                        bookmarkDao.deleteForBook(bookId)
+                        bookmarkDao.deleteForBook(bookId, serverId)
                         bookmarkDao.insertAll(merged.map { BookmarkEntity.fromDomain(it, serverId) })
                     }
                 }
@@ -356,9 +370,10 @@ class BookRepositoryImpl(
             Result.failure(e)
         }
 
-    override fun observePendingBookmarkCount(): Flow<Int> = bookmarkDao.observePendingCount()
+    override fun observePendingBookmarks(): Flow<List<Bookmark>> =
+        bookmarkDao.observePending().map { rows -> rows.map { it.toDomain() } }
 
-    override suspend fun pushPendingBookmarks(serverId: String): Result<Unit> =
+    private suspend fun pushPendingBookmarksLocked(serverId: String): Result<Unit> =
         try {
             val (server, source) = serverAndSource(serverId)
             if (server.source != ServerSource.ABS) return Result.success(Unit)
@@ -386,7 +401,7 @@ class BookRepositoryImpl(
         val synced = BookmarkState.SYNCED.name
         when (row.toDomain().state) {
             BookmarkState.PENDING_CREATE -> {
-                source.createBookmark(server, row.bookId, row.timeSec, row.title)
+                if (!sendOrDropIfGone(row) { source.createBookmark(server, row.bookId, row.timeSec, row.title) }) return
                 if (bookmarkDao.updateStateIf(row.bookId, row.timeSec, synced, row.state, row.title) == 0) {
                     val now = bookmarkDao.get(row.bookId, row.timeSec)
                     if (now == null) {
@@ -399,7 +414,7 @@ class BookRepositoryImpl(
                 }
             }
             BookmarkState.PENDING_RENAME -> {
-                source.renameBookmark(server, row.bookId, row.timeSec, row.title)
+                if (!sendOrDropIfGone(row) { source.renameBookmark(server, row.bookId, row.timeSec, row.title) }) return
                 bookmarkDao.updateStateIf(row.bookId, row.timeSec, synced, row.state, row.title)
             }
             BookmarkState.PENDING_DELETE -> {
@@ -415,6 +430,20 @@ class BookRepositoryImpl(
             BookmarkState.SYNCED -> Unit
         }
     }
+
+    /**
+     * Runs a create or rename. A 404 means the book is gone from the server, so retrying can never work: the row is dropped
+     * (if it was not changed meanwhile) and false is returned. Any other failure is thrown.
+     */
+    private suspend fun sendOrDropIfGone(row: BookmarkEntity, send: suspend () -> Unit): Boolean =
+        try {
+            send()
+            true
+        } catch (e: HttpStatusException) {
+            if (e.status != HttpStatusCode.NotFound) throw e
+            bookmarkDao.deleteIf(row.bookId, row.timeSec, row.state, row.title)
+            false
+        }
 
     // -------------------------------------------------------------------------
     // History

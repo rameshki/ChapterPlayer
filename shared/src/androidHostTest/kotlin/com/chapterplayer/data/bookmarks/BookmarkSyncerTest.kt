@@ -98,6 +98,21 @@ class BookmarkSyncerTest {
     }
 
     @Test
+    fun `a second edit that keeps the number of pending rows is pushed too`() = runTest {
+        val r = rig(true, server("a"))
+        r.syncer.start()
+        runCurrent()
+        r.repo.bookmarkCalls.clear()
+        r.repo.bookmarks.value = listOf(Bookmark("abs_x", 10, "First", 1L, BookmarkState.PENDING_RENAME))
+        advanceTimeBy(3_001)
+        assertEquals(listOf("push a"), r.repo.bookmarkCalls)
+        // The row is still pending (renamed again while the first rename was on its way): same count, new title.
+        r.repo.bookmarks.value = listOf(Bookmark("abs_x", 10, "Second", 1L, BookmarkState.PENDING_RENAME))
+        advanceTimeBy(3_001)
+        assertEquals(listOf("push a", "push a"), r.repo.bookmarkCalls)
+    }
+
+    @Test
     fun `a local change waits three seconds and then only pushes`() = runTest {
         val r = rig(true, server("a"))
         r.syncer.start()

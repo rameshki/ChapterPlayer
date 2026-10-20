@@ -21,12 +21,14 @@ class InMemoryBookmarkDao(initial: List<BookmarkEntity> = emptyList()) : Bookmar
     }
     override suspend fun insertAll(rows: List<BookmarkEntity>) { for (row in rows) upsert(row) }
     override suspend fun delete(bookId: String, timeSec: Long) { rows.value = rows.value.filterNot { same(it, bookId, timeSec) } }
-    override suspend fun deleteForBook(bookId: String) { rows.value = rows.value.filter { it.bookId != bookId } }
+    override suspend fun deleteForBook(bookId: String, serverId: String) { rows.value = rows.value.filterNot { it.bookId == bookId && it.serverId == serverId } }
+    override suspend fun deleteForServer(serverId: String) { rows.value = rows.value.filter { it.serverId != serverId } }
     override suspend fun getByServer(serverId: String): List<BookmarkEntity> = rows.value.filter { it.serverId == serverId }
     override suspend fun getPendingByServer(serverId: String): List<BookmarkEntity> =
         rows.value.filter { it.serverId == serverId && it.state != "SYNCED" }
             .sortedWith(compareBy({ it.createdAt }, { it.timeSec }, { it.bookId }))
-    override fun observePendingCount(): Flow<Int> = rows.map { list -> list.count { it.state != "SYNCED" } }
+    override fun observePending(): Flow<List<BookmarkEntity>> =
+        rows.map { list -> list.filter { it.state != "SYNCED" }.sortedWith(compareBy({ it.createdAt }, { it.timeSec }, { it.bookId })) }
     override suspend fun updateStateIf(bookId: String, timeSec: Long, newState: String, ifState: String, ifTitle: String): Int {
         var changed = 0
         rows.value = rows.value.map {
@@ -57,4 +59,5 @@ class InMemoryHistoryDao(initial: List<HistoryEntity> = emptyList()) : HistoryDa
     }
     override suspend fun deleteByIds(ids: List<Long>) { rows.value = rows.value.filter { it.id !in ids } }
     override suspend fun deleteForBook(bookId: String) { rows.value = rows.value.filter { it.bookId != bookId } }
+    override suspend fun deleteForBooks(bookIds: List<String>) { rows.value = rows.value.filter { it.bookId !in bookIds } }
 }

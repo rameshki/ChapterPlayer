@@ -138,9 +138,9 @@ fun PlayerContent(
     onJumpToChapter: (Int) -> Unit,
     onSetSpeed: (Float) -> Unit,
     onSetSleepTimer: (SleepTimer) -> Unit,
-    onAddBookmark: (String?) -> Unit,
-    onRenameBookmark: (Long, String) -> Unit,
-    onDeleteBookmark: (Long) -> Unit,
+    onAddBookmark: (String?, (Boolean) -> Unit) -> Unit,
+    onRenameBookmark: (String, Long, String) -> Unit,
+    onDeleteBookmark: (String, Long) -> Unit,
     onJumpTo: (Long) -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier

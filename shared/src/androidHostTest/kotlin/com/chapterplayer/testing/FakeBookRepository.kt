@@ -123,7 +123,7 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override suspend fun deleteBookmark(bookId: String, timeSec: Long) {
         bookmarks.value = bookmarks.value.filterNot { it.bookId == bookId && it.timeSec == timeSec }
     }
-    override fun observePendingBookmarkCount(): Flow<Int> = bookmarks.map { list -> list.count { it.state != BookmarkState.SYNCED } }
+    override fun observePendingBookmarks(): Flow<List<Bookmark>> = bookmarks.map { list -> list.filter { it.state != BookmarkState.SYNCED } }
     val pulledBookmarks = mutableListOf<String>()
     /** Every pull and push in order, e.g. "pull s1" then "push s1". */
     val bookmarkCalls = mutableListOf<String>()

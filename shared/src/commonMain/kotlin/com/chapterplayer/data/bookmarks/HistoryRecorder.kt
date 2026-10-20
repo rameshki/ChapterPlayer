@@ -22,7 +22,7 @@ class HistoryRecorder(
     private val scope: CoroutineScope,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
-    private data class Baseline(val bookId: String, val positionMs: Long, val atMs: Long)
+    private data class Baseline(val bookId: String, val positionMs: Long, val atMs: Long, val advancing: Boolean, val speed: Float)
 
     private var started = false
     private var baseline: Baseline? = null
@@ -51,9 +51,9 @@ class HistoryRecorder(
         }
         val now = nowMs()
         val previous = baseline
-        baseline = Baseline(bookId, state.positionMs, now)
+        baseline = Baseline(bookId, state.positionMs, now, state.isPlaying && !state.isBuffering, state.speed)
         if (previous == null || previous.bookId != bookId) return
-        val left = jumpedFrom(previous.positionMs, previous.atMs, state.positionMs, now, state.speed, state.isPlaying) ?: return
+        val left = jumpedFrom(previous.positionMs, previous.atMs, state.positionMs, now, previous.speed, previous.advancing) ?: return
         // The player reports the start of the book while it prepares, then seeks to the resume point: not worth going back to.
         if (left < MIN_WORTH_REMEMBERING_MS) return
         books.recordHistory(HistoryEntry(bookId, left, now))

@@ -24,4 +24,7 @@ interface HistoryDao {
 
     @Query("DELETE FROM position_history WHERE bookId = :bookId")
     suspend fun deleteForBook(bookId: String)
+
+    @Query("DELETE FROM position_history WHERE bookId IN (:bookIds)")
+    suspend fun deleteForBooks(bookIds: List<String>)
 }
