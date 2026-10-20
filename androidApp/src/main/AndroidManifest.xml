@@ -38,6 +38,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Android Auto: this app is a media app; the car talks to PlaybackService -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <service
             android:name="com.chapterplayer.data.playback.PlaybackService"
             android:exported="true"
