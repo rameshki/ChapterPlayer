@@ -87,8 +87,8 @@ class BookRepositoryProgressTest {
     private fun progress(id: String, pos: Long = 1_000, at: Long = 100, finished: Boolean = false) =
         ProgressEntity(id, pos, 9_000, at, finished)
 
-    private fun pending(id: String = "abs_a", pos: Long = 1_000, listened: Long = 500, at: Long = 100, attempts: Int = 0) =
-        PendingProgress(id, "srv1", pos, 9_000, listened, at, attempts)
+    private fun pending(id: String = "abs_a", pos: Long = 1_000, listened: Long = 500, at: Long = 100, attempts: Int = 0, next: Long = 0) =
+        PendingProgress(id, "srv1", pos, 9_000, listened, at, attempts, next)
 
     private class Fixture(
         val repo: BookRepositoryImpl,
@@ -244,7 +244,7 @@ class BookRepositoryProgressTest {
 
         f.repo.queueProgress(pending(pos = 1_000, listened = 250, at = 100))
 
-        assertEquals(listOf(pending(pos = 3_000, listened = 750, at = 200, attempts = 2)), f.repo.pendingProgress())
+        assertEquals(listOf(pending(pos = 3_000, listened = 750, at = 200, attempts = 2, next = 777)), f.repo.pendingProgress())
         assertEquals(777L, f.pendingDao.get("abs_a")!!.nextAttemptAtMs)
     }
 
@@ -293,7 +293,7 @@ class BookRepositoryProgressTest {
 
         f.repo.markPendingAttempt("abs_a", 3, 99_000)
 
-        assertEquals(listOf(pending(pos = 1_234, listened = 55, attempts = 3)), f.repo.pendingProgress())
+        assertEquals(listOf(pending(pos = 1_234, listened = 55, attempts = 3, next = 99_000)), f.repo.pendingProgress())
         assertEquals(99_000L, f.pendingDao.get("abs_a")!!.nextAttemptAtMs)
         f.repo.markPendingAttempt("abs_missing", 1, 1)
         assertNull(f.pendingDao.get("abs_missing"))

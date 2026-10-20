@@ -74,6 +74,8 @@ class AndroidPlaybackController(
     private val sleep = SleepTimerEngine()
     private var ticker: Job? = null
 
+    override val activeSession: PlaybackSession? get() = session
+
     private val _state = MutableStateFlow(PlaybackState())
     override val state: StateFlow<PlaybackState> = _state.asStateFlow()
 

@@ -15,6 +15,9 @@ interface PlaybackController {
     /** What is playing now, for the player screen and the mini player to observe. */
     val state: StateFlow<PlaybackState>
 
+    /** The server session of the loaded book; null when nothing is loaded. Progress sync reports against it. */
+    val activeSession: PlaybackSession?
+
     /** The sleep timer in force. [SleepTimer.Off] when none is set. */
     val sleepTimer: StateFlow<SleepTimer>
 

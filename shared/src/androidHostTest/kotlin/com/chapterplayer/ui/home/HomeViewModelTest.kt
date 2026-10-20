@@ -64,7 +64,7 @@ class HomeViewModelTest {
         val controller = FakePlaybackController()
         val vm = HomeViewModel(
             books, servers, downloads, store, monitor, settings, coordinator,
-            PlaybackStarter(controller, books, settings), Dispatchers.Main
+            PlaybackStarter(controller, books, settings, monitor), Dispatchers.Main
         )
     }
 
@@ -342,7 +342,7 @@ class HomeViewModelTest {
     @Test
     fun `resume starts the book through the starter without a position and reports success`() = runTest {
         val s = Setup(FakeBookRepository(listOf(longBook("a"))))
-        s.books.progress.value = listOf(progress("a", positionMs = 400))
+        s.books.progress.value = listOf(ReadingProgress("a", 400, 100_000, 1))
         val state = collect(s)
         var started = 0
 

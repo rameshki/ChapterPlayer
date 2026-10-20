@@ -24,7 +24,8 @@ data class PendingProgressEntity(
         durationMs = durationMs,
         listenedMs = listenedMs,
         updatedAtMs = updatedAtMs,
-        attempts = attempts
+        attempts = attempts,
+        nextAttemptAtMs = nextAttemptAtMs
     )
 
     companion object {

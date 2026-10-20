@@ -59,7 +59,7 @@ class KoinModulesTest {
 
     @Test
     fun `the playback module resolves`() {
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, playbackModule) }
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule) }
             .verify(extraTypes = providedByApp)
     }
 

@@ -2,6 +2,7 @@ package com.chapterplayer.data.sync
 
 import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.ServerConfig
+import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.ServerRepository
 import kotlinx.coroutines.CancellationException
@@ -238,6 +239,8 @@ class LibrarySyncCoordinator(
         } catch (e: Exception) {
             Result.failure(e)
         }
+        // The books are cached: bring in what the server knows about listening to them (best effort).
+        if (outcome.isSuccess && server.source == ServerSource.ABS) mergeProgress(server)
         outcome.onFailure { throwable ->
             if (throwable is CancellationException) throw throwable
             errors.add(
@@ -246,6 +249,17 @@ class LibrarySyncCoordinator(
             )
         }
         dropIfDeleted(server)
+    }
+
+    /** A failure here never fails the sync and shows no error: the next sync tries again. */
+    private suspend fun mergeProgress(server: ServerConfig) {
+        try {
+            books.mergeAllServerProgress(server.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best effort.
+        }
     }
 
     /**

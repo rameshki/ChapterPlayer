@@ -3,6 +3,7 @@ package com.chapterplayer.testing
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.domain.playback.SleepTimer
 import kotlinx.coroutines.flow.Flow
@@ -13,6 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
 class FakePlaybackController : PlaybackController {
     val playback = MutableStateFlow(PlaybackState())
     override val state: StateFlow<PlaybackState> = playback
+    /** What [activeSession] returns; tests set it to the session of the loaded book. */
+    var session: PlaybackSession? = null
+    override val activeSession: PlaybackSession? get() = session
     val sleep = MutableStateFlow<SleepTimer>(SleepTimer.Off)
     override val sleepTimer: StateFlow<SleepTimer> = sleep
 

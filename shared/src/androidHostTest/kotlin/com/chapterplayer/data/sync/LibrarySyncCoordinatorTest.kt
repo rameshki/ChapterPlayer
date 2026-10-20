@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -494,5 +495,78 @@ class LibrarySyncCoordinatorTest {
 
         assertEquals(listOf("a", "a"), books.synced)
         assertFalse(c.state.value.isSyncing)
+    }
+
+    @Test
+    fun `after a successful sync of a server the server progress is merged`() = runTest {
+        val books = RecordingBooks()
+        val c = coordinator(books, FakeServerList(listOf(server("a"))))
+
+        c.requestSync("a")
+
+        assertEquals(listOf("a"), books.synced)
+        assertEquals(listOf("a"), books.mergedServers)
+    }
+
+    @Test
+    fun `a failed sync merges nothing`() = runTest {
+        val books = RecordingBooks(outcome = { Result.failure(IllegalStateException("down")) })
+        val c = coordinator(books, FakeServerList(listOf(server("a"))))
+
+        c.requestSync("a")
+
+        assertTrue(books.mergedServers.isEmpty())
+    }
+
+    @Test
+    fun `a server that needs sign-in merges nothing`() = runTest {
+        val books = RecordingBooks()
+        val c = coordinator(books, FakeServerList(listOf(server("a", token = ""))))
+
+        c.requestSync("a")
+
+        assertTrue(books.mergedServers.isEmpty())
+    }
+
+    @Test
+    fun `a Plex server merges nothing`() = runTest {
+        val books = RecordingBooks()
+        val plex = server("p").copy(source = ServerSource.PLEX)
+        val c = coordinator(books, FakeServerList(listOf(plex)))
+
+        c.requestSync("p")
+
+        assertEquals(listOf("p"), books.synced)
+        assertTrue(books.mergedServers.isEmpty())
+    }
+
+    @Test
+    fun `a merge that throws neither fails the sync nor shows an error`() = runTest {
+        val books = RecordingBooks()
+        books.onMergeAll = { error("merge broke") }
+        val c = coordinator(books, FakeServerList(listOf(server("a"))))
+
+        c.requestSync("a")
+
+        assertEquals(listOf("a"), books.mergedServers)
+        assertEquals(null, c.state.value.syncError)
+        assertFalse(c.state.value.isSyncing)
+    }
+
+    @Test
+    fun `cancellation inside the merge is not swallowed`() = runTest {
+        val books = RecordingBooks()
+        books.onMergeAll = { throw kotlinx.coroutines.CancellationException("stop") }
+        val c = coordinator(books, FakeServerList(listOf(server("a"))))
+
+        var finished = false
+        val job = launch {
+            c.refreshAll()
+            finished = true
+        }
+        job.join()
+
+        assertTrue(job.isCancelled)
+        assertFalse(finished)
     }
 }

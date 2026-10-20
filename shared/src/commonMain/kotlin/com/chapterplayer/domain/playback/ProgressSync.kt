@@ -10,7 +10,9 @@ data class ServerProgress(val positionMs: Long, val durationMs: Long, val isFini
 /**
  * Represents progress that has been recorded locally but not yet successfully synchronized with the server.
  */
-data class PendingProgress(val bookId: String, val serverId: String, val positionMs: Long, val durationMs: Long, val listenedMs: Long, val updatedAtMs: Long, val attempts: Int = 0)
+data class PendingProgress(val bookId: String, val serverId: String, val positionMs: Long, val durationMs: Long, val listenedMs: Long, val updatedAtMs: Long, val attempts: Int = 0,
+    /** The earliest time to try again; 0 when it may be sent at once. Kept by the queue, not by [coalescePending]. */
+    val nextAttemptAtMs: Long = 0L)
 
 /**
  * Dictates whether a pending progress update should be sent to the server or discarded.

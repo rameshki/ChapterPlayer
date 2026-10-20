@@ -6,6 +6,7 @@ import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.testBook
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -26,7 +27,7 @@ class PlaybackProgressSaverTest {
         PlaybackState(bookId = book, isPlaying = playing, positionMs = pos, durationMs = duration)
 
     private fun kotlinx.coroutines.test.TestScope.rig() =
-        Rig(CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler)))
+        Rig(CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)))
 
     @Test
     fun `progress is saved when playing stops`() = runTest {
@@ -98,5 +99,74 @@ class PlaybackProgressSaverTest {
         r.controller.playback.value = state(playing = true, pos = 1_000)
         r.controller.playback.value = state(playing = false, pos = 2_000)
         assertEquals(1, r.repo.saved.size)
+    }
+
+    // -- Periodic saves, on virtual time --------------------------------------------------------
+
+    private class Timed(scope: CoroutineScope, now: () -> Long) {
+        val controller = FakePlaybackController()
+        val repo = FakeBookRepository(listOf(testBook("a")))
+        init { PlaybackProgressSaver(controller, repo, scope, nowMs = now).start() }
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.timed() = Timed(
+        CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)),
+        { testScheduler.currentTime }
+    )
+
+    @Test
+    fun `while playing the position is saved every ten seconds`() = runTest {
+        val t = timed()
+        t.controller.playback.value = state(playing = true, pos = 1_000)
+        advanceTimeBy(9_500)
+        assertTrue(t.repo.saved.isEmpty())
+        t.controller.playback.value = state(playing = true, pos = 10_000)
+        advanceTimeBy(1_000)
+        assertEquals(listOf(10_000L), t.repo.saved.map { it.positionMs })
+        t.controller.playback.value = state(playing = true, pos = 20_000)
+        advanceTimeBy(10_000)
+        assertEquals(listOf(10_000L, 20_000L), t.repo.saved.map { it.positionMs })
+        assertEquals(10_000L, t.repo.saved.first().lastPlayedAt)
+    }
+
+    @Test
+    fun `nothing is saved periodically while paused`() = runTest {
+        val t = timed()
+        t.controller.playback.value = state(playing = false, pos = 5_000)
+        advanceTimeBy(60_000)
+        assertTrue(t.repo.saved.isEmpty())
+    }
+
+    @Test
+    fun `a periodic save does not store position zero or a missing book`() = runTest {
+        val t = timed()
+        t.controller.playback.value = state(playing = true, pos = 0)
+        advanceTimeBy(30_000)
+        t.controller.playback.value = state(book = null, playing = true, pos = 5_000)
+        advanceTimeBy(30_000)
+        assertTrue(t.repo.saved.isEmpty())
+    }
+
+    @Test
+    fun `periodic saves stop after a pause and the pause saves once`() = runTest {
+        val t = timed()
+        t.controller.playback.value = state(playing = true, pos = 5_000)
+        advanceTimeBy(10_500)
+        t.controller.playback.value = state(playing = false, pos = 12_000)
+        assertEquals(listOf(5_000L, 12_000L), t.repo.saved.map { it.positionMs })
+        advanceTimeBy(60_000)
+        assertEquals(2, t.repo.saved.size)
+    }
+
+    @Test
+    fun `a switch and a release still save the old book while the timer runs`() = runTest {
+        val t = timed()
+        t.controller.playback.value = state(playing = true, pos = 20_000)
+        advanceTimeBy(3_000)
+        t.controller.playback.value = state(book = "other", playing = true, pos = 10)
+        assertEquals(listOf("a" to 20_000L), t.repo.saved.map { it.bookId to it.positionMs })
+        t.controller.playback.value = PlaybackState()
+        advanceTimeBy(60_000)
+        assertEquals(listOf("a" to 20_000L, "other" to 10L), t.repo.saved.map { it.bookId to it.positionMs })
     }
 }
