@@ -11,6 +11,8 @@ data class PlayerUiState(
     val coverUrl: String? = null,
     val chapterTitle: String? = null,
     val bookFraction: Float = 0f,
+    /** Length of the whole book in ms; 0 when unknown (the sliders are then disabled). */
+    val durationMs: Long = 0L,
     val chapterFraction: Float? = null,
     /** Book time played and left, as clock texts. */
     val elapsed: String = "0:00",

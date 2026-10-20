@@ -78,6 +78,7 @@ class PlayerViewModel(
             coverUrl = book?.coverUrl,
             chapterTitle = chapter?.title,
             bookFraction = bookFraction(position, duration),
+            durationMs = duration.coerceAtLeast(0L),
             chapterFraction = if (chapter != null) chapterFraction(chapters, position) else null,
             elapsed = formatClock(position),
             remaining = formatClock(duration - position),

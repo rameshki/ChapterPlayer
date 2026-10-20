@@ -38,6 +38,7 @@ import com.chapterplayer.ui.library.GroupDetailScreen
 import com.chapterplayer.ui.library.LibraryScreen
 import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.library.decodeGroupKey
+import com.chapterplayer.ui.player.PlayerScreen
 import com.chapterplayer.ui.search.SearchScreen
 import com.chapterplayer.ui.settings.SettingsScreen
 import com.chapterplayer.ui.theme.AmberGold
@@ -177,8 +178,7 @@ fun AppNavigation() {
                 }
 
                 composable(Screen.Player.route) {
-                    // Player screen stub — built in the next phase
-                    Box(Modifier.fillMaxSize().background(BackgroundDeep))
+                    PlayerScreen(onBack = { navController.popBackStack() })
                 }
 
                 composable(Screen.Settings.route) {
