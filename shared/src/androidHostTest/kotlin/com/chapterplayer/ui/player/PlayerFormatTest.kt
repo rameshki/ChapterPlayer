@@ -1,5 +1,8 @@
 package com.chapterplayer.ui.player
 
+import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.BookmarkState
+import com.chapterplayer.domain.playback.HistoryEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,5 +42,22 @@ class PlayerFormatTest {
         assertTrue(seekSettled(0.5f, 0.5001f, 3_600_000L))
         assertFalse(seekSettled(0.5f, 0.2f, 3_600_000L))
         assertTrue(seekSettled(0.5f, 0.2f, 0L))
+    }
+
+    private val mark = Bookmark("b", 3_725L, "Start of the duel", 0L, BookmarkState.SYNCED)
+
+    @Test
+    fun bookmarkRowsShowTheClockAndTheTitle() {
+        assertEquals("1:02:05", bookmarkTimeLabel(mark))
+        assertEquals("Bookmark Start of the duel, at 1:02:05", bookmarkRowDescription(mark))
+        assertEquals("0:00", bookmarkTimeLabel(mark.copy(timeSec = 0L)))
+    }
+
+    @Test
+    fun historyRowsShowTheClockAndHowLongAgo() {
+        val entry = HistoryEntry("b", 754_000L, 1_000_000L)
+        assertEquals("12:34 \u00B7 just now", historyRowLabel(entry, 1_030_000L))
+        assertEquals("12:34 \u00B7 5 min ago", historyRowLabel(entry, 1_000_000L + 5 * 60_000L))
+        assertEquals("Jump back to 12:34, 2 h ago", historyRowDescription(entry, 1_000_000L + 2 * 3_600_000L))
     }
 }

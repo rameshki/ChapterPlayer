@@ -11,6 +11,8 @@ import com.chapterplayer.domain.browse.ChapterRow
 import com.chapterplayer.domain.browse.currentChapterIndex
 import com.chapterplayer.domain.browse.formatClock
 import com.chapterplayer.domain.browse.formatTimeLeft
+import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.domain.playback.bookFraction
 import com.chapterplayer.domain.playback.chapterFraction
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -38,7 +41,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel(
     private val controller: PlaybackController,
-    books: BookRepository,
+    private val books: BookRepository,
     private val settings: AppSettings,
     dispatcher: CoroutineDispatcher
 ) : ViewModel() {
@@ -62,6 +65,18 @@ class PlayerViewModel(
             buildState(controller.state.value, controller.sleepTimer.value, null, null)
         )
 
+    private val currentBookId = controller.state.map { it.bookId }.distinctUntilChanged()
+
+    /** The playing book's bookmarks, by time; empty when nothing is loaded. */
+    val bookmarks: StateFlow<List<Bookmark>> = currentBookId
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else books.observeBookmarks(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Where the person jumped away from in the playing book, newest first. */
+    val history: StateFlow<List<HistoryEntry>> = currentBookId
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else books.observeHistory(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     init {
         // When the error goes away a dismissal is forgotten, so the same text can show again.
         viewModelScope.launch {
@@ -83,6 +98,7 @@ class PlayerViewModel(
             author = book?.author.orEmpty(),
             coverUrl = book?.coverUrl,
             chapterTitle = chapter?.title,
+            positionMs = position.coerceAtLeast(0L),
             bookFraction = bookFraction(position, duration),
             durationMs = duration.coerceAtLeast(0L),
             chapterFraction = chapterFraction(chapters, position, index),
@@ -159,6 +175,42 @@ class PlayerViewModel(
                 throw e
             } catch (e: Exception) {
                 // The speed still applies to this session; it is only not remembered.
+            }
+        }
+    }
+
+    /** Saves a bookmark at the position of this moment; a blank [name] means the default title. */
+    fun addBookmark(name: String?) {
+        val state = controller.state.value
+        val bookId = state.bookId ?: return
+        val position = state.positionMs
+        launchQuietly { books.addBookmark(bookId, position, name) }
+    }
+
+    fun renameBookmark(timeSec: Long, name: String) {
+        val bookId = controller.state.value.bookId ?: return
+        launchQuietly { books.renameBookmark(bookId, timeSec, name) }
+    }
+
+    fun deleteBookmark(timeSec: Long) {
+        val bookId = controller.state.value.bookId ?: return
+        launchQuietly { books.deleteBookmark(bookId, timeSec) }
+    }
+
+    /** Seeks to a saved position (a bookmark or a history entry). */
+    fun jumpTo(positionMs: Long) {
+        if (controller.state.value.bookId == null) return
+        controller.seekTo(positionMs.coerceAtLeast(0L))
+    }
+
+    private fun launchQuietly(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Bookmarks are saved locally first; a failure leaves the list as it was.
             }
         }
     }

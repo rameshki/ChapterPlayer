@@ -21,8 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -69,6 +70,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.ui.components.BookCoverPlaceholder
 import com.chapterplayer.ui.theme.AmberGold
@@ -86,8 +89,12 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = koinViewModel<PlayerViewModel>()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val history by viewModel.history.collectAsStateWithLifecycle()
     PlayerContent(
         state = state,
+        bookmarks = bookmarks,
+        history = history,
         onBack = onBack,
         onPlayPause = viewModel::playPause,
         onSkipBack = viewModel::skipBack,
@@ -99,6 +106,10 @@ fun PlayerScreen(
         onJumpToChapter = viewModel::jumpToChapter,
         onSetSpeed = viewModel::setSpeed,
         onSetSleepTimer = viewModel::setSleepTimer,
+        onAddBookmark = viewModel::addBookmark,
+        onRenameBookmark = viewModel::renameBookmark,
+        onDeleteBookmark = viewModel::deleteBookmark,
+        onJumpTo = viewModel::jumpTo,
         onDismissError = viewModel::dismissError
     )
 }
@@ -107,11 +118,15 @@ private const val SHEET_NONE = 0
 private const val SHEET_SPEED = 1
 private const val SHEET_SLEEP = 2
 private const val SHEET_CHAPTERS = 3
+private const val SHEET_BOOKMARKS = 4
+private const val SHEET_HISTORY = 5
 
 /** The screen from state and callbacks only. */
 @Composable
 fun PlayerContent(
     state: PlayerUiState,
+    bookmarks: List<Bookmark>,
+    history: List<HistoryEntry>,
     onBack: () -> Unit,
     onPlayPause: () -> Unit,
     onSkipBack: () -> Unit,
@@ -123,6 +138,10 @@ fun PlayerContent(
     onJumpToChapter: (Int) -> Unit,
     onSetSpeed: (Float) -> Unit,
     onSetSleepTimer: (SleepTimer) -> Unit,
+    onAddBookmark: (String?) -> Unit,
+    onRenameBookmark: (Long, String) -> Unit,
+    onDeleteBookmark: (Long) -> Unit,
+    onJumpTo: (Long) -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -196,7 +215,8 @@ fun PlayerContent(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 ToolButton(Icons.Default.Speed, state.speedLabel, "Playback speed", Modifier.weight(1f)) { sheet = SHEET_SPEED }
                 ToolButton(Icons.Default.Bedtime, state.sleepLabel, "Sleep timer", Modifier.weight(1f)) { sheet = SHEET_SLEEP }
-                ToolButton(Icons.AutoMirrored.Filled.List, "Chapters", "Chapters", Modifier.weight(1f)) { sheet = SHEET_CHAPTERS }
+                ToolButton(Icons.Default.Bookmark, "Bookmarks", "Bookmarks", Modifier.weight(1f)) { sheet = SHEET_BOOKMARKS }
+                ToolButton(Icons.Default.History, "History", "History", Modifier.weight(1f)) { sheet = SHEET_HISTORY }
             }
         }
     }
@@ -205,6 +225,10 @@ fun PlayerContent(
         SHEET_SPEED -> SpeedSheet(state.speed, onSetSpeed) { sheet = SHEET_NONE }
         SHEET_SLEEP -> SleepTimerSheet(state.sleepTimer, state.sleepLabel, onSetSleepTimer) { sheet = SHEET_NONE }
         SHEET_CHAPTERS -> ChapterListSheet(state.chapters, state.currentChapterIndex, onJumpToChapter) { sheet = SHEET_NONE }
+        SHEET_BOOKMARKS -> BookmarksSheet(
+            bookmarks, state.positionMs, onAddBookmark, onRenameBookmark, onDeleteBookmark, onJumpTo
+        ) { sheet = SHEET_NONE }
+        SHEET_HISTORY -> HistorySheet(history, onJumpTo) { sheet = SHEET_NONE }
     }
 }
 
