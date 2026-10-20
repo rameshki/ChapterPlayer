@@ -22,12 +22,15 @@ data class PlayerUiState(
     val timeLeft: String = "",
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
+    /** Offer Pause (not Play): playing, or buffering with playback asked for. */
+    val showPause: Boolean = false,
     val speed: Float = 1f,
     val speedLabel: String = "1x",
     val sleepTimer: SleepTimer = SleepTimer.Off,
     val sleepLabel: String = "Sleep timer",
     val chapters: List<ChapterRow> = emptyList(),
     val currentChapterIndex: Int? = null,
+    /** True whenever the book has chapters: Previous restarts the current chapter, or goes to the one before. */
     val canGoPrevious: Boolean = false,
     val canGoNext: Boolean = false,
     val error: String? = null,

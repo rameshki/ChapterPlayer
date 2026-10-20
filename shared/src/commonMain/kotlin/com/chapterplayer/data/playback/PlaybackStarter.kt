@@ -3,12 +3,13 @@ package com.chapterplayer.data.playback
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.playback.startPositionFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /**
  * Starts a book playing: works out where it begins, loads it, applies the saved speed and plays.
- * Every screen that starts a book (details, Home, the player) goes through here.
+ * Every screen that starts a book (details, Home) goes through here.
  */
 class PlaybackStarter(
     private val controller: PlaybackController,
@@ -17,31 +18,38 @@ class PlaybackStarter(
 ) {
 
     /**
-     * Starts [book] at [atMs] when given. Otherwise it starts where this phone left off; with no local
-     * progress that is [USE_SERVER_POSITION] (the server says where), and a book finished here starts over.
-     * A failure carries a message that is safe to show; cancellation is rethrown.
+     * Starts [book] at [atMs] when given. Otherwise it starts where this phone left off
+     * (see [startPositionFor]). A failure carries a message that is safe to show; cancellation is rethrown.
+     * The saved speed is a nicety: if it cannot be read or applied the book still plays.
      */
     suspend fun start(book: AudioBook, atMs: Long? = null): Result<Unit> = try {
-        val startMs = atMs ?: savedStartMs(book)
+        val startMs = atMs ?: startPositionFor(books.observeProgress(book.id).first(), book.durationMs)
         controller.load(book, startMs)
-        controller.setSpeed(settings.playbackSpeed.first())
+        applySavedSpeed()
         controller.play()
         Result.success(Unit)
     } catch (e: CancellationException) {
         throw e
     } catch (e: PlaybackStartException) {
         Result.failure(PlaybackStartException(e.message ?: PlaybackStartException.DEFAULT_MESSAGE))
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         Result.failure(PlaybackStartException(PlaybackStartException.DEFAULT_MESSAGE))
     }
 
-    private suspend fun savedStartMs(book: AudioBook): Long {
-        val progress = books.observeProgress(book.id).first() ?: return USE_SERVER_POSITION
-        return if (progress.isFinished || progress.positionMs >= book.durationMs) 0L else progress.positionMs.coerceAtLeast(0L)
-    }
-
-    companion object {
-        /** Passed to [PlaybackController.load] to mean "where the server says". */
-        const val USE_SERVER_POSITION = -1L
+    private suspend fun applySavedSpeed() {
+        val speed = try {
+            settings.playbackSpeed.first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            1.0f
+        }
+        try {
+            controller.setSpeed(speed)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The book is loaded; it plays at whatever speed the player has.
+        }
     }
 }

@@ -25,6 +25,7 @@ import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.browse.isPlayable
 import com.chapterplayer.domain.browse.seriesNeighbours
 import com.chapterplayer.domain.playback.isFinishedAt
+import com.chapterplayer.domain.playback.startPositionFor
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -112,12 +113,8 @@ class BookDetailsViewModel(
                 isPlayable(whole.downloadState, env.online, env.downloadedOnly)
             // While this book is loaded in the player the highlight follows the live position.
             val shown = if (loaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
-            val savedStart = when {
-                // No local progress: let the server say where (-1); a book finished here starts over.
-                progress == null -> USE_SERVER_POSITION
-                progress.isFinished || progress.positionMs >= book.durationMs -> 0L
-                else -> progress.positionMs.coerceAtLeast(0L)
-            }
+            // No local progress: let the server say where; a book finished here starts over.
+            val savedStart = startPositionFor(progress, book.durationMs)
             BookDetailsUiState(
                 phase = DetailsPhase.LOADED,
                 book = book,
@@ -243,5 +240,3 @@ class BookDetailsViewModel(
         if (error is SignInRequiredException) "Could not load details. Sign in again in Settings."
         else "Could not load details. Showing what is saved."
 }
-
-private const val USE_SERVER_POSITION = -1L

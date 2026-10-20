@@ -2,7 +2,6 @@ package com.chapterplayer.ui.player
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.Chapter
-import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.playback.SleepTimer
@@ -46,7 +45,7 @@ class PlayerViewModelTest {
         val repo = FakeBookRepository(listOf(book))
         val settings = FakeAppSettings()
         val vm = PlayerViewModel(
-            controller, PlaybackStarter(controller, repo, settings), repo, settings, Dispatchers.Main
+            controller, repo, settings, Dispatchers.Main
         )
     }
 
@@ -305,7 +304,7 @@ class PlayerViewModelTest {
         val failing = object : AppSettings by s.settings {
             override suspend fun setPlaybackSpeed(speed: Float) { error("storage unavailable") }
         }
-        val vm = PlayerViewModel(s.controller, PlaybackStarter(s.controller, s.repo, failing), s.repo, failing, Dispatchers.Main)
+        val vm = PlayerViewModel(s.controller, s.repo, failing, Dispatchers.Main)
         vm.setSpeed(2f)
         assertEquals(listOf(2f), s.controller.speeds)
     }
@@ -342,5 +341,58 @@ class PlayerViewModelTest {
         s.controller.playback.value = playing()
         s.controller.playback.value = playing().copy(error = "Lost the connection")
         assertEquals("Lost the connection", state().error)
+    }
+
+    @Test
+    fun `a loaded book missing from the cache shows a fallback title`() = runTest {
+        val s = Setup(book)
+        val state = collect(s)
+        s.controller.playback.value = playing().copy(bookId = "gone")
+        assertEquals("Now playing", state().title)
+        assertEquals("", state().author)
+        assertFalse(state().nothingPlaying)
+    }
+
+    @Test
+    fun `the live chapter index is the one source, the position only fills in when it is null`() = runTest {
+        val s = Setup(book)
+        val state = collect(s)
+        // Exactly on the boundary the position says chapter 2 but the player says chapter 1: the player wins.
+        s.controller.playback.value = playing(position = 20_000L, chapterIndex = 1)
+        assertEquals("Two", state().chapterTitle)
+        assertEquals(1, state().currentChapterIndex)
+        assertEquals(1f, state().chapterFraction)
+        assertTrue(state().canGoNext)
+        s.vm.seekChapter(0.5f)
+        s.vm.nextChapter()
+        assertEquals(listOf(15_000L, 20_000L), s.controller.seeks)
+
+        // No live index: the position decides.
+        s.controller.playback.value = playing(position = 12_000L, chapterIndex = null)
+        assertEquals("Two", state().chapterTitle)
+        assertEquals(1, state().currentChapterIndex)
+        assertEquals(listOf(false, true, false), state().chapters.map { it.isCurrent })
+        assertTrue(state().canGoPrevious)
+        assertTrue(state().canGoNext)
+    }
+
+    @Test
+    fun `show pause is playing or buffering with playback asked for`() = runTest {
+        val s = Setup(book)
+        val state = collect(s)
+        val cases = listOf(
+            Triple(false, false, false) to false,
+            Triple(true, false, false) to true,
+            Triple(true, true, true) to true,
+            Triple(false, true, true) to true,
+            Triple(false, true, false) to false,
+            Triple(false, false, true) to false,
+        )
+        for ((flags, expected) in cases) {
+            val (isPlaying, isBuffering, wanted) = flags
+            s.controller.playback.value = playing(isPlaying = isPlaying, isBuffering = isBuffering, playWhenReady = wanted)
+            assertEquals(expected, state().showPause, "playing=$isPlaying buffering=$isBuffering wanted=$wanted")
+            assertEquals(isBuffering, state().isBuffering)
+        }
     }
 }

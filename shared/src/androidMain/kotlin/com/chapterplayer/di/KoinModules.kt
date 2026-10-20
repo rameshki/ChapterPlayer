@@ -163,7 +163,7 @@ val viewModelModule = module {
     }
     // Built with parametersOf(bookId) by the book details screen.
     viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { PlayerViewModel(get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)

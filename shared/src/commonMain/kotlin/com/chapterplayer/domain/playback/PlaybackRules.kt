@@ -48,3 +48,7 @@ fun nextSpeed(current: Float): Float {
     val next = PLAYBACK_SPEEDS.firstOrNull { it > current }
     return next ?: PLAYBACK_SPEEDS.first()
 }
+
+/** The slowest and fastest supported speeds; a saved or requested speed is clamped to this range. */
+val MIN_PLAYBACK_SPEED: Float get() = PLAYBACK_SPEEDS.first()
+val MAX_PLAYBACK_SPEED: Float get() = PLAYBACK_SPEEDS.last()

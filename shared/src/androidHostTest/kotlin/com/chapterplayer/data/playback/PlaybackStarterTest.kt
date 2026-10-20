@@ -103,4 +103,50 @@ class PlaybackStarterTest {
         assertFailsWith<CancellationException> { starter.start(book, 0L) }
         assertEquals(0, controller.plays)
     }
+
+    @Test
+    fun `an unreadable saved speed does not stop the book playing`() = runTest {
+        val failing = object : com.chapterplayer.data.settings.AppSettings by settings {
+            override val playbackSpeed: kotlinx.coroutines.flow.Flow<Float> = kotlinx.coroutines.flow.flow { error("storage unavailable") }
+        }
+
+        val result = PlaybackStarter(controller, repo, failing).start(book, 0L)
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf(1.0f), controller.speeds)
+        assertEquals(1, controller.plays)
+    }
+
+    @Test
+    fun `a speed the player refuses does not turn a loaded book into an error`() = runTest {
+        val refusing = object : PlaybackController by controller {
+            override fun setSpeed(speed: Float) { error("player busy") }
+        }
+
+        val result = PlaybackStarter(refusing, repo, settings).start(book, 0L)
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, controller.plays)
+    }
+
+    @Test
+    fun `cancellation while reading the saved speed is rethrown`() = runTest {
+        val cancelling = object : com.chapterplayer.data.settings.AppSettings by settings {
+            override val playbackSpeed: kotlinx.coroutines.flow.Flow<Float> = kotlinx.coroutines.flow.flow { throw CancellationException("stop") }
+        }
+
+        assertFailsWith<CancellationException> { PlaybackStarter(controller, repo, cancelling).start(book, 0L) }
+        assertEquals(0, controller.plays)
+    }
+
+    @Test
+    fun `the start without a position is the shared rule`() = runTest {
+        for (progress in listOf(null, ReadingProgress("a", 0L, 100_000L, 1L), ReadingProgress("a", 40_000L, 100_000L, 1L),
+            ReadingProgress("a", 50L, 100_000L, 1L, isFinished = true), ReadingProgress("a", 100_000L, 100_000L, 1L))) {
+            repo.progress.value = listOfNotNull(progress)
+            controller.loads.clear()
+            starter.start(book)
+            assertEquals(com.chapterplayer.domain.playback.startPositionFor(progress, book.durationMs), controller.loads.single().second)
+        }
+    }
 }

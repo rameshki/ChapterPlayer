@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
+import com.chapterplayer.domain.playback.MIN_PLAYBACK_SPEED
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -61,7 +63,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val downloadedOnly: Flow<Boolean> = prefs.map { it[Keys.downloadedOnly] ?: false }
 
-    override val playbackSpeed: Flow<Float> = prefs.map { (it[Keys.playbackSpeed] ?: 1.0f).coerceIn(MIN_SPEED, MAX_SPEED) }
+    override val playbackSpeed: Flow<Float> = prefs.map { (it[Keys.playbackSpeed] ?: 1.0f).coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
 
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
@@ -69,9 +71,6 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }
     override suspend fun setPlaybackSpeed(speed: Float) {
         if (speed.isNaN()) return
-        store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_SPEED, MAX_SPEED) }
+        store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
     }
 }
-
-private const val MIN_SPEED = 0.5f
-private const val MAX_SPEED = 3.0f

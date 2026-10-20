@@ -3,19 +3,19 @@ package com.chapterplayer.ui.player
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.playback.PlaybackController
-import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.browse.ChapterRow
+import com.chapterplayer.domain.browse.currentChapterIndex
 import com.chapterplayer.domain.browse.formatClock
 import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.domain.playback.bookFraction
-import com.chapterplayer.domain.playback.chapterFraction
-import com.chapterplayer.domain.playback.nextChapterStart
-import com.chapterplayer.domain.playback.previousChapterStart
+import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
+import com.chapterplayer.domain.playback.MIN_PLAYBACK_SPEED
 import com.chapterplayer.domain.playback.sleepLabel
 import com.chapterplayer.domain.playback.speedLabel
 import kotlinx.coroutines.CancellationException
@@ -36,7 +36,6 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel(
     private val controller: PlaybackController,
-    @Suppress("unused") private val starter: PlaybackStarter,
     books: BookRepository,
     private val settings: AppSettings,
     dispatcher: CoroutineDispatcher
@@ -67,19 +66,19 @@ class PlayerViewModel(
 
     private fun buildState(state: PlaybackState, timer: SleepTimer, book: AudioBook?, dismissed: String?): PlayerUiState {
         val chapters = state.chapters
-        val index = state.chapterIndex?.takeIf { it in chapters.indices }
+        val index = currentIndex(state)
         val chapter = index?.let { chapters[it] }
         val position = state.positionMs
         val duration = state.durationMs
         return PlayerUiState(
             nothingPlaying = state.bookId == null,
-            title = book?.title.orEmpty(),
+            title = book?.title ?: if (state.bookId == null) "" else FALLBACK_TITLE,
             author = book?.author.orEmpty(),
             coverUrl = book?.coverUrl,
             chapterTitle = chapter?.title,
             bookFraction = bookFraction(position, duration),
             durationMs = duration.coerceAtLeast(0L),
-            chapterFraction = if (chapter != null) chapterFraction(chapters, position) else null,
+            chapterFraction = chapter?.let { chapterFraction(it, position) },
             elapsed = formatClock(position),
             remaining = formatClock(duration - position),
             chapterElapsed = chapter?.let { formatClock(position - it.startMs) },
@@ -87,6 +86,7 @@ class PlayerViewModel(
             timeLeft = if (duration > 0L) formatTimeLeft(duration, position) else "",
             isPlaying = state.isPlaying,
             isBuffering = state.isBuffering,
+            showPause = state.isPlaying || (state.isBuffering && state.playWhenReady),
             speed = state.speed,
             speedLabel = speedLabel(state.speed),
             sleepTimer = timer,
@@ -94,7 +94,7 @@ class PlayerViewModel(
             chapters = chapters.mapIndexed { i, c -> ChapterRow(i, c.title, c.startMs, c.durationMs, i == index) },
             currentChapterIndex = index,
             canGoPrevious = chapters.isNotEmpty(),
-            canGoNext = nextChapterStart(chapters, position) != null,
+            canGoNext = index != null && index < chapters.size - 1,
             error = state.error?.takeIf { it != dismissed }
         )
     }
@@ -111,14 +111,18 @@ class PlayerViewModel(
 
     fun previousChapter() {
         val state = controller.state.value
-        if (state.chapters.isEmpty()) return
-        controller.seekTo(previousChapterStart(state.chapters, state.positionMs))
+        val index = currentIndex(state) ?: return
+        val current = state.chapters[index]
+        // Past the first seconds of a chapter, Previous restarts it; near its start it goes to the one before.
+        val target = if (state.positionMs - current.startMs > RESTART_AFTER_MS || index == 0) current.startMs
+        else state.chapters[index - 1].startMs
+        controller.seekTo(target)
     }
 
     fun nextChapter() {
         val state = controller.state.value
-        val start = nextChapterStart(state.chapters, state.positionMs) ?: return
-        controller.seekTo(start)
+        val index = currentIndex(state) ?: return
+        controller.seekTo((state.chapters.getOrNull(index + 1) ?: return).startMs)
     }
 
     fun seekBook(fraction: Float) {
@@ -130,7 +134,7 @@ class PlayerViewModel(
     fun seekChapter(fraction: Float) {
         val state = controller.state.value
         if (fraction.isNaN()) return
-        val chapter = state.chapterIndex?.let { state.chapters.getOrNull(it) } ?: return
+        val chapter = currentIndex(state)?.let { state.chapters[it] } ?: return
         controller.seekTo(chapter.startMs + (fraction.coerceIn(0f, 1f) * chapter.durationMs).toLong())
     }
 
@@ -141,7 +145,7 @@ class PlayerViewModel(
 
     fun setSpeed(speed: Float) {
         if (speed.isNaN()) return
-        val clamped = speed.coerceIn(MIN_SPEED, MAX_SPEED)
+        val clamped = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED)
         controller.setSpeed(clamped)
         viewModelScope.launch {
             try {
@@ -160,8 +164,17 @@ class PlayerViewModel(
         dismissedError.value = controller.state.value.error
     }
 
+    /** The one source of "which chapter is current": the player's own index, else the one the position is in. */
+    private fun currentIndex(state: PlaybackState): Int? =
+        state.chapterIndex?.takeIf { it in state.chapters.indices } ?: currentChapterIndex(state.chapters, state.positionMs)
+
+    private fun chapterFraction(chapter: Chapter, positionMs: Long): Float {
+        if (chapter.durationMs <= 0L) return 0f
+        return ((positionMs - chapter.startMs).toFloat() / chapter.durationMs.toFloat()).coerceIn(0f, 1f)
+    }
+
     private companion object {
-        const val MIN_SPEED = 0.5f
-        const val MAX_SPEED = 3.0f
+        const val FALLBACK_TITLE = "Now playing"
+        const val RESTART_AFTER_MS = 3_000L
     }
 }
