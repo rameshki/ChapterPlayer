@@ -1,11 +1,16 @@
 package com.chapterplayer.data.remote.abs
 
+import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.abs.dto.AbsCloseSessionRequest
 import com.chapterplayer.data.remote.abs.dto.AbsCollectionsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsItemDetailDto
 import com.chapterplayer.data.remote.abs.dto.AbsLibrariesResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryItemsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLoginRequest
+import com.chapterplayer.data.remote.abs.dto.AbsMeDto
+import com.chapterplayer.data.remote.abs.dto.AbsPatchProgressRequest
+import com.chapterplayer.data.remote.abs.dto.AbsProgressDto
+import com.chapterplayer.data.remote.abs.dto.AbsSyncSessionRequest
 import com.chapterplayer.data.remote.abs.dto.AbsLoginResponseDto
 import com.chapterplayer.data.remote.abs.dto.AbsPlayDeviceInfo
 import com.chapterplayer.data.remote.abs.dto.AbsPlayRequest
@@ -15,11 +20,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.patch
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 
@@ -96,6 +103,47 @@ class AbsApiService(private val client: HttpClient) {
             setBody(AbsCloseSessionRequest(currentTime = positionSec, timeListened = listenedSec))
         }
     }
+
+    /** Reports an open session (POST /api/session/{id}/sync): where listening is, the time listened since the last sync and the book length, in seconds. */
+    suspend fun syncSession(
+        baseUrl: String, bearerToken: String, sessionId: String,
+        positionSec: Double, listenedSec: Double, durationSec: Double,
+    ) {
+        client.post(endpoint(baseUrl, "api/session/${sessionId.encodeURLPathPart()}/sync")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            contentType(ContentType.Application.Json)
+            setBody(AbsSyncSessionRequest(currentTime = positionSec, timeListened = listenedSec, duration = durationSec))
+        }
+    }
+
+    /** The user's progress on one item (GET /api/me/progress/{id}); null when the server has none (404). */
+    suspend fun getProgress(baseUrl: String, bearerToken: String, itemId: String): AbsProgressDto? =
+        try {
+            client.get(endpoint(baseUrl, "api/me/progress/${itemId.encodeURLPathPart()}")) {
+                header(HttpHeaders.Authorization, bearerToken)
+            }.body()
+        } catch (e: HttpStatusException) {
+            if (e.status == HttpStatusCode.NotFound) null else throw e
+        }
+
+    /** Sets the user's progress on one item (PATCH /api/me/progress/{id}), without a session. Times in seconds. */
+    suspend fun patchProgress(
+        baseUrl: String, bearerToken: String, itemId: String,
+        positionSec: Double, durationSec: Double, isFinished: Boolean,
+    ) {
+        val fraction = if (durationSec > 0.0) (positionSec / durationSec).coerceIn(0.0, 1.0) else 0.0
+        client.patch(endpoint(baseUrl, "api/me/progress/${itemId.encodeURLPathPart()}")) {
+            header(HttpHeaders.Authorization, bearerToken)
+            contentType(ContentType.Application.Json)
+            setBody(AbsPatchProgressRequest(currentTime = positionSec, duration = durationSec, progress = fraction, isFinished = isFinished))
+        }
+    }
+
+    /** The user's progress on every item (GET /api/me, the `mediaProgress` list only). */
+    suspend fun getMeProgress(baseUrl: String, bearerToken: String): List<AbsProgressDto> =
+        client.get(endpoint(baseUrl, "api/me")) {
+            header(HttpHeaders.Authorization, bearerToken)
+        }.body<AbsMeDto>().mediaProgress
 
     /** Answers without a token: the server version and which sign-in methods are on. */
     suspend fun getStatus(baseUrl: String): AbsStatusDto =

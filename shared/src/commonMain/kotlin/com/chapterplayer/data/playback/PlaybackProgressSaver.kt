@@ -3,28 +3,51 @@ package com.chapterplayer.data.playback
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.isFinishedAt
+import com.chapterplayer.domain.playback.shouldSaveNow
 import com.chapterplayer.domain.playback.shouldSaveProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
 /**
  * Saves listening progress for whichever book plays, whatever screen is open. It watches the controller
- * and saves a book's position when its playback stops, when another book takes over and when the
- * controller is released. Start it once with [start].
+ * and saves a book's position every [SAVE_INTERVAL_MS] while it plays, when its playback stops, when
+ * another book takes over and when the controller is released. Start it once with [start].
  */
 class PlaybackProgressSaver(
     private val controller: PlaybackController,
     private val repository: BookRepository,
     private val scope: CoroutineScope,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** How often playback is looked at to see whether a periodic save is due. */
+    private val pollMs: Long = POLL_MS,
 ) {
     private var started = false
 
     fun start() {
         if (started) return
         started = true
+        // Periodic save: while playing, the book's position is saved every SAVE_INTERVAL_MS (playing time on the wall clock).
+        scope.launch {
+            controller.state.map { it.isPlaying }.distinctUntilChanged().collectLatest { playing ->
+                if (!playing) return@collectLatest
+                var lastSavedAt = nowMs()
+                while (true) {
+                    delay(pollMs)
+                    val now = nowMs()
+                    if (shouldSaveNow(lastSavedAt, now, isPlaying = true, intervalMs = SAVE_INTERVAL_MS)) {
+                        lastSavedAt = now
+                        val at = controller.state.value
+                        save(at.bookId, at)
+                    }
+                }
+            }
+        }
         scope.launch {
             var previous: PlaybackState? = null
             controller.state.collect { current ->
@@ -50,5 +73,10 @@ class PlaybackProgressSaver(
         } catch (e: Exception) {
             // A failed local save must not stop the observation; the next stop tries again.
         }
+    }
+
+    private companion object {
+        const val SAVE_INTERVAL_MS = 10_000L
+        const val POLL_MS = 1_000L
     }
 }

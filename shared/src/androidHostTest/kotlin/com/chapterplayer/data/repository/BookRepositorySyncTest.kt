@@ -138,7 +138,7 @@ class BookRepositorySyncTest {
         collectionDao: CollectionDao = FakeCollectionDao(),
         inTransaction: suspend (suspend () -> Unit) -> Unit = { it() },
     ) = BookRepositoryImpl(
-        dao, FakeProgressDao(), libraryDao, collectionDao, FakeServerList(), sources.toList(), clock = { 1_234L }, inTransaction = inTransaction
+        dao, FakeProgressDao(), libraryDao, collectionDao, FakeServerList(), sources.toList(), pendingDao = InMemoryPendingProgressDao(), clock = { 1_234L }, inTransaction = inTransaction
     )
 
     @Test

@@ -1,0 +1,42 @@
+{
+  "id": "usr_fixture",
+  "username": "fixture-user",
+  "type": "user",
+  "isActive": true,
+  "permissions": { "download": true, "update": false },
+  "librariesAccessible": [],
+  "mediaProgress": [
+    {
+      "id": "mp_fixture01",
+      "libraryItemId": "li_fixture01",
+      "episodeId": null,
+      "duration": 5400.5,
+      "progress": 0.3213,
+      "currentTime": 1735.25,
+      "isFinished": false,
+      "lastUpdate": 1760000000123,
+      "startedAt": 1759990000000,
+      "finishedAt": null
+    },
+    {
+      "id": "mp_fixture02",
+      "libraryItemId": "li_fixture02",
+      "duration": 3600,
+      "progress": 1,
+      "currentTime": 3600,
+      "isFinished": true,
+      "lastUpdate": 1760000500000,
+      "startedAt": 1759000000000,
+      "finishedAt": 1760000500000
+    },
+    {
+      "id": "mp_fixture03",
+      "libraryItemId": "li_fixture03",
+      "duration": 100.0005,
+      "progress": 0.1,
+      "currentTime": 10.0005,
+      "lastUpdate": 1760000900000
+    }
+  ],
+  "bookmarks": []
+}

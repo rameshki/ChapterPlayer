@@ -1,0 +1,16 @@
+{
+  "id": "mp_fixture01",
+  "userId": "usr_fixture",
+  "libraryItemId": "li_fixture01",
+  "episodeId": null,
+  "duration": 5400.5,
+  "progress": 0.3213,
+  "currentTime": 1735.25,
+  "isFinished": false,
+  "hideFromContinueListening": false,
+  "ebookLocation": null,
+  "ebookProgress": 0,
+  "lastUpdate": 1760000000123,
+  "startedAt": 1759990000000,
+  "finishedAt": null
+}

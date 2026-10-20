@@ -12,6 +12,8 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.domain.playback.PendingProgress
+import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.data.repository.ServerRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +36,62 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override suspend fun loadDetails(bookId: String): Result<BookDetails?> = Result.success(null)
     override suspend fun startPlayback(bookId: String): Result<PlaybackSession> = Result.failure(IllegalStateException("unused"))
     override suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> = Result.success(Unit)
+    /** Every [syncPlayback] call: session, position, listened time. */
+    data class SyncCall(val session: PlaybackSession, val positionMs: Long, val listenedMs: Long)
+    val syncCalls = mutableListOf<SyncCall>()
+    var onSyncPlayback: suspend (SyncCall) -> Result<Unit> = { Result.success(Unit) }
+    override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> {
+        val call = SyncCall(session, positionMs, listenedMs)
+        syncCalls += call
+        return onSyncPlayback(call)
+    }
+    val fetchedProgress = mutableListOf<String>()
+    var onFetchServerProgress: suspend (String) -> Result<ServerProgress?> = { Result.success(null) }
+    override suspend fun fetchServerProgress(bookId: String): Result<ServerProgress?> {
+        fetchedProgress += bookId
+        return onFetchServerProgress(bookId)
+    }
+    /** The queue, with the same one-row-per-book merge as the real one (coalescePending). */
+    val queued = mutableListOf<PendingProgress>()
+    /** Every [queueProgress] call as given, before the merge. */
+    val queueCalls = mutableListOf<PendingProgress>()
+    override suspend fun queueProgress(pending: PendingProgress) {
+        queueCalls += pending
+        val existing = queued.firstOrNull { it.bookId == pending.bookId }
+        val merged = com.chapterplayer.domain.playback.coalescePending(existing, pending)
+        queued.removeAll { it.bookId == pending.bookId }
+        queued += merged.copy(nextAttemptAtMs = if (merged.attempts == 0) 0L else existing?.nextAttemptAtMs ?: 0L)
+    }
+    override suspend fun pendingProgress(): List<PendingProgress> = queued.toList()
+    /** Every call that changed the stored state, in order, e.g. "delete a" or "saveServer a". */
+    val events = mutableListOf<String>()
+    override suspend fun deletePending(bookId: String, ifUpdatedAtMs: Long?) {
+        events += "delete $bookId"
+        queued.removeAll { it.bookId == bookId && (ifUpdatedAtMs == null || it.updatedAtMs == ifUpdatedAtMs) }
+    }
+    val attempts = mutableListOf<Triple<String, Int, Long>>()
+    override suspend fun markPendingAttempt(bookId: String, attempts: Int, nextAttemptAtMs: Long, ifUpdatedAtMs: Long?) {
+        this.attempts += Triple(bookId, attempts, nextAttemptAtMs)
+        val i = queued.indexOfFirst { it.bookId == bookId && (ifUpdatedAtMs == null || it.updatedAtMs == ifUpdatedAtMs) }
+        if (i >= 0) queued[i] = queued[i].copy(attempts = attempts, nextAttemptAtMs = nextAttemptAtMs)
+    }
+    val pushed = mutableListOf<PendingProgress>()
+    var onPushProgress: suspend (PendingProgress) -> Result<Unit> = { Result.success(Unit) }
+    override suspend fun pushProgress(pending: PendingProgress): Result<Unit> {
+        pushed += pending
+        return onPushProgress(pending)
+    }
+    val savedServer = mutableListOf<Pair<String, ServerProgress>>()
+    override suspend fun saveServerProgress(bookId: String, server: ServerProgress) {
+        events += "saveServer $bookId"
+        savedServer += bookId to server
+    }
+    val mergedServers = mutableListOf<String>()
+    var onMergeAll: suspend (String) -> Unit = {}
+    override suspend fun mergeAllServerProgress(serverId: String) {
+        mergedServers += serverId
+        onMergeAll(serverId)
+    }
     override fun observeProgress(bookId: String): Flow<ReadingProgress?> =
         progress.map { list -> list.firstOrNull { it.bookId == bookId } }
     override fun observeInProgressBooks(): Flow<List<ReadingProgress>> =
@@ -75,3 +133,8 @@ fun testBook(
 )
 
 fun testServer(id: String = "s1") = ServerConfig(id, ServerSource.ABS, "Server $id", "http://$id.test", "t")
+
+fun testSession(bookId: String, serverId: String = "s1", sessionId: String = "sess-$bookId") = PlaybackSession(
+    sessionId = sessionId, serverId = serverId, bookId = bookId, durationMs = 100_000L, startPositionMs = 0L,
+    tracks = emptyList(), chapters = emptyList()
+)

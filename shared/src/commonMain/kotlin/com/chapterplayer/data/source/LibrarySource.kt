@@ -2,6 +2,7 @@ package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.LibraryInfo
@@ -50,6 +51,18 @@ interface LibrarySource {
 
     /** Ends the session [sessionId] with the stop position and the time listened, both in milliseconds. A source without sessions does nothing. */
     suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {}
+
+    /** Tells the server where the open session [sessionId] is: position, time listened since the last sync and book length, in milliseconds. A source without sessions does nothing. Throws when the call fails. */
+    suspend fun syncPlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long, durationMs: Long) {}
+
+    /** The server's progress for [bookId] (the app's id); null when it has none or the source has no progress. Throws when the call fails. */
+    suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? = null
+
+    /** Sets the server's progress for [bookId] without a session. A source without progress does nothing. Throws when the call fails. */
+    suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {}
+
+    /** The server's progress for every book, keyed by the app's book id. Empty for a source without progress. Throws when the call fails. */
+    suspend fun fetchAllProgress(server: ServerConfig): Map<String, ServerProgress> = emptyMap()
 
     /**
      * Everything one sync stores, read in one go. A source that can share work between the three reads

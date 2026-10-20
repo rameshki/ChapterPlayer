@@ -69,10 +69,11 @@ class AndroidPlaybackController(
     private var error: String? = null
 
     // Time played (wall clock) since the session began, for the server, and since the sleep timer was set.
-    private var listenedMs = 0L
     private var lastTickAt: Long? = null
     private val sleep = SleepTimerEngine()
     private var ticker: Job? = null
+
+    override val activeSession: PlaybackSession? get() = session
 
     private val _state = MutableStateFlow(PlaybackState())
     override val state: StateFlow<PlaybackState> = _state.asStateFlow()
@@ -134,7 +135,7 @@ class AndroidPlaybackController(
             throw PlaybackStartException(safeStartMessage(failure))
         }
         if (started.tracks.isEmpty()) {
-            closeSession(started, 0L, 0L)
+            closeSession(started, 0L)
             throw PlaybackStartException("This book has no audio to play")
         }
 
@@ -167,13 +168,12 @@ class AndroidPlaybackController(
             } catch (e: Exception) {
                 loaded.end()
                 try { player.clearMediaItems() } catch (_: Exception) { }
-                closeSession(started, 0L, 0L)
+                closeSession(started, 0L)
                 throw e
             }
         }
         if (failure != null) throw PlaybackStartException("Could not start the player")
         error = null
-        listenedMs = 0L
         lastTickAt = null
         publish()
     }
@@ -274,7 +274,6 @@ class AndroidPlaybackController(
         val playing = controller?.isPlaying == true
         if (last != null) {
             val delta = (now - last).coerceAtLeast(0L)
-            listenedMs += delta
             sleep.addPlayed(delta)
         }
         lastTickAt = if (playing) now else null
@@ -361,17 +360,19 @@ class AndroidPlaybackController(
     private fun closeCurrentSession() {
         val (ended, position) = loaded.end() ?: return
         accumulate()
-        closeSession(ended, position, listenedMs)
+        closeSession(ended, position)
     }
 
     // Best effort and off the caller's path: the screen must not wait for the server.
-    private fun closeSession(ended: PlaybackSession, positionMs: Long, listened: Long) {
+    // The close reports NO listening time: ProgressSyncer already reports it in its periodic and final syncs,
+    // and Audiobookshelf adds the time of a close on top of the syncs, so sending it again would count it twice.
+    private fun closeSession(ended: PlaybackSession, positionMs: Long) {
         appScope.launch {
-            withContext(NonCancellable) { repository.closePlayback(ended, positionMs, listened) }
+            withContext(NonCancellable) { repository.closePlayback(ended, positionMs, 0L) }
         }
     }
 
-    /** Ends the server session now (the service stopped itself), with the last position and time heard. */
+    /** Ends the server session now (the service stopped itself), with the last position. */
     fun endSession() {
         accumulate()
         closeCurrentSession()

@@ -1,11 +1,15 @@
 package com.chapterplayer.data.playback
 
+import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.playback.ServerProgress
+import com.chapterplayer.domain.playback.chooseStartPosition
 import com.chapterplayer.domain.playback.startPositionFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Starts a book playing: works out where it begins, loads it, applies the saved speed and plays.
@@ -14,7 +18,8 @@ import kotlinx.coroutines.flow.first
 class PlaybackStarter(
     private val controller: PlaybackController,
     private val books: BookRepository,
-    private val settings: AppSettings
+    private val settings: AppSettings,
+    private val connectivity: ConnectivityMonitor,
 ) {
 
     /**
@@ -29,7 +34,7 @@ class PlaybackStarter(
             continueLoaded()
             return Result.success(Unit)
         }
-        val startMs = atMs ?: startPositionFor(books.observeProgress(book.id).first(), book.durationMs)
+        val startMs = atMs ?: startFromProgress(book)
         controller.load(book, startMs)
         applySavedSpeed()
         controller.play()
@@ -40,6 +45,33 @@ class PlaybackStarter(
         Result.failure(PlaybackStartException(e.message ?: PlaybackStartException.DEFAULT_MESSAGE))
     } catch (_: Exception) {
         Result.failure(PlaybackStartException(PlaybackStartException.DEFAULT_MESSAGE))
+    }
+
+    /**
+     * Where a book begins when nobody said: the newer of this phone's progress and the server's (see
+     * [chooseStartPosition]); with neither, [startPositionFor] lets the session's own position win. The server is asked
+     * only while online and for at most [SERVER_WAIT_MS]; a failure or a timeout means this phone's progress alone.
+     */
+    private suspend fun startFromProgress(book: AudioBook): Long {
+        val local = books.observeProgress(book.id).first()
+        val server = if (isOnline()) serverProgress(book.id) else null
+        return chooseStartPosition(local, server) ?: startPositionFor(local, book.durationMs)
+    }
+
+    private suspend fun isOnline(): Boolean = try {
+        connectivity.isOnline.first()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
+    }
+
+    private suspend fun serverProgress(bookId: String): ServerProgress? = try {
+        withTimeoutOrNull(SERVER_WAIT_MS) { books.fetchServerProgress(bookId).getOrNull() }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     private fun continueLoaded() {
@@ -63,5 +95,9 @@ class PlaybackStarter(
         } catch (_: Exception) {
             // The book is loaded; it plays at whatever speed the player has.
         }
+    }
+
+    private companion object {
+        const val SERVER_WAIT_MS = 4_000L
     }
 }

@@ -67,7 +67,7 @@ class BookDetailsViewModelTest {
         val settings: FakeAppSettings = FakeAppSettings()
     ) {
         val vm = BookDetailsViewModel(
-            id, repo, downloads, controller, PlaybackStarter(controller, repo, settings), connectivity, settings, Dispatchers.Main
+            id, repo, downloads, controller, PlaybackStarter(controller, repo, settings, connectivity), connectivity, settings, Dispatchers.Main
         )
     }
 

@@ -1,11 +1,14 @@
 package com.chapterplayer.data.playback
 
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
+import com.chapterplayer.testing.FakeConnectivity
 import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.testBook
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,7 +22,8 @@ class PlaybackStarterTest {
     private val controller = FakePlaybackController()
     private val repo = FakeBookRepository(listOf(book))
     private val settings = FakeAppSettings()
-    private val starter = PlaybackStarter(controller, repo, settings)
+    private val connectivity = FakeConnectivity()
+    private val starter = PlaybackStarter(controller, repo, settings, connectivity)
 
     @Test
     fun `an explicit position is used as given, even when progress exists`() = runTest {
@@ -110,7 +114,7 @@ class PlaybackStarterTest {
             override val playbackSpeed: kotlinx.coroutines.flow.Flow<Float> = kotlinx.coroutines.flow.flow { error("storage unavailable") }
         }
 
-        val result = PlaybackStarter(controller, repo, failing).start(book, 0L)
+        val result = PlaybackStarter(controller, repo, failing, connectivity).start(book, 0L)
 
         assertTrue(result.isSuccess)
         assertEquals(listOf(1.0f), controller.speeds)
@@ -123,7 +127,7 @@ class PlaybackStarterTest {
             override fun setSpeed(speed: Float) { error("player busy") }
         }
 
-        val result = PlaybackStarter(refusing, repo, settings).start(book, 0L)
+        val result = PlaybackStarter(refusing, repo, settings, connectivity).start(book, 0L)
 
         assertTrue(result.isSuccess)
         assertEquals(1, controller.plays)
@@ -135,7 +139,7 @@ class PlaybackStarterTest {
             override val playbackSpeed: kotlinx.coroutines.flow.Flow<Float> = kotlinx.coroutines.flow.flow { throw CancellationException("stop") }
         }
 
-        assertFailsWith<CancellationException> { PlaybackStarter(controller, repo, cancelling).start(book, 0L) }
+        assertFailsWith<CancellationException> { PlaybackStarter(controller, repo, cancelling, connectivity).start(book, 0L) }
         assertEquals(0, controller.plays)
     }
 
@@ -207,5 +211,126 @@ class PlaybackStarterTest {
         assertTrue(starter.start(book, 5_000L).isSuccess)
 
         assertEquals(listOf("a" to 5_000L), controller.loads)
+    }
+
+    // -- Start choice between this phone's progress and the server's ------------------------------
+
+    private fun local(pos: Long, at: Long) = ReadingProgress("a", pos, 100_000L, at)
+    private fun remote(pos: Long, at: Long, finished: Boolean = false) = ServerProgress(pos, 100_000L, finished, at)
+
+    @Test
+    fun `a newer server position wins over local progress`() = runTest {
+        repo.progress.value = listOf(local(10_000L, at = 100L))
+        repo.onFetchServerProgress = { Result.success(remote(60_000L, at = 200L)) }
+
+        starter.start(book)
+
+        assertEquals(listOf("a" to 60_000L), controller.loads)
+        assertEquals(listOf("a"), repo.fetchedProgress)
+    }
+
+    @Test
+    fun `newer local progress wins over the server`() = runTest {
+        repo.progress.value = listOf(local(10_000L, at = 300L))
+        repo.onFetchServerProgress = { Result.success(remote(60_000L, at = 200L)) }
+
+        starter.start(book)
+
+        assertEquals(listOf("a" to 10_000L), controller.loads)
+    }
+
+    @Test
+    fun `the server position is used when there is no local progress`() = runTest {
+        repo.onFetchServerProgress = { Result.success(remote(33_000L, at = 200L)) }
+
+        starter.start(book)
+
+        assertEquals(listOf("a" to 33_000L), controller.loads)
+    }
+
+    @Test
+    fun `a server that knows nothing leaves the session position to win`() = runTest {
+        repo.onFetchServerProgress = { Result.success(null) }
+
+        starter.start(book)
+
+        assertEquals(listOf("a" to -1L), controller.loads)
+    }
+
+    @Test
+    fun `offline the server is not asked`() = runTest {
+        connectivity.online.value = false
+        repo.progress.value = listOf(local(10_000L, at = 100L))
+        repo.onFetchServerProgress = { Result.success(remote(60_000L, at = 200L)) }
+
+        starter.start(book)
+
+        assertTrue(repo.fetchedProgress.isEmpty())
+        assertEquals(listOf("a" to 10_000L), controller.loads)
+    }
+
+    @Test
+    fun `a failing server call falls back to local progress`() = runTest {
+        repo.progress.value = listOf(local(10_000L, at = 100L))
+        repo.onFetchServerProgress = { Result.failure(RuntimeException("down")) }
+
+        assertTrue(starter.start(book).isSuccess)
+
+        assertEquals(listOf("a" to 10_000L), controller.loads)
+    }
+
+    @Test
+    fun `a server call that throws falls back to local progress`() = runTest {
+        repo.progress.value = listOf(local(10_000L, at = 100L))
+        repo.onFetchServerProgress = { error("boom") }
+
+        assertTrue(starter.start(book).isSuccess)
+
+        assertEquals(listOf("a" to 10_000L), controller.loads)
+    }
+
+    @Test
+    fun `a server that takes more than four seconds is given up on`() = runTest {
+        repo.progress.value = listOf(local(10_000L, at = 100L))
+        repo.onFetchServerProgress = { CompletableDeferred<Unit>().await(); Result.success(remote(60_000L, at = 200L)) }
+
+        starter.start(book)
+
+        assertEquals(listOf("a" to 10_000L), controller.loads)
+        assertEquals(4_000L, testScheduler.currentTime)
+    }
+
+    @Test
+    fun `a server position that is finished starts over`() = runTest {
+        repo.progress.value = listOf(local(10_000L, at = 100L))
+        repo.onFetchServerProgress = { Result.success(remote(100_000L, at = 200L, finished = true)) }
+
+        starter.start(book)
+
+        assertEquals(listOf("a" to 0L), controller.loads)
+    }
+
+    @Test
+    fun `a book that is already loaded never asks the server`() = runTest {
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a")
+
+        starter.start(book, null)
+
+        assertTrue(repo.fetchedProgress.isEmpty())
+    }
+
+    @Test
+    fun `an explicit position never asks the server`() = runTest {
+        starter.start(book, 4_000L)
+
+        assertTrue(repo.fetchedProgress.isEmpty())
+    }
+
+    @Test
+    fun `cancellation while asking the server is rethrown`() = runTest {
+        repo.onFetchServerProgress = { throw CancellationException("stop") }
+
+        assertFailsWith<CancellationException> { starter.start(book) }
+        assertEquals(0, controller.plays)
     }
 }
