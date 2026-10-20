@@ -54,6 +54,12 @@ class HistoryRecorder(
         baseline = Baseline(bookId, state.positionMs, now)
         if (previous == null || previous.bookId != bookId) return
         val left = jumpedFrom(previous.positionMs, previous.atMs, state.positionMs, now, state.speed, state.isPlaying) ?: return
+        // The player reports the start of the book while it prepares, then seeks to the resume point: not worth going back to.
+        if (left < MIN_WORTH_REMEMBERING_MS) return
         books.recordHistory(HistoryEntry(bookId, left, now))
+    }
+
+    private companion object {
+        const val MIN_WORTH_REMEMBERING_MS = 10_000L
     }
 }

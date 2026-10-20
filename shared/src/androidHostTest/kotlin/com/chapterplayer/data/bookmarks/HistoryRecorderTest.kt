@@ -57,6 +57,15 @@ class HistoryRecorderTest {
     }
 
     @Test
+    fun `a jump from the very start of the book is not remembered`() = runTest {
+        val r = rig()
+        r.emit(0)
+        advanceTimeBy(1_000)
+        r.emit(5_650_000)
+        assertTrue(r.repo.history.value.isEmpty())
+    }
+
+    @Test
     fun `a jump back is recorded too`() = runTest {
         val r = rig()
         r.emit(900_000)
