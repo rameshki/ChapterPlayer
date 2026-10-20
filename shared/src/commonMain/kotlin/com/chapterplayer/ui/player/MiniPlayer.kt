@@ -89,7 +89,7 @@ fun MiniPlayerContent(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
+                    .heightIn(min = 64.dp)
                     .clickable(onClick = onOpenPlayer)
                     .clearAndSetSemantics {
                         contentDescription = "Now playing: ${state.title}. Open player"
