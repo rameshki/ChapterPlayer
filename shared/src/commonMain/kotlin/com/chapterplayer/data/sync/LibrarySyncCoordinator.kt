@@ -240,7 +240,10 @@ class LibrarySyncCoordinator(
             Result.failure(e)
         }
         // The books are cached: bring in what the server knows about listening to them (best effort).
-        if (outcome.isSuccess && server.source == ServerSource.ABS) mergeProgress(server)
+        if (outcome.isSuccess && server.source == ServerSource.ABS) {
+            mergeProgress(server)
+            pullBookmarks(server)
+        }
         outcome.onFailure { throwable ->
             if (throwable is CancellationException) throw throwable
             errors.add(
@@ -255,6 +258,17 @@ class LibrarySyncCoordinator(
     private suspend fun mergeProgress(server: ServerConfig) {
         try {
             books.mergeAllServerProgress(server.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best effort.
+        }
+    }
+
+    /** Bookmarks of the cached books; best effort like the progress merge (a failed result or a throw changes nothing here). */
+    private suspend fun pullBookmarks(server: ServerConfig) {
+        try {
+            books.pullBookmarks(server.id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

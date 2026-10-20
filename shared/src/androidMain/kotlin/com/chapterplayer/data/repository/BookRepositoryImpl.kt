@@ -356,6 +356,8 @@ class BookRepositoryImpl(
             Result.failure(e)
         }
 
+    override fun observePendingBookmarkCount(): Flow<Int> = bookmarkDao.observePendingCount()
+
     override suspend fun pushPendingBookmarks(serverId: String): Result<Unit> =
         try {
             val (server, source) = serverAndSource(serverId)

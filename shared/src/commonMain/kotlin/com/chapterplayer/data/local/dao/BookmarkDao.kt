@@ -37,6 +37,10 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE serverId = :serverId AND state <> 'SYNCED' ORDER BY createdAt ASC, timeSec ASC, bookId ASC")
     suspend fun getPendingByServer(serverId: String): List<BookmarkEntity>
 
+    /** How many rows (of any server) the server has not heard yet. */
+    @Query("SELECT COUNT(*) FROM bookmarks WHERE state <> 'SYNCED'")
+    fun observePendingCount(): Flow<Int>
+
     /** Sets [newState] only if the row still has [ifState] and [ifTitle] (it was not changed meanwhile). Returns the rows changed. */
     @Query("UPDATE bookmarks SET state = :newState WHERE bookId = :bookId AND timeSec = :timeSec AND state = :ifState AND title = :ifTitle")
     suspend fun updateStateIf(bookId: String, timeSec: Long, newState: String, ifState: String, ifTitle: String): Int

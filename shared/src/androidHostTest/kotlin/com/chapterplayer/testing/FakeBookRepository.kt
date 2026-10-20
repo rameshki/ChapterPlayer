@@ -123,13 +123,30 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override suspend fun deleteBookmark(bookId: String, timeSec: Long) {
         bookmarks.value = bookmarks.value.filterNot { it.bookId == bookId && it.timeSec == timeSec }
     }
+    override fun observePendingBookmarkCount(): Flow<Int> = bookmarks.map { list -> list.count { it.state != BookmarkState.SYNCED } }
     val pulledBookmarks = mutableListOf<String>()
-    override suspend fun pullBookmarks(serverId: String): Result<Unit> { pulledBookmarks += serverId; return Result.success(Unit) }
+    /** Every pull and push in order, e.g. "pull s1" then "push s1". */
+    val bookmarkCalls = mutableListOf<String>()
+    var onPullBookmarks: suspend (String) -> Result<Unit> = { Result.success(Unit) }
+    override suspend fun pullBookmarks(serverId: String): Result<Unit> {
+        pulledBookmarks += serverId
+        bookmarkCalls += "pull $serverId"
+        return onPullBookmarks(serverId)
+    }
     val pushedBookmarks = mutableListOf<String>()
-    override suspend fun pushPendingBookmarks(serverId: String): Result<Unit> { pushedBookmarks += serverId; return Result.success(Unit) }
+    var onPushBookmarks: suspend (String) -> Result<Unit> = { Result.success(Unit) }
+    override suspend fun pushPendingBookmarks(serverId: String): Result<Unit> {
+        pushedBookmarks += serverId
+        bookmarkCalls += "push $serverId"
+        return onPushBookmarks(serverId)
+    }
     val history = MutableStateFlow<List<HistoryEntry>>(emptyList())
+    var onRecordHistory: suspend (HistoryEntry) -> Unit = {}
+    val recordAttempts = mutableListOf<HistoryEntry>()
     override fun observeHistory(bookId: String): Flow<List<HistoryEntry>> = history.map { list -> list.filter { it.bookId == bookId } }
     override suspend fun recordHistory(entry: HistoryEntry) {
+        recordAttempts += entry
+        onRecordHistory(entry)
         history.value = addToHistory(history.value.filter { it.bookId == entry.bookId }, entry) + history.value.filter { it.bookId != entry.bookId }
     }
 }

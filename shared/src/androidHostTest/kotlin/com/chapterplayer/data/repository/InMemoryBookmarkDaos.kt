@@ -26,6 +26,7 @@ class InMemoryBookmarkDao(initial: List<BookmarkEntity> = emptyList()) : Bookmar
     override suspend fun getPendingByServer(serverId: String): List<BookmarkEntity> =
         rows.value.filter { it.serverId == serverId && it.state != "SYNCED" }
             .sortedWith(compareBy({ it.createdAt }, { it.timeSec }, { it.bookId }))
+    override fun observePendingCount(): Flow<Int> = rows.map { list -> list.count { it.state != "SYNCED" } }
     override suspend fun updateStateIf(bookId: String, timeSec: Long, newState: String, ifState: String, ifTitle: String): Int {
         var changed = 0
         rows.value = rows.value.map {

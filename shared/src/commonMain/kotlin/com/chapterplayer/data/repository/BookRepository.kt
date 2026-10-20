@@ -127,6 +127,9 @@ interface BookRepository {
      */
     suspend fun pushPendingBookmarks(serverId: String): Result<Unit>
 
+    /** How many bookmark changes (creates, renames, deletes) still wait for their server; emits again when it changes. */
+    fun observePendingBookmarkCount(): Flow<Int>
+
     /** The book's remembered positions, newest first. */
     fun observeHistory(bookId: String): Flow<List<HistoryEntry>>
 
