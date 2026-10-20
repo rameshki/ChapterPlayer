@@ -170,7 +170,7 @@ val viewModelModule = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)
-    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
 }
 

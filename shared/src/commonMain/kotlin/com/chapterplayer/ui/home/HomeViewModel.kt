@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.playback.PlaybackStartException
+import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -12,12 +15,18 @@ import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.BrowseQuery
 import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.browse.BrowseSort
+import com.chapterplayer.domain.browse.ResumeInfo
+import com.chapterplayer.domain.browse.continueSeries
+import com.chapterplayer.domain.browse.resumeCandidate
 import com.chapterplayer.domain.browse.FilterChip
 import com.chapterplayer.domain.browse.chipFor
 import com.chapterplayer.domain.browse.applyQuery
 import com.chapterplayer.domain.browse.isDimmed
 import com.chapterplayer.ui.browse.observeBrowseItems
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -25,12 +34,20 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * @param inProgress started, unfinished books, last played first.
+ * @param resume the most recently played unfinished book, for the Resume card; never hidden by a browse filter.
+ * @param continueSeries the next book of each series being read; never hidden by a browse filter.
+ * @param inProgress started, unfinished books other than [resume], last played first.
+ * @param playError a safe message when Resume could not start the book.
+ * @param starting a Resume start is under way.
  * @param recentlyAdded the newest books (unknown dates last).
  * @param isSyncing a library sync is running (so an empty Home means "loading", not "nothing").
  * @param hasBooks whether any book is cached, before the filters; tells "nothing yet" from "filtered out".
  */
 data class HomeUiState(
+    val resume: ResumeInfo? = null,
+    val continueSeries: List<BrowseItem> = emptyList(),
+    val playError: String? = null,
+    val starting: Boolean = false,
     val inProgress: List<BrowseItem> = emptyList(),
     val recentlyAdded: List<BrowseItem> = emptyList(),
     val hasServers: Boolean = false,
@@ -54,8 +71,13 @@ class HomeViewModel(
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
     syncCoordinator: LibrarySyncCoordinator,
+    private val starter: PlaybackStarter,
     dispatcher: CoroutineDispatcher
 ) : ViewModel() {
+
+    private class Local(val starting: Boolean = false, val error: String? = null)
+
+    private val local = MutableStateFlow(Local())
 
     val uiState: StateFlow<HomeUiState> = combine(
         observeBrowseItems(books, downloads),
@@ -63,10 +85,18 @@ class HomeViewModel(
         queryStore.query,
         combine(connectivity.isOnline, settings.downloadedOnly, syncCoordinator.state) { online, downloadedOnly, sync ->
             Triple(online, downloadedOnly, sync.isSyncing)
-        }
-    ) { items, serverList, query, (online, downloadedOnly, syncing) ->
+        },
+        local
+    ) { items, serverList, query, (online, downloadedOnly, syncing), local ->
+        // The card and the series shelf come from every book, so a saved filter never hides them.
+        val resume = resumeCandidate(items)
+        val resumeId = resume?.item?.book?.id
         HomeUiState(
-            inProgress = inProgressShelf(items, query),
+            resume = resume,
+            continueSeries = continueSeries(items, excludeBookId = resumeId),
+            playError = local.error,
+            starting = local.starting,
+            inProgress = inProgressShelf(items, query).filter { it.book.id != resumeId },
             recentlyAdded = recentlyAddedShelf(items, query),
             hasServers = serverList.isNotEmpty(),
             isLoading = false,
@@ -77,6 +107,32 @@ class HomeViewModel(
             isSyncing = syncing
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    /**
+     * Starts [book] where this phone left off. [onStarted] runs when playback began, so the caller can
+     * open the player; a failure shows as [HomeUiState.playError] with a safe message.
+     */
+    fun resume(book: AudioBook, onStarted: () -> Unit = {}) {
+        if (local.value.starting) return
+        local.value = Local(starting = true)
+        viewModelScope.launch {
+            val result = try {
+                starter.start(book, null)
+            } catch (e: CancellationException) {
+                local.value = Local()
+                throw e
+            }
+            local.value = result.fold(
+                onSuccess = { Local() },
+                onFailure = { Local(error = it.message ?: PlaybackStartException.DEFAULT_MESSAGE) }
+            )
+            if (result.isSuccess) onStarted()
+        }
+    }
+
+    fun dismissError() {
+        if (!local.value.starting) local.value = Local()
+    }
 
     private companion object {
         const val RECENT_LIMIT = 20

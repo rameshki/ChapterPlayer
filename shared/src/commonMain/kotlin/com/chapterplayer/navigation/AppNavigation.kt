@@ -161,7 +161,7 @@ fun AppNavigation() {
                 startDestination = Screen.Home.route
             ) {
                 composable(Screen.Home.route) {
-                    HomeScreen(onBookClick = openBook, onOpenSettings = { openSettings() })
+                    HomeScreen(onBookClick = openBook, onOpenSettings = { openSettings() }, onOpenPlayer = openPlayer)
                 }
 
                 composable(Screen.Library.route) {
@@ -198,7 +198,8 @@ fun AppNavigation() {
                             bookId = id,
                             onBack = { navController.popBackStack() },
                             onOpenBook = openBook,
-                            onOpenGroup = openGroup
+                            onOpenGroup = openGroup,
+                            onOpenPlayer = openPlayer
                         )
                     } else {
                         LaunchedEffect(Unit) { navController.popBackStack() }
