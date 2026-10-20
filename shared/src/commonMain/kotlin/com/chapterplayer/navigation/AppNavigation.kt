@@ -1,9 +1,16 @@
 package com.chapterplayer.navigation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
@@ -18,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -28,8 +36,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.savedstate.read
+import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
+import com.chapterplayer.domain.playback.OpenPlayerRequest
+import com.chapterplayer.ui.player.MiniPlayer
+import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.ui.details.BookDetailsScreen
 import com.chapterplayer.ui.downloads.DownloadsScreen
@@ -91,8 +105,29 @@ fun AppNavigation() {
         navController.navigate(Screen.GroupDetail.createRoute(kind, key))
     }
 
+    // The mini player and the open-player request share the full player's view model: one playback state source.
+    val playerViewModel = koinViewModel<PlayerViewModel>()
+    val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
+    val hasBook = !playerState.nothingPlaying
+    val showMiniPlayer = miniPlayerVisible(currentDestination?.route, hasBook)
+    val openPlayer = {
+        // The player shows what is playing, so a second copy on top would only add a Back press.
+        if (navController.currentBackStackEntry?.destination?.route != Screen.Player.route) {
+            navController.navigate(Screen.Player.route) { launchSingleTop = true }
+        }
+    }
+
     Scaffold(
         bottomBar = {
+            Column {
+                AnimatedVisibility(visible = showMiniPlayer, enter = expandVertically(), exit = shrinkVertically()) {
+                    MiniPlayer(
+                        viewModel = playerViewModel,
+                        onOpenPlayer = openPlayer,
+                        // Without the tab bar below it, the mini player clears the system navigation bar itself.
+                        modifier = if (showBottomBar) Modifier else Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                    )
+                }
             if (showBottomBar) {
                 NavigationBar(containerColor = NavBarSurface) {
                     bottomNavItems.forEach { item ->
@@ -111,6 +146,7 @@ fun AppNavigation() {
                         )
                     }
                 }
+            }
             }
         }
     ) { innerPadding ->
@@ -201,9 +237,26 @@ fun AppNavigation() {
                     )
                 }
             }
+
+            // A tapped notification asks for the player. Once the graph exists and a book is loaded the
+            // request is taken and the player opens; if nothing loads in time the request is forgotten.
+            val openRequest = koinInject<OpenPlayerRequest>()
+            val openPending by openRequest.pending.collectAsState()
+            LaunchedEffect(openPending, hasBook, currentDestination == null) {
+                if (!openPending || currentDestination == null) return@LaunchedEffect
+                if (openRequest.take(hasBook)) {
+                    openPlayer()
+                } else {
+                    delay(OPEN_REQUEST_WAIT_MS)
+                    openRequest.drop()
+                }
+            }
         }
     }
 }
+
+/** How long a notification tap waits for the controller to report a loaded book on a cold start. */
+private const val OPEN_REQUEST_WAIT_MS = 5_000L
 
 /** Switch tab without stacking: back to the start, keep each tab's state, reuse the top entry. */
 private fun NavController.openTab(screen: Screen) {

@@ -49,6 +49,7 @@ import com.chapterplayer.ui.library.LibrariesViewModel
 import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.library.LibraryViewModel
 import com.chapterplayer.ui.player.PlayerViewModel
+import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.offline.OfflineStateViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
@@ -146,6 +147,8 @@ val playbackModule = module {
     single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
     // Starts a book (position, saved speed, play) for details, Home and the player.
     singleOf(::PlaybackStarter)
+    // A tapped notification asks the navigation host to open the player once.
+    single { OpenPlayerRequest() }
 }
 
 val deviceModule = module {

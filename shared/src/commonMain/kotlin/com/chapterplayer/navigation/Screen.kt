@@ -14,9 +14,8 @@ sealed class Screen(val route: String) {
     object Library : Screen("library")
     object Downloads : Screen("downloads")
     object Search : Screen("search")
-    object Player : Screen("player/{bookId}") {
-        fun createRoute(bookId: String) = "player/$bookId"
-    }
+    /** Always shows what is playing, so it takes no argument. */
+    object Player : Screen("player")
     object BookDetails : Screen("book/{id}") {
         const val ARG_ID = "id"
 
