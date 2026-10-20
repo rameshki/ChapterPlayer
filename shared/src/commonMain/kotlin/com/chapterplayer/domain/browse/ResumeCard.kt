@@ -1,6 +1,7 @@
 package com.chapterplayer.domain.browse
 
 import com.chapterplayer.domain.playback.bookFraction
+import com.chapterplayer.domain.playback.isFinishedAt
 
 /**
  * Data class representing the necessary information to display a resume card for a book.
@@ -15,7 +16,10 @@ data class ResumeInfo(val item: BrowseItem, val chapterTitle: String?, val fract
  */
 fun resumeCandidate(items: List<BrowseItem>): ResumeInfo? {
     val candidate = items
-        .filter { it.progress != null && !it.progress.isFinished && it.progress.positionMs > 0 }
+        .filter {
+            it.progress != null && !it.progress.isFinished && it.progress.positionMs > 0 &&
+                !isFinishedAt(it.progress.positionMs, it.book.durationMs)
+        }
         .sortedWith(compareByDescending<BrowseItem> { it.progress?.lastPlayedAt }.thenBy { it.book.id })
         .firstOrNull() ?: return null
 

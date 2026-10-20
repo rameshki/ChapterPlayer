@@ -35,7 +35,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +77,12 @@ fun HomeScreen(
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // A start can finish after the user moved on: open the player only while Home is still showing,
+    // and through the navigator of the moment.
+    val currentOpenPlayer by rememberUpdatedState(onOpenPlayer)
+    val stillHere = remember { HomeVisible() }
+    DisposableEffect(Unit) { onDispose { stillHere.value = false } }
+    val openPlayerAfterStart: () -> Unit = remember { { if (stillHere.value) currentOpenPlayer() } }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -89,7 +98,7 @@ fun HomeScreen(
             val book = state.resume?.item?.book
             PlayErrorBanner(
                 message = message,
-                onRetry = { book?.let { viewModel.resume(it, onOpenPlayer) } ?: viewModel.dismissError() },
+                onRetry = { book?.let { viewModel.resume(it, openPlayerAfterStart) } ?: viewModel.dismissError() },
                 onDismiss = viewModel::dismissError
             )
         }
@@ -138,7 +147,7 @@ fun HomeScreen(
                 }
             }
 
-            else -> HomeShelves(state, onBookClick, onResume = { viewModel.resume(it, onOpenPlayer) })
+            else -> HomeShelves(state, onBookClick, onResume = { viewModel.resume(it, openPlayerAfterStart) })
         }
     }
 }
@@ -246,6 +255,8 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
         }
     }
 }
+
+private class HomeVisible { var value = true }
 
 private fun nextInSeriesCaption(item: BrowseItem): String? =
     parseSeriesName(item.book.seriesName)?.name?.let { "Next in $it" }

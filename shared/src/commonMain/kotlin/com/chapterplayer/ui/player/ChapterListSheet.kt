@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -53,7 +54,7 @@ fun ChapterListSheet(
                 text = "Chapters",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp).semantics { heading() }
             )
             val start = (currentIndex ?: 0).coerceIn(0, (chapters.size - 1).coerceAtLeast(0))
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = start)

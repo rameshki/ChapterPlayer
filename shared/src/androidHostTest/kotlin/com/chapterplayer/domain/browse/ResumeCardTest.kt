@@ -74,4 +74,11 @@ class ResumeCardTest {
         assertNull(info.chapterTitle)
         assertEquals(0.25f, info.fraction)
     }
+
+    @Test
+    fun `a book left at its end without the finished flag is not a candidate`() {
+        // Within the finished window of the end (see isFinishedAt) but not flagged.
+        assertNull(resumeCandidate(listOf(item("a", positionMs = 3_599_000, durationMs = 3_600_000))))
+        assertEquals("b", resumeCandidate(listOf(item("a", positionMs = 3_599_000, lastPlayedAt = 9), item("b", positionMs = 1_000, lastPlayedAt = 1)))!!.item.book.id)
+    }
 }

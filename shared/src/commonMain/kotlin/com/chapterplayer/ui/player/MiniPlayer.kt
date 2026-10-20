@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -78,11 +79,11 @@ fun MiniPlayerContent(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
             .background(SurfaceElevated)
     ) {
+        // At least 64dp, taller when large text needs it; the content stays centred.
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(

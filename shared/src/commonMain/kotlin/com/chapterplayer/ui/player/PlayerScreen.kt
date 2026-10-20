@@ -348,8 +348,10 @@ private fun SeekSlider(
     var releaseCount by remember { mutableStateOf(0) }
 
     // After a release, the thumb returns to the state once it has caught up.
-    val held = dragValue
-    if (held != null && !dragging && seekSettled(held, fraction, totalMs)) dragValue = null
+    LaunchedEffect(dragValue, fraction, dragging) {
+        val held = dragValue
+        if (held != null && !dragging && seekSettled(held, fraction, totalMs)) dragValue = null
+    }
     LaunchedEffect(releaseCount) {
         if (releaseCount > 0) {
             delay(2_000)
@@ -387,7 +389,8 @@ private fun SeekSlider(
                 .heightIn(min = 48.dp)
                 .semantics {
                     contentDescription = name
-                    stateDescription = "$percent percent, ${labels.elapsed} played, ${labels.remaining} left"
+                    // Whole percent only: the clock changes every second and would be re-announced each time.
+                    stateDescription = "$percent percent"
                 }
         )
         Row(

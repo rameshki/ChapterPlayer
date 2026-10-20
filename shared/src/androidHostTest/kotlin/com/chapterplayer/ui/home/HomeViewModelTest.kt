@@ -22,7 +22,6 @@ import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeDownloadStates
 import com.chapterplayer.testing.FakeServerList
-import com.chapterplayer.testing.testBook
 import com.chapterplayer.testing.testServer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -69,7 +68,11 @@ class HomeViewModelTest {
         )
     }
 
-    private fun seriesBook(id: String, sequence: String) = testBook(id, seriesName = "Saga").copy(seriesSequence = sequence)
+    private fun seriesBook(id: String, sequence: String) = longBook(id, seriesName = "Saga").copy(seriesSequence = sequence)
+
+    // Long enough that a position of 100 ms is not "at the end".
+    private fun longBook(id: String, addedAt: Long = 0L, seriesName: String? = null) =
+        com.chapterplayer.testing.testBook(id, addedAt = addedAt, seriesName = seriesName).copy(durationMs = 100_000L)
 
     private fun progress(id: String, positionMs: Long = 100, lastPlayedAt: Long = 1, finished: Boolean = false) =
         ReadingProgress(id, positionMs, 1_000, lastPlayedAt, finished)
@@ -86,7 +89,7 @@ class HomeViewModelTest {
 
     @Test
     fun `in progress books are ordered by last played, newest first`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"), testBook("b"), testBook("c"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"), longBook("b"), longBook("c"))))
         s.books.progress.value = listOf(progress("a", lastPlayedAt = 10), progress("b", lastPlayedAt = 30), progress("c", lastPlayedAt = 20))
         val state = collect(s)
 
@@ -97,7 +100,7 @@ class HomeViewModelTest {
 
     @Test
     fun `finished and zero position books are not in progress`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"), testBook("b"), testBook("c"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"), longBook("b"), longBook("c"))))
         // The repository returns every row, finished and zero-position ones included.
         s.books.progress.value = listOf(progress("a"), progress("b", finished = true), progress("c", positionMs = 0))
         val state = collect(s)
@@ -108,7 +111,7 @@ class HomeViewModelTest {
 
     @Test
     fun `a finished book carries its progress so the finished check shows`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a", addedAt = 1))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1))))
         s.books.progress.value = listOf(progress("a", finished = true))
         val state = collect(s)
 
@@ -119,7 +122,7 @@ class HomeViewModelTest {
 
     @Test
     fun `the download filter applies to both shelves`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a", addedAt = 1), testBook("b", addedAt = 2))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1), longBook("b", addedAt = 2))))
         s.books.progress.value = listOf(progress("a"), progress("b", lastPlayedAt = 2))
         s.downloads.states.value = mapOf("a" to DownloadState.DOWNLOADED)
         val state = collect(s)
@@ -133,7 +136,7 @@ class HomeViewModelTest {
 
     @Test
     fun `the Downloaded chip is reported so Home can say nothing is downloaded`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a", addedAt = 1))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1))))
         val state = collect(s)
         assertFalse(state().downloadedFilterOn)
 
@@ -149,7 +152,7 @@ class HomeViewModelTest {
 
     @Test
     fun `offline dims a book that is not downloaded but never a downloaded one`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a", addedAt = 1), testBook("b", addedAt = 2))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1), longBook("b", addedAt = 2))))
         s.downloads.states.value = mapOf("b" to DownloadState.DOWNLOADED)
         val state = collect(s)
         val byId = { id: String -> state().recentlyAdded.first { it.book.id == id } }
@@ -163,7 +166,7 @@ class HomeViewModelTest {
 
     @Test
     fun `downloaded only dims a book that is not downloaded even while online`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a", addedAt = 1), testBook("b", addedAt = 2))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1), longBook("b", addedAt = 2))))
         s.downloads.states.value = mapOf("b" to DownloadState.DOWNLOADED)
         val state = collect(s)
 
@@ -196,8 +199,8 @@ class HomeViewModelTest {
 
     @Test
     fun `recently added holds the newest 20 with unknown dates last`() = runTest {
-        val dated = (1..21).map { testBook("d$it", addedAt = it * 1000L) }
-        val s = Setup(FakeBookRepository(dated + testBook("unknown", addedAt = 0L)))
+        val dated = (1..21).map { longBook("d$it", addedAt = it * 1000L) }
+        val s = Setup(FakeBookRepository(dated + longBook("unknown", addedAt = 0L)))
         val state = collect(s)
 
         val ids = state().recentlyAdded.map { it.book.id }
@@ -208,7 +211,7 @@ class HomeViewModelTest {
 
     @Test
     fun `books with an unknown date come after dated ones when there is room`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("unknown", addedAt = 0), testBook("old", addedAt = 5), testBook("new", addedAt = 9))))
+        val s = Setup(FakeBookRepository(listOf(longBook("unknown", addedAt = 0), longBook("old", addedAt = 5), longBook("new", addedAt = 9))))
         val state = collect(s)
 
         assertEquals(listOf("new", "old", "unknown"), state().recentlyAdded.map { it.book.id })
@@ -216,7 +219,7 @@ class HomeViewModelTest {
 
     @Test
     fun `a progress filter that hides books hides them from both shelves`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a", addedAt = 1), testBook("b", addedAt = 2), testBook("c", addedAt = 3))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1), longBook("b", addedAt = 2), longBook("c", addedAt = 3))))
         s.books.progress.value = listOf(progress("a"), progress("b", lastPlayedAt = 2))
         val state = collect(s)
         assertEquals(listOf("a"), state().inProgress.map { it.book.id })
@@ -243,7 +246,7 @@ class HomeViewModelTest {
 
     @Test
     fun `download states, connectivity and the downloaded only setting flow through`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"))))
         val state = collect(s)
         assertTrue(state().online)
         assertFalse(state().downloadedOnly)
@@ -261,7 +264,7 @@ class HomeViewModelTest {
 
     @Test
     fun `the resume card is the most recent unfinished started book and leaves Continue Reading`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"), testBook("b"), testBook("c"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"), longBook("b"), longBook("c"))))
         s.books.progress.value = listOf(progress("a", lastPlayedAt = 10), progress("b", lastPlayedAt = 30), progress("c", lastPlayedAt = 20))
         val state = collect(s)
 
@@ -271,7 +274,7 @@ class HomeViewModelTest {
 
     @Test
     fun `no resume card for finished or never started books`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"), testBook("b"), testBook("c"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"), longBook("b"), longBook("c"))))
         s.books.progress.value = listOf(progress("a", finished = true), progress("b", positionMs = 0))
         val state = collect(s)
 
@@ -282,7 +285,7 @@ class HomeViewModelTest {
     @Test
     fun `a filter that hides the resume book does not hide the card or the series shelf`() = runTest {
         val books = listOf(
-            seriesBook("s1", "1"), seriesBook("s2", "2"), testBook("r")
+            seriesBook("s1", "1"), seriesBook("s2", "2"), longBook("r")
         )
         val s = Setup(FakeBookRepository(books))
         s.books.progress.value = listOf(progress("s1", finished = true, lastPlayedAt = 5), progress("r", lastPlayedAt = 9))
@@ -312,7 +315,7 @@ class HomeViewModelTest {
     @Test
     fun `offline dims the resume book and the series shelf unless downloaded`() = runTest {
         val books = listOf(
-            seriesBook("s1", "1"), seriesBook("s2", "2"), testBook("r")
+            seriesBook("s1", "1"), seriesBook("s2", "2"), longBook("r")
         )
         val s = Setup(FakeBookRepository(books))
         s.books.progress.value = listOf(progress("s1", finished = true, lastPlayedAt = 5), progress("r", lastPlayedAt = 9))
@@ -338,7 +341,7 @@ class HomeViewModelTest {
 
     @Test
     fun `resume starts the book through the starter without a position and reports success`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"))))
         s.books.progress.value = listOf(progress("a", positionMs = 400))
         val state = collect(s)
         var started = 0
@@ -354,12 +357,12 @@ class HomeViewModelTest {
 
     @Test
     fun `a failed start shows a safe message, not the exception text, and dismiss clears it`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"))))
         s.controller.onLoad = { _, _ -> error("secret token=abc at 10.0.0.1") }
         val state = collect(s)
         var started = 0
 
-        s.vm.resume(testBook("a")) { started++ }
+        s.vm.resume(longBook("a")) { started++ }
 
         assertEquals(PlaybackStartException.DEFAULT_MESSAGE, state().playError)
         assertEquals(0, started)
@@ -372,13 +375,13 @@ class HomeViewModelTest {
     @Test
     fun `a second resume while one is starting is ignored`() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val s = Setup(FakeBookRepository(listOf(testBook("a"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"))))
         s.controller.onLoad = { _, _ -> gate.await() }
         val state = collect(s)
 
-        s.vm.resume(testBook("a"))
+        s.vm.resume(longBook("a"))
         assertTrue(state().starting)
-        s.vm.resume(testBook("a"))
+        s.vm.resume(longBook("a"))
         gate.complete(Unit)
 
         assertEquals(1, s.controller.loads.size)
@@ -387,13 +390,28 @@ class HomeViewModelTest {
 
     @Test
     fun `cancelling a start is not shown as an error`() = runTest {
-        val s = Setup(FakeBookRepository(listOf(testBook("a"))))
+        val s = Setup(FakeBookRepository(listOf(longBook("a"))))
         s.controller.onLoad = { _, _ -> throw CancellationException("stop") }
         val state = collect(s)
 
-        s.vm.resume(testBook("a"))
+        s.vm.resume(longBook("a"))
 
         assertNull(state().playError)
         assertFalse(state().starting)
+    }
+
+    @Test
+    fun `resume on a book that is already loaded plays it without a reload and opens the player`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("a"))))
+        s.books.progress.value = listOf(progress("a", positionMs = 400))
+        s.controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a", positionMs = 50_000L)
+        val state = collect(s)
+        var started = 0
+
+        s.vm.resume(state().resume!!.item.book) { started++ }
+
+        assertEquals(emptyList(), s.controller.loads)
+        assertEquals(1, s.controller.plays)
+        assertEquals(1, started)
     }
 }

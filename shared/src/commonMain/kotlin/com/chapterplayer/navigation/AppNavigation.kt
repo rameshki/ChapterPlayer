@@ -215,7 +215,7 @@ fun AppNavigation() {
                 }
 
                 composable(Screen.Player.route) {
-                    PlayerScreen(onBack = { navController.popBackStack() })
+                    PlayerScreen(onBack = { navController.popBackStack() }, viewModel = playerViewModel)
                 }
 
                 composable(Screen.Settings.route) {

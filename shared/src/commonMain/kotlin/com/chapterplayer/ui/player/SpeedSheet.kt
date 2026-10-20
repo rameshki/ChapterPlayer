@@ -20,6 +20,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.domain.playback.PLAYBACK_SPEEDS
 import com.chapterplayer.domain.playback.speedLabel
@@ -50,7 +52,8 @@ fun SpeedSheet(
             Text(
                 text = "Playback speed",
                 style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.semantics { heading() }
             )
             SpeedChips("Quick", QUICK_SPEEDS, currentSpeed, onSpeedSelected)
             SpeedChips("All speeds", PLAYBACK_SPEEDS, currentSpeed, onSpeedSelected)

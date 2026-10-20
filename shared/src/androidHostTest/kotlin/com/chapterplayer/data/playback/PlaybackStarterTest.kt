@@ -145,8 +145,58 @@ class PlaybackStarterTest {
             ReadingProgress("a", 50L, 100_000L, 1L, isFinished = true), ReadingProgress("a", 100_000L, 100_000L, 1L))) {
             repo.progress.value = listOfNotNull(progress)
             controller.loads.clear()
+            controller.playback.value = com.chapterplayer.data.playback.PlaybackState()
             starter.start(book)
             assertEquals(com.chapterplayer.domain.playback.startPositionFor(progress, book.durationMs), controller.loads.single().second)
         }
+    }
+
+    @Test
+    fun `a paused loaded book is played on without a reload`() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 10_000L, 100_000L, 1L))
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a", positionMs = 50_000L)
+
+        assertTrue(starter.start(book, null).isSuccess)
+
+        assertTrue(controller.loads.isEmpty())
+        assertEquals(1, controller.plays)
+    }
+
+    @Test
+    fun `a playing loaded book is left alone`() = runTest {
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a", isPlaying = true)
+
+        assertTrue(starter.start(book, null).isSuccess)
+
+        assertTrue(controller.loads.isEmpty())
+        assertEquals(0, controller.plays)
+    }
+
+    @Test
+    fun `a book buffering towards its first sound is left alone`() = runTest {
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a", isBuffering = true, playWhenReady = true)
+
+        assertTrue(starter.start(book, null).isSuccess)
+
+        assertEquals(0, controller.plays)
+        assertTrue(controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `another book loaded means a normal load`() = runTest {
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "other", isPlaying = true)
+
+        assertTrue(starter.start(book, null).isSuccess)
+
+        assertEquals(listOf("a"), controller.loads.map { it.first })
+    }
+
+    @Test
+    fun `an explicit position still loads a book that is already loaded`() = runTest {
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a")
+
+        assertTrue(starter.start(book, 5_000L).isSuccess)
+
+        assertEquals(listOf("a" to 5_000L), controller.loads)
     }
 }

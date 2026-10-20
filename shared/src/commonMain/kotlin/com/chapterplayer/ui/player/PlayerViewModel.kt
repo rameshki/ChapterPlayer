@@ -3,7 +3,6 @@ package com.chapterplayer.ui.player
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.model.AudioBook
-import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.repository.BookRepository
@@ -14,6 +13,9 @@ import com.chapterplayer.domain.browse.formatClock
 import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.domain.playback.bookFraction
+import com.chapterplayer.domain.playback.chapterFraction
+import com.chapterplayer.domain.playback.nextChapterStart
+import com.chapterplayer.domain.playback.previousChapterStart
 import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
 import com.chapterplayer.domain.playback.MIN_PLAYBACK_SPEED
 import com.chapterplayer.domain.playback.sleepLabel
@@ -47,13 +49,18 @@ class PlayerViewModel(
     // The book of whatever is loaded, looked up again only when the loaded book changes.
     private val playingBook = controller.state.map { it.bookId }.distinctUntilChanged().flatMapLatest { id ->
         books.observeAllBooks().map { all -> if (id == null) null else all.firstOrNull { it.id == id } }
+            .distinctUntilChanged()
     }
 
     val uiState: StateFlow<PlayerUiState> = combine(
         controller.state, controller.sleepTimer, playingBook, dismissedError
     ) { state, timer, book, dismissed -> buildState(state, timer, book, dismissed) }
         .flowOn(dispatcher)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerUiState())
+        // Seeded from the player, so a screen opened while a book plays draws it from the first frame.
+        .stateIn(
+            viewModelScope, SharingStarted.WhileSubscribed(5_000),
+            buildState(controller.state.value, controller.sleepTimer.value, null, null)
+        )
 
     init {
         // When the error goes away a dismissal is forgotten, so the same text can show again.
@@ -78,7 +85,7 @@ class PlayerViewModel(
             chapterTitle = chapter?.title,
             bookFraction = bookFraction(position, duration),
             durationMs = duration.coerceAtLeast(0L),
-            chapterFraction = chapter?.let { chapterFraction(it, position) },
+            chapterFraction = chapterFraction(chapters, position, index),
             elapsed = formatClock(position),
             remaining = formatClock(duration - position),
             chapterElapsed = chapter?.let { formatClock(position - it.startMs) },
@@ -111,18 +118,14 @@ class PlayerViewModel(
 
     fun previousChapter() {
         val state = controller.state.value
-        val index = currentIndex(state) ?: return
-        val current = state.chapters[index]
-        // Past the first seconds of a chapter, Previous restarts it; near its start it goes to the one before.
-        val target = if (state.positionMs - current.startMs > RESTART_AFTER_MS || index == 0) current.startMs
-        else state.chapters[index - 1].startMs
-        controller.seekTo(target)
+        if (state.bookId == null) return
+        // The player's own chapter index wins over the one the position falls in; the rules live in the domain.
+        controller.seekTo(previousChapterStart(state.chapters, state.positionMs, currentIndex(state)))
     }
 
     fun nextChapter() {
         val state = controller.state.value
-        val index = currentIndex(state) ?: return
-        controller.seekTo((state.chapters.getOrNull(index + 1) ?: return).startMs)
+        controller.seekTo(nextChapterStart(state.chapters, state.positionMs, currentIndex(state)) ?: return)
     }
 
     fun seekBook(fraction: Float) {
@@ -135,7 +138,9 @@ class PlayerViewModel(
         val state = controller.state.value
         if (fraction.isNaN()) return
         val chapter = currentIndex(state)?.let { state.chapters[it] } ?: return
-        controller.seekTo(chapter.startMs + (fraction.coerceIn(0f, 1f) * chapter.durationMs).toLong())
+        // Stay inside the chapter: the very end would be the next chapter's first moment.
+        val offset = (fraction.coerceIn(0f, 1f) * chapter.durationMs).toLong()
+        controller.seekTo(chapter.startMs + offset.coerceAtMost((chapter.durationMs - 1L).coerceAtLeast(0L)))
     }
 
     fun jumpToChapter(index: Int) {
@@ -168,13 +173,7 @@ class PlayerViewModel(
     private fun currentIndex(state: PlaybackState): Int? =
         state.chapterIndex?.takeIf { it in state.chapters.indices } ?: currentChapterIndex(state.chapters, state.positionMs)
 
-    private fun chapterFraction(chapter: Chapter, positionMs: Long): Float {
-        if (chapter.durationMs <= 0L) return 0f
-        return ((positionMs - chapter.startMs).toFloat() / chapter.durationMs.toFloat()).coerceIn(0f, 1f)
-    }
-
     private companion object {
         const val FALLBACK_TITLE = "Now playing"
-        const val RESTART_AFTER_MS = 3_000L
     }
 }

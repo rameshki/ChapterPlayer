@@ -6,8 +6,12 @@ import com.chapterplayer.domain.browse.currentChapterIndex
 /**
  * Calculates the progress fraction (0.0 to 1.0) within the current chapter.
  */
-fun chapterFraction(chapters: List<Chapter>, positionMs: Long): Float? {
-    val index = currentChapterIndex(chapters, positionMs) ?: return null
+fun chapterFraction(
+    chapters: List<Chapter>,
+    positionMs: Long,
+    index: Int? = currentChapterIndex(chapters, positionMs)
+): Float? {
+    if (index == null || index !in chapters.indices) return null
     val chapter = chapters[index]
     val duration = chapter.endMs - chapter.startMs
     if (duration <= 0) return 0f
@@ -100,9 +104,13 @@ fun sleepPresetLabel(timer: SleepTimer): String {
 /**
  * Returns the start timestamp for the previous chapter or restarts the current one.
  */
-fun previousChapterStart(chapters: List<Chapter>, positionMs: Long): Long {
+fun previousChapterStart(
+    chapters: List<Chapter>,
+    positionMs: Long,
+    index: Int? = currentChapterIndex(chapters, positionMs)
+): Long {
     if (chapters.isEmpty()) return 0L
-    val i = currentChapterIndex(chapters, positionMs) ?: (chapters.size - 1)
+    val i = index?.takeIf { it in chapters.indices } ?: (chapters.size - 1)
     val c = chapters[i]
     // If more than 3 seconds have passed in the chapter, restart it
     if (positionMs - c.startMs > 3000) return c.startMs
@@ -112,8 +120,12 @@ fun previousChapterStart(chapters: List<Chapter>, positionMs: Long): Long {
 /**
  * Returns the start timestamp of the next chapter, or null if at the end.
  */
-fun nextChapterStart(chapters: List<Chapter>, positionMs: Long): Long? {
-    val i = currentChapterIndex(chapters, positionMs) ?: return null
+fun nextChapterStart(
+    chapters: List<Chapter>,
+    positionMs: Long,
+    index: Int? = currentChapterIndex(chapters, positionMs)
+): Long? {
+    val i = index?.takeIf { it in chapters.indices } ?: return null
     if (i >= chapters.size - 1) return null
     return chapters[i + 1].startMs
 }

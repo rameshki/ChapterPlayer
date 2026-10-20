@@ -15,6 +15,8 @@
 - Home keeps its existing "Continue Reading" shelf for OTHER in-progress books (the Resume card takes the most recent one), because losing it would hide books.
 - Previous/next chapter buttons are added to the player (the spec only names the skips; chapter navigation is what listeners expect for chaptered books).
 - Sleep timer presets follow the spec's assumptions: Off, 15, 30, 45, 60 minutes and End of chapter. Speed presets 1.0, 1.25, 1.5, 2.0 plus the full step list 0.5-3.0 in the sheet. The chosen speed is remembered (`AppSettings.playbackSpeed`) and applied when a book loads.
+- Continue Series offers the next book only after the most advanced touched book of the series is FINISHED (an in-progress book is already on the Resume card or Continue Reading); books without a sequence number sort last, so a finished unnumbered book counts as the most advanced.
+- Resume and Play on a book already loaded in the player never reload it: the starter plays it on from the live position (nothing when it is already playing); a reload would restart from the last saved position.
 
 ## Global Constraints
 - Both themes readable; colours only through the theme tokens read inside composables; `onPrimary` text on amber buttons; fonts as in the rest of the app (Playfair titles, DM Sans text); 16dp gutters; touch targets at least 48dp; content descriptions on every icon button (the skip buttons say "Back 15 seconds" / "Forward 30 seconds" and show the numbers); headings and `selected` semantics where relevant.

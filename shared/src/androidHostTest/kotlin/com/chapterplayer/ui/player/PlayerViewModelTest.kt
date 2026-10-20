@@ -206,12 +206,14 @@ class PlayerViewModelTest {
     }
 
     @Test
-    fun `previous chapter with no chapters does nothing`() = runTest {
+    fun `previous chapter with no chapters goes to the start of the book, and with nothing loaded does nothing`() = runTest {
         val s = Setup(book)
         collect(s)
-        s.controller.playback.value = playing(position = 5_000L, chapterIndex = null, withChapters = emptyList())
         s.vm.previousChapter()
         assertTrue(s.controller.seeks.isEmpty())
+        s.controller.playback.value = playing(position = 5_000L, chapterIndex = null, withChapters = emptyList())
+        s.vm.previousChapter()
+        assertEquals(listOf(0L), s.controller.seeks)
     }
 
     @Test
@@ -259,7 +261,8 @@ class PlayerViewModelTest {
         s.vm.seekChapter(0.25f)
         s.vm.seekChapter(-3f)
         s.vm.seekChapter(3f)
-        assertEquals(listOf(12_500L, 10_000L, 20_000L), s.controller.seeks)
+        // The very end is the last moment of the chapter, not the start of the next one.
+        assertEquals(listOf(12_500L, 10_000L, 19_999L), s.controller.seeks)
     }
 
     @Test
@@ -394,5 +397,18 @@ class PlayerViewModelTest {
             assertEquals(expected, state().showPause, "playing=$isPlaying buffering=$isBuffering wanted=$wanted")
             assertEquals(isBuffering, state().isBuffering)
         }
+    }
+
+    @Test
+    fun `a new view model over a playing controller shows the book from the first state`() {
+        val s = Setup(book)
+        s.controller.playback.value = playing(position = 12_000L, chapterIndex = 1, isPlaying = true)
+
+        // A second view model, as when a screen opens: no collector, no flash of "nothing playing".
+        val fresh = PlayerViewModel(s.controller, s.repo, s.settings, Dispatchers.Main)
+
+        assertFalse(fresh.uiState.value.nothingPlaying)
+        assertEquals("Two", fresh.uiState.value.chapterTitle)
+        assertTrue(fresh.uiState.value.showPause)
     }
 }
