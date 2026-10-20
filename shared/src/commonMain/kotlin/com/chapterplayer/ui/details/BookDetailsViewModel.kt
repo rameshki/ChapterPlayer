@@ -11,6 +11,7 @@ import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackStartException
+import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.repository.BookRepository
@@ -45,6 +46,7 @@ class BookDetailsViewModel(
     private val books: BookRepository,
     downloads: DownloadStates,
     private val controller: PlaybackController,
+    private val starter: PlaybackStarter,
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
     dispatcher: CoroutineDispatcher
@@ -196,16 +198,13 @@ class BookDetailsViewModel(
         local.value = Local(starting = true)
         viewModelScope.launch {
             local.value = try {
-                controller.load(book, startMs)
-                controller.play()
-                Local()
+                starter.start(book, startMs).fold(
+                    onSuccess = { Local() },
+                    onFailure = { Local(error = it.message ?: PlaybackStartException.DEFAULT_MESSAGE) }
+                )
             } catch (e: CancellationException) {
                 local.value = Local()
                 throw e
-            } catch (e: PlaybackStartException) {
-                Local(error = e.message ?: PlaybackStartException.DEFAULT_MESSAGE)
-            } catch (e: Exception) {
-                Local(error = PlaybackStartException.DEFAULT_MESSAGE)
             }
         }
     }

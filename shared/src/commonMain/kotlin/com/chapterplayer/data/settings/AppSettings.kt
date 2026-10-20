@@ -5,6 +5,7 @@ import androidx.datastore.core.IOException
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +27,11 @@ interface AppSettings {
     /** Offline-style browsing: only downloaded books play, even with a network. */
     val downloadedOnly: Flow<Boolean>
     suspend fun setDownloadedOnly(enabled: Boolean)
+
+    /** The listening speed applied when a book starts; 1.0 is normal. */
+    val playbackSpeed: Flow<Float>
+    /** Saves [speed], clamped to 0.5..3.0. */
+    suspend fun setPlaybackSpeed(speed: Float)
 }
 
 class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSettings {
@@ -35,6 +41,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val layout = stringPreferencesKey("library_layout")
         val carResume = booleanPreferencesKey("resume_on_car_connect")
         val downloadedOnly = booleanPreferencesKey("downloaded_only")
+        val playbackSpeed = floatPreferencesKey("playback_speed")
     }
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
@@ -54,8 +61,17 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val downloadedOnly: Flow<Boolean> = prefs.map { it[Keys.downloadedOnly] ?: false }
 
+    override val playbackSpeed: Flow<Float> = prefs.map { (it[Keys.playbackSpeed] ?: 1.0f).coerceIn(MIN_SPEED, MAX_SPEED) }
+
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
     override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }
+    override suspend fun setPlaybackSpeed(speed: Float) {
+        if (speed.isNaN()) return
+        store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_SPEED, MAX_SPEED) }
+    }
 }
+
+private const val MIN_SPEED = 0.5f
+private const val MAX_SPEED = 3.0f

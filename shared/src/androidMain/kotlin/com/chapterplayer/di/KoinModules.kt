@@ -13,6 +13,7 @@ import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.playback.AndroidPlaybackController
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackProgressSaver
+import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.AbsSessionManager
@@ -47,6 +48,7 @@ import com.chapterplayer.ui.library.GroupDetailViewModel
 import com.chapterplayer.ui.library.LibrariesViewModel
 import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.library.LibraryViewModel
+import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.offline.OfflineStateViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
@@ -142,6 +144,8 @@ val playbackModule = module {
     single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier)) }
     // Saves listening progress whichever screen is open; the application starts it.
     single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
+    // Starts a book (position, saved speed, play) for details, Home and the player.
+    singleOf(::PlaybackStarter)
 }
 
 val deviceModule = module {
@@ -158,7 +162,8 @@ val viewModelModule = module {
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
-    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { PlayerViewModel(get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)
