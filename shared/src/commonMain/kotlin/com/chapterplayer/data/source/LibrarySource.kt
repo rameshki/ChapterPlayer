@@ -2,6 +2,7 @@ package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
@@ -63,6 +64,18 @@ interface LibrarySource {
 
     /** The server's progress for every book, keyed by the app's book id. Empty for a source without progress. Throws when the call fails. */
     suspend fun fetchAllProgress(server: ServerConfig): Map<String, ServerProgress> = emptyMap()
+
+    /** The server's bookmarks for every book, with the app's book ids, all in sync. Empty for a source without bookmarks. Throws when the call fails. */
+    suspend fun fetchBookmarks(server: ServerConfig): List<Bookmark> = emptyList()
+
+    /** Creates a bookmark on the server for [bookId] (the app's id) at a whole second. A source without bookmarks does nothing. Throws when the call fails. */
+    suspend fun createBookmark(server: ServerConfig, bookId: String, timeSec: Long, title: String) {}
+
+    /** Deletes the server's bookmark at [timeSec]; already gone is success. A source without bookmarks does nothing. Throws when the call fails. */
+    suspend fun deleteBookmark(server: ServerConfig, bookId: String, timeSec: Long) {}
+
+    /** Renames the server's bookmark at [timeSec]. A source without bookmarks does nothing. Throws when the call fails. */
+    suspend fun renameBookmark(server: ServerConfig, bookId: String, timeSec: Long, title: String) {}
 
     /**
      * Everything one sync stores, read in one go. A source that can share work between the three reads

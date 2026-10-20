@@ -33,6 +33,7 @@ class RoomSchemaTest {
     private val database2: JsonObject by lazy { load(2) }
     private val database3: JsonObject by lazy { load(3) }
     private val database4: JsonObject by lazy { load(4) }
+    private val database5: JsonObject by lazy { load(5) }
 
     private fun entity(table: String, db: JsonObject = database): JsonObject =
         db.getValue("entities").jsonArray.map { it.jsonObject }
@@ -210,6 +211,35 @@ class RoomSchemaTest {
         for (table in listOf("books", "progress", "server_configs", "excluded_libraries", "libraries", "collections", "collection_books")) {
             assertEquals(columns(table, database3), columns(table, database4), "$table columns")
             assertEquals(primaryKey(table, database3), primaryKey(table, database4), "$table primary key")
+        }
+    }
+
+    @Test
+    fun `version 5 adds bookmarks and position history`() {
+        assertEquals(5, database5.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database4) + setOf("bookmarks", "position_history"), tables(database5))
+        assertEquals(
+            mapOf(
+                "bookId" to "TEXT", "timeSec" to "INTEGER", "serverId" to "TEXT", "title" to "TEXT",
+                "createdAt" to "INTEGER", "state" to "TEXT",
+            ),
+            columns("bookmarks", database5)
+        )
+        assertEquals(listOf("bookId", "timeSec"), primaryKey("bookmarks", database5))
+        assertEquals(
+            mapOf("id" to "INTEGER", "bookId" to "TEXT", "positionMs" to "INTEGER", "recordedAt" to "INTEGER"),
+            columns("position_history", database5)
+        )
+        assertEquals(listOf("id"), primaryKey("position_history", database5))
+        val autoGenerate = entity("position_history", database5).getValue("primaryKey").jsonObject.getValue("autoGenerate").jsonPrimitive.boolean
+        assertTrue(autoGenerate)
+    }
+
+    @Test
+    fun `version 5 leaves the older tables as they were`() {
+        for (table in tables(database4)) {
+            assertEquals(columns(table, database4), columns(table, database5), "$table columns")
+            assertEquals(primaryKey(table, database4), primaryKey(table, database5), "$table primary key")
         }
     }
 }

@@ -7,6 +7,8 @@ import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
 import kotlinx.coroutines.flow.Flow
@@ -93,6 +95,43 @@ interface BookRepository {
      * a place for it (see [saveServerProgress]). Never throws except for cancellation.
      */
     suspend fun mergeAllServerProgress(serverId: String)
+
+    // ---- Bookmarks (local first, synced with Audiobookshelf) and position history (local only) ----
+
+    /** The book's bookmarks without the ones waiting to be deleted, by time. */
+    fun observeBookmarks(bookId: String): Flow<List<Bookmark>>
+
+    /**
+     * Saves a bookmark at [positionMs] (whole seconds, never negative) for the book; a blank or null [title] gets the default one.
+     * A bookmark in the same second as an existing one replaces its title. Works offline; the server hears of it later.
+     * Fails for a book that is not in the library.
+     */
+    suspend fun addBookmark(bookId: String, positionMs: Long, title: String?): Bookmark
+
+    /** Renames the bookmark at [timeSec]; a blank [title] gives the default one. Does nothing for a missing bookmark or one waiting to be deleted. */
+    suspend fun renameBookmark(bookId: String, timeSec: Long, title: String)
+
+    /** Deletes the bookmark at [timeSec]: one the server never heard of is removed outright, a synced one is removed on the server later. */
+    suspend fun deleteBookmark(bookId: String, timeSec: Long)
+
+    /**
+     * Merges the server's bookmarks into the local rows (see `mergeBookmarks`), book by book, each book in one transaction.
+     * Pending local changes are kept, not pushed here. Does nothing for a server type without bookmarks.
+     * A failure (including a sign-in needed again) is returned and leaves the rows as they were; cancellation propagates.
+     */
+    suspend fun pullBookmarks(serverId: String): Result<Unit>
+
+    /**
+     * Delivers the server's pending creates, renames and deletes, oldest first. A row that fails stays pending and the others
+     * still go; the result is a failure if any row failed. A sign-in needed again stops at once with `SignInRequiredException`.
+     */
+    suspend fun pushPendingBookmarks(serverId: String): Result<Unit>
+
+    /** The book's remembered positions, newest first. */
+    fun observeHistory(bookId: String): Flow<List<HistoryEntry>>
+
+    /** Remembers [entry] with the rules of `addToHistory` (newest first, near duplicates replaced, trimmed), in one transaction. */
+    suspend fun recordHistory(entry: HistoryEntry)
 
     /** Progress tracking */
     fun observeProgress(bookId: String): Flow<ReadingProgress?>

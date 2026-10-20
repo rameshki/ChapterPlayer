@@ -94,6 +94,8 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().libraryDao() }
     single { get<ChapterPlayerDatabase>().collectionDao() }
     single { get<ChapterPlayerDatabase>().pendingProgressDao() }
+    single { get<ChapterPlayerDatabase>().bookmarkDao() }
+    single { get<ChapterPlayerDatabase>().historyDao() }
 }
 
 val networkModule = module {
@@ -121,7 +123,7 @@ val sourceModule = module {
 
 val repositoryModule = module {
     single<BookRepository> { BookRepositoryImpl(
-            get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(),
+            get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(), bookmarkDao = get(), historyDao = get(),
             inTransaction = { block ->
                 get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
             }

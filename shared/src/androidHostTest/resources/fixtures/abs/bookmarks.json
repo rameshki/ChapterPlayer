@@ -1,0 +1,13 @@
+{
+  "id": "usr_fixture",
+  "username": "fixture-user",
+  "type": "user",
+  "isActive": true,
+  "permissions": { "download": true, "update": false },
+  "mediaProgress": [],
+  "bookmarks": [
+    { "libraryItemId": "li_fixture01", "time": 120, "title": "Start of chapter two", "createdAt": 1760000100000 },
+    { "libraryItemId": "li_fixture01", "time": 3723.4, "title": "Bookmark at 1:02:03", "createdAt": 1760000200000, "extra": "ignored" },
+    { "libraryItemId": "li_fixture02", "time": 45, "title": "Favourite line", "createdAt": 1760000300000 }
+  ]
+}

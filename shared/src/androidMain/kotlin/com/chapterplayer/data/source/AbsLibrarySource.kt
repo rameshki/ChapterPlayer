@@ -18,6 +18,7 @@ import com.chapterplayer.data.remote.abs.dto.toBookCollection
 import com.chapterplayer.data.remote.abs.fetchAllAbsCollections
 import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.domain.browse.parseSeriesName
+import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.ServerProgress
 
 /** The app's book ids for Audiobookshelf items start with this; the server only knows the part after it. */
@@ -127,6 +128,30 @@ class AbsLibrarySource(
         authorizer.authorized(server) { bearerToken -> api.getMeProgress(server.baseUrl, bearerToken) }
             .filter { it.libraryItemId.isNotEmpty() && it.episodeId.isNullOrEmpty() }
             .associate { ABS_ID_PREFIX + it.libraryItemId to it.toServerProgress() }
+
+    /** Entries without an item id are skipped. */
+    override suspend fun fetchBookmarks(server: ServerConfig): List<Bookmark> =
+        authorizer.authorized(server) { bearerToken -> api.getMeBookmarks(server.baseUrl, bearerToken) }
+            .filter { it.libraryItemId.isNotEmpty() }
+            .map { it.toBookmark() }
+
+    override suspend fun createBookmark(server: ServerConfig, bookId: String, timeSec: Long, title: String) {
+        authorizer.authorized(server) { bearerToken ->
+            api.createBookmark(server.baseUrl, bearerToken, bookId.toServerItemId(), timeSec, title)
+        }
+    }
+
+    override suspend fun deleteBookmark(server: ServerConfig, bookId: String, timeSec: Long) {
+        authorizer.authorized(server) { bearerToken ->
+            api.deleteBookmark(server.baseUrl, bearerToken, bookId.toServerItemId(), timeSec)
+        }
+    }
+
+    override suspend fun renameBookmark(server: ServerConfig, bookId: String, timeSec: Long, title: String) {
+        authorizer.authorized(server) { bearerToken ->
+            api.renameBookmark(server.baseUrl, bearerToken, bookId.toServerItemId(), timeSec, title)
+        }
+    }
 
     override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> =
         librariesOf(server, readLibraries(server))

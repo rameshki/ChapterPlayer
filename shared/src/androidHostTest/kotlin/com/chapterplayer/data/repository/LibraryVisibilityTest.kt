@@ -221,6 +221,14 @@ class LibraryVisibilityTest {
         override fun observeInProgressBooks() = error("unused")
         override fun observeAllProgress() = error("unused")
         override suspend fun saveProgress(progress: ReadingProgress) = error("unused")
+        override fun observeBookmarks(bookId: String) = error("unused")
+        override suspend fun addBookmark(bookId: String, positionMs: Long, title: String?) = error("unused")
+        override suspend fun renameBookmark(bookId: String, timeSec: Long, title: String) = error("unused")
+        override suspend fun deleteBookmark(bookId: String, timeSec: Long) = error("unused")
+        override suspend fun pullBookmarks(serverId: String) = error("unused")
+        override suspend fun pushPendingBookmarks(serverId: String) = error("unused")
+        override fun observeHistory(bookId: String) = error("unused")
+        override suspend fun recordHistory(entry: com.chapterplayer.domain.playback.HistoryEntry) = error("unused")
     }
 
     @Test
