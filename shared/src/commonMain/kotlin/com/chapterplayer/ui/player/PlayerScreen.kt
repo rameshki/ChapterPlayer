@@ -418,7 +418,7 @@ private fun TransportRow(
             Icon(Icons.Default.SkipPrevious, contentDescription = "Previous chapter", modifier = Modifier.size(32.dp))
         }
         SkipButton(seconds = 15, forward = false, description = "Back 15 seconds", onClick = onSkipBack)
-        PlayPauseButton(state.isPlaying, state.isBuffering, onPlayPause)
+        PlayPauseButton(state.showPause, state.isBuffering, onPlayPause)
         SkipButton(seconds = 30, forward = true, description = "Forward 30 seconds", onClick = onSkipForward)
         IconButton(onClick = onNextChapter, enabled = state.canGoNext, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.SkipNext, contentDescription = "Next chapter", modifier = Modifier.size(32.dp))
