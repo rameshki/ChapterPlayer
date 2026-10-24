@@ -172,6 +172,37 @@ class BookDetailsDownloadTest {
     }
 
     @Test
+    fun `offline a download already on its way can still be paused, resumed, cancelled or removed`() = runTest {
+        val s = Setup(online = false)
+        val download = collect(s)
+        s.status(DownloadStatus.PAUSED, fraction = 0.3f)
+        assertEquals(DetailsDownloadPhase.PAUSED, download().phase)
+        s.vm.onResumeDownloadClicked()
+        s.vm.onCancelDownloadClicked()
+        s.status(DownloadStatus.DONE, fraction = 1f)
+        s.vm.onRemoveDownloadClicked()
+        s.vm.onRemoveDownloadConfirmed()
+
+        assertEquals(listOf("resume a", "cancel a", "remove a"), s.downloads.calls)
+    }
+
+    @Test
+    fun `buttons that do not fit the state do nothing`() = runTest {
+        val s = Setup()
+        collect(s)
+        s.vm.onPauseDownloadClicked()
+        s.vm.onResumeDownloadClicked()
+        s.vm.onCancelDownloadClicked()
+        s.vm.onRemoveDownloadClicked()
+        s.vm.onRemoveDownloadConfirmed()
+        s.status(DownloadStatus.DONE, fraction = 1f)
+        s.vm.onDownloadClicked()
+        s.vm.onPauseDownloadClicked()
+
+        assertTrue(s.downloads.calls.isEmpty())
+    }
+
+    @Test
     fun `a failing controller call does not crash the screen`() = runTest {
         val s = Setup()
         val download = collect(s)
