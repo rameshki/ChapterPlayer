@@ -93,6 +93,7 @@ fun SettingsScreen(
     val uiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val downloadedOnly by viewModel.downloadedOnly.collectAsStateWithLifecycle()
+    val resumeOnCarConnect by viewModel.resumeOnCarConnect.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = BackgroundDeep,
@@ -144,7 +145,26 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(vertical = 8.dp)
             )
-            DownloadedOnlyCard(checked = downloadedOnly, onChange = viewModel::setDownloadedOnly)
+            SwitchCard(
+                title = "Downloaded only",
+                description = "Only downloaded books can play, even when online.",
+                checked = downloadedOnly,
+                onChange = viewModel::setDownloadedOnly
+            )
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                text = "Android Auto",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            SwitchCard(
+                title = "Resume when connected to the car",
+                description = "Plays your last book when the phone connects to Android Auto and nothing is playing.",
+                checked = resumeOnCarConnect,
+                onChange = viewModel::setResumeOnCarConnect
+            )
             Spacer(Modifier.height(16.dp))
 
             Text(
@@ -220,8 +240,11 @@ private fun AppearanceCard(
     }
 }
 
+// A setting that is on or off: the whole row toggles it and reads as one switch.
 @Composable
-private fun DownloadedOnlyCard(
+private fun SwitchCard(
+    title: String,
+    description: String,
     checked: Boolean,
     onChange: (Boolean) -> Unit
 ) {
@@ -240,12 +263,12 @@ private fun DownloadedOnlyCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Downloaded only",
+                    text = title,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Only downloaded books can play, even when online.",
+                    text = description,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )

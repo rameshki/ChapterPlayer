@@ -5,9 +5,8 @@ import com.chapterplayer.data.settings.LibraryLayout
 import com.chapterplayer.data.settings.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 
-/** An in-memory [AppSettings] for view model tests. The theme, layout and Downloaded only are writable. */
+/** An in-memory [AppSettings] for view model tests. The theme, layout, car resume and Downloaded only are writable. */
 class FakeAppSettings(
     initialTheme: ThemeMode = ThemeMode.SYSTEM,
     private val failOnSet: Boolean = false
@@ -21,8 +20,9 @@ class FakeAppSettings(
     val layout = MutableStateFlow(LibraryLayout.LARGE_GRID)
     override val libraryLayout: Flow<LibraryLayout> = layout
     override suspend fun setLibraryLayout(layout: LibraryLayout) { this.layout.value = layout }
-    override val resumeOnCarConnect: Flow<Boolean> = flowOf(true)
-    override suspend fun setResumeOnCarConnect(enabled: Boolean) {}
+    val carResume = MutableStateFlow(true)
+    override val resumeOnCarConnect: Flow<Boolean> = carResume
+    override suspend fun setResumeOnCarConnect(enabled: Boolean) { carResume.value = enabled }
     val downloadedOnlyFlow = MutableStateFlow(false)
     override val downloadedOnly: Flow<Boolean> = downloadedOnlyFlow
     override suspend fun setDownloadedOnly(enabled: Boolean) { downloadedOnlyFlow.value = enabled }

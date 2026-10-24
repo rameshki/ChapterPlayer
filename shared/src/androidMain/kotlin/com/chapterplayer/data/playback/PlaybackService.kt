@@ -7,14 +7,12 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CommandButton
-import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
@@ -25,11 +23,8 @@ import com.chapterplayer.domain.playback.TrackSpan
 import com.chapterplayer.domain.playback.bookPosition
 import com.chapterplayer.domain.playback.locate
 import com.chapterplayer.domain.playback.seekByTarget
-import com.chapterplayer.domain.playback.isOwnTrackRequest
 import com.chapterplayer.data.repository.ServerRepository
 import com.google.common.collect.ImmutableList
-import com.google.common.util.concurrent.Futures
-import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,12 +32,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import org.koin.core.component.inject
 
 /**
- * Hosts the app's one player. Screens, the notification, the lock screen and (later) Android Auto all
+ * Hosts the app's one player. Screens, the notification, the lock screen and Android Auto all
  * talk to it through a Media3 session. It keeps playing when the app is swiped away, and stops itself
  * after the player has been paused for [PAUSED_STOP_AFTER_MS].
  */
@@ -88,7 +84,21 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
                 this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
         }
-        val builder = MediaLibrarySession.Builder(this, SkipByTimePlayer(exo), LibraryCallback(packageName))
+        val sessionPlayer = SkipByTimePlayer(exo)
+        // Android Auto, the Assistant and the system come in through this callback; it starts books the phone's way.
+        val callback = CarLibraryCallback(
+            ownPackage = packageName,
+            player = sessionPlayer,
+            expectAnswer = sessionPlayer::expectAnswer,
+            books = get(),
+            downloads = get(),
+            connectivity = get(),
+            settings = get(),
+            starter = get(),
+            playback = playbackController,
+            scope = scope,
+        )
+        val builder = MediaLibrarySession.Builder(this, sessionPlayer, callback)
         if (openApp != null) builder.setSessionActivity(openApp)
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
@@ -150,35 +160,6 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         super.onDestroy()
     }
 
-    /** Only the root item for now: Android Auto's browse tree arrives in a later step. */
-    private class LibraryCallback(private val ownPackage: String) : MediaLibrarySession.Callback {
-        // The service is exported, so only this app may queue audio, and only our own tracks.
-        override fun onAddMediaItems(
-            mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            mediaItems: MutableList<MediaItem>,
-        ): ListenableFuture<MutableList<MediaItem>> =
-            if (mediaItems.all { isOwnTrackRequest(controller.packageName, ownPackage, it.mediaId) }) {
-                Futures.immediateFuture(mediaItems)
-            } else {
-                Futures.immediateFailedFuture(UnsupportedOperationException("Not allowed"))
-            }
-
-        override fun onGetLibraryRoot(
-            session: MediaLibrarySession,
-            browser: MediaSession.ControllerInfo,
-            params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<MediaItem>> {
-            val root = MediaItem.Builder()
-                .setMediaId(ROOT_ID)
-                .setMediaMetadata(
-                    MediaMetadata.Builder().setIsBrowsable(true).setIsPlayable(false).build()
-                )
-                .build()
-            return Futures.immediateFuture(LibraryResult.ofItem(root, params))
-        }
-    }
-
     /**
      * Hides next/previous file (the files of one book are one continuous recording), skips by time on the
      * book timeline across files, and rewinds a little when playback resumes after a pause, whoever
@@ -186,6 +167,13 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
      */
     private class SkipByTimePlayer(private val exo: ExoPlayer) : ForwardingPlayer(exo) {
         private val rewind = ResumeRewind()
+
+        // The items the car callback just answered with: they are what the player already holds.
+        private var answered: List<MediaItem>? = null
+
+        fun expectAnswer(items: List<MediaItem>) {
+            answered = items
+        }
 
         init {
             exo.addListener(object : Player.Listener {
@@ -222,6 +210,29 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
 
         override fun isCommandAvailable(command: Int): Boolean = availableCommands.contains(command)
 
+        // The session sets a car request's answer on the player; those are the items it holds, so only move.
+        override fun setMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long) {
+            val answer = answered
+            answered = null
+            if (answer != null && sameItems(mediaItems, answer)) {
+                // A stale answer (another book was loaded meanwhile) never replaces what the player holds now.
+                if (sameItems(answer, (0 until exo.mediaItemCount).map { exo.getMediaItemAt(it) })) {
+                    moveTo(startIndex, startPositionMs)
+                }
+                return
+            }
+            super.setMediaItems(mediaItems, startIndex, startPositionMs)
+        }
+
+        private fun sameItems(a: List<MediaItem>, b: List<MediaItem>): Boolean =
+            a.size == b.size && a.indices.all { a[it] === b[it] }
+
+        private fun moveTo(index: Int, positionMs: Long) {
+            if (positionMs == C.TIME_UNSET || index !in 0 until exo.mediaItemCount) return
+            val here = index == exo.currentMediaItemIndex && abs(positionMs - exo.currentPosition) <= SAME_PLACE_MS
+            if (!here) exo.seekTo(index, positionMs)
+        }
+
         override fun seekBack() {
             if (!seekByBook(-seekBackIncrement)) super.seekBack()
         }
@@ -256,21 +267,24 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
             return true
         }
 
-        // The files' places on the book timeline, from the items' extras; null for items we did not build.
-        private fun spans(): List<TrackSpan>? {
-            if (exo.mediaItemCount == 0) return null
-            return (0 until exo.mediaItemCount).map { i ->
-                val extras = exo.getMediaItemAt(i).mediaMetadata.extras ?: return null
-                if (!extras.containsKey(EXTRA_START_MS) || !extras.containsKey(EXTRA_DURATION_MS)) return null
-                TrackSpan(i, extras.getLong(EXTRA_START_MS), extras.getLong(EXTRA_DURATION_MS))
-            }
-        }
+        private fun spans(): List<TrackSpan>? = exo.bookSpans()
     }
 
     private companion object {
-        const val ROOT_ID = "root"
         const val SEEK_BACK_MS = 15_000L
         const val SEEK_FORWARD_MS = 30_000L
         const val PAUSED_STOP_AFTER_MS = 10 * 60 * 1000L
+        // An answer this close to where the player is needs no seek (the answer was read a moment ago).
+        const val SAME_PLACE_MS = 1_500L
+    }
+}
+
+/** The files' places on the book timeline, from the items' extras; null for items we did not build. */
+internal fun Player.bookSpans(): List<TrackSpan>? {
+    if (mediaItemCount == 0) return null
+    return (0 until mediaItemCount).map { i ->
+        val extras = getMediaItemAt(i).mediaMetadata.extras ?: return null
+        if (!extras.containsKey(EXTRA_START_MS) || !extras.containsKey(EXTRA_DURATION_MS)) return null
+        TrackSpan(i, extras.getLong(EXTRA_START_MS), extras.getLong(EXTRA_DURATION_MS))
     }
 }
