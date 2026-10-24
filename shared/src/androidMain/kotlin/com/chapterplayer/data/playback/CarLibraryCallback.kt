@@ -46,9 +46,11 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** A car request that could not be played; the message is safe to show and to speak. */
@@ -114,14 +116,20 @@ class CarLibraryCallback(
         carConnections.disconnected(controller)
     }
 
+    // Counts books the car asked for; a resume on connect gives way to the listener's own request.
+    private var carStarts = 0
+
     private suspend fun resumeOnConnect(controller: MediaSession.ControllerInfo) {
         try {
+            val startsBefore = carStarts
             val enabled = settings.resumeOnCarConnect.first()
             val snap = snapshot()
             val busy = playback.state.value.bookId != null || player.isPlaying || player.mediaItemCount > 0
             val book = carConnectResume(
                 enabled, controller.packageName, controller.isPackageNameVerified, busy, snap.data.items, snap.online, now(),
             ) ?: return
+            val busyNow = playback.state.value.bookId != null || player.isPlaying || player.mediaItemCount > 0
+            if (carStarts != startsBefore || busyNow) return
             starter.start(book)
         } catch (e: CancellationException) {
             throw e
@@ -274,6 +282,7 @@ class CarLibraryCallback(
         controller: MediaSession.ControllerInfo,
         book: AudioBook,
     ): MediaItemsWithStartPosition {
+        carStarts++
         starter.start(book).onFailure {
             throw report(session, controller, SessionError.ERROR_IO, it.message ?: PlaybackStartException.DEFAULT_MESSAGE)
         }
@@ -323,11 +332,11 @@ class CarLibraryCallback(
     private class Snapshot(val data: CarData, val online: Boolean)
 
     // One consistent view of the visible books (the same set Home and Library show) per call.
-    private suspend fun snapshot(): Snapshot {
+    private suspend fun snapshot(): Snapshot = withContext(Dispatchers.Default) {
         val items = observeBrowseItems(books, downloads).first()
         val collections = books.observeCollections().first()
         val online = connectivity.isOnline.first()
-        return Snapshot(CarData(items, collections), online)
+        Snapshot(CarData(items, collections), online)
     }
 
     private fun mediaIds(): List<String> = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }

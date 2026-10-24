@@ -62,7 +62,7 @@ fun titleLetter(title: String): Char {
 
 /** Groups the letters that occur into ranges of at most 25 titles; a letter with more titles stands alone. */
 fun letterRanges(titles: List<String>): List<LetterRange> {
-    val counts = sortedMapOf<Char, Int>(compareBy { if (it == '#') ' ' else it })
+    val counts = mutableMapOf<Char, Int>()
     for (title in titles) {
         val letter = titleLetter(title)
         counts[letter] = (counts[letter] ?: 0) + 1
@@ -77,7 +77,7 @@ fun letterRanges(titles: List<String>): List<LetterRange> {
         first = null
         total = 0
     }
-    for ((letter, n) in counts) {
+    for ((letter, n) in counts.entries.sortedBy { rank(it.key) }.map { it.key to it.value }) {
         if (first != null && total + n > MAX_RANGE_TITLES) close()
         if (first == null) first = letter
         last = letter
