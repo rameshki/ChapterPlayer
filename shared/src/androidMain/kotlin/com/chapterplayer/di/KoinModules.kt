@@ -4,7 +4,7 @@ import androidx.room.Room
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.chapterplayer.data.DownloadStates
-import com.chapterplayer.data.NoDownloadStates
+import com.chapterplayer.data.RoomDownloadStates
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
@@ -98,6 +98,7 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().pendingProgressDao() }
     single { get<ChapterPlayerDatabase>().bookmarkDao() }
     single { get<ChapterPlayerDatabase>().historyDao() }
+    single { get<ChapterPlayerDatabase>().downloadDao() }
 }
 
 val networkModule = module {
@@ -132,8 +133,7 @@ val repositoryModule = module {
         ) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
-    // Stage 2 has no downloads; Stage 3 replaces this binding.
-    single<DownloadStates> { NoDownloadStates() }
+    single<DownloadStates> { RoomDownloadStates(get()) }
     single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
