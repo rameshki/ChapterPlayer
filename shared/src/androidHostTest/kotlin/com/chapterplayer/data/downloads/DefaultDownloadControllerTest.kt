@@ -32,7 +32,13 @@ class DefaultDownloadControllerTest {
             log += "schedule $bookId wifiOnly=$wifiOnly replace=$replace"
         }
         override suspend fun cancel(bookId: String) { log += "cancel $bookId" }
-        override suspend fun awaitStopped(bookId: String) { log += "await $bookId" }
+    }
+
+    private class FakeJobs(val log: MutableList<String>) : DownloadJobs {
+        override suspend fun <T> whileIdle(bookId: String, block: suspend () -> T): T {
+            log += "idle $bookId"
+            return block()
+        }
     }
 
     private fun book(id: String = bookId) = BookEntity(
@@ -50,7 +56,7 @@ class DefaultDownloadControllerTest {
             override fun rootDir() = root
             override fun freeBytes() = Long.MAX_VALUE
         }
-        val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, scheduler, nowMs = { 42 })
+        val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, scheduler, FakeJobs(scheduler.log), nowMs = { 42 })
         fun status() = dao.downloads.value.singleOrNull { it.bookId == bookId }?.status
     }
 
@@ -150,7 +156,7 @@ class DefaultDownloadControllerTest {
 
         rig.controller.cancel(bookId)
 
-        assertEquals(listOf("cancel $bookId", "await $bookId"), rig.scheduler.log)
+        assertEquals(listOf("cancel $bookId", "idle $bookId"), rig.scheduler.log)
         assertFalse(dir.exists())
         assertTrue(File(other, "1.mp3").exists())
         assertNull(rig.status())
@@ -186,8 +192,8 @@ class DefaultDownloadControllerTest {
     }
 
     @Test
-    fun `after the time limit a download still waiting is queued and scheduled again`() = runTest {
-        val rig = Rig(listOf(row(DownloadStatus.DOWNLOADING)))
+    fun `after the time limit a download the job put back in the queue is scheduled again`() = runTest {
+        val rig = Rig(listOf(row(DownloadStatus.QUEUED)))
 
         rig.controller.afterStop(bookId, timedOut = true)
 
@@ -206,12 +212,12 @@ class DefaultDownloadControllerTest {
     }
 
     @Test
-    fun `a stop that was not the time limit only puts a running download back in the queue`() = runTest {
+    fun `a stop that was not the time limit changes nothing, so a newer job is never touched`() = runTest {
         val rig = Rig(listOf(row(DownloadStatus.DOWNLOADING)))
 
         rig.controller.afterStop(bookId, timedOut = false)
 
-        assertEquals("QUEUED", rig.status())
+        assertEquals("DOWNLOADING", rig.status())
         assertTrue(rig.scheduler.log.isEmpty())
     }
 }

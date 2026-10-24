@@ -3,7 +3,6 @@ package com.chapterplayer.data.downloads
 import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.local.dao.DownloadDao
-import com.chapterplayer.data.local.entity.DownloadEntity
 import com.chapterplayer.data.local.entity.DownloadFileEntity
 import com.chapterplayer.data.model.ChapterJson
 import com.chapterplayer.data.model.ServerConfig
@@ -17,16 +16,16 @@ import com.chapterplayer.data.source.toServerItemId
 import com.chapterplayer.domain.downloads.BookProgress
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.domain.downloads.FileProgress
+import com.chapterplayer.domain.downloads.PART_SUFFIX
 import com.chapterplayer.domain.downloads.SpeedTracker
 import com.chapterplayer.domain.downloads.backoffMs
 import com.chapterplayer.domain.downloads.bookProgress
-import com.chapterplayer.domain.downloads.downloadStatusOf
-import com.chapterplayer.domain.downloads.statusAfterStop
 import com.chapterplayer.domain.downloads.hasRoomFor
 import com.chapterplayer.domain.downloads.nextFileIndex
 import com.chapterplayer.domain.downloads.planFiles
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -37,15 +36,21 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface BookResult {
     data object Done : BookResult
     /** Stopped for good; the row is FAILED with [message] (fixed, safe text). */
     data class Failed(val message: String) : BookResult
-    /** Gave up for now after the allowed attempts; the row is QUEUED for a later run. */
+    /** Gave up for now after the allowed attempts; the row is QUEUED and the scheduler's backoff takes over. */
     data object Retry : BookResult
     /** The download was cancelled or removed: nothing to do. */
     data object Missing : BookResult
@@ -53,13 +58,25 @@ sealed interface BookResult {
     data object Paused : BookResult
 }
 
+/** Who may touch a book's download files and rows right now. */
+interface DownloadJobs {
+    /** Runs [block] while no download job of [bookId] runs, and keeps new ones waiting until it ends. */
+    suspend fun <T> whileIdle(bookId: String, block: suspend () -> T): T
+}
+
 /**
  * Downloads one book, file after file, resuming where Room and the `.part` files say it stopped.
  * On the first run it asks the server for the file list (and saves the chapters if the book row has
  * none, and the cover if it is not stored yet), checks the space, and writes the `download_files` rows.
- * Failures that may pass (network, server errors, stalls) are retried after [backoffMs]; the attempt
- * count starts again whenever bytes arrived. When the job is stopped, the bytes so far are saved and a
- * book that was DOWNLOADING goes back to QUEUED (a pause has already set PAUSED and stays so).
+ *
+ * Ownership: one job per book at a time (a later job, or [whileIdle], waits until the earlier one has
+ * fully stopped and saved), and one book downloading at a time across the app, so the space check holds.
+ * Statuses change only from the expected ones, so a pause or a removal is never overwritten.
+ *
+ * Failures that may pass (network, server errors, stalls) are retried after [backoffMs], at most
+ * [maxAttempts] times in a row without progress; then the job ends with [BookResult.Retry] and the
+ * scheduler's own backoff takes over. When the job is stopped, the bytes so far are saved and a book that
+ * was DOWNLOADING goes back to QUEUED.
  */
 class BookDownloader(
     private val dao: DownloadDao,
@@ -71,39 +88,56 @@ class BookDownloader(
     private val location: DownloadLocation,
     private val limitBytes: suspend () -> Long? = { null },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-    private val maxAttempts: Int = Int.MAX_VALUE,
+    private val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
     private val persistIntervalMs: Long = 2_000,
+    private val persistEveryBytes: Long = 1L shl 20,
     private val nowMs: () -> Long = System::currentTimeMillis,
-) {
+) : DownloadJobs {
     private val progressByBook = MutableStateFlow<Map<String, BookProgress>>(emptyMap())
+    private val bookLocks = ConcurrentHashMap<String, Mutex>()
+    private val downloadSlot = Semaphore(1)
 
     /** The live progress of a book while (and after) this process downloads it; null before. */
     fun progress(bookId: String): Flow<BookProgress?> = progressByBook.map { it[bookId] }.distinctUntilChanged()
 
-    suspend fun run(bookId: String): BookResult {
-        val row = dao.get(bookId) ?: return BookResult.Missing
-        when (row.status) {
-            DownloadStatus.DONE.name -> return BookResult.Done
-            DownloadStatus.PAUSED.name -> return BookResult.Paused
-        }
-        val server = servers.getById(row.serverId) ?: return fail(bookId, SERVER_GONE)
-        if (bookDao.getById(bookId) == null) return fail(bookId, BOOK_GONE)
-        setStatus(bookId, DownloadStatus.DOWNLOADING, null)
+    override suspend fun <T> whileIdle(bookId: String, block: suspend () -> T): T = lockOf(bookId).withLock { block() }
 
-        val job = Job(bookId, server, bookDirectory(location.rootDir(), server.id, bookId))
+    private fun lockOf(bookId: String) = bookLocks.computeIfAbsent(bookId) { Mutex() }
+
+    /** [onStart] runs once this book has the download slot, right before any transfer (the worker goes foreground then). */
+    suspend fun run(bookId: String, onStart: suspend () -> Unit = {}): BookResult =
+        lockOf(bookId).withLock { downloadSlot.withPermit { runOwned(bookId, onStart) } }
+
+    private suspend fun runOwned(bookId: String, onStart: suspend () -> Unit): BookResult {
+        val row = dao.get(bookId) ?: return BookResult.Missing
+        if (!moveStatus(bookId, listOf(DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING), DownloadStatus.DOWNLOADING)) {
+            return when (dao.get(bookId)?.status) {
+                null -> BookResult.Missing
+                DownloadStatus.DONE.name -> BookResult.Done
+                DownloadStatus.PAUSED.name -> BookResult.Paused
+                else -> BookResult.Failed(dao.get(bookId)?.error ?: FAILED)
+            }
+        }
+        var job: Job? = null
         try {
+            val server = servers.getById(row.serverId) ?: return fail(bookId, SERVER_GONE)
+            if (bookDao.getById(bookId) == null) return fail(bookId, BOOK_GONE)
+            onStart()
+            val current = Job(bookId, server, bookDirectory(location.rootDir(), server.id, bookId))
+            job = current
             var attempt = 0
             while (true) {
-                when (val step = job.attempt(row)) {
+                when (val step = current.attempt()) {
                     Step.Done -> {
-                        setStatus(bookId, DownloadStatus.DONE, null)
+                        moveStatus(bookId, listOf(DownloadStatus.DOWNLOADING), DownloadStatus.DONE)
                         return BookResult.Done
                     }
                     is Step.Failed -> return fail(bookId, step.message)
+                    Step.Gone -> return BookResult.Missing
                     is Step.Again -> {
                         attempt = if (step.progressed) 1 else attempt + 1
                         if (attempt >= maxAttempts) {
-                            setStatus(bookId, DownloadStatus.QUEUED, null)
+                            moveStatus(bookId, listOf(DownloadStatus.DOWNLOADING), DownloadStatus.QUEUED)
                             return BookResult.Retry
                         }
                         sleep(backoffMs(attempt))
@@ -112,10 +146,14 @@ class BookDownloader(
             }
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
-                job.saveOnStop()
-                statusAfterStop(downloadStatusOf(dao.get(bookId)?.status))?.let { setStatus(bookId, it, null) }
+                job?.saveOnStop()
+                moveStatus(bookId, listOf(DownloadStatus.DOWNLOADING), DownloadStatus.QUEUED)
             }
             throw e
+        } catch (_: Exception) {
+            // A bug or an unexpected platform error: stop with a fixed message rather than crash the worker.
+            withContext(NonCancellable) { job?.saveOnStop() }
+            return fail(bookId, FAILED)
         }
     }
 
@@ -123,6 +161,8 @@ class BookDownloader(
         data object Done : Step
         data class Failed(val message: String) : Step
         data class Again(val progressed: Boolean) : Step
+        /** The download row was removed while planning. */
+        data object Gone : Step
     }
 
     private inner class Job(val bookId: String, val server: ServerConfig, val dir: File) {
@@ -132,11 +172,11 @@ class BookDownloader(
         @Volatile private var current: DownloadFileEntity? = null
         @Volatile private var currentDone = 0L
 
-        suspend fun attempt(download: DownloadEntity): Step {
+        suspend fun attempt(): Step {
             rows = dao.getFiles(bookId)
             if (rows.isEmpty()) {
                 val planned = try {
-                    plan(download)
+                    plan()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: SignInRequiredException) {
@@ -154,31 +194,39 @@ class BookDownloader(
             while (true) {
                 val index = nextFileIndex(rows.map { FileProgress(it.totalBytes, it.doneBytes) }) ?: return Step.Done
                 val file = rows[index]
-                val result = download(file)
-                when (result) {
+                when (val result = download(file)) {
                     is FileResult.Done -> {
-                        updateRow(file.copy(doneBytes = file.totalBytes, path = result.file.path))
+                        saveDone(file, file.totalBytes)
                         progressed = true
                     }
                     is FileResult.Retry -> {
                         val moved = result.doneBytes > file.doneBytes
-                        updateRow(file.copy(doneBytes = result.doneBytes.coerceIn(0L, file.totalBytes)))
+                        saveDone(file, result.doneBytes.coerceIn(0L, file.totalBytes))
                         return Step.Again(progressed || moved)
                     }
-                    is FileResult.Failed -> return Step.Failed(result.message)
+                    is FileResult.Failed -> {
+                        if (result.replan) dropPlan()
+                        return Step.Failed(result.message)
+                    }
                 }
             }
         }
 
         /** Asks the server for the files and writes the rows; a [Step] when the book cannot be downloaded, else null. */
-        private suspend fun plan(download: DownloadEntity): Step? {
+        private suspend fun plan(): Step? {
             val item = authorizer.authorized(server) { bearer -> api.getItem(server.baseUrl, bearer, bookId.toServerItemId()) }
             val planned = planFiles(item.toAudioFileEntries())
             if (planned.isEmpty()) return Step.Failed(NO_FILES)
             val needed = planned.sumOf { it.totalBytes }
-            val used = dao.observeFiles().first().filter { it.bookId != bookId }.sumOf { it.doneBytes }
-            if (!hasRoomFor(needed, location.freeBytes(), limitBytes(), used)) return Step.Failed(NO_SPACE)
+            // Other books' files: what they hold counts against the limit, what they still need against the free space.
+            val others = dao.observeFiles().first().filter { it.bookId != bookId }
+            val othersDone = others.sumOf { it.doneBytes }
+            val othersRemaining = others.sumOf { (it.totalBytes - it.doneBytes).coerceAtLeast(0L) }
+            if (!hasRoomFor(needed + othersRemaining, location.freeBytes(), limitBytes(), othersDone)) {
+                return Step.Failed(NOT_ENOUGH_SPACE)
+            }
 
+            val download = dao.get(bookId) ?: return Step.Gone
             rows = planned.map { p ->
                 DownloadFileEntity(
                     bookId = bookId, ino = p.ino, fileName = p.fileName,
@@ -187,7 +235,7 @@ class BookDownloader(
                 )
             }
             dao.upsertFiles(rows)
-            dao.upsert((dao.get(bookId) ?: download).copy(totalBytes = needed, updatedAt = nowMs()))
+            dao.upsert(download.copy(totalBytes = needed, updatedAt = nowMs()))
 
             // The book row already holds chapters after a sync; only an empty list is filled in.
             val book = bookDao.getById(bookId)
@@ -196,6 +244,16 @@ class BookDownloader(
                 bookDao.updateChapters(bookId, ChapterJson.encode(chapters))
             }
             return null
+        }
+
+        /** The server's file list changed: forget the plan and the partial files, so the next run plans again. */
+        private suspend fun dropPlan() {
+            dao.deleteFiles(bookId)
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                dir.listFiles { f -> f.name.endsWith(PART_SUFFIX) }?.forEach { it.delete() }
+            }
+            rows = emptyList()
+            current = null
         }
 
         private suspend fun saveCoverIfMissing() {
@@ -210,10 +268,12 @@ class BookDownloader(
             current = file
             currentDone = file.doneBytes
             report()
+            // Progress reaches Room every [persistIntervalMs] or after [persistEveryBytes], whichever comes first.
+            val bigStep = Channel<Unit>(Channel.CONFLATED)
+            var saved = currentDone
             val saver = launch {
-                var saved = currentDone
                 while (isActive) {
-                    delay(persistIntervalMs)
+                    withTimeoutOrNull(persistIntervalMs) { bigStep.receive() }
                     val done = currentDone
                     if (done != saved) {
                         dao.updateFileProgress(bookId, file.ino, done)
@@ -226,6 +286,7 @@ class BookDownloader(
                     FileRequest(server, bookId.toServerItemId(), file.ino, file.fileName, dir, file.totalBytes, file.doneBytes)
                 ) { done ->
                     currentDone = done
+                    if (done - saved >= persistEveryBytes) bigStep.trySend(Unit)
                     report()
                 }
             } finally {
@@ -233,9 +294,10 @@ class BookDownloader(
             }
         }
 
-        private suspend fun updateRow(row: DownloadFileEntity) {
-            rows = rows.map { if (it.ino == row.ino) row else it }
-            dao.upsertFiles(listOf(row))
+        /** Updates (never inserts) the file row, so a removed download is not brought back. */
+        private suspend fun saveDone(file: DownloadFileEntity, doneBytes: Long) {
+            rows = rows.map { if (it.ino == file.ino) it.copy(doneBytes = doneBytes) else it }
+            dao.updateFileProgress(bookId, file.ino, doneBytes)
             current = null
             report()
         }
@@ -258,19 +320,21 @@ class BookDownloader(
         }
     }
 
-    private suspend fun setStatus(bookId: String, status: DownloadStatus, error: String?) =
-        dao.updateStatus(bookId, status.name, error, nowMs())
+    /** Moves the status only while it is one of [from]; false when someone else (pause, removal) changed it first. */
+    private suspend fun moveStatus(bookId: String, from: List<DownloadStatus>, to: DownloadStatus, error: String? = null): Boolean =
+        dao.updateStatusIf(bookId, from.map { it.name }, to.name, error, nowMs()) > 0
 
     private suspend fun fail(bookId: String, message: String): BookResult {
-        setStatus(bookId, DownloadStatus.FAILED, message)
+        moveStatus(bookId, listOf(DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING), DownloadStatus.FAILED, message)
         return BookResult.Failed(message)
     }
 
     private companion object {
+        const val DEFAULT_MAX_ATTEMPTS = 8
         const val COVER_FILE = "cover.jpg"
-        const val NO_SPACE = "Not enough space"
         const val NO_FILES = "This book has no audio files to download"
         const val SERVER_GONE = "The book's server is no longer configured"
         const val BOOK_GONE = "This book is no longer in the library"
+        const val FAILED = "The download failed"
     }
 }

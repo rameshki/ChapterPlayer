@@ -34,11 +34,9 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import org.koin.core.component.inject
@@ -73,17 +71,8 @@ class WorkManagerDownloadScheduler(private val context: Context) : DownloadSched
         workManager.cancelUniqueWork(uniqueWorkName(bookId)).await()
     }
 
-    override suspend fun awaitStopped(bookId: String) {
-        withTimeoutOrNull(STOP_WAIT_MS) {
-            workManager.getWorkInfosForUniqueWorkFlow(uniqueWorkName(bookId)).first { infos ->
-                infos.none { it.state == WorkInfo.State.RUNNING }
-            }
-        }
-    }
-
     private companion object {
         const val DOWNLOAD_TAG = "download"
-        const val STOP_WAIT_MS = 5_000L
     }
 }
 
@@ -104,7 +93,6 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val bookId = inputData.getString(KEY_BOOK_ID) ?: return Result.failure()
         val title = bookDao.getById(bookId)?.title ?: DEFAULT_TITLE
         val notifications = DownloadNotifications(applicationContext)
-        tryForeground(notifications.foregroundInfo(bookId, title, null))
         return try {
             coroutineScope {
                 val updates = launch {
@@ -113,7 +101,8 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                     }
                 }
                 val result = try {
-                    downloader.run(bookId)
+                    // Foreground only once this book has the download slot (a waiting book uses no foreground time).
+                    downloader.run(bookId, onStart = { tryForeground(notifications.foregroundInfo(bookId, title, null)) })
                 } finally {
                     updates.cancel()
                 }
@@ -192,12 +181,23 @@ internal class DownloadNotifications(private val context: Context) {
         manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Downloads", NotificationManager.IMPORTANCE_LOW))
     }
 
-    private fun notificationId(bookId: String) = NOTIFICATION_BASE + (bookId.hashCode() and 0xFFFF)
+    private fun notificationId(bookId: String) = DownloadNotificationIds.idFor(bookId)
 
     private companion object {
         const val CHANNEL_ID = "downloads"
-        const val NOTIFICATION_BASE = 0x2000_0000
     }
+}
+
+/**
+ * Notification ids for downloads: each book gets the next free number the first time it asks, so two books
+ * never share one in this process (a hash could collide). Ids start well away from the player's notification.
+ */
+internal object DownloadNotificationIds {
+    private const val FIRST = 0x2000_0000
+    private val ids = HashMap<String, Int>()
+
+    @Synchronized
+    fun idFor(bookId: String): Int = ids.getOrPut(bookId) { FIRST + ids.size }
 }
 
 /** Pause and Cancel from the download notification. */

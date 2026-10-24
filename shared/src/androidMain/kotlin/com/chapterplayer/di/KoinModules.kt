@@ -11,6 +11,7 @@ import com.chapterplayer.data.downloads.AppFilesDownloadLocation
 import com.chapterplayer.data.downloads.BookDownloader
 import com.chapterplayer.data.downloads.DefaultDownloadController
 import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.downloads.DownloadScheduler
@@ -79,6 +80,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 /** The debug flag. The shared module has no BuildConfig, so the app module provides it. */
@@ -183,9 +185,9 @@ val downloadModule = module {
     single<DownloadLocation> { AppFilesDownloadLocation(androidContext()) }
     single { FileDownloader(get(DownloadClientQualifier), get()) }
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
-    single { BookDownloader(get(), get(), get(), get(), get(), get(), get()) }
+    single { BookDownloader(get(), get(), get(), get(), get(), get(), get()) } bind DownloadJobs::class
     single<DownloadScheduler> { WorkManagerDownloadScheduler(androidContext()) }
-    single { DefaultDownloadController(get(), get(), get(), get(), get()) }
+    single { DefaultDownloadController(get(), get(), get(), get(), get(), get()) }
     single<DownloadController> { get<DefaultDownloadController>() }
     // The application starts it: reschedules downloads after a reboot or process death.
     single { DownloadQueueRestorer(get(), get(AppScopeQualifier)) }

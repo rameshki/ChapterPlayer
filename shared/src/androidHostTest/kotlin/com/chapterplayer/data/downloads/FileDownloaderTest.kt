@@ -14,6 +14,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -41,8 +43,12 @@ class FileDownloaderTest {
             directory = dir, totalBytes = total, recordedDoneBytes = recorded
         )
 
-    private fun downloader(fake: FakeAbs, stallMs: Long = 60_000, clock: () -> Long = System::currentTimeMillis) =
-        FileDownloader(fake.downloadClient, fake.authorizer(FakeServers(testServer())), stallMs = stallMs, nowMs = clock)
+    private fun downloader(
+        fake: FakeAbs,
+        stallMs: Long = 60_000,
+        clock: () -> Long = System::currentTimeMillis,
+        openPart: (File) -> FileOutputStream = { FileOutputStream(it, true) },
+    ) = FileDownloader(fake.downloadClient, fake.authorizer(FakeServers(testServer())), stallMs = stallMs, nowMs = clock, openPart = openPart)
 
     private val part get() = File(dir, "77.mp3.part")
     private val final get() = File(dir, "77.mp3")
@@ -311,5 +317,79 @@ class FileDownloaderTest {
 
         assertTrue(progress.size <= 4, "too many reports: $progress")
         assertEquals(body.size.toLong(), progress.last())
+    }
+
+    @Test
+    fun `a server that never sends the headers is given up after the stall time and retried`() = runBlocking {
+        val fake = FakeAbs { awaitCancellation() }
+
+        val result = withTimeout(10_000) { downloader(fake, stallMs = 300).download(request()) {} }
+
+        assertEquals(FileResult.Retry(0), result)
+    }
+
+    @Test
+    fun `a cover whose headers never come is given up`() = runBlocking {
+        val fake = FakeAbs { awaitCancellation() }
+        dir.mkdirs()
+
+        val ok = withTimeout(10_000) {
+            downloader(fake, stallMs = 300).downloadSmall(testServer(), "http://abs.test/api/items/li_1/cover", File(dir, "cover.jpg"))
+        }
+
+        assertFalse(ok)
+        assertFalse(File(dir, "cover.jpg").exists())
+    }
+
+    @Test
+    fun `a refresh the server answers with too many requests or an error is retried, not a sign-in failure`() = runBlocking {
+        for (status in listOf(HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable)) {
+            val fake = FakeAbs(refreshStatus = status) { respond("", HttpStatusCode.Unauthorized) }
+            assertEquals(FileResult.Retry(0), downloader(fake).download(request()) {}, "refresh answered $status")
+        }
+    }
+
+    @Test
+    fun `a refresh the server refuses is a sign-in failure`() = runBlocking {
+        val fake = FakeAbs(refreshStatus = HttpStatusCode.Forbidden) { respond("", HttpStatusCode.Unauthorized) }
+        assertEquals(FileResult.Failed(SIGN_IN_AGAIN_TEXT, signInRequired = true), downloader(fake).download(request()) {})
+    }
+
+    @Test
+    fun `a full disk fails with not enough space instead of retrying`() = runBlocking {
+        val fake = FakeAbs { serve(body, it) }
+        val full: (File) -> FileOutputStream = { file ->
+            object : FileOutputStream(file, true) {
+                override fun write(b: ByteArray, off: Int, len: Int) = throw IOException("write failed: ENOSPC (No space left on device)")
+            }
+        }
+
+        val result = downloader(fake, openPart = full).download(request()) {}
+
+        assertEquals(FileResult.Failed("Not enough space"), result)
+    }
+
+    @Test
+    fun `a part file that cannot be written fails with a storage error instead of retrying`() = runBlocking {
+        part.mkdirs() // a folder where the part file should be
+        val fake = FakeAbs { serve(body, it) }
+
+        val result = downloader(fake).download(request()) {}
+
+        val failed = assertIs<FileResult.Failed>(result)
+        assertEquals("Cannot write the download to storage", failed.message)
+        assertFalse(failed.replan)
+    }
+
+    @Test
+    fun `a missing file or a wrong size asks for the book to be planned again`() = runBlocking {
+        val missing = FakeAbs { respond("", HttpStatusCode.NotFound) }
+        assertTrue(assertIs<FileResult.Failed>(downloader(missing).download(request()) {}).replan)
+
+        val sized = FakeAbs { serve(body, it) }
+        assertTrue(assertIs<FileResult.Failed>(downloader(sized).download(request(total = 12_000)) {}).replan)
+
+        val refused = FakeAbs { respond("", HttpStatusCode.Forbidden) }
+        assertFalse(assertIs<FileResult.Failed>(downloader(refused).download(request()) {}).replan)
     }
 }

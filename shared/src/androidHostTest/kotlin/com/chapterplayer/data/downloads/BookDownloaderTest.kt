@@ -1,6 +1,7 @@
 package com.chapterplayer.data.downloads
 
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.DownloadDao
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.DownloadEntity
 import com.chapterplayer.data.local.entity.DownloadFileEntity
@@ -20,6 +21,7 @@ import io.ktor.utils.io.writeFully
 import io.ktor.utils.io.writer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
@@ -96,8 +98,11 @@ class BookDownloaderTest {
         books: FakeBookDao = FakeBookDao(book()),
         freeBytes: Long = 10L * 1024 * 1024 * 1024,
         limitBytes: Long? = null,
-        maxAttempts: Int = Int.MAX_VALUE,
+        maxAttempts: Int = 8,
         stallMs: Long = 60_000,
+        wrap: (InMemoryDownloadDao) -> DownloadDao = { it },
+        progressIntervalMs: Long = 500,
+        persistIntervalMs: Long = 2_000,
     ): Rig {
         val servers = FakeServers(testServer())
         val authorizer = fake.authorizer(servers)
@@ -107,9 +112,10 @@ class BookDownloaderTest {
             override fun freeBytes(): Long = freeBytes
         }
         val downloader = BookDownloader(
-            dao = dao, bookDao = books, servers = servers, api = fake.api, authorizer = authorizer,
-            files = FileDownloader(fake.downloadClient, authorizer, stallMs = stallMs),
+            dao = wrap(dao), bookDao = books, servers = servers, api = fake.api, authorizer = authorizer,
+            files = FileDownloader(fake.downloadClient, authorizer, stallMs = stallMs, progressIntervalMs = progressIntervalMs),
             location = location, limitBytes = { limitBytes }, sleep = { sleeps += it }, maxAttempts = maxAttempts,
+            persistIntervalMs = persistIntervalMs,
         )
         return Rig(dao, books, downloader, sleeps)
     }
@@ -311,11 +317,168 @@ class BookDownloaderTest {
         assertEquals(DownloadStatus.QUEUED.name, rig.status())
         assertEquals(700L, rig.dao.files.value.first { it.ino == "11" }.doneBytes)
     }
+
+    @Test
+    fun `the bytes other unfinished books still need count against the free space`() = runBlocking {
+        // 150 MiB free: enough for this book plus the safety margin, not with another book's 60 MiB still to come.
+        val other = DownloadFileEntity("abs_other", "1", "x.mp3", "/x", 70L shl 20, 10L shl 20, 0)
+        val dao = InMemoryDownloadDao(listOf(queued()), listOf(other))
+        val rig = rig(fakeServer(), dao = dao, freeBytes = 150L shl 20)
+
+        assertEquals(BookResult.Failed("Not enough space"), rig.downloader.run(bookId))
+
+        val finished = other.copy(doneBytes = other.totalBytes)
+        val roomy = rig(fakeServer(), dao = InMemoryDownloadDao(listOf(queued()), listOf(finished)), freeBytes = 150L shl 20)
+        assertEquals(BookResult.Done, roomy.downloader.run(bookId))
+    }
+
+    @Test
+    fun `a file the server no longer has drops the plan and the part files so the next run plans again`() = runBlocking {
+        var gone = true
+        val fake = fakeServer(file = { req, body ->
+            if (gone && body.size == second.size) respond("", HttpStatusCode.NotFound) else serve(body, req)
+        })
+        dir.mkdirs()
+        File(dir, "12.mp3.part").writeBytes(byteArrayOf(1, 2, 3))
+        val rig = rig(fake)
+
+        assertTrue(rig.downloader.run(bookId) is BookResult.Failed)
+        assertTrue(rig.dao.files.value.isEmpty())
+        assertTrue(dir.listFiles().orEmpty().none { it.name.endsWith(".part") })
+        assertTrue(File(dir, "11.mp3").isFile) // finished files stay and are used again
+
+        gone = false
+        rig.dao.updateStatus(bookId, DownloadStatus.QUEUED.name, null, 1)
+        assertEquals(BookResult.Done, rig.downloader.run(bookId))
+        assertEquals(2, fake.requests.count { it.url.encodedPath == "/api/items/li_1" })
+        assertEquals(1, fake.requests.count { it.url.encodedPath.endsWith("/file/11/download") })
+    }
+
+    @Test
+    fun `a pause during the last file is not overwritten by done`() = runBlocking {
+        lateinit var rig: Rig
+        val fake = fakeServer(file = { req, body ->
+            if (body.size == second.size) rig.dao.updateStatus(bookId, DownloadStatus.PAUSED.name, null, 1)
+            serve(body, req)
+        })
+        rig = rig(fake)
+
+        rig.downloader.run(bookId)
+
+        assertEquals(DownloadStatus.PAUSED.name, rig.status())
+    }
+
+    @Test
+    fun `a removal while running is not undone by the job`() = runBlocking {
+        lateinit var rig: Rig
+        val fake = fakeServer(file = { req, body ->
+            if (body.size == second.size) rig.dao.deleteBook(bookId)
+            serve(body, req)
+        })
+        rig = rig(fake)
+
+        rig.downloader.run(bookId)
+
+        assertTrue(rig.dao.downloads.value.isEmpty())
+        assertTrue(rig.dao.files.value.isEmpty())
+    }
+
+    @Test
+    fun `an unexpected error stops the book as failed with a fixed message`() = runBlocking {
+        val rig = rig(fakeServer(), wrap = { inner ->
+            object : DownloadDao by inner {
+                override suspend fun getFiles(bookId: String): List<DownloadFileEntity> = error("database at /secret/path is broken")
+            }
+        })
+
+        assertEquals(BookResult.Failed("The download failed"), rig.downloader.run(bookId))
+        assertEquals(DownloadStatus.FAILED.name, rig.status())
+        assertEquals("The download failed", rig.dao.downloads.value.single().error)
+    }
+
+    @Test
+    fun `progress reaches room after each mebibyte even before the interval`() = runBlocking {
+        val big = content(3 shl 20)
+        val saved = CopyOnWriteArrayList<Long>()
+        val fake = FakeAbs { req ->
+            when {
+                req.url.encodedPath == "/api/items/li_1" -> respond(
+                    """{"id":"li_1","media":{"audioFiles":[{"index":1,"ino":"11","metadata":{"filename":"One.mp3","size":${big.size}}}]}}""",
+                    HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")
+                )
+                req.url.encodedPath.endsWith("/download") -> {
+                    val slow = CoroutineScope(Dispatchers.IO).writer {
+                        var at = 0
+                        while (at < big.size) {
+                            val end = minOf(big.size, at + (256 shl 10))
+                            channel.writeFully(big.copyOfRange(at, end))
+                            channel.flush()
+                            at = end
+                            delay(30)
+                        }
+                    }.channel
+                    respond(slow, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, big.size.toString()))
+                }
+                else -> respond("", HttpStatusCode.NotFound)
+            }
+        }
+        val rig = rig(
+            fake, books = FakeBookDao(book(coverUrl = null)), progressIntervalMs = 0, persistIntervalMs = 3_600_000,
+            wrap = { inner ->
+                object : DownloadDao by inner {
+                    override suspend fun updateFileProgress(bookId: String, ino: String, doneBytes: Long) {
+                        saved += doneBytes
+                        inner.updateFileProgress(bookId, ino, doneBytes)
+                    }
+                }
+            }
+        )
+
+        assertEquals(BookResult.Done, rig.downloader.run(bookId))
+
+        assertTrue(saved.any { it in 1 until big.size.toLong() }, "no progress saved before the end: $saved")
+    }
+
+    @Test
+    fun `only one book downloads at a time`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val order = CopyOnWriteArrayList<String>()
+        val fake = FakeAbs { req ->
+            val path = req.url.encodedPath
+            val item = path.removePrefix("/api/items/").substringBefore('/')
+            when {
+                path == "/api/items/$item" -> respond(
+                    """{"id":"$item","media":{"audioFiles":[{"index":1,"ino":"1","metadata":{"filename":"a.mp3","size":3000}}]}}""",
+                    HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")
+                )
+                path.endsWith("/download") -> {
+                    order += "start $item"
+                    if (item == "li_1") gate.await()
+                    serve(first, req).also { order += "end $item" }
+                }
+                else -> respond("", HttpStatusCode.NotFound)
+            }
+        }
+        val dao = InMemoryDownloadDao(listOf(queued(), queued().copy(bookId = "abs_li_2")))
+        val rig = rig(fake, dao = dao, books = FakeBookDao(book(coverUrl = null), book(coverUrl = null).copy(id = "abs_li_2")))
+
+        val one = async(Dispatchers.IO) { rig.downloader.run(bookId) }
+        withTimeout(10_000) { while (order.isEmpty()) delay(10) }
+        val two = async(Dispatchers.IO) { rig.downloader.run("abs_li_2") }
+        delay(300)
+        assertEquals(listOf("start li_1"), order.toList())
+        assertEquals(DownloadStatus.QUEUED.name, dao.get("abs_li_2")?.status) // waiting, not downloading
+        gate.complete(Unit)
+
+        assertEquals(BookResult.Done, one.await())
+        assertEquals(BookResult.Done, two.await())
+        assertEquals(listOf("start li_1", "end li_1", "start li_2", "end li_2"), order.toList())
+    }
 }
 
 /** Only what the downloader uses; the rest is never called. */
-internal class FakeBookDao(initial: BookEntity?) : BookDao {
-    private val rows = MutableStateFlow(listOfNotNull(initial))
+internal class FakeBookDao(vararg initial: BookEntity?) : BookDao {
+    private val rows = MutableStateFlow(initial.filterNotNull())
     val chapterUpdates = CopyOnWriteArrayList<List<Chapter>>()
 
     override fun observeAll(): Flow<List<BookEntity>> = rows

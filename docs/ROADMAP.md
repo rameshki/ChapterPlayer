@@ -133,6 +133,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
   - Settings toggle: download on Wi-Fi only, or on Wi-Fi and cellular
   - single-file books (`.m4b`) are the preferred layout, so one resumable request per book is the common case; multi-file books still work, one file after another
   - storage limits and a download-location choice, pause and resume controls
+  - Progress (steps 1-2 of 5 in the Stage 3 spec): the rules, Room v6 tables, the downloader core and the worker are built and host-tested against a fake server (Range resume, 200-instead-of-206, 416, a body cut short, stalls before and after the headers, refresh once on 401, no redirect to another host, full disk, a 404 that plans the book again, cancel and pause-resume races). One book downloads at a time. Not yet checked: a real download on an emulator or phone, the WorkManager worker, notification and Pause/Cancel actions, restore after reboot, and the Android 15 time limit (the app targets SDK 34, so that limit does not apply yet). No UI yet (step 3), and offline playback of downloaded books comes in step 4
 - [ ] Offline mode: play downloaded books, sync progress when back online
 
 **Done when:** the widgets work and books play without network. Downloads also appear in the Android Auto browse tree.

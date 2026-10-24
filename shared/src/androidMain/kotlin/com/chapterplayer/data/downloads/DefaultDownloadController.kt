@@ -9,7 +9,6 @@ import com.chapterplayer.domain.downloads.canPause
 import com.chapterplayer.domain.downloads.downloadStatusOf
 import com.chapterplayer.domain.downloads.reenqueueAfterStop
 import com.chapterplayer.domain.downloads.resumesOnStart
-import com.chapterplayer.domain.downloads.statusAfterStop
 import com.chapterplayer.domain.downloads.statusOnEnqueue
 import com.chapterplayer.domain.downloads.statusOnResume
 import kotlinx.coroutines.Dispatchers
@@ -21,16 +20,14 @@ interface DownloadScheduler {
     /** Schedules the job unless one is already waiting or running; [replace] replaces it instead. */
     suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean)
 
-    /** Stops the job (it saves its progress as it stops). */
+    /** Stops the job (it saves its progress as it stops; [DownloadJobs.whileIdle] waits for that). */
     suspend fun cancel(bookId: String)
-
-    /** Returns once the job is no longer running, or after a short wait. */
-    suspend fun awaitStopped(bookId: String)
 }
 
 /**
- * The download rules over Room and a [DownloadScheduler]: the status is written first, then the job is
- * scheduled or stopped, so a stopping job never overwrites a pause (see `statusAfterStop`).
+ * The download rules over Room and a [DownloadScheduler]: the status is written first (only from the status
+ * it was read in), then the job is scheduled or stopped. A stopping job changes only a DOWNLOADING status, so
+ * it never overwrites a pause. Files and rows are deleted only while no job of the book runs ([DownloadJobs]).
  */
 class DefaultDownloadController(
     private val dao: DownloadDao,
@@ -38,6 +35,7 @@ class DefaultDownloadController(
     private val settings: AppSettings,
     private val location: DownloadLocation,
     private val scheduler: DownloadScheduler,
+    private val jobs: DownloadJobs,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) : DownloadController {
 
@@ -47,21 +45,24 @@ class DefaultDownloadController(
         val next = statusOnEnqueue(existing?.let { downloadStatusOf(it.status) }) ?: return
         if (existing == null) {
             dao.upsert(DownloadEntity(bookId, book.serverId, next.name, totalBytes = 0, error = null, updatedAt = nowMs()))
-        } else {
-            dao.updateStatus(bookId, next.name, null, nowMs())
+        } else if (!move(bookId, existing.status, next)) {
+            return
         }
         scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = false)
     }
 
     override suspend fun pause(bookId: String) {
-        if (!canPause(dao.get(bookId)?.let { downloadStatusOf(it.status) })) return
-        dao.updateStatus(bookId, DownloadStatus.PAUSED.name, null, nowMs())
+        val existing = dao.get(bookId) ?: return
+        if (!canPause(downloadStatusOf(existing.status))) return
+        if (!move(bookId, existing.status, DownloadStatus.PAUSED)) return
         scheduler.cancel(bookId)
     }
 
     override suspend fun resume(bookId: String) {
-        val next = statusOnResume(dao.get(bookId)?.let { downloadStatusOf(it.status) }) ?: return
-        dao.updateStatus(bookId, next.name, null, nowMs())
+        val existing = dao.get(bookId) ?: return
+        val next = statusOnResume(downloadStatusOf(existing.status)) ?: return
+        if (!move(bookId, existing.status, next)) return
+        // A job that is still stopping keeps the book until it has saved; the new one waits for it.
         scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = false)
     }
 
@@ -79,10 +80,10 @@ class DefaultDownloadController(
 
     /** The job stopped; [timedOut] when the system's foreground time limit stopped it, which schedules it again. */
     suspend fun afterStop(bookId: String, timedOut: Boolean) {
-        val status = dao.get(bookId)?.let { downloadStatusOf(it.status) }
-        statusAfterStop(status)?.let { dao.updateStatus(bookId, it.name, null, nowMs()) }
+        // The status itself was already put back (DOWNLOADING to QUEUED) by the stopping job while it still owned
+        // the book; changing it here could hit a newer job that has started since.
+        val status = dao.get(bookId)?.let { downloadStatusOf(it.status) } ?: return
         if (reenqueueAfterStop(timedOut, status)) {
-            dao.updateStatus(bookId, DownloadStatus.QUEUED.name, null, nowMs())
             scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = true)
         }
     }
@@ -90,10 +91,15 @@ class DefaultDownloadController(
     private suspend fun delete(bookId: String) {
         val serverId = dao.get(bookId)?.serverId ?: bookDao.getById(bookId)?.serverId
         scheduler.cancel(bookId)
-        scheduler.awaitStopped(bookId)
-        if (serverId != null) {
-            withContext(Dispatchers.IO) { bookDirectory(location.rootDir(), serverId, bookId).deleteRecursively() }
+        // Waits until a stopping job has saved and let go, and keeps a new one out until the files are gone.
+        jobs.whileIdle(bookId) {
+            if (serverId != null) {
+                withContext(Dispatchers.IO) { bookDirectory(location.rootDir(), serverId, bookId).deleteRecursively() }
+            }
+            dao.deleteBook(bookId)
         }
-        dao.deleteBook(bookId)
     }
+
+    private suspend fun move(bookId: String, from: String, to: DownloadStatus): Boolean =
+        dao.updateStatusIf(bookId, listOf(from), to.name, null, nowMs()) > 0
 }

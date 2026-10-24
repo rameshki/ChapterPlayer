@@ -20,6 +20,10 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.BufferedOutputStream
 import java.io.File
@@ -49,8 +53,11 @@ sealed interface FileResult {
     /** Try again later (network, server error, stall, body cut short); [doneBytes] are safely in the `.part` file. */
     data class Retry(val doneBytes: Long) : FileResult
 
-    /** Do not retry. [message] is fixed text that is safe to show: never an address or a token. */
-    data class Failed(val message: String, val signInRequired: Boolean = false) : FileResult
+    /**
+     * Do not retry. [message] is fixed text that is safe to show: never an address or a token. [replan]: the
+     * server's file list no longer matches (file gone, wrong size), so the book's file list should be fetched again.
+     */
+    data class Failed(val message: String, val signInRequired: Boolean = false, val replan: Boolean = false) : FileResult
 }
 
 /** Where a file is written while downloading and where it ends up. Both are always inside the book folder. */
@@ -78,6 +85,8 @@ class FileDownloader(
     private val stallMs: Long = 60_000,
     private val progressIntervalMs: Long = 500,
     private val nowMs: () -> Long = System::currentTimeMillis,
+    /** Opens the `.part` file for appending; tests pass one that fails like a full disk. */
+    private val openPart: (File) -> FileOutputStream = { FileOutputStream(it, true) },
 ) {
 
     /** [onProgress] gets the bytes in the file so far, at most every [progressIntervalMs] and at the end of each request. */
@@ -110,9 +119,11 @@ class FileDownloader(
                     throw e
                 } catch (_: SignInRequiredException) {
                     return FileResult.Failed(SIGN_IN_AGAIN_TEXT, signInRequired = true)
-                } catch (e: HttpStatusException) {
-                    // Only the refresh can throw here (the transfer answers with an outcome); 4xx there means the sign-in.
-                    if (e.status.value in 400..499) return FileResult.Failed(SIGN_IN_AGAIN_TEXT, signInRequired = true)
+                } catch (e: StorageException) {
+                    return FileResult.Failed(e.userMessage)
+                } catch (_: HttpStatusException) {
+                    // Only the token refresh throws this here (the transfer answers with an outcome). A refused
+                    // refresh (401/403) is already a SignInRequiredException; anything else (429, 5xx) may pass.
                     Outcome.Again
                 } catch (_: IOException) {
                     Outcome.Again
@@ -122,7 +133,11 @@ class FileDownloader(
                 }
             }
             when (outcome) {
-                Outcome.Complete -> return finish(targets, total, onProgress)
+                Outcome.Complete -> return try {
+                    finish(targets, total, onProgress)
+                } catch (e: IOException) {
+                    FileResult.Failed(storageMessage(e))
+                }
                 Outcome.Again -> return FileResult.Retry(currentLength(part))
                 Outcome.Restart -> {
                     part.delete()
@@ -131,9 +146,9 @@ class FileDownloader(
                 }
                 Outcome.WrongSize -> {
                     part.delete()
-                    return FileResult.Failed(WRONG_SIZE)
+                    return FileResult.Failed(WRONG_SIZE, replan = true)
                 }
-                is Outcome.Refused -> return FileResult.Failed(outcome.message)
+                is Outcome.Refused -> return FileResult.Failed(outcome.message, replan = outcome.replan)
             }
         }
     }
@@ -143,7 +158,7 @@ class FileDownloader(
         data object Again : Outcome
         data object Restart : Outcome
         data object WrongSize : Outcome
-        data class Refused(val message: String) : Outcome
+        data class Refused(val message: String, val replan: Boolean = false) : Outcome
     }
 
     /** One request (plus same-server redirects). Throws [HttpStatusException] 401 so the authorizer refreshes. */
@@ -152,10 +167,15 @@ class FileDownloader(
     ): Outcome {
         var url = firstUrl
         repeat(MAX_REDIRECTS + 1) {
-            val next = client.prepareGet(url) {
-                header(HttpHeaders.Authorization, bearer)
-                if (offset > 0L) header(HttpHeaders.Range, "bytes=$offset-")
-            }.execute { response -> answer(response, part, offset, total, onProgress) }
+            val next = withHeaderTimeout { headersArrived ->
+                client.prepareGet(url) {
+                    header(HttpHeaders.Authorization, bearer)
+                    if (offset > 0L) header(HttpHeaders.Range, "bytes=$offset-")
+                }.execute { response ->
+                    headersArrived()
+                    answer(response, part, offset, total, onProgress)
+                }
+            } ?: return Outcome.Again
             if (next !is Redirect) return next.outcome!!
             val target = resolve(url, next.location) ?: return Outcome.Refused(MOVED)
             if (!sameHost(firstUrl, target)) return Outcome.Refused(MOVED)
@@ -193,27 +213,33 @@ class FileDownloader(
             status.value >= 500 || status == HttpStatusCode.RequestTimeout || status == HttpStatusCode.TooManyRequests ->
                 Step(Outcome.Again)
             status == HttpStatusCode.Forbidden -> Step(Outcome.Refused(FORBIDDEN))
-            status == HttpStatusCode.NotFound -> Step(Outcome.Refused(NOT_FOUND))
+            status == HttpStatusCode.NotFound -> Step(Outcome.Refused(NOT_FOUND, replan = true))
             else -> Step(Outcome.Refused(REFUSED))
         }
     }
 
-    /** Writes the body into [part] from [startAt] (the file is cut there first). */
+    /**
+     * Writes the body into [part] from [startAt] (the file is cut there first). A failed read is the network
+     * (an IOException, retried); a failed write is the storage (a [StorageException], never retried).
+     */
     private suspend fun receive(response: HttpResponse, part: File, startAt: Long, total: Long, onProgress: (Long) -> Unit): Outcome {
-        RandomAccessFile(part, "rw").use { it.setLength(startAt) }
+        val stream = disk {
+            RandomAccessFile(part, "rw").use { it.setLength(startAt) }
+            openPart(part)
+        }
         val channel = response.bodyAsChannel()
         var done = startAt
         var lastReport = nowMs()
         val buffer = ByteArray(BUFFER_BYTES)
-        val stream = FileOutputStream(part, true)
+        val out = BufferedOutputStream(stream, BUFFER_BYTES)
         try {
-            BufferedOutputStream(stream, BUFFER_BYTES).use { out ->
+            try {
                 while (true) {
                     val read = withTimeoutOrNull(stallMs) { channel.readAvailable(buffer, 0, buffer.size) }
-                        ?: return Outcome.Again.also { out.flush(); onProgress(done) } // stalled: leaving cancels the request
+                        ?: return Outcome.Again.also { disk { out.flush() }; onProgress(done) } // stalled: leaving cancels the request
                     if (read < 0) break
                     if (done + read > total) return Outcome.WrongSize
-                    out.write(buffer, 0, read)
+                    disk { out.write(buffer, 0, read) }
                     done += read
                     val now = nowMs()
                     if (now - lastReport >= progressIntervalMs) {
@@ -221,9 +247,19 @@ class FileDownloader(
                         onProgress(done)
                     }
                 }
-                out.flush()
-                if (done == total) stream.fd.sync()
+                disk {
+                    out.flush()
+                    if (done == total) stream.fd.sync()
+                }
+            } finally {
+                try {
+                    out.close() // flushes what is left after a read failure or a cancellation
+                } catch (_: IOException) {
+                    // Only after an error that is already being reported.
+                }
             }
+        } catch (e: StorageException) {
+            throw e
         } catch (e: IOException) {
             // A dropped connection: what was written stays for the next run.
             onProgress(currentLength(part))
@@ -258,7 +294,8 @@ class FileDownloader(
         val temp = File(target.parentFile, target.name + PART_SUFFIX_SMALL)
         return try {
             val ok = authorizer.authorized(server) { bearer ->
-                client.prepareGet(url) { header(HttpHeaders.Authorization, bearer) }.execute { response ->
+                withHeaderTimeout { headersArrived -> client.prepareGet(url) { header(HttpHeaders.Authorization, bearer) }.execute { response ->
+                    headersArrived()
                     if (response.status == HttpStatusCode.Unauthorized) throw HttpStatusException(response.status)
                     if (response.status != HttpStatusCode.OK) return@execute false
                     val channel = response.bodyAsChannel()
@@ -275,7 +312,7 @@ class FileDownloader(
                         out.fd.sync()
                     }
                     done > 0L
-                }
+                } } ?: false
             }
             if (ok) Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             ok
@@ -285,6 +322,29 @@ class FileDownloader(
             false
         } finally {
             temp.delete()
+        }
+    }
+
+    /** Runs a disk operation; its IOException becomes a [StorageException], so it is never mistaken for the network. */
+    private inline fun <T> disk(block: () -> T): T = try {
+        block()
+    } catch (e: IOException) {
+        throw StorageException(storageMessage(e))
+    }
+
+    /**
+     * Runs a request and gives up when its headers do not arrive within [stallMs] (null then). [block] calls
+     * `headersArrived` as soon as the response starts; from there the body has its own stall check.
+     */
+    private suspend fun <T> withHeaderTimeout(block: suspend (headersArrived: () -> Unit) -> T): T? = coroutineScope {
+        val headers = CompletableDeferred<Unit>()
+        val work = async { block { headers.complete(Unit) } }
+        work.invokeOnCompletion { headers.complete(Unit) }
+        if (withTimeoutOrNull(stallMs) { headers.await() } == null) {
+            work.cancelAndJoin()
+            null
+        } else {
+            work.await()
         }
     }
 
@@ -305,6 +365,19 @@ class FileDownloader(
         const val NOT_FOUND = "The file is no longer on the server"
         const val REFUSED = "The server refused the download"
     }
+}
+
+/** Writing to the phone's storage failed; [userMessage] is fixed text. */
+internal class StorageException(val userMessage: String) : Exception(userMessage)
+
+internal const val NOT_ENOUGH_SPACE = "Not enough space"
+internal const val STORAGE_ERROR = "Cannot write the download to storage"
+
+/** "Not enough space" for a full disk (ENOSPC), a general storage text otherwise. Never the exception's own text. */
+internal fun storageMessage(e: IOException): String {
+    val text = generateSequence<Throwable>(e) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    val full = "ENOSPC" in text || "no space left" in text.lowercase() || "not enough space" in text.lowercase()
+    return if (full) NOT_ENOUGH_SPACE else STORAGE_ERROR
 }
 
 private val CONTENT_RANGE = Regex("bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)")
