@@ -34,6 +34,7 @@ class RoomSchemaTest {
     private val database3: JsonObject by lazy { load(3) }
     private val database4: JsonObject by lazy { load(4) }
     private val database5: JsonObject by lazy { load(5) }
+    private val database6: JsonObject by lazy { load(6) }
 
     private fun entity(table: String, db: JsonObject = database): JsonObject =
         db.getValue("entities").jsonArray.map { it.jsonObject }
@@ -240,6 +241,36 @@ class RoomSchemaTest {
         for (table in tables(database4)) {
             assertEquals(columns(table, database4), columns(table, database5), "$table columns")
             assertEquals(primaryKey(table, database4), primaryKey(table, database5), "$table primary key")
+        }
+    }
+
+    @Test
+    fun `version 6 adds downloads and download files`() {
+        assertEquals(6, database6.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database5) + setOf("downloads", "download_files"), tables(database6))
+        assertEquals(
+            mapOf(
+                "bookId" to "TEXT", "serverId" to "TEXT", "status" to "TEXT", "totalBytes" to "INTEGER",
+                "error" to "TEXT?", "updatedAt" to "INTEGER",
+            ),
+            columns("downloads", database6)
+        )
+        assertEquals(listOf("bookId"), primaryKey("downloads", database6))
+        assertEquals(
+            mapOf(
+                "bookId" to "TEXT", "ino" to "TEXT", "fileName" to "TEXT", "path" to "TEXT",
+                "totalBytes" to "INTEGER", "doneBytes" to "INTEGER", "sortOrder" to "INTEGER",
+            ),
+            columns("download_files", database6)
+        )
+        assertEquals(listOf("bookId", "ino"), primaryKey("download_files", database6))
+    }
+
+    @Test
+    fun `version 6 leaves the older tables as they were`() {
+        for (table in tables(database5)) {
+            assertEquals(columns(table, database5), columns(table, database6), "$table columns")
+            assertEquals(primaryKey(table, database5), primaryKey(table, database6), "$table primary key")
         }
     }
 }
