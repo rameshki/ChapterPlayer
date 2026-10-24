@@ -7,6 +7,8 @@ import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.RoomDownloadStates
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
+import com.chapterplayer.data.permissions.AndroidNotificationPermission
+import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.downloads.AppFilesDownloadLocation
 import com.chapterplayer.data.downloads.BookDownloader
 import com.chapterplayer.data.downloads.DefaultDownloadController
@@ -200,6 +202,8 @@ val downloadModule = module {
 
 val deviceModule = module {
     single<ConnectivityMonitor> { AndroidConnectivityMonitor(androidContext()) }
+    // The main activity lends it its permission launcher; the details screen asks before the first download.
+    single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
 }
 
 val viewModelModule = module {
@@ -212,7 +216,7 @@ val viewModelModule = module {
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
-    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get()) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ServerSetupViewModel)

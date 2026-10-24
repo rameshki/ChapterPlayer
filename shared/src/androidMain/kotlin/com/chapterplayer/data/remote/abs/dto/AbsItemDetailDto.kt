@@ -4,6 +4,7 @@ import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.SeriesRef
 import com.chapterplayer.domain.downloads.AudioFileEntry
+import com.chapterplayer.domain.downloads.planFiles
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToLong
@@ -105,7 +106,8 @@ fun AbsItemDetailDto.toBookDetails(): BookDetails {
         description = description,
         genres = metadata.genres,
         publishedYear = metadata.publishedYear,
-        series = series
+        series = series,
+        downloadSizeBytes = planFiles(toAudioFileEntries()).sumOf { it.totalBytes }.takeIf { it > 0L }
     )
 }
 

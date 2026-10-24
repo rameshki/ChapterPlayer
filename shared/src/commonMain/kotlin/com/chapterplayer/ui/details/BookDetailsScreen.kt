@@ -83,7 +83,16 @@ fun BookDetailsScreen(
             onSelectTab = viewModel::selectTab,
             onOpenBook = onOpenBook,
             onOpenGroup = onOpenGroup,
-            onOpenPlayer = onOpenPlayer
+            onOpenPlayer = onOpenPlayer,
+            downloadActions = DownloadActions(
+                onDownload = viewModel::onDownloadClicked,
+                onPause = viewModel::onPauseDownloadClicked,
+                onResume = viewModel::onResumeDownloadClicked,
+                onCancel = viewModel::onCancelDownloadClicked,
+                onRemove = viewModel::onRemoveDownloadClicked,
+                onRemoveConfirmed = viewModel::onRemoveDownloadConfirmed,
+                onRemoveDismissed = viewModel::onRemoveDownloadDismissed
+            )
         )
     }
 }
@@ -115,6 +124,7 @@ fun BookDetailsContent(
     onOpenBook: (bookId: String) -> Unit,
     onOpenGroup: (kind: LibraryView, key: String) -> Unit,
     onOpenPlayer: () -> Unit,
+    downloadActions: DownloadActions,
     modifier: Modifier = Modifier
 ) {
     val book = state.book
@@ -155,7 +165,7 @@ fun BookDetailsContent(
             }
             state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
             detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
-            LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, Modifier.weight(1f))
+            LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions, Modifier.weight(1f))
         }
     }
 }
@@ -170,13 +180,14 @@ private fun LoadedList(
     onSelectTab: (DetailsTab) -> Unit,
     onOpenBook: (String) -> Unit,
     onOpenGroup: (LibraryView, String) -> Unit,
+    downloadActions: DownloadActions,
     modifier: Modifier = Modifier
 ) {
     val hasSeries = state.series.isNotEmpty()
     val tab = effectiveTab(state.selectedTab, hasSeries)
     // One scroll container: the header and tabs are the first items, so they scroll away with the list.
     LazyColumn(modifier = modifier.fillMaxWidth()) {
-        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenPlayer, onOpenGroup) }
+        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenPlayer, onOpenGroup, downloadActions) }
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
             DetailsTab.CHAPTERS -> {
@@ -195,7 +206,8 @@ private fun DetailsHeader(
     book: AudioBook,
     onPlayClick: () -> Unit,
     onOpenPlayer: () -> Unit,
-    onOpenGroup: (LibraryView, String) -> Unit
+    onOpenGroup: (LibraryView, String) -> Unit,
+    downloadActions: DownloadActions
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -262,6 +274,7 @@ private fun DetailsHeader(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             ) { Text("Open player", color = AmberGold, style = MaterialTheme.typography.titleSmall) }
         }
+        DownloadControl(state.download, downloadActions)
         Spacer(Modifier.height(8.dp))
     }
 }
