@@ -34,6 +34,16 @@ class InMemoryDownloadDao(
             if (it.bookId == bookId) it.copy(status = status, error = error, updatedAt = updatedAt) else it
         }
     }
+    override suspend fun updateStatusIf(bookId: String, from: List<String>, status: String, error: String?, updatedAt: Long): Int {
+        var changed = 0
+        downloads.value = downloads.value.map {
+            if (it.bookId == bookId && it.status in from) {
+                changed++
+                it.copy(status = status, error = error, updatedAt = updatedAt)
+            } else it
+        }
+        return changed
+    }
     override suspend fun updateFileProgress(bookId: String, ino: String, doneBytes: Long) {
         files.value = files.value.map { if (it.bookId == bookId && it.ino == ino) it.copy(doneBytes = doneBytes) else it }
     }

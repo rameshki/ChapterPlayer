@@ -4,6 +4,7 @@ import android.app.Application
 import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
+import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
 import com.chapterplayer.data.progress.ServerProgressRefresher
@@ -34,5 +35,7 @@ class ChapterPlayerApp : Application() {
         // Bookmarks sync with the servers, and jumps in the playing book are remembered.
         GlobalContext.get().get<BookmarkSyncer>().start()
         GlobalContext.get().get<HistoryRecorder>().start()
+        // Downloads that were waiting or running before a reboot or process death carry on.
+        GlobalContext.get().get<DownloadQueueRestorer>().start()
     }
 }

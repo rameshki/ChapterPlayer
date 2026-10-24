@@ -33,6 +33,10 @@ interface DownloadDao {
     @Query("UPDATE downloads SET status = :status, error = :error, updatedAt = :updatedAt WHERE bookId = :bookId")
     suspend fun updateStatus(bookId: String, status: String, error: String?, updatedAt: Long)
 
+    /** Sets the status only while it is one of [from]; returns how many rows changed (0: someone else changed it first). */
+    @Query("UPDATE downloads SET status = :status, error = :error, updatedAt = :updatedAt WHERE bookId = :bookId AND status IN (:from)")
+    suspend fun updateStatusIf(bookId: String, from: List<String>, status: String, error: String?, updatedAt: Long): Int
+
     @Query("UPDATE download_files SET doneBytes = :doneBytes WHERE bookId = :bookId AND ino = :ino")
     suspend fun updateFileProgress(bookId: String, ino: String, doneBytes: Long)
 

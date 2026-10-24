@@ -7,6 +7,16 @@ import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.RoomDownloadStates
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
+import com.chapterplayer.data.downloads.AppFilesDownloadLocation
+import com.chapterplayer.data.downloads.BookDownloader
+import com.chapterplayer.data.downloads.DefaultDownloadController
+import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadJobs
+import com.chapterplayer.data.downloads.DownloadLocation
+import com.chapterplayer.data.downloads.DownloadQueueRestorer
+import com.chapterplayer.data.downloads.DownloadScheduler
+import com.chapterplayer.data.downloads.FileDownloader
+import com.chapterplayer.data.downloads.WorkManagerDownloadScheduler
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
@@ -23,6 +33,7 @@ import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.AbsSessionManager
 import com.chapterplayer.data.remote.abs.AbsSignIn
+import com.chapterplayer.data.remote.createDownloadHttpClient
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
@@ -69,6 +80,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 /** The debug flag. The shared module has no BuildConfig, so the app module provides it. */
@@ -80,6 +92,9 @@ val CredentialsStoreQualifier = named("credentials")
 /** The app-long coroutine scope, and the dispatcher the browse view models do their list work on. */
 val AppScopeQualifier = named("appScope")
 val IoDispatcherQualifier = named("io")
+
+/** The HTTP client for audio downloads: no request timeout, no redirects followed (see installDownloadDefaults). */
+val DownloadClientQualifier = named("downloadClient")
 
 val databaseModule = module {
     single {
@@ -165,6 +180,19 @@ val playbackModule = module {
     single { OpenPlayerRequest() }
 }
 
+val downloadModule = module {
+    single(DownloadClientQualifier) { createDownloadHttpClient(get<Boolean>(DebuggableQualifier)) }
+    single<DownloadLocation> { AppFilesDownloadLocation(androidContext()) }
+    single { FileDownloader(get(DownloadClientQualifier), get()) }
+    // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
+    single { BookDownloader(get(), get(), get(), get(), get(), get(), get()) } bind DownloadJobs::class
+    single<DownloadScheduler> { WorkManagerDownloadScheduler(androidContext()) }
+    single { DefaultDownloadController(get(), get(), get(), get(), get(), get()) }
+    single<DownloadController> { get<DefaultDownloadController>() }
+    // The application starts it: reschedules downloads after a reboot or process death.
+    single { DownloadQueueRestorer(get(), get(AppScopeQualifier)) }
+}
+
 val deviceModule = module {
     single<ConnectivityMonitor> { AndroidConnectivityMonitor(androidContext()) }
 }
@@ -189,4 +217,4 @@ val viewModelModule = module {
 }
 
 /** Everything the shared module declares. The app adds what only it knows. */
-val sharedModules = listOf(databaseModule, networkModule, securityModule, sourceModule, repositoryModule, deviceModule, playbackModule, browseModule, viewModelModule)
+val sharedModules = listOf(databaseModule, networkModule, securityModule, sourceModule, repositoryModule, deviceModule, playbackModule, downloadModule, browseModule, viewModelModule)

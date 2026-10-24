@@ -43,6 +43,16 @@ class InMemoryDownloadDaoTest {
     }
 
     @Test
+    fun `a conditional status update changes the row only while its status is one of the given ones`() = runTest {
+        val dao = InMemoryDownloadDao(listOf(download("b1"), download("b2").copy(status = "PAUSED")))
+        assertEquals(1, dao.updateStatusIf("b1", listOf("QUEUED", "DOWNLOADING"), "DOWNLOADING", null, 5))
+        assertEquals(0, dao.updateStatusIf("b2", listOf("QUEUED", "DOWNLOADING"), "DOWNLOADING", null, 5))
+        assertEquals(0, dao.updateStatusIf("missing", listOf("QUEUED"), "DONE", null, 5))
+        assertEquals("DOWNLOADING", dao.get("b1")?.status)
+        assertEquals("PAUSED", dao.get("b2")?.status)
+    }
+
+    @Test
     fun `delete book removes the download and its files only`() = runTest {
         val dao = InMemoryDownloadDao(listOf(download("b1"), download("b2")), listOf(file("b1", "f1", 0), file("b2", "f1", 0)))
         dao.deleteBook("b1")
