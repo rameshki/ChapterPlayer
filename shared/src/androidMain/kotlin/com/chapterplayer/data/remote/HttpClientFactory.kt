@@ -6,6 +6,7 @@ import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
@@ -52,8 +53,45 @@ internal fun HttpClientConfig<*>.installApiDefaults(
         socketTimeoutMillis = timeouts.socketMillis
     }
 
-    // Debug builds only. Auth headers are never logged (project rule), and neither are bodies,
-    // because login carries a password and its response carries the tokens.
+    installSafeLogging(isDebuggable, sink)
+
+    HttpResponseValidator {
+        validateResponse { response ->
+            if (!response.status.isSuccess()) throw HttpStatusException(response.status)
+        }
+    }
+}
+
+/** The client for audio file downloads, separate from the API client: see [installDownloadDefaults]. */
+internal fun createDownloadHttpClient(isDebuggable: Boolean): HttpClient =
+    HttpClient(OkHttp) { installDownloadDefaults(isDebuggable) }
+
+/**
+ * Settings for downloads: a connect timeout only, no request or socket timeout (a file can take hours;
+ * the downloader has its own stall check), no redirects followed by the client (the downloader follows
+ * same-server ones itself, so the token never goes to another host), statuses are left to the caller,
+ * and the same debug logging with tokens hidden. Bodies are never logged.
+ */
+internal fun HttpClientConfig<*>.installDownloadDefaults(
+    isDebuggable: Boolean,
+    connectMillis: Long = HttpTimeouts().connectMillis,
+    sink: (String) -> Unit = { Log.d(LOG_TAG, it) },
+) {
+    followRedirects = false
+    expectSuccess = false
+
+    install(HttpTimeout) {
+        connectTimeoutMillis = connectMillis
+        requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+        socketTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+    }
+
+    installSafeLogging(isDebuggable, sink)
+}
+
+// Debug builds only. Auth headers are never logged (project rule), and neither are bodies,
+// because login carries a password and its response carries the tokens.
+private fun HttpClientConfig<*>.installSafeLogging(isDebuggable: Boolean, sink: (String) -> Unit) {
     install(Logging) {
         logger = object : Logger {
             override fun log(message: String) = sink(message)
@@ -65,12 +103,6 @@ internal fun HttpClientConfig<*>.installApiDefaults(
                 name.equals("x-refresh-token", ignoreCase = true) ||
                 name.equals(HttpHeaders.Cookie, ignoreCase = true) ||
                 name.equals(HttpHeaders.SetCookie, ignoreCase = true)
-        }
-    }
-
-    HttpResponseValidator {
-        validateResponse { response ->
-            if (!response.status.isSuccess()) throw HttpStatusException(response.status)
         }
     }
 }
