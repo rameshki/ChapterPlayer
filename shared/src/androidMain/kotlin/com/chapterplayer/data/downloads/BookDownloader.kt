@@ -92,13 +92,15 @@ class BookDownloader(
     private val persistIntervalMs: Long = 2_000,
     private val persistEveryBytes: Long = 1L shl 20,
     private val nowMs: () -> Long = System::currentTimeMillis,
-) : DownloadJobs {
+) : DownloadJobs, LiveDownloadProgress {
     private val progressByBook = MutableStateFlow<Map<String, BookProgress>>(emptyMap())
     private val bookLocks = ConcurrentHashMap<String, Mutex>()
     private val downloadSlot = Semaphore(1)
 
     /** The live progress of a book while (and after) this process downloads it; null before. */
     fun progress(bookId: String): Flow<BookProgress?> = progressByBook.map { it[bookId] }.distinctUntilChanged()
+
+    override fun observeAll(): Flow<Map<String, BookProgress>> = progressByBook
 
     override suspend fun <T> whileIdle(bookId: String, block: suspend () -> T): T = lockOf(bookId).withLock { block() }
 

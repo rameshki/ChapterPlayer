@@ -13,6 +13,9 @@ import com.chapterplayer.data.downloads.DefaultDownloadController
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
+import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.data.downloads.LiveDownloadProgress
+import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.downloads.DownloadScheduler
 import com.chapterplayer.data.downloads.FileDownloader
@@ -186,6 +189,8 @@ val downloadModule = module {
     single { FileDownloader(get(DownloadClientQualifier), get()) }
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
     single { BookDownloader(get(), get(), get(), get(), get(), get(), get()) } bind DownloadJobs::class
+    single<LiveDownloadProgress> { get<BookDownloader>() }
+    single<DownloadOverview> { RoomDownloadOverview(get(), get()) }
     single<DownloadScheduler> { WorkManagerDownloadScheduler(androidContext()) }
     single { DefaultDownloadController(get(), get(), get(), get(), get(), get()) }
     single<DownloadController> { get<DefaultDownloadController>() }
