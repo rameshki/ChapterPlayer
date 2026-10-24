@@ -19,4 +19,7 @@ interface DownloadController {
 
     /** Deletes a download (finished or not): its files and rows. */
     suspend fun remove(bookId: String)
+
+    /** The Wi-Fi only setting changed: waiting and running downloads are scheduled again under the new rule. */
+    suspend fun reapplyWifiSetting()
 }

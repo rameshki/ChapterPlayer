@@ -1,10 +1,10 @@
 package com.chapterplayer.ui.downloads
 
-import com.chapterplayer.data.downloads.DownloadStorage
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeDownloadController
 import com.chapterplayer.testing.FakeDownloadOverview
+import com.chapterplayer.testing.FakeDownloadStorage
 import com.chapterplayer.testing.downloadRow
 import com.chapterplayer.testing.testBook
 import kotlinx.coroutines.Dispatchers
@@ -29,15 +29,11 @@ class DownloadsViewModelTest {
     @BeforeTest fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
     @AfterTest fun tearDown() = Dispatchers.resetMain()
 
-    private class FakeStorage(var free: Long = 30_000_000_000) : DownloadStorage {
-        override suspend fun freeBytes(): Long = free
-    }
-
     private class Setup {
         val books = FakeBookRepository(listOf(testBook("a", title = "Alpha"), testBook("b", title = "Bravo"), testBook("c", title = "Charlie")))
         val overview = FakeDownloadOverview()
         val controller = FakeDownloadController()
-        val storage = FakeStorage()
+        val storage = FakeDownloadStorage()
         val vm = DownloadsViewModel(overview, books, controller, storage, Dispatchers.Main)
     }
 

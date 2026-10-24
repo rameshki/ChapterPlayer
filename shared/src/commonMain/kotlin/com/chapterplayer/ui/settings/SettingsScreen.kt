@@ -94,6 +94,11 @@ fun SettingsScreen(
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val downloadedOnly by viewModel.downloadedOnly.collectAsStateWithLifecycle()
     val resumeOnCarConnect by viewModel.resumeOnCarConnect.collectAsStateWithLifecycle()
+    val downloadWifiOnly by viewModel.downloadWifiOnly.collectAsStateWithLifecycle()
+    val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
+    val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
+    // A card may have been put in or taken out since the screen was last open.
+    LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
 
     Scaffold(
         containerColor = BackgroundDeep,
@@ -151,6 +156,24 @@ fun SettingsScreen(
                 checked = downloadedOnly,
                 onChange = viewModel::setDownloadedOnly
             )
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                text = "Downloads",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            SwitchCard(
+                title = "Download on Wi-Fi only",
+                description = "Downloads wait for Wi-Fi. Turn off to use mobile data too.",
+                checked = downloadWifiOnly,
+                onChange = viewModel::setDownloadWifiOnly
+            )
+            Spacer(Modifier.height(8.dp))
+            DownloadLocationCard(downloadLocations, viewModel::setDownloadLocation)
+            Spacer(Modifier.height(8.dp))
+            StorageLimitCard(downloadStorageLimit, viewModel::setDownloadStorageLimit)
             Spacer(Modifier.height(16.dp))
 
             Text(

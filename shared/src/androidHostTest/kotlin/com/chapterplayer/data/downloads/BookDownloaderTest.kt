@@ -103,12 +103,13 @@ class BookDownloaderTest {
         wrap: (InMemoryDownloadDao) -> DownloadDao = { it },
         progressIntervalMs: Long = 500,
         persistIntervalMs: Long = 2_000,
+        rootDir: () -> File = { root },
     ): Rig {
         val servers = FakeServers(testServer())
         val authorizer = fake.authorizer(servers)
         val sleeps = CopyOnWriteArrayList<Long>()
         val location = object : DownloadLocation {
-            override suspend fun rootDir(): File = root
+            override suspend fun rootDir(): File = rootDir()
             override suspend fun freeBytes(): Long = freeBytes
         }
         val downloader = BookDownloader(
@@ -191,6 +192,40 @@ class BookDownloaderTest {
         assertEquals("bytes=1000-", sent.headers[HttpHeaders.Range])
         assertContentEquals(second, File(dir, "12.mp3").readBytes())
         assertEquals(DownloadStatus.DONE.name, rig.status())
+    }
+
+    @Test
+    fun `a download planned before the location changed continues in its own folder`() = runBlocking {
+        dir.mkdirs()
+        File(dir, "11.mp3.part").writeBytes(first.copyOfRange(0, 1_000))
+        val dao = InMemoryDownloadDao(
+            listOf(queued().copy(totalBytes = 8_000)),
+            listOf(
+                DownloadFileEntity(bookId, "11", "One.mp3", File(dir, "11.mp3").path, 3_000, 1_000, 0),
+                DownloadFileEntity(bookId, "12", "Two.mp3", File(dir, "12.mp3").path, 5_000, 0, 1),
+            )
+        )
+        val elsewhere = File(root, "sdcard").apply { mkdirs() }
+        val rig = rig(fakeServer(), dao = dao, books = FakeBookDao(book(coverUrl = null)), rootDir = { elsewhere })
+
+        assertEquals(BookResult.Done, rig.downloader.run(bookId))
+
+        assertContentEquals(first, File(dir, "11.mp3").readBytes())
+        assertContentEquals(second, File(dir, "12.mp3").readBytes())
+        assertTrue(!File(elsewhere, "downloads").exists())
+        assertEquals(listOf(File(dir, "11.mp3").path, File(dir, "12.mp3").path), rig.dao.files.value.sortedBy { it.sortOrder }.map { it.path })
+    }
+
+    @Test
+    fun `a new download goes to the location chosen now`() = runBlocking {
+        val elsewhere = File(root, "sdcard").apply { mkdirs() }
+        val rig = rig(fakeServer(), books = FakeBookDao(book(coverUrl = null)), rootDir = { elsewhere })
+
+        assertEquals(BookResult.Done, rig.downloader.run(bookId))
+
+        val newDir = File(elsewhere, "downloads/srv1/abs_li_1")
+        assertContentEquals(first, File(newDir, "11.mp3").readBytes())
+        assertEquals(File(newDir, "11.mp3").path, rig.dao.files.value.minByOrNull { it.sortOrder }!!.path)
     }
 
     @Test

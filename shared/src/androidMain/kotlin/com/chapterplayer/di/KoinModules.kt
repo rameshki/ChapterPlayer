@@ -9,7 +9,7 @@ import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
 import com.chapterplayer.data.permissions.AndroidNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
-import com.chapterplayer.data.downloads.AppFilesDownloadLocation
+import com.chapterplayer.data.downloads.SettingsDownloadLocation
 import com.chapterplayer.data.downloads.BookDownloader
 import com.chapterplayer.data.downloads.DefaultDownloadController
 import com.chapterplayer.data.downloads.DownloadController
@@ -81,6 +81,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -190,10 +191,12 @@ val playbackModule = module {
 
 val downloadModule = module {
     single(DownloadClientQualifier) { createDownloadHttpClient(get<Boolean>(DebuggableQualifier)) }
-    single { AppFilesDownloadLocation(androidContext()) } binds arrayOf(DownloadLocation::class, DownloadStorage::class)
+    single { SettingsDownloadLocation(androidContext(), get()) } binds arrayOf(DownloadLocation::class, DownloadStorage::class)
     single { FileDownloader(get(DownloadClientQualifier), get()) }
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
-    single { BookDownloader(get(), get(), get(), get(), get(), get(), get()) } bind DownloadJobs::class
+    single {
+        BookDownloader(get(), get(), get(), get(), get(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() })
+    } bind DownloadJobs::class
     single<LiveDownloadProgress> { get<BookDownloader>() }
     single<DownloadOverview> { RoomDownloadOverview(get(), get()) }
     single<DownloadScheduler> { WorkManagerDownloadScheduler(androidContext()) }

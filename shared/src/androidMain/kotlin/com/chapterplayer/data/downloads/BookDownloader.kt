@@ -176,7 +176,13 @@ class BookDownloader(
         data object Gone : Step
     }
 
-    private inner class Job(val bookId: String, val server: ServerConfig, val dir: File) {
+    /**
+     * [newDir] is where a book not planned yet goes (the location chosen now). A planned book stays in the folder
+     * its file rows name, so changing the location in Settings never moves or splits a download.
+     */
+    private inner class Job(val bookId: String, val server: ServerConfig, private val newDir: File) {
+        var dir: File = newDir
+            private set
         private val speed = SpeedTracker()
         private var rows: List<DownloadFileEntity> = emptyList()
         /** The file being written now, and its bytes so far. */
@@ -185,6 +191,7 @@ class BookDownloader(
 
         suspend fun attempt(): Step {
             rows = dao.getFiles(bookId)
+            dir = rows.firstOrNull()?.let { File(it.path).parentFile } ?: dir
             if (rows.isEmpty()) {
                 val planned = try {
                     plan()

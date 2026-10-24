@@ -3,6 +3,9 @@ package com.chapterplayer.testing
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.downloads.DownloadRow
+import com.chapterplayer.data.downloads.DownloadStorage
+import com.chapterplayer.domain.downloads.DownloadVolume
+import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
 import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.domain.downloads.DownloadStatus
 import kotlinx.coroutines.flow.Flow
@@ -27,10 +30,20 @@ class FakeDownloadController : DownloadController {
     override suspend fun resume(bookId: String) = record("resume $bookId")
     override suspend fun cancel(bookId: String) = record("cancel $bookId")
     override suspend fun remove(bookId: String) = record("remove $bookId")
+    override suspend fun reapplyWifiSetting() = record("reapply")
     private fun record(call: String) {
         calls += call
         failWith?.let { throw it }
     }
+}
+
+/** Storage with internal storage only unless [volumes] says otherwise; new downloads go to the first volume. */
+class FakeDownloadStorage(
+    var free: Long = 30_000_000_000,
+    var volumes: List<DownloadVolume> = listOf(DownloadVolume(INTERNAL_VOLUME_ID, "Internal storage", 30_000_000_000)),
+) : DownloadStorage {
+    override suspend fun freeBytes(): Long = free
+    override suspend fun volumes(): List<DownloadVolume> = volumes
 }
 
 class FakeNotificationPermission(var granted: Boolean = true) : NotificationPermission {
