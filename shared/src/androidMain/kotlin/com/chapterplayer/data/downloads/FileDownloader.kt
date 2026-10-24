@@ -249,12 +249,53 @@ class FileDownloader(
         return FileResult.Done(targets.final)
     }
 
+    /**
+     * Fetches a small file (the cover) whole into [target], replacing it only when complete. Best effort:
+     * false on any failure. [url] must be on [server]; redirects are not followed.
+     */
+    suspend fun downloadSmall(server: ServerConfig, url: String, target: File, maxBytes: Long = MAX_SMALL_BYTES): Boolean {
+        if (!sameHost(server.baseUrl, url)) return false
+        val temp = File(target.parentFile, target.name + PART_SUFFIX_SMALL)
+        return try {
+            val ok = authorizer.authorized(server) { bearer ->
+                client.prepareGet(url) { header(HttpHeaders.Authorization, bearer) }.execute { response ->
+                    if (response.status == HttpStatusCode.Unauthorized) throw HttpStatusException(response.status)
+                    if (response.status != HttpStatusCode.OK) return@execute false
+                    val channel = response.bodyAsChannel()
+                    val buffer = ByteArray(BUFFER_BYTES)
+                    var done = 0L
+                    FileOutputStream(temp).use { out ->
+                        while (true) {
+                            val read = withTimeoutOrNull(stallMs) { channel.readAvailable(buffer, 0, buffer.size) } ?: return@execute false
+                            if (read < 0) break
+                            done += read
+                            if (done > maxBytes) return@execute false
+                            out.write(buffer, 0, read)
+                        }
+                        out.fd.sync()
+                    }
+                    done > 0L
+                }
+            }
+            if (ok) Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            ok
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        } finally {
+            temp.delete()
+        }
+    }
+
     private fun currentLength(part: File) = if (part.isFile) part.length() else 0L
 
     private companion object {
         const val BUFFER_BYTES = 64 * 1024
         const val MAX_REDIRECTS = 5
         const val MAX_RESTARTS = 2
+        const val MAX_SMALL_BYTES = 20L * 1024 * 1024
+        const val PART_SUFFIX_SMALL = ".part"
 
         const val WRONG_SIZE = "The downloaded file has the wrong size"
         const val UNSAFE_NAME = "The server sent an unsafe file name"
