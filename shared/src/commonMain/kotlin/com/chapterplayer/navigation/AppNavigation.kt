@@ -207,7 +207,7 @@ fun AppNavigation() {
                 }
 
                 composable(Screen.Downloads.route) {
-                    DownloadsScreen(onOpenSettings = { openSettings() })
+                    DownloadsScreen(onOpenSettings = { openSettings() }, onBookClick = openBook)
                 }
 
                 composable(Screen.Search.route) {

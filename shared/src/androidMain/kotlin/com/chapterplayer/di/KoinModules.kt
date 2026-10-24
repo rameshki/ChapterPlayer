@@ -7,14 +7,20 @@ import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.RoomDownloadStates
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
-import com.chapterplayer.data.downloads.AppFilesDownloadLocation
+import com.chapterplayer.data.permissions.AndroidNotificationPermission
+import com.chapterplayer.data.permissions.NotificationPermission
+import com.chapterplayer.data.downloads.SettingsDownloadLocation
 import com.chapterplayer.data.downloads.BookDownloader
 import com.chapterplayer.data.downloads.DefaultDownloadController
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
+import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.data.downloads.LiveDownloadProgress
+import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.downloads.DownloadScheduler
+import com.chapterplayer.data.downloads.DownloadStorage
 import com.chapterplayer.data.downloads.FileDownloader
 import com.chapterplayer.data.downloads.WorkManagerDownloadScheduler
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
@@ -68,12 +74,14 @@ import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.offline.OfflineStateViewModel
+import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -81,6 +89,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
+import org.koin.dsl.binds
 import org.koin.dsl.module
 
 /** The debug flag. The shared module has no BuildConfig, so the app module provides it. */
@@ -182,10 +191,14 @@ val playbackModule = module {
 
 val downloadModule = module {
     single(DownloadClientQualifier) { createDownloadHttpClient(get<Boolean>(DebuggableQualifier)) }
-    single<DownloadLocation> { AppFilesDownloadLocation(androidContext()) }
+    single { SettingsDownloadLocation(androidContext(), get()) } binds arrayOf(DownloadLocation::class, DownloadStorage::class)
     single { FileDownloader(get(DownloadClientQualifier), get()) }
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
-    single { BookDownloader(get(), get(), get(), get(), get(), get(), get()) } bind DownloadJobs::class
+    single {
+        BookDownloader(get(), get(), get(), get(), get(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() })
+    } bind DownloadJobs::class
+    single<LiveDownloadProgress> { get<BookDownloader>() }
+    single<DownloadOverview> { RoomDownloadOverview(get(), get()) }
     single<DownloadScheduler> { WorkManagerDownloadScheduler(androidContext()) }
     single { DefaultDownloadController(get(), get(), get(), get(), get(), get()) }
     single<DownloadController> { get<DefaultDownloadController>() }
@@ -195,6 +208,8 @@ val downloadModule = module {
 
 val deviceModule = module {
     single<ConnectivityMonitor> { AndroidConnectivityMonitor(androidContext()) }
+    // The main activity lends it its permission launcher; the details screen asks before the first download.
+    single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
 }
 
 val viewModelModule = module {
@@ -207,11 +222,12 @@ val viewModelModule = module {
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
-    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get()) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModelOf(::SettingsViewModel)
+    viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier)) }
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)
+    viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
 }

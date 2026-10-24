@@ -28,7 +28,22 @@ class FakeAppSettings(
     override suspend fun setDownloadedOnly(enabled: Boolean) { downloadedOnlyFlow.value = enabled }
     val wifiOnly = MutableStateFlow(true)
     override val downloadWifiOnly: Flow<Boolean> = wifiOnly
-    override suspend fun setDownloadWifiOnly(enabled: Boolean) { wifiOnly.value = enabled }
+    override suspend fun setDownloadWifiOnly(enabled: Boolean) {
+        if (failOnSet) error("storage unavailable")
+        wifiOnly.value = enabled
+    }
+    val storageLimit = MutableStateFlow<Long?>(null)
+    override val downloadStorageLimitBytes: Flow<Long?> = storageLimit
+    override suspend fun setDownloadStorageLimitBytes(limitBytes: Long?) {
+        if (failOnSet) error("storage unavailable")
+        storageLimit.value = limitBytes
+    }
+    val locationId = MutableStateFlow<String?>(null)
+    override val downloadLocationId: Flow<String?> = locationId
+    override suspend fun setDownloadLocationId(id: String?) {
+        if (failOnSet) error("storage unavailable")
+        locationId.value = id
+    }
     val speed = MutableStateFlow(1.0f)
     override val playbackSpeed: Flow<Float> = speed
     override suspend fun setPlaybackSpeed(speed: Float) { this.speed.value = speed }

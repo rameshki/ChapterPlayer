@@ -103,13 +103,14 @@ class BookDownloaderTest {
         wrap: (InMemoryDownloadDao) -> DownloadDao = { it },
         progressIntervalMs: Long = 500,
         persistIntervalMs: Long = 2_000,
+        rootDir: () -> File = { root },
     ): Rig {
         val servers = FakeServers(testServer())
         val authorizer = fake.authorizer(servers)
         val sleeps = CopyOnWriteArrayList<Long>()
         val location = object : DownloadLocation {
-            override fun rootDir(): File = root
-            override fun freeBytes(): Long = freeBytes
+            override suspend fun rootDir(): File = rootDir()
+            override suspend fun freeBytes(): Long = freeBytes
         }
         val downloader = BookDownloader(
             dao = wrap(dao), bookDao = books, servers = servers, api = fake.api, authorizer = authorizer,
@@ -194,6 +195,40 @@ class BookDownloaderTest {
     }
 
     @Test
+    fun `a download planned before the location changed continues in its own folder`() = runBlocking {
+        dir.mkdirs()
+        File(dir, "11.mp3.part").writeBytes(first.copyOfRange(0, 1_000))
+        val dao = InMemoryDownloadDao(
+            listOf(queued().copy(totalBytes = 8_000)),
+            listOf(
+                DownloadFileEntity(bookId, "11", "One.mp3", File(dir, "11.mp3").path, 3_000, 1_000, 0),
+                DownloadFileEntity(bookId, "12", "Two.mp3", File(dir, "12.mp3").path, 5_000, 0, 1),
+            )
+        )
+        val elsewhere = File(root, "sdcard").apply { mkdirs() }
+        val rig = rig(fakeServer(), dao = dao, books = FakeBookDao(book(coverUrl = null)), rootDir = { elsewhere })
+
+        assertEquals(BookResult.Done, rig.downloader.run(bookId))
+
+        assertContentEquals(first, File(dir, "11.mp3").readBytes())
+        assertContentEquals(second, File(dir, "12.mp3").readBytes())
+        assertTrue(!File(elsewhere, "downloads").exists())
+        assertEquals(listOf(File(dir, "11.mp3").path, File(dir, "12.mp3").path), rig.dao.files.value.sortedBy { it.sortOrder }.map { it.path })
+    }
+
+    @Test
+    fun `a new download goes to the location chosen now`() = runBlocking {
+        val elsewhere = File(root, "sdcard").apply { mkdirs() }
+        val rig = rig(fakeServer(), books = FakeBookDao(book(coverUrl = null)), rootDir = { elsewhere })
+
+        assertEquals(BookResult.Done, rig.downloader.run(bookId))
+
+        val newDir = File(elsewhere, "downloads/srv1/abs_li_1")
+        assertContentEquals(first, File(newDir, "11.mp3").readBytes())
+        assertEquals(File(newDir, "11.mp3").path, rig.dao.files.value.minByOrNull { it.sortOrder }!!.path)
+    }
+
+    @Test
     fun `not enough space fails before any file is requested`() = runBlocking {
         val fake = fakeServer()
         val rig = rig(fake, freeBytes = 50L * 1024 * 1024)
@@ -207,12 +242,51 @@ class BookDownloaderTest {
     }
 
     @Test
-    fun `a storage limit that would be passed also fails with not enough space`() = runBlocking {
+    fun `a storage limit that would be passed fails with the limit text`() = runBlocking {
         val other = DownloadFileEntity("abs_other", "1", "x.mp3", "/x", 9_000, 9_000, 0)
+        val dao = InMemoryDownloadDao(listOf(queued()), listOf(other))
+        val fake = fakeServer()
+        val rig = rig(fake, dao = dao, limitBytes = 10_000)
+
+        assertEquals(BookResult.Failed(LIMIT_REACHED_TEXT), rig.downloader.run(bookId))
+        assertEquals(LIMIT_REACHED_TEXT, rig.dao.downloads.value.single { it.bookId == bookId }.error)
+        assertTrue(fake.requests.none { it.url.encodedPath.endsWith("/download") })
+    }
+
+    @Test
+    fun `an unfinished other book counts its whole planned size against the limit`() = runBlocking {
+        // Only 1 000 bytes of the other book are on disk, but it will hold 9 000 when it finishes.
+        val other = DownloadFileEntity("abs_other", "1", "x.mp3", "/x", 9_000, 1_000, 0)
         val dao = InMemoryDownloadDao(listOf(queued()), listOf(other))
         val rig = rig(fakeServer(), dao = dao, limitBytes = 10_000)
 
-        assertEquals(BookResult.Failed("Not enough space"), rig.downloader.run(bookId))
+        assertEquals(BookResult.Failed(LIMIT_REACHED_TEXT), rig.downloader.run(bookId))
+    }
+
+    @Test
+    fun `resuming an already planned book checks the limit again`() = runBlocking {
+        dir.mkdirs()
+        File(dir, "11.mp3").writeBytes(first)
+        File(dir, "12.mp3.part").writeBytes(second.copyOfRange(0, 1_200))
+        val dao = InMemoryDownloadDao(
+            listOf(queued().copy(totalBytes = 8_000)),
+            listOf(
+                DownloadFileEntity(bookId, "11", "One.mp3", File(dir, "11.mp3").path, 3_000, 3_000, 0),
+                DownloadFileEntity(bookId, "12", "Two.mp3", File(dir, "12.mp3").path, 5_000, 1_000, 1),
+            )
+        )
+        val fake = fakeServer()
+        val rig = rig(fake, dao = dao, books = FakeBookDao(book(coverUrl = null)), limitBytes = 5_000)
+
+        assertEquals(BookResult.Failed(LIMIT_REACHED_TEXT), rig.downloader.run(bookId))
+        assertTrue(fake.requests.isEmpty())
+        assertEquals(DownloadStatus.FAILED.name, rig.status())
+
+        // Raised again in Settings: Try again continues at the recorded byte.
+        val raised = rig(fake, dao = dao, books = FakeBookDao(book(coverUrl = null)), limitBytes = 8_000)
+        dao.updateStatus(bookId, DownloadStatus.QUEUED.name, null, 0)
+        assertEquals(BookResult.Done, raised.downloader.run(bookId))
+        assertEquals("bytes=1000-", fake.requests.single().headers[HttpHeaders.Range])
     }
 
     @Test

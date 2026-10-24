@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import android.content.Intent
+import com.chapterplayer.data.permissions.AndroidNotificationPermission
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
 import com.chapterplayer.domain.playback.OpenPlayerRequest
@@ -40,12 +41,21 @@ class MainActivity : ComponentActivity() {
     private val settings: AppSettings by inject()
     private val openPlayerRequest: OpenPlayerRequest by inject()
 
-    // The answer is not used: playback works without notifications, the person can allow them in Settings.
+    private val downloadNotifications: AndroidNotificationPermission by inject()
+
+    // Playback and downloads work without notifications; the answer only matters to a download waiting for it.
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            downloadNotifications.onResult(granted)
+        }
+
+    private val askForNotifications: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        downloadNotifications.attach(askForNotifications)
         askForNotificationsOnce()
         handleOpenPlayer(intent)
         // Read the saved choice before the first frame so a dark-theme user never sees a light flash.
@@ -69,6 +79,11 @@ class MainActivity : ComponentActivity() {
                 AppNavigation()
             }
         }
+    }
+
+    override fun onDestroy() {
+        downloadNotifications.detach(askForNotifications)
+        super.onDestroy()
     }
 
     // singleTop: a tap on the notification while the app is open arrives here, not in onCreate.

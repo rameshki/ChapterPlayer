@@ -64,6 +64,27 @@ enum class NetworkPolicy { WIFI_ONLY, WIFI_AND_CELLULAR }
 fun mayDownload(policy: NetworkPolicy, onUnmetered: Boolean, online: Boolean): Boolean =
     online && (policy == NetworkPolicy.WIFI_AND_CELLULAR || onUnmetered)
 
+enum class RoomCheck { OK, NOT_ENOUGH_SPACE, LIMIT_REACHED }
+
+/**
+ * Whether a book fits. Free space: this book's [remainingBytes] plus what other unfinished books still need
+ * ([othersRemainingBytes]) must leave [safetyBytes] free. Limit: this book's whole size plus the whole planned
+ * size of every other download ([othersPlannedBytes], finished or not) must stay within [limitBytes].
+ */
+fun roomCheck(
+    totalBytes: Long,
+    remainingBytes: Long,
+    othersRemainingBytes: Long,
+    othersPlannedBytes: Long,
+    freeBytes: Long,
+    limitBytes: Long?,
+    safetyBytes: Long = 100L * 1024 * 1024
+): RoomCheck = when {
+    freeBytes < remainingBytes + othersRemainingBytes + safetyBytes -> RoomCheck.NOT_ENOUGH_SPACE
+    limitBytes != null && othersPlannedBytes + totalBytes > limitBytes -> RoomCheck.LIMIT_REACHED
+    else -> RoomCheck.OK
+}
+
 /** False when the phone would be left with under [safetyBytes] free, or a set limit would be passed. */
 fun hasRoomFor(
     neededBytes: Long,

@@ -6,6 +6,10 @@ import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.data.downloads.DownloadRow
+import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
@@ -50,7 +54,10 @@ class BookDetailsViewModel(
     private val starter: PlaybackStarter,
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
-    dispatcher: CoroutineDispatcher
+    dispatcher: CoroutineDispatcher,
+    overview: DownloadOverview,
+    private val downloadController: DownloadController,
+    private val notifications: NotificationPermission
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -68,11 +75,19 @@ class BookDetailsViewModel(
      */
     private class Local(val starting: Boolean = false, val error: String? = null, val dismissedPlayerError: String? = null)
 
-    private class Env(val player: PlaybackState, val local: Local, val online: Boolean, val downloadedOnly: Boolean)
+    private class Env(
+        val player: PlaybackState,
+        val local: Local,
+        val online: Boolean,
+        val downloadedOnly: Boolean,
+        val download: DownloadRow?,
+        val confirmingRemove: Boolean
+    )
 
     private val live = MutableStateFlow(Live())
     private val local = MutableStateFlow(Local())
     private val selectedTab = MutableStateFlow(DetailsTab.CHAPTERS)
+    private val confirmingRemove = MutableStateFlow(false)
     private var loadJob: Job? = null
 
     // Series and links come from every book of the library, never from the filtered lists.
@@ -83,9 +98,13 @@ class BookDetailsViewModel(
         else Whole(book, seriesNeighbours(all, book), bookLinks(all, book), item.downloadState)
     }.flowOn(dispatcher)
 
+    private val downloadRow = combine(overview.observeBook(bookId), confirmingRemove) { row, confirming -> row to confirming }
+
     private val env = combine(
-        controller.state, local, connectivity.isOnline, settings.downloadedOnly
-    ) { player, local, online, downloadedOnly -> Env(player, local, online, downloadedOnly) }
+        controller.state, local, connectivity.isOnline, settings.downloadedOnly, downloadRow
+    ) { player, local, online, downloadedOnly, download ->
+        Env(player, local, online, downloadedOnly, download.first, download.second)
+    }
 
     val uiState: StateFlow<BookDetailsUiState> = combine(
         whole, books.observeProgress(bookId), live, selectedTab, env
@@ -134,7 +153,12 @@ class BookDetailsViewModel(
                 playError = env.local.error
                     ?: env.player.error?.takeIf { loaded && it != env.local.dismissedPlayerError },
                 currentPositionMs = if (loaded) env.player.positionMs else progress?.positionMs ?: 0L,
-                resumePositionMs = savedStart
+                resumePositionMs = savedStart,
+                download = detailsDownload(
+                    book.source, env.download, env.online,
+                    knownSizeBytes = live.details?.downloadSizeBytes ?: env.download?.totalBytes,
+                    confirmingRemove = env.confirmingRemove
+                )
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookDetailsUiState())
@@ -202,6 +226,74 @@ class BookDetailsViewModel(
             } catch (e: CancellationException) {
                 local.value = Local()
                 throw e
+            }
+        }
+    }
+
+    /** Download, or Try again after a failure. Notifications are asked for first (once); the download starts whatever the answer. */
+    fun onDownloadClicked() {
+        val download = uiState.value.download
+        if (!download.canStart) return
+        when (download.phase) {
+            DetailsDownloadPhase.IDLE -> downloadAction(askNotifications = true) { downloadController.enqueue(bookId) }
+            DetailsDownloadPhase.FAILED -> downloadAction(askNotifications = true) { downloadController.resume(bookId) }
+            else -> Unit
+        }
+    }
+
+    fun onPauseDownloadClicked() {
+        val phase = uiState.value.download.phase
+        if (phase == DetailsDownloadPhase.QUEUED || phase == DetailsDownloadPhase.DOWNLOADING) {
+            downloadAction { downloadController.pause(bookId) }
+        }
+    }
+
+    fun onResumeDownloadClicked() {
+        if (uiState.value.download.phase == DetailsDownloadPhase.PAUSED) downloadAction { downloadController.resume(bookId) }
+    }
+
+    /** Stops a download that has not finished and deletes what it fetched. */
+    fun onCancelDownloadClicked() {
+        when (uiState.value.download.phase) {
+            DetailsDownloadPhase.QUEUED, DetailsDownloadPhase.DOWNLOADING, DetailsDownloadPhase.PAUSED, DetailsDownloadPhase.FAILED ->
+                downloadAction { downloadController.cancel(bookId) }
+            else -> Unit
+        }
+    }
+
+    /** "Remove download" on a finished download: asks first. */
+    fun onRemoveDownloadClicked() {
+        if (uiState.value.download.phase == DetailsDownloadPhase.DONE) confirmingRemove.value = true
+    }
+
+    fun onRemoveDownloadConfirmed() {
+        if (!confirmingRemove.value) return
+        confirmingRemove.value = false
+        downloadAction { downloadController.remove(bookId) }
+    }
+
+    fun onRemoveDownloadDismissed() {
+        confirmingRemove.value = false
+    }
+
+    // The table is the truth the control follows, so a failed call simply leaves the control as it was.
+    private fun downloadAction(askNotifications: Boolean = false, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            if (askNotifications) {
+                try {
+                    notifications.ensure()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // No notification then; the download runs anyway.
+                }
+            }
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The control keeps showing the stored state; the person can tap again.
             }
         }
     }

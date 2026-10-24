@@ -14,6 +14,9 @@ import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeConnectivity
 import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.FakeDownloadStates
+import com.chapterplayer.testing.FakeDownloadController
+import com.chapterplayer.testing.FakeDownloadOverview
+import com.chapterplayer.testing.FakeNotificationPermission
 import com.chapterplayer.testing.testBook
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -67,7 +70,8 @@ class BookDetailsViewModelTest {
         val settings: FakeAppSettings = FakeAppSettings()
     ) {
         val vm = BookDetailsViewModel(
-            id, repo, downloads, controller, PlaybackStarter(controller, repo, settings, connectivity), connectivity, settings, Dispatchers.Main
+            id, repo, downloads, controller, PlaybackStarter(controller, repo, settings, connectivity), connectivity, settings, Dispatchers.Main,
+            FakeDownloadOverview(), FakeDownloadController(), FakeNotificationPermission()
         )
     }
 

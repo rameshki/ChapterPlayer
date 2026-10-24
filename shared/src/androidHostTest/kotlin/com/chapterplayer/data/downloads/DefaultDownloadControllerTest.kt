@@ -6,6 +6,8 @@ import com.chapterplayer.data.local.entity.DownloadFileEntity
 import com.chapterplayer.data.repository.InMemoryDownloadDao
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.testing.FakeAppSettings
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
@@ -48,13 +50,17 @@ class DefaultDownloadControllerTest {
 
     private fun row(status: DownloadStatus, id: String = bookId) = DownloadEntity(id, "srv1", status.name, 100, "old error", 0)
 
-    private inner class Rig(rows: List<DownloadEntity> = emptyList(), files: List<DownloadFileEntity> = emptyList()) {
+    private inner class Rig(
+        rows: List<DownloadEntity> = emptyList(),
+        files: List<DownloadFileEntity> = emptyList(),
+        currentRoot: File = root,
+    ) {
         val dao = InMemoryDownloadDao(rows, files)
         val settings = FakeAppSettings()
         val scheduler = FakeScheduler()
         val location = object : DownloadLocation {
-            override fun rootDir() = root
-            override fun freeBytes() = Long.MAX_VALUE
+            override suspend fun rootDir() = currentRoot
+            override suspend fun freeBytes() = Long.MAX_VALUE
         }
         val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, scheduler, FakeJobs(scheduler.log), nowMs = { 42 })
         fun status() = dao.downloads.value.singleOrNull { it.bookId == bookId }?.status
@@ -175,6 +181,85 @@ class DefaultDownloadControllerTest {
         assertFalse(dir.exists())
         assertTrue(rig.dao.downloads.value.isEmpty())
         assertTrue(rig.dao.files.value.isEmpty())
+    }
+
+    @Test
+    fun `remove deletes the files where the table says they are, after the location changed`() = runTest {
+        val oldDir = bookDirectory(File(root, "old"), "srv1", bookId).apply { mkdirs() }
+        File(oldDir, "11.mp3").writeBytes(byteArrayOf(1))
+        File(oldDir, "cover.jpg").writeBytes(byteArrayOf(2))
+        val newRoot = File(root, "new").apply { mkdirs() }
+        val rig = Rig(
+            listOf(row(DownloadStatus.DONE)),
+            listOf(DownloadFileEntity(bookId, "11", "a", File(oldDir, "11.mp3").path, 1, 1, 0)),
+            currentRoot = newRoot
+        )
+
+        rig.controller.remove(bookId)
+
+        assertFalse(oldDir.exists())
+        assertTrue(File(root, "old/downloads/srv1").exists())
+        assertTrue(rig.dao.files.value.isEmpty())
+    }
+
+    @Test
+    fun `remove never deletes a folder that is not the book's own`() = runTest {
+        val other = File(root, "other").apply { mkdirs() }
+        File(other, "keep.mp3").writeBytes(byteArrayOf(1))
+        val rig = Rig(listOf(row(DownloadStatus.DONE)), listOf(DownloadFileEntity(bookId, "11", "a", File(other, "keep.mp3").path, 1, 1, 0)))
+
+        rig.controller.remove(bookId)
+
+        assertTrue(File(other, "keep.mp3").exists())
+        assertTrue(rig.dao.downloads.value.isEmpty())
+    }
+
+    @Test
+    fun `a changed wi-fi setting reschedules waiting and running downloads with it`() = runTest {
+        val rig = Rig(
+            listOf(
+                row(DownloadStatus.QUEUED, "q"), row(DownloadStatus.DOWNLOADING, "d"), row(DownloadStatus.PAUSED, "p"),
+                row(DownloadStatus.FAILED, "f"), row(DownloadStatus.DONE, "x")
+            )
+        )
+        rig.settings.wifiOnly.value = false
+
+        rig.controller.reapplyWifiSetting()
+
+        assertEquals(listOf("schedule q wifiOnly=false replace=true", "schedule d wifiOnly=false replace=true"), rig.scheduler.log)
+        assertEquals(listOf("QUEUED", "DOWNLOADING", "PAUSED", "FAILED", "DONE"), rig.dao.downloads.value.map { it.status })
+    }
+
+    @Test
+    fun `two quick wi-fi toggles end with the final setting on every waiting book`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val log = mutableListOf<String>()
+        val slow = object : DownloadScheduler {
+            override suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean) {
+                log += "$bookId wifiOnly=$wifiOnly"
+                if (log.size == 1) gate.await()
+            }
+            override suspend fun cancel(bookId: String) {}
+        }
+        val dao = InMemoryDownloadDao(listOf(row(DownloadStatus.QUEUED, "q"), row(DownloadStatus.DOWNLOADING, "d")))
+        val settings = FakeAppSettings()
+        val location = object : DownloadLocation {
+            override suspend fun rootDir() = root
+            override suspend fun freeBytes() = Long.MAX_VALUE
+        }
+        val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, slow, FakeJobs(mutableListOf()))
+
+        settings.wifiOnly.value = false
+        val first = launch { controller.reapplyWifiSetting() }
+        testScheduler.runCurrent() // the first pass is stuck scheduling "q" with the old value
+        settings.wifiOnly.value = true
+        val second = launch { controller.reapplyWifiSetting() }
+        testScheduler.runCurrent()
+        gate.complete(Unit)
+        first.join()
+        second.join()
+
+        assertEquals(listOf("q wifiOnly=false", "d wifiOnly=false", "q wifiOnly=true", "d wifiOnly=true"), log)
     }
 
     @Test

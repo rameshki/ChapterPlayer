@@ -39,5 +39,7 @@ data class BookDetailsUiState(
     /** Where this book is: the live position while it is loaded in the player, else the saved one. */
     val currentPositionMs: Long = 0L,
     /** Where Resume starts: the saved position, 0 for a finished book, -1 (the server decides) with no progress. */
-    val resumePositionMs: Long = 0L
+    val resumePositionMs: Long = 0L,
+    /** The download control; hidden for books that cannot be downloaded. */
+    val download: DetailsDownload = DetailsDownload()
 )

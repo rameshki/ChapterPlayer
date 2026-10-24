@@ -55,6 +55,16 @@ class AbsItemDetailParsingTest {
     }
 
     @Test
+    fun `the download size is the sum of the files that would be downloaded`() {
+        val json = """{"id":"x","media":{"audioFiles":[
+            {"index":1,"ino":"1","metadata":{"filename":"a.mp3","size":1000}},
+            {"index":2,"ino":"2","metadata":{"filename":"b.mp3","size":500}},
+            {"index":3,"ino":"3","exclude":true,"metadata":{"filename":"c.mp3","size":9999}}]}}"""
+        assertEquals(1_500L, ApiJson.decodeFromString<AbsItemDetailDto>(json).toBookDetails().downloadSizeBytes)
+        assertNull(parse("abs/item-detail.json").toBookDetails().downloadSizeBytes)
+    }
+
+    @Test
     fun `no description at all gives null`() {
         val json = """{"id":"x","media":{"metadata":{"title":"T"}}}"""
         assertNull(ApiJson.decodeFromString<AbsItemDetailDto>(json).toBookDetails().description)

@@ -41,6 +41,31 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `downloads have no storage limit and use internal storage until changed`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertEquals(null, settings.downloadStorageLimitBytes.first())
+        assertEquals(null, settings.downloadLocationId.first())
+
+        settings.setDownloadStorageLimitBytes(5_000_000_000)
+        settings.setDownloadLocationId("external:/sd/Android/data/x/files")
+        assertEquals(5_000_000_000, DataStoreAppSettings(store).downloadStorageLimitBytes.first())
+        assertEquals("external:/sd/Android/data/x/files", DataStoreAppSettings(store).downloadLocationId.first())
+
+        settings.setDownloadStorageLimitBytes(null)
+        settings.setDownloadLocationId(null)
+        assertEquals(null, settings.downloadStorageLimitBytes.first())
+        assertEquals(null, settings.downloadLocationId.first())
+    }
+
+    @Test
+    fun `a storage limit of zero or less reads as no limit`() = runTest {
+        val settings = DataStoreAppSettings(InMemoryPreferencesDataStore())
+        settings.setDownloadStorageLimitBytes(0)
+        assertEquals(null, settings.downloadStorageLimitBytes.first())
+    }
+
+    @Test
     fun `downloaded only is off by default, can be turned on and off, and leaves other settings alone`() = runTest {
         val store = InMemoryPreferencesDataStore()
         val settings = DataStoreAppSettings(store)

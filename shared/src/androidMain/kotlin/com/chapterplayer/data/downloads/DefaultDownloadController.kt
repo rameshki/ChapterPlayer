@@ -9,11 +9,15 @@ import com.chapterplayer.domain.downloads.canPause
 import com.chapterplayer.domain.downloads.downloadStatusOf
 import com.chapterplayer.domain.downloads.reenqueueAfterStop
 import com.chapterplayer.domain.downloads.resumesOnStart
+import com.chapterplayer.domain.downloads.safeFileName
 import com.chapterplayer.domain.downloads.statusOnEnqueue
 import com.chapterplayer.domain.downloads.statusOnResume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** Runs one book's download job in the background; WorkManager on the phone, a fake in tests. */
 interface DownloadScheduler {
@@ -70,6 +74,20 @@ class DefaultDownloadController(
 
     override suspend fun remove(bookId: String) = delete(bookId)
 
+    /**
+     * Replacing the work gives it the new network rule. A running job is stopped by that: it saves its bytes and goes
+     * back to QUEUED, and the new job continues at the same byte once the old one has let go of the book.
+     */
+    override suspend fun reapplyWifiSetting() = reapplyLock.withLock {
+        // Read under the lock: of two quick toggles, the later pass always sees (and applies) the final setting.
+        val wifiOnly = settings.downloadWifiOnly.first()
+        dao.observeAll().first()
+            .filter { row -> downloadStatusOf(row.status)?.let(::resumesOnStart) == true }
+            .forEach { scheduler.schedule(it.bookId, wifiOnly, replace = true) }
+    }
+
+    private val reapplyLock = Mutex()
+
     /** After a reboot or process death: schedule every download that was waiting or running. */
     suspend fun restoreQueue() {
         val wifiOnly = settings.downloadWifiOnly.first()
@@ -93,12 +111,19 @@ class DefaultDownloadController(
         scheduler.cancel(bookId)
         // Waits until a stopping job has saved and let go, and keeps a new one out until the files are gone.
         jobs.whileIdle(bookId) {
-            if (serverId != null) {
-                withContext(Dispatchers.IO) { bookDirectory(location.rootDir(), serverId, bookId).deleteRecursively() }
-            }
+            // The files stay where they were downloaded, so their recorded paths say which folder to delete; the
+            // current location's folder is cleared too, for anything written before the file rows were.
+            val folders = bookFolders(bookId, dao.getFiles(bookId).map { it.path }) +
+                listOfNotNull(serverId?.let { bookDirectory(location.rootDir(), it, bookId) })
+            withContext(Dispatchers.IO) { folders.distinct().forEach { it.deleteRecursively() } }
             dao.deleteBook(bookId)
         }
     }
+
+    /** The folders that hold [paths]; only a book's own folder (named after the book) is ever returned. */
+    private fun bookFolders(bookId: String, paths: List<String>): List<File> =
+        paths.mapNotNull { File(it).absoluteFile.parentFile }
+            .filter { it.name == safeFileName(bookId) && it.parentFile?.parentFile?.name == DOWNLOADS_FOLDER }
 
     private suspend fun move(bookId: String, from: String, to: DownloadStatus): Boolean =
         dao.updateStatusIf(bookId, listOf(from), to.name, null, nowMs()) > 0

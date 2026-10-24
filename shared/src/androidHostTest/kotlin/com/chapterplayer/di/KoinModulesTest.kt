@@ -71,7 +71,7 @@ class KoinModulesTest {
 
     @Test
     fun `every screen's view model can be built`() {
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule, browseModule, viewModelModule) }
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule, downloadModule, browseModule, viewModelModule) }
             .verify(extraTypes = providedByApp)
     }
 

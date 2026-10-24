@@ -6,6 +6,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.auth.normalizeServerAddress
+import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadStorage
+import com.chapterplayer.domain.downloads.DownloadVolume
+import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
+import com.chapterplayer.domain.downloads.chooseVolume
+import com.chapterplayer.domain.downloads.formatBytes
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
@@ -14,11 +20,13 @@ import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.ThemeMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -30,6 +38,15 @@ import kotlin.uuid.Uuid
 
 data class SettingsUiState(
     val servers: List<ServerConfig> = emptyList()
+)
+
+/** A place downloads can go, as the Settings list shows it: "SD card", "100 GB free". */
+data class LocationOption(val id: String, val label: String, val detail: String)
+
+/** The download locations available now and the one new downloads go to. */
+data class DownloadLocationsUi(
+    val options: List<LocationOption> = emptyList(),
+    val selectedId: String = INTERNAL_VOLUME_ID
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,7 +104,11 @@ data class ServerSetupUiState(
 
 class SettingsViewModel(
     private val serverRepository: ServerRepository,
-    private val appSettings: AppSettings
+    private val appSettings: AppSettings,
+    private val downloads: DownloadController,
+    private val storage: DownloadStorage,
+    /** Lives as long as the app: a setting change finishes even when Settings is closed at once. */
+    private val appScope: CoroutineScope
 ) : ViewModel() {
 
     val settingsUiState: StateFlow<SettingsUiState> =
@@ -161,6 +182,80 @@ class SettingsViewModel(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
+    }
+
+    // Downloads
+
+    /** Downloads wait for Wi-Fi (on for new installs). */
+    val downloadWifiOnly: StateFlow<Boolean> =
+        appSettings.downloadWifiOnly.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = true)
+
+    /** Saves the choice, then gives waiting and running downloads the new network rule (in the app scope). */
+    fun setDownloadWifiOnly(enabled: Boolean) {
+        appScope.launch {
+            try {
+                appSettings.setDownloadWifiOnly(enabled)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                return@launch // Not saved, so nothing to apply.
+            }
+            try {
+                downloads.reapplyWifiSetting()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The downloads keep their old rule until they are scheduled again (pause and resume, or app start).
+            }
+        }
+    }
+
+    /** At most this many bytes of downloads; null is no limit. */
+    val downloadStorageLimit: StateFlow<Long?> =
+        appSettings.downloadStorageLimitBytes.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = null)
+
+    fun setDownloadStorageLimit(limitBytes: Long?) {
+        viewModelScope.launch {
+            try {
+                appSettings.setDownloadStorageLimitBytes(limitBytes)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    private val volumes = MutableStateFlow<List<DownloadVolume>>(emptyList())
+
+    /** Where new downloads go; downloads already on the phone stay where they are. */
+    val downloadLocations: StateFlow<DownloadLocationsUi> =
+        combine(volumes, appSettings.downloadLocationId) { available, chosen ->
+            DownloadLocationsUi(
+                options = available.map { LocationOption(it.id, it.label, "${formatBytes(it.freeBytes)} free") },
+                selectedId = chooseVolume(chosen, available)?.id ?: INTERNAL_VOLUME_ID
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadLocationsUi())
+
+    init {
+        refreshDownloadLocations()
+    }
+
+    /** Reads the volumes and their free space again (a card may have been put in or taken out). */
+    fun refreshDownloadLocations() {
+        viewModelScope.launch {
+            try {
+                volumes.value = storage.volumes()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    fun setDownloadLocation(id: String) {
+        viewModelScope.launch {
+            try {
+                appSettings.setDownloadLocationId(id.takeIf { it != INTERNAL_VOLUME_ID })
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
             }
         }
     }

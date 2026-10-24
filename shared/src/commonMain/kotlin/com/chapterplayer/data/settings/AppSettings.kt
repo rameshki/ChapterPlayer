@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
@@ -34,6 +35,15 @@ interface AppSettings {
     val downloadWifiOnly: Flow<Boolean>
     suspend fun setDownloadWifiOnly(enabled: Boolean)
 
+    /** At most this many bytes of downloads; null is no limit (the default). */
+    val downloadStorageLimitBytes: Flow<Long?>
+    /** Saves [limitBytes]; null or 0 and below mean no limit. */
+    suspend fun setDownloadStorageLimitBytes(limitBytes: Long?)
+
+    /** Where new downloads go, a `DownloadVolume` id; null is internal storage (the default). */
+    val downloadLocationId: Flow<String?>
+    suspend fun setDownloadLocationId(id: String?)
+
     /** The listening speed applied when a book starts; 1.0 is normal. */
     val playbackSpeed: Flow<Float>
     /** Saves [speed], clamped to 0.5..3.0. */
@@ -49,6 +59,8 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val downloadedOnly = booleanPreferencesKey("downloaded_only")
         val playbackSpeed = floatPreferencesKey("playback_speed")
         val downloadWifiOnly = booleanPreferencesKey("download_wifi_only")
+        val downloadLimit = longPreferencesKey("download_storage_limit_bytes")
+        val downloadLocation = stringPreferencesKey("download_location_id")
     }
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
@@ -70,6 +82,10 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val downloadWifiOnly: Flow<Boolean> = prefs.map { it[Keys.downloadWifiOnly] ?: true }
 
+    override val downloadStorageLimitBytes: Flow<Long?> = prefs.map { p -> p[Keys.downloadLimit]?.takeIf { it > 0L } }
+
+    override val downloadLocationId: Flow<String?> = prefs.map { it[Keys.downloadLocation] }
+
     override val playbackSpeed: Flow<Float> = prefs.map { (it[Keys.playbackSpeed] ?: 1.0f).coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
 
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
@@ -77,6 +93,12 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
     override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }
     override suspend fun setDownloadWifiOnly(enabled: Boolean) { store.edit { it[Keys.downloadWifiOnly] = enabled } }
+    override suspend fun setDownloadStorageLimitBytes(limitBytes: Long?) {
+        store.edit { p -> if (limitBytes == null || limitBytes <= 0L) p.remove(Keys.downloadLimit) else p[Keys.downloadLimit] = limitBytes }
+    }
+    override suspend fun setDownloadLocationId(id: String?) {
+        store.edit { p -> if (id == null) p.remove(Keys.downloadLocation) else p[Keys.downloadLocation] = id }
+    }
     override suspend fun setPlaybackSpeed(speed: Float) {
         if (speed.isNaN()) return
         store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
