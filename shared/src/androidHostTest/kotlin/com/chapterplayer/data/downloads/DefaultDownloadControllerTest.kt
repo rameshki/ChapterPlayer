@@ -53,8 +53,8 @@ class DefaultDownloadControllerTest {
         val settings = FakeAppSettings()
         val scheduler = FakeScheduler()
         val location = object : DownloadLocation {
-            override fun rootDir() = root
-            override fun freeBytes() = Long.MAX_VALUE
+            override suspend fun rootDir() = root
+            override suspend fun freeBytes() = Long.MAX_VALUE
         }
         val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, scheduler, FakeJobs(scheduler.log), nowMs = { 42 })
         fun status() = dao.downloads.value.singleOrNull { it.bookId == bookId }?.status

@@ -99,8 +99,8 @@ class DownloadRaceTest {
         val servers = FakeServers(testServer())
         val authorizer = fake.authorizer(servers)
         val location = object : DownloadLocation {
-            override fun rootDir() = root
-            override fun freeBytes() = Long.MAX_VALUE
+            override suspend fun rootDir() = root
+            override suspend fun freeBytes() = Long.MAX_VALUE
         }
         val books = FakeBookDao(
             BookEntity(

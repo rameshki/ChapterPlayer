@@ -108,8 +108,8 @@ class BookDownloaderTest {
         val authorizer = fake.authorizer(servers)
         val sleeps = CopyOnWriteArrayList<Long>()
         val location = object : DownloadLocation {
-            override fun rootDir(): File = root
-            override fun freeBytes(): Long = freeBytes
+            override suspend fun rootDir(): File = root
+            override suspend fun freeBytes(): Long = freeBytes
         }
         val downloader = BookDownloader(
             dao = wrap(dao), bookDao = books, servers = servers, api = fake.api, authorizer = authorizer,

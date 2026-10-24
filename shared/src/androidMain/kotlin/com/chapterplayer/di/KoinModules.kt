@@ -20,6 +20,7 @@ import com.chapterplayer.data.downloads.LiveDownloadProgress
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.downloads.DownloadScheduler
+import com.chapterplayer.data.downloads.DownloadStorage
 import com.chapterplayer.data.downloads.FileDownloader
 import com.chapterplayer.data.downloads.WorkManagerDownloadScheduler
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
@@ -73,6 +74,7 @@ import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.offline.OfflineStateViewModel
+import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -86,6 +88,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
+import org.koin.dsl.binds
 import org.koin.dsl.module
 
 /** The debug flag. The shared module has no BuildConfig, so the app module provides it. */
@@ -187,7 +190,7 @@ val playbackModule = module {
 
 val downloadModule = module {
     single(DownloadClientQualifier) { createDownloadHttpClient(get<Boolean>(DebuggableQualifier)) }
-    single<DownloadLocation> { AppFilesDownloadLocation(androidContext()) }
+    single { AppFilesDownloadLocation(androidContext()) } binds arrayOf(DownloadLocation::class, DownloadStorage::class)
     single { FileDownloader(get(DownloadClientQualifier), get()) }
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
     single { BookDownloader(get(), get(), get(), get(), get(), get(), get()) } bind DownloadJobs::class
@@ -221,6 +224,7 @@ val viewModelModule = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)
+    viewModel { DownloadsViewModel(get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
 }

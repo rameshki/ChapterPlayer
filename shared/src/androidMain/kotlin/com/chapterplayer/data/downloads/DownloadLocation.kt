@@ -7,15 +7,15 @@ import java.io.File
 /** Where downloads go. Step 3 adds the Settings choice (an SD card, for example); the default is the app's files folder. */
 interface DownloadLocation {
     /** The folder that holds `downloads/`. */
-    fun rootDir(): File
+    suspend fun rootDir(): File
 
     /** Free bytes on the volume of [rootDir]. */
-    fun freeBytes(): Long
+    suspend fun freeBytes(): Long
 }
 
-class AppFilesDownloadLocation(private val context: Context) : DownloadLocation {
-    override fun rootDir(): File = context.filesDir
-    override fun freeBytes(): Long = context.filesDir.usableSpace
+class AppFilesDownloadLocation(private val context: Context) : DownloadLocation, DownloadStorage {
+    override suspend fun rootDir(): File = context.filesDir
+    override suspend fun freeBytes(): Long = context.filesDir.usableSpace
 }
 
 /** `<root>/downloads/<serverId>/<bookId>/`, each part made safe so it cannot leave the folder. */
