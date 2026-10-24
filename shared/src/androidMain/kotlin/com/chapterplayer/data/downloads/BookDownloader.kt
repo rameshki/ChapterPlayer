@@ -106,7 +106,16 @@ class BookDownloader(
 
     /** [onStart] runs once this book has the download slot, right before any transfer (the worker goes foreground then). */
     suspend fun run(bookId: String, onStart: suspend () -> Unit = {}): BookResult =
-        lockOf(bookId).withLock { downloadSlot.withPermit { runOwned(bookId, onStart) } }
+        lockOf(bookId).withLock {
+            progressByBook.update { it - bookId }
+            var result: BookResult? = null
+            try {
+                downloadSlot.withPermit { runOwned(bookId, onStart).also { result = it } }
+            } finally {
+                // A book that stopped or is waiting must not replay an old progress value; a finished one keeps its last.
+                if (result != BookResult.Done) progressByBook.update { it - bookId }
+            }
+        }
 
     private suspend fun runOwned(bookId: String, onStart: suspend () -> Unit): BookResult {
         val row = dao.get(bookId) ?: return BookResult.Missing
