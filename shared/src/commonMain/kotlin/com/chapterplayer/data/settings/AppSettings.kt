@@ -30,6 +30,10 @@ interface AppSettings {
     val downloadedOnly: Flow<Boolean>
     suspend fun setDownloadedOnly(enabled: Boolean)
 
+    /** Downloads run on Wi-Fi (unmetered networks) only; on by default. */
+    val downloadWifiOnly: Flow<Boolean>
+    suspend fun setDownloadWifiOnly(enabled: Boolean)
+
     /** The listening speed applied when a book starts; 1.0 is normal. */
     val playbackSpeed: Flow<Float>
     /** Saves [speed], clamped to 0.5..3.0. */
@@ -44,6 +48,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val carResume = booleanPreferencesKey("resume_on_car_connect")
         val downloadedOnly = booleanPreferencesKey("downloaded_only")
         val playbackSpeed = floatPreferencesKey("playback_speed")
+        val downloadWifiOnly = booleanPreferencesKey("download_wifi_only")
     }
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
@@ -63,12 +68,15 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val downloadedOnly: Flow<Boolean> = prefs.map { it[Keys.downloadedOnly] ?: false }
 
+    override val downloadWifiOnly: Flow<Boolean> = prefs.map { it[Keys.downloadWifiOnly] ?: true }
+
     override val playbackSpeed: Flow<Float> = prefs.map { (it[Keys.playbackSpeed] ?: 1.0f).coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
 
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
     override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }
+    override suspend fun setDownloadWifiOnly(enabled: Boolean) { store.edit { it[Keys.downloadWifiOnly] = enabled } }
     override suspend fun setPlaybackSpeed(speed: Float) {
         if (speed.isNaN()) return
         store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }

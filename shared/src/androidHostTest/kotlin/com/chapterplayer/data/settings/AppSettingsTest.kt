@@ -59,6 +59,22 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `downloads are wi-fi only by default, can be switched, and leave other settings alone`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertEquals(true, settings.downloadWifiOnly.first())
+
+        settings.setDownloadWifiOnly(false)
+        settings.setThemeMode(ThemeMode.DARK)
+        assertEquals(false, DataStoreAppSettings(store).downloadWifiOnly.first())
+        assertEquals(ThemeMode.DARK, settings.themeMode.first())
+        assertEquals(false, settings.downloadedOnly.first())
+
+        settings.setDownloadWifiOnly(true)
+        assertEquals(true, settings.downloadWifiOnly.first())
+    }
+
+    @Test
     fun `an unknown stored value falls back to the default`() = runTest {
         val store = InMemoryPreferencesDataStore()
         store.edit { it[stringPreferencesKey("theme_mode")] = "PURPLE" }

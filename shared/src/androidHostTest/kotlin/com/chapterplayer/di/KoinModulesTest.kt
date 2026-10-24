@@ -64,6 +64,12 @@ class KoinModulesTest {
     }
 
     @Test
+    fun `the download module resolves`() {
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, downloadModule) }
+            .verify(extraTypes = providedByApp)
+    }
+
+    @Test
     fun `every screen's view model can be built`() {
         module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule, browseModule, viewModelModule) }
             .verify(extraTypes = providedByApp)

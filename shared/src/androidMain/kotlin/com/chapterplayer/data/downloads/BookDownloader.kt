@@ -20,6 +20,8 @@ import com.chapterplayer.domain.downloads.FileProgress
 import com.chapterplayer.domain.downloads.SpeedTracker
 import com.chapterplayer.domain.downloads.backoffMs
 import com.chapterplayer.domain.downloads.bookProgress
+import com.chapterplayer.domain.downloads.downloadStatusOf
+import com.chapterplayer.domain.downloads.statusAfterStop
 import com.chapterplayer.domain.downloads.hasRoomFor
 import com.chapterplayer.domain.downloads.nextFileIndex
 import com.chapterplayer.domain.downloads.planFiles
@@ -111,7 +113,7 @@ class BookDownloader(
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
                 job.saveOnStop()
-                if (dao.get(bookId)?.status == DownloadStatus.DOWNLOADING.name) setStatus(bookId, DownloadStatus.QUEUED, null)
+                statusAfterStop(downloadStatusOf(dao.get(bookId)?.status))?.let { setStatus(bookId, it, null) }
             }
             throw e
         }
