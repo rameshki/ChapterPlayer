@@ -135,4 +135,19 @@ class DownloadRulesTest {
         assertFalse(hasRoomFor(100, 1000, 500, 401, safetyBytes = 0))
         assertTrue(hasRoomFor(100, 100, null, 0, safetyBytes = 0))
     }
+
+    @Test
+    fun `room check tells a full device from a reached storage limit`() {
+        fun check(free: Long = 10_000, limit: Long? = null, total: Long = 100, remaining: Long = 100, othersRemaining: Long = 0, othersPlanned: Long = 0) =
+            roomCheck(total, remaining, othersRemaining, othersPlanned, free, limit, safetyBytes = 0)
+        assertEquals(RoomCheck.OK, check())
+        assertEquals(RoomCheck.NOT_ENOUGH_SPACE, check(free = 99))
+        assertEquals(RoomCheck.NOT_ENOUGH_SPACE, check(free = 150, othersRemaining = 60))
+        // The limit counts the whole planned size of other books, finished or not, plus this book's whole size.
+        assertEquals(RoomCheck.OK, check(limit = 1_000, othersPlanned = 900))
+        assertEquals(RoomCheck.LIMIT_REACHED, check(limit = 1_000, othersPlanned = 901))
+        assertEquals(RoomCheck.LIMIT_REACHED, check(limit = 1_000, total = 1_001, remaining = 1))
+        // A full device is reported first: freeing space alone would not help with a limit, but it is the harder stop.
+        assertEquals(RoomCheck.NOT_ENOUGH_SPACE, check(free = 0, limit = 1))
+    }
 }

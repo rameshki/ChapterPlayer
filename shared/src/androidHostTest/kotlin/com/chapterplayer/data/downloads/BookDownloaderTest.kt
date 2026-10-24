@@ -242,12 +242,51 @@ class BookDownloaderTest {
     }
 
     @Test
-    fun `a storage limit that would be passed also fails with not enough space`() = runBlocking {
+    fun `a storage limit that would be passed fails with the limit text`() = runBlocking {
         val other = DownloadFileEntity("abs_other", "1", "x.mp3", "/x", 9_000, 9_000, 0)
+        val dao = InMemoryDownloadDao(listOf(queued()), listOf(other))
+        val fake = fakeServer()
+        val rig = rig(fake, dao = dao, limitBytes = 10_000)
+
+        assertEquals(BookResult.Failed(LIMIT_REACHED_TEXT), rig.downloader.run(bookId))
+        assertEquals(LIMIT_REACHED_TEXT, rig.dao.downloads.value.single { it.bookId == bookId }.error)
+        assertTrue(fake.requests.none { it.url.encodedPath.endsWith("/download") })
+    }
+
+    @Test
+    fun `an unfinished other book counts its whole planned size against the limit`() = runBlocking {
+        // Only 1 000 bytes of the other book are on disk, but it will hold 9 000 when it finishes.
+        val other = DownloadFileEntity("abs_other", "1", "x.mp3", "/x", 9_000, 1_000, 0)
         val dao = InMemoryDownloadDao(listOf(queued()), listOf(other))
         val rig = rig(fakeServer(), dao = dao, limitBytes = 10_000)
 
-        assertEquals(BookResult.Failed("Not enough space"), rig.downloader.run(bookId))
+        assertEquals(BookResult.Failed(LIMIT_REACHED_TEXT), rig.downloader.run(bookId))
+    }
+
+    @Test
+    fun `resuming an already planned book checks the limit again`() = runBlocking {
+        dir.mkdirs()
+        File(dir, "11.mp3").writeBytes(first)
+        File(dir, "12.mp3.part").writeBytes(second.copyOfRange(0, 1_200))
+        val dao = InMemoryDownloadDao(
+            listOf(queued().copy(totalBytes = 8_000)),
+            listOf(
+                DownloadFileEntity(bookId, "11", "One.mp3", File(dir, "11.mp3").path, 3_000, 3_000, 0),
+                DownloadFileEntity(bookId, "12", "Two.mp3", File(dir, "12.mp3").path, 5_000, 1_000, 1),
+            )
+        )
+        val fake = fakeServer()
+        val rig = rig(fake, dao = dao, books = FakeBookDao(book(coverUrl = null)), limitBytes = 5_000)
+
+        assertEquals(BookResult.Failed(LIMIT_REACHED_TEXT), rig.downloader.run(bookId))
+        assertTrue(fake.requests.isEmpty())
+        assertEquals(DownloadStatus.FAILED.name, rig.status())
+
+        // Raised again in Settings: Try again continues at the recorded byte.
+        val raised = rig(fake, dao = dao, books = FakeBookDao(book(coverUrl = null)), limitBytes = 8_000)
+        dao.updateStatus(bookId, DownloadStatus.QUEUED.name, null, 0)
+        assertEquals(BookResult.Done, raised.downloader.run(bookId))
+        assertEquals("bytes=1000-", fake.requests.single().headers[HttpHeaders.Range])
     }
 
     @Test

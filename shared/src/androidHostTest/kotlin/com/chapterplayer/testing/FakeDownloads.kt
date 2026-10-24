@@ -46,10 +46,12 @@ class FakeDownloadStorage(
     override suspend fun volumes(): List<DownloadVolume> = volumes
 }
 
-class FakeNotificationPermission(var granted: Boolean = true) : NotificationPermission {
+/** Answers [granted]; each answer is written to [log] as "notifications=<answer>" (share it with a controller's calls). */
+class FakeNotificationPermission(var granted: Boolean = true, val log: MutableList<String> = mutableListOf()) : NotificationPermission {
     var asks = 0
     override suspend fun ensure(): Boolean {
         asks++
+        log += "notifications=$granted"
         return granted
     }
 }

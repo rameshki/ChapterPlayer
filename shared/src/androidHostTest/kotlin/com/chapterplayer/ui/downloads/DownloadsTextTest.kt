@@ -32,5 +32,5 @@ class DownloadsTextTest {
     }
 
     private fun item(id: String, title: String, status: DownloadStatus) =
-        DownloadItem(id, null, title, "", status, 0, "", null)
+        DownloadItem(id, title, "", null, status, 0, "", null)
 }

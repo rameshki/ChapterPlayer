@@ -230,7 +230,7 @@ class BookDetailsViewModel(
         }
     }
 
-    /** Download, or Try again after a failure. Notifications are asked for after the download is queued; it runs either way. */
+    /** Download, or Try again after a failure. Notifications are asked for first (once); the download starts whatever the answer. */
     fun onDownloadClicked() {
         val download = uiState.value.download
         if (!download.canStart) return
@@ -279,13 +279,6 @@ class BookDetailsViewModel(
     // The table is the truth the control follows, so a failed call simply leaves the control as it was.
     private fun downloadAction(askNotifications: Boolean = false, block: suspend () -> Unit) {
         viewModelScope.launch {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                return@launch
-            }
             if (askNotifications) {
                 try {
                     notifications.ensure()
@@ -294,6 +287,13 @@ class BookDetailsViewModel(
                 } catch (_: Exception) {
                     // No notification then; the download runs anyway.
                 }
+            }
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The control keeps showing the stored state; the person can tap again.
             }
         }
     }

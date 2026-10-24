@@ -371,6 +371,7 @@ class FileDownloader(
 internal class StorageException(val userMessage: String) : Exception(userMessage)
 
 internal const val NOT_ENOUGH_SPACE = "Not enough space"
+internal const val LIMIT_REACHED_TEXT = "The download storage limit is reached. Raise it in Settings or remove a download."
 internal const val STORAGE_ERROR = "Cannot write the download to storage"
 
 /** "Not enough space" for a full disk (ENOSPC), a general storage text otherwise. Never the exception's own text. */

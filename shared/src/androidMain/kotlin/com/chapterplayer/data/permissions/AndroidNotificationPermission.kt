@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -43,11 +44,18 @@ class AndroidNotificationPermission(private val context: Context) : Notification
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_ASKED, false)) return false
         val show = ask ?: return false
-        prefs.edit().putBoolean(KEY_ASKED, true).apply()
         val pending = CompletableDeferred<Boolean>()
         answer = pending
         try {
-            withContext(Dispatchers.Main) { show() }
+            try {
+                withContext(Dispatchers.Main) { show() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Not shown (the activity was going away): ask again next time.
+                return false
+            }
+            prefs.edit().putBoolean(KEY_ASKED, true).apply()
             // The answer may never come if the activity goes away for good; then ask the system.
             withTimeoutOrNull(ANSWER_TIMEOUT_MS) { pending.await() } ?: granted()
         } finally {

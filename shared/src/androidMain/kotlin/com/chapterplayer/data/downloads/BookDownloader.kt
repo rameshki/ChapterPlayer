@@ -20,7 +20,8 @@ import com.chapterplayer.domain.downloads.PART_SUFFIX
 import com.chapterplayer.domain.downloads.SpeedTracker
 import com.chapterplayer.domain.downloads.backoffMs
 import com.chapterplayer.domain.downloads.bookProgress
-import com.chapterplayer.domain.downloads.hasRoomFor
+import com.chapterplayer.domain.downloads.RoomCheck
+import com.chapterplayer.domain.downloads.roomCheck
 import com.chapterplayer.domain.downloads.nextFileIndex
 import com.chapterplayer.domain.downloads.planFiles
 import kotlinx.coroutines.CancellationException
@@ -188,6 +189,11 @@ class BookDownloader(
         /** The file being written now, and its bytes so far. */
         @Volatile private var current: DownloadFileEntity? = null
         @Volatile private var currentDone = 0L
+        private var limitChecked = false
+
+        private suspend fun otherFiles() = dao.observeFiles().first().filter { it.bookId != bookId }
+
+        private suspend fun othersPlannedBytes() = otherFiles().sumOf { it.totalBytes }
 
         suspend fun attempt(): Step {
             rows = dao.getFiles(bookId)
@@ -205,6 +211,13 @@ class BookDownloader(
                     return Step.Again(progressed = false)
                 }
                 if (planned != null) return planned
+            } else if (!limitChecked) {
+                // A planned book is checked against the limit again once per job: it may have been lowered since.
+                limitChecked = true
+                val total = rows.sumOf { it.totalBytes }
+                if (roomCheck(total, 0L, 0L, othersPlannedBytes(), Long.MAX_VALUE, limitBytes(), safetyBytes = 0L) == RoomCheck.LIMIT_REACHED) {
+                    return Step.Failed(LIMIT_REACHED_TEXT)
+                }
             }
             saveCoverIfMissing()
 
@@ -236,13 +249,15 @@ class BookDownloader(
             val planned = planFiles(item.toAudioFileEntries())
             if (planned.isEmpty()) return Step.Failed(NO_FILES)
             val needed = planned.sumOf { it.totalBytes }
-            // Other books' files: what they hold counts against the limit, what they still need against the free space.
-            val others = dao.observeFiles().first().filter { it.bookId != bookId }
-            val othersDone = others.sumOf { it.doneBytes }
+            // Other books' files: their whole planned size counts against the limit, what they still need against the free space.
+            val others = otherFiles()
             val othersRemaining = others.sumOf { (it.totalBytes - it.doneBytes).coerceAtLeast(0L) }
-            if (!hasRoomFor(needed + othersRemaining, location.freeBytes(), limitBytes(), othersDone)) {
-                return Step.Failed(NOT_ENOUGH_SPACE)
+            when (roomCheck(needed, needed, othersRemaining, others.sumOf { it.totalBytes }, location.freeBytes(), limitBytes())) {
+                RoomCheck.NOT_ENOUGH_SPACE -> return Step.Failed(NOT_ENOUGH_SPACE)
+                RoomCheck.LIMIT_REACHED -> return Step.Failed(LIMIT_REACHED_TEXT)
+                RoomCheck.OK -> Unit
             }
+            limitChecked = true
 
             val download = dao.get(bookId) ?: return Step.Gone
             rows = planned.map { p ->

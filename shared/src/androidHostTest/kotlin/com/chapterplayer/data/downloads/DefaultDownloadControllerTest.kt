@@ -6,6 +6,8 @@ import com.chapterplayer.data.local.entity.DownloadFileEntity
 import com.chapterplayer.data.repository.InMemoryDownloadDao
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.testing.FakeAppSettings
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
@@ -226,6 +228,38 @@ class DefaultDownloadControllerTest {
 
         assertEquals(listOf("schedule q wifiOnly=false replace=true", "schedule d wifiOnly=false replace=true"), rig.scheduler.log)
         assertEquals(listOf("QUEUED", "DOWNLOADING", "PAUSED", "FAILED", "DONE"), rig.dao.downloads.value.map { it.status })
+    }
+
+    @Test
+    fun `two quick wi-fi toggles end with the final setting on every waiting book`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val log = mutableListOf<String>()
+        val slow = object : DownloadScheduler {
+            override suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean) {
+                log += "$bookId wifiOnly=$wifiOnly"
+                if (log.size == 1) gate.await()
+            }
+            override suspend fun cancel(bookId: String) {}
+        }
+        val dao = InMemoryDownloadDao(listOf(row(DownloadStatus.QUEUED, "q"), row(DownloadStatus.DOWNLOADING, "d")))
+        val settings = FakeAppSettings()
+        val location = object : DownloadLocation {
+            override suspend fun rootDir() = root
+            override suspend fun freeBytes() = Long.MAX_VALUE
+        }
+        val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, slow, FakeJobs(mutableListOf()))
+
+        settings.wifiOnly.value = false
+        val first = launch { controller.reapplyWifiSetting() }
+        testScheduler.runCurrent() // the first pass is stuck scheduling "q" with the old value
+        settings.wifiOnly.value = true
+        val second = launch { controller.reapplyWifiSetting() }
+        testScheduler.runCurrent()
+        gate.complete(Unit)
+        first.join()
+        second.join()
+
+        assertEquals(listOf("q wifiOnly=false", "d wifiOnly=false", "q wifiOnly=true", "d wifiOnly=true"), log)
     }
 
     @Test

@@ -14,6 +14,8 @@ import com.chapterplayer.domain.downloads.statusOnEnqueue
 import com.chapterplayer.domain.downloads.statusOnResume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -76,12 +78,15 @@ class DefaultDownloadController(
      * Replacing the work gives it the new network rule. A running job is stopped by that: it saves its bytes and goes
      * back to QUEUED, and the new job continues at the same byte once the old one has let go of the book.
      */
-    override suspend fun reapplyWifiSetting() {
+    override suspend fun reapplyWifiSetting() = reapplyLock.withLock {
+        // Read under the lock: of two quick toggles, the later pass always sees (and applies) the final setting.
         val wifiOnly = settings.downloadWifiOnly.first()
         dao.observeAll().first()
             .filter { row -> downloadStatusOf(row.status)?.let(::resumesOnStart) == true }
             .forEach { scheduler.schedule(it.bookId, wifiOnly, replace = true) }
     }
+
+    private val reapplyLock = Mutex()
 
     /** After a reboot or process death: schedule every download that was waiting or running. */
     suspend fun restoreQueue() {

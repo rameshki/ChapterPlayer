@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,7 +49,7 @@ import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.ui.components.BookCoverPlaceholder
 import com.chapterplayer.ui.components.EmptyState
 import com.chapterplayer.ui.components.SettingsAction
-import com.chapterplayer.ui.library.CoverArt
+import coil3.compose.AsyncImage
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -98,9 +99,11 @@ fun DownloadsScreen(
                 items(state.items, key = { it.bookId }) { item ->
                     DownloadItemRow(
                         item = item,
-                        onClick = { onBookClick(item.bookId) },
+                        // A book that left the library has no details to open; its row only offers Remove or Cancel.
+                        onClick = { if (item.opensDetails) onBookClick(item.bookId) },
                         onPause = { viewModel.pause(item.bookId) },
                         onResume = { viewModel.resume(item.bookId) },
+                        onRetry = { viewModel.retry(item.bookId) },
                         onCancel = { viewModel.cancel(item.bookId) },
                         onRemove = { viewModel.askRemove(item.bookId) }
                     )
@@ -130,6 +133,7 @@ private fun DownloadItemRow(
     onClick: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onRetry: () -> Unit,
     onCancel: () -> Unit,
     onRemove: () -> Unit
 ) {
@@ -137,15 +141,17 @@ private fun DownloadItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 72.dp)
-            .clickable(onClick = onClick)
+            .clickable(enabled = item.opensDetails, onClick = onClick)
             .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))) {
-            val book = item.book
-            if (book != null) CoverArt(book, Modifier.size(56.dp))
-            else BookCoverPlaceholder(title = item.title, modifier = Modifier.size(56.dp))
+            if (item.coverUrl != null) {
+                AsyncImage(model = item.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp))
+            } else {
+                BookCoverPlaceholder(title = item.title, modifier = Modifier.size(56.dp))
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -199,7 +205,7 @@ private fun DownloadItemRow(
                 RowAction(Icons.Default.Close, "Cancel ${item.title}", TextSecondary, onCancel)
             }
             DownloadStatus.FAILED -> {
-                RowAction(Icons.Default.Refresh, "Try downloading ${item.title} again", AmberGold, onResume)
+                RowAction(Icons.Default.Refresh, "Try downloading ${item.title} again", AmberGold, onRetry, enabled = item.canRetry)
                 RowAction(Icons.Default.Close, "Cancel ${item.title}", TextSecondary, onCancel)
             }
             DownloadStatus.DONE -> RowAction(Icons.Default.Delete, "Remove download ${item.title}", MaterialTheme.colorScheme.error, onRemove)
@@ -208,8 +214,8 @@ private fun DownloadItemRow(
 }
 
 @Composable
-private fun RowAction(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        Icon(icon, contentDescription = label, tint = tint)
+private fun RowAction(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit, enabled: Boolean = true) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(icon, contentDescription = label, tint = if (enabled) tint else tint.copy(alpha = 0.38f))
     }
 }

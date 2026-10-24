@@ -20,6 +20,7 @@ import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.ThemeMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,7 +106,9 @@ class SettingsViewModel(
     private val serverRepository: ServerRepository,
     private val appSettings: AppSettings,
     private val downloads: DownloadController,
-    private val storage: DownloadStorage
+    private val storage: DownloadStorage,
+    /** Lives as long as the app: a setting change finishes even when Settings is closed at once. */
+    private val appScope: CoroutineScope
 ) : ViewModel() {
 
     val settingsUiState: StateFlow<SettingsUiState> =
@@ -189,9 +192,9 @@ class SettingsViewModel(
     val downloadWifiOnly: StateFlow<Boolean> =
         appSettings.downloadWifiOnly.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = true)
 
-    /** Saves the choice, then gives waiting and running downloads the new network rule. */
+    /** Saves the choice, then gives waiting and running downloads the new network rule (in the app scope). */
     fun setDownloadWifiOnly(enabled: Boolean) {
-        viewModelScope.launch {
+        appScope.launch {
             try {
                 appSettings.setDownloadWifiOnly(enabled)
             } catch (e: Exception) {

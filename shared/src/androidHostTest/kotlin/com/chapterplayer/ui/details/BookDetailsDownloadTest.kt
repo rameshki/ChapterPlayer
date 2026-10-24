@@ -47,7 +47,7 @@ class BookDetailsDownloadTest {
         val repo = Repo(size, plex)
         val overview = FakeDownloadOverview()
         val downloads = FakeDownloadController()
-        val permission = FakeNotificationPermission()
+        val permission = FakeNotificationPermission(log = downloads.calls)
         val connectivity = FakeConnectivity(online)
         val settings = FakeAppSettings()
         val player = FakePlaybackController()
@@ -80,7 +80,7 @@ class BookDetailsDownloadTest {
 
         s.vm.onDownloadClicked()
 
-        assertEquals(listOf("enqueue a"), s.downloads.calls)
+        assertEquals(listOf("notifications=true", "enqueue a"), s.downloads.calls)
         assertEquals(1, s.permission.asks)
     }
 
@@ -92,7 +92,8 @@ class BookDetailsDownloadTest {
 
         s.vm.onDownloadClicked()
 
-        assertEquals(listOf("enqueue a"), s.downloads.calls)
+        // The refusal came back first, and the book was queued after it all the same.
+        assertEquals(listOf("notifications=false", "enqueue a"), s.downloads.calls)
     }
 
     @Test
@@ -146,7 +147,7 @@ class BookDetailsDownloadTest {
 
         s.vm.onDownloadClicked()
 
-        assertEquals(listOf("resume a"), s.downloads.calls)
+        assertEquals(listOf("notifications=true", "resume a"), s.downloads.calls)
     }
 
     @Test
@@ -210,7 +211,13 @@ class BookDetailsDownloadTest {
 
         s.vm.onDownloadClicked()
 
+        // The call was made, failed, and the control still shows Download and still works.
+        assertEquals(listOf("notifications=true", "enqueue a"), s.downloads.calls)
         assertEquals(DetailsDownloadPhase.IDLE, download().phase)
+        assertTrue(download().canStart)
+        s.downloads.failWith = null
+        s.vm.onDownloadClicked()
+        assertEquals(2, s.downloads.calls.count { it == "enqueue a" })
     }
 
     @Test
