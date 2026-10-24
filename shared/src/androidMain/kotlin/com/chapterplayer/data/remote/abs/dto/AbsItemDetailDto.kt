@@ -3,6 +3,7 @@ package com.chapterplayer.data.remote.abs.dto
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.SeriesRef
+import com.chapterplayer.domain.downloads.AudioFileEntry
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToLong
@@ -24,7 +25,23 @@ data class AbsItemDetailDto(
 @Serializable
 data class AbsItemDetailMediaDto(
     @SerialName("metadata") val metadata: AbsItemDetailMetadataDto = AbsItemDetailMetadataDto(),
-    @SerialName("chapters") val chapters: List<AbsItemDetailChapterDto> = emptyList()
+    @SerialName("chapters") val chapters: List<AbsItemDetailChapterDto> = emptyList(),
+    @SerialName("audioFiles") val audioFiles: List<AbsAudioFileDto> = emptyList()
+)
+
+/** One audio file of the item; [ino] is the server's file id, used to download it. */
+@Serializable
+data class AbsAudioFileDto(
+    @SerialName("index") val index: Int? = null,
+    @SerialName("ino") val ino: String? = null,
+    @SerialName("metadata") val metadata: AbsAudioFileMetadataDto? = null,
+    @SerialName("exclude") val exclude: Boolean = false
+)
+
+@Serializable
+data class AbsAudioFileMetadataDto(
+    @SerialName("filename") val filename: String? = null,
+    @SerialName("size") val size: Long? = null
 )
 
 /**
@@ -100,3 +117,14 @@ internal fun AbsItemDetailChapterDto.toChapter() = Chapter(
     startMs = (start * 1000).roundToLong(),
     endMs = (end * 1000).roundToLong()
 )
+
+/** The audio files as listed, for the download plan (`planFiles` sorts and filters them). */
+fun AbsItemDetailDto.toAudioFileEntries(): List<AudioFileEntry> = media.audioFiles.map {
+    AudioFileEntry(
+        ino = it.ino,
+        fileName = it.metadata?.filename,
+        sizeBytes = it.metadata?.size,
+        index = it.index,
+        excluded = it.exclude
+    )
+}

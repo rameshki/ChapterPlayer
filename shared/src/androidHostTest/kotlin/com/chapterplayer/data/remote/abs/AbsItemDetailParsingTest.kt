@@ -4,7 +4,11 @@ import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.SeriesRef
 import com.chapterplayer.data.remote.ApiJson
 import com.chapterplayer.data.remote.abs.dto.AbsItemDetailDto
+import com.chapterplayer.data.remote.abs.dto.toAudioFileEntries
 import com.chapterplayer.data.remote.abs.dto.toBookDetails
+import com.chapterplayer.domain.downloads.AudioFileEntry
+import com.chapterplayer.domain.downloads.PlannedFile
+import com.chapterplayer.domain.downloads.planFiles
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -82,5 +86,43 @@ class AbsItemDetailParsingTest {
     fun `a chapter without a title still parses with an empty title`() {
         val json = """{"id":"x","media":{"chapters":[{"id":0,"start":0,"end":1}]}}"""
         assertEquals(listOf(Chapter(0, "", 0, 1_000)), ApiJson.decodeFromString<AbsItemDetailDto>(json).toBookDetails().chapters)
+    }
+
+    @Test
+    fun `audio files come through with ino, name, size, index and the exclude flag`() {
+        val entries = parse("abs/item-detail-files.json").toAudioFileEntries()
+        assertEquals(
+            listOf(
+                AudioFileEntry("100000000000000012", "Fixture Multi - 02.mp3", 2_048_000, 2, excluded = false),
+                AudioFileEntry("100000000000000011", "Fixture Multi - 01.mp3", 1_024_000, 1, excluded = false),
+                AudioFileEntry("100000000000000013", "Fixture Multi - bonus.mp3", 512_000, 3, excluded = true),
+            ),
+            entries
+        )
+    }
+
+    @Test
+    fun `the recorded item plans its files in index order without the excluded one`() {
+        val planned = planFiles(parse("abs/item-detail-files.json").toAudioFileEntries())
+        assertEquals(
+            listOf(
+                PlannedFile("100000000000000011", "Fixture Multi - 01.mp3", 1_024_000, 0),
+                PlannedFile("100000000000000012", "Fixture Multi - 02.mp3", 2_048_000, 1),
+            ),
+            planned
+        )
+    }
+
+    @Test
+    fun `an audio file without metadata or size still parses, and is not planned`() {
+        val json = """{"id":"x","media":{"audioFiles":[{"ino":"7"},{"index":2,"metadata":{"filename":"a.mp3"}}]}}"""
+        val entries = ApiJson.decodeFromString<AbsItemDetailDto>(json).toAudioFileEntries()
+        assertEquals(listOf(AudioFileEntry("7", null, null, null), AudioFileEntry(null, "a.mp3", null, 2)), entries)
+        assertEquals(emptyList(), planFiles(entries))
+    }
+
+    @Test
+    fun `an item without audio files gives no entries`() {
+        assertEquals(emptyList(), parse("abs/item-detail-minimal.json").toAudioFileEntries())
     }
 }

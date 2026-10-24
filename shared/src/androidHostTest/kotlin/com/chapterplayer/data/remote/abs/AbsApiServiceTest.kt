@@ -90,4 +90,18 @@ class AbsApiServiceTest {
 
         assertEquals("HTTP 500 Internal Server Error", error.message)
     }
+
+    @Test
+    fun `the file download address names the item and the file and holds no token`() {
+        assertEquals(
+            "http://abs.test:13378/api/items/li_1/file/12345/download",
+            AbsApiService.fileDownloadUrl("http://abs.test:13378/", "li_1", "12345")
+        )
+    }
+
+    @Test
+    fun `the file download address encodes its path parts`() {
+        val url = AbsApiService.fileDownloadUrl("http://abs.test", "li/../x", "1 2?3")
+        assertEquals("http://abs.test/api/items/li%2F..%2Fx/file/1%202%3F3/download", url)
+    }
 }

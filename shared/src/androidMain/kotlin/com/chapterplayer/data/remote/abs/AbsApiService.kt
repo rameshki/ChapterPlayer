@@ -202,9 +202,16 @@ class AbsApiService(private val client: HttpClient) {
             header("x-refresh-token", refreshToken)
         }.body()
 
-    private companion object {
+    companion object {
         /** The app sends no per-install id at sign-in, so one constant names the Android client. */
-        const val DEVICE_ID = "chapterplayer-android"
+        private const val DEVICE_ID = "chapterplayer-android"
+
+        /**
+         * Where one audio file of an item downloads from (GET /api/items/{id}/file/{ino}/download).
+         * The token is never part of it: it goes in the Authorization header of each request.
+         */
+        fun fileDownloadUrl(baseUrl: String, itemId: String, ino: String): String =
+            baseUrl.trimEnd('/') + "/api/items/${itemId.encodeURLPathPart()}/file/${ino.encodeURLPathPart()}/download"
     }
 
     private fun endpoint(baseUrl: String, path: String) = baseUrl.trimEnd('/') + "/" + path
