@@ -2,4 +2,6 @@
 <full-backup-content>
     <!-- Tokens are encrypted with a Keystore key that does not move to another phone. -->
     <exclude domain="file" path="datastore/credentials.preferences_pb"/>
+    <!-- Downloaded books are large and can be fetched again; they must never count against the backup quota. -->
+    <exclude domain="file" path="downloads"/>
 </full-backup-content>
