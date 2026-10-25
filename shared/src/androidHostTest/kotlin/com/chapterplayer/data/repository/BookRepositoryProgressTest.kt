@@ -61,7 +61,7 @@ class BookRepositoryProgressTest {
         override suspend fun fetchBooks(server: ServerConfig): List<AudioBook> = emptyList()
         override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> = emptyList()
         override suspend fun fetchCollections(server: ServerConfig): List<BookCollection> = emptyList()
-        override suspend fun syncPlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long, durationMs: Long) {
+        override suspend fun syncPlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long, durationMs: Long, isPlaying: Boolean) {
             synced += listOf(server.id, sessionId, positionMs, listenedMs, durationMs)
             failure?.let { throw it }
         }

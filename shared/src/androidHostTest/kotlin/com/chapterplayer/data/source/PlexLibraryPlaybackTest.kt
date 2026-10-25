@@ -2,6 +2,7 @@ package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.installApiDefaults
 import com.chapterplayer.data.remote.plex.PlexApiService
@@ -122,5 +123,87 @@ class PlexLibraryPlaybackTest {
         val session = source(fixture("plex/album-tracks-progress.json")).startPlayback(server, "plex_1101")
 
         assertEquals(1_620_000L, session.startPositionMs)
+    }
+
+    // -- Reports while playing ----------------------------------------------------------------
+
+    private fun names() = reports().map { it.url.encodedPath.removePrefix("/:/") + " " + it.url.parameters["key"]!!.removePrefix("/library/metadata/") }
+
+    @Test
+    fun `a sync while playing sends a timeline for the track that holds the position`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        source.syncPlayback(server, session.sessionId, 700_000L, 10_000L, session.durationMs, isPlaying = true)
+
+        val timeline = reports().single()
+        assertEquals("/:/timeline", timeline.url.encodedPath)
+        assertEquals("1103", timeline.url.parameters["ratingKey"])
+        assertEquals("/library/metadata/1103", timeline.url.parameters["key"])
+        assertEquals("playing", timeline.url.parameters["state"])
+        assertEquals("100000", timeline.url.parameters["time"])
+        assertEquals("900000", timeline.url.parameters["duration"])
+        assertEquals("com.plexapp.plugins.library", timeline.url.parameters["identifier"])
+        assertEquals("tok", timeline.headers["X-Plex-Token"])
+        assertEquals("client-1", timeline.headers["X-Plex-Client-Identifier"])
+        assertEquals("ChapterPlayer", timeline.headers["X-Plex-Product"])
+        assertEquals(null, timeline.url.parameters["X-Plex-Token"])
+    }
+
+    @Test
+    fun `a pause says stopped, and moving on to the next track scrobbles the one before once`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        source.syncPlayback(server, session.sessionId, 590_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 610_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 620_000L, 10_000L, session.durationMs, isPlaying = false)
+        // Back into track 1 and on again: it was scrobbled in this session already.
+        source.syncPlayback(server, session.sessionId, 100_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 700_000L, 10_000L, session.durationMs, isPlaying = true)
+
+        assertEquals(
+            listOf("timeline 1102", "timeline 1103", "scrobble 1102", "timeline 1103", "timeline 1102", "timeline 1103"),
+            names(),
+        )
+        assertEquals(listOf("playing", "playing", "stopped", "playing", "playing"), reports().filter { it.url.encodedPath == "/:/timeline" }.map { it.url.parameters["state"] })
+    }
+
+    @Test
+    fun `within the last 5 seconds of a track it is scrobbled`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        source.syncPlayback(server, session.sessionId, 596_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 601_000L, 10_000L, session.durationMs, isPlaying = true)
+
+        assertEquals(listOf("timeline 1102", "scrobble 1102", "timeline 1103"), names())
+    }
+
+    @Test
+    fun `closing sends a stopped timeline and ends the session`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        source.closePlayback(server, session.sessionId, 700_000L, 0L)
+
+        assertEquals(listOf("timeline 1103"), names())
+        assertEquals("stopped", reports().single().url.parameters["state"])
+        // A closed (or unknown) session fails, so the syncer queues the position instead.
+        assertFailsWith<IllegalStateException> { source.syncPlayback(server, session.sessionId, 1L, 1L, 1L, isPlaying = true) }
+        source.closePlayback(server, session.sessionId, 700_000L, 0L)
+        assertEquals(1, reports().size)
+    }
+
+    @Test
+    fun `a refused report fails the sync`() = runTest {
+        val source = source(failReports = HttpStatusCode.Unauthorized)
+        val session = source.startPlayback(server, "plex_1101")
+
+        assertFailsWith<HttpStatusException> { source.syncPlayback(server, session.sessionId, 1_000L, 1L, 1L, isPlaying = true) }
     }
 }

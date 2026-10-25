@@ -105,4 +105,75 @@ class PlexPlaybackTest {
 
         assertEquals(ServerProgress(5_000L, 1_800_000L, false, 0L), plexServerProgress(tracks))
     }
+
+    // -- Reports while playing ----------------------------------------------------------------
+
+    @Test
+    fun `the timeline names the track the book position is in and the offset inside it`() {
+        assertEquals(PlexTimelinePoint(0, "1", 0L, 600_000L), plexTimelinePoint(three, 0L))
+        assertEquals(PlexTimelinePoint(1, "2", 100_000L, 900_000L), plexTimelinePoint(three, 700_000L))
+        assertEquals(PlexTimelinePoint(1, "2", 0L, 900_000L), plexTimelinePoint(three, 600_000L))
+        assertEquals(PlexTimelinePoint(2, "3", 300_000L, 300_000L), plexTimelinePoint(three, 9_999_999L))
+        assertNull(plexTimelinePoint(emptyList(), 0L))
+    }
+
+    @Test
+    fun `a track is done when playing passed into a later one or is within its last 5 seconds`() {
+        // Moved on from track 1 to track 2: track 1 is done.
+        assertEquals(listOf(0), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 610_000L)!!))
+        // A jump over track 2: both are done.
+        assertEquals(listOf(0, 1), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 1_510_000L)!!))
+        // Near the end of track 1.
+        assertEquals(listOf(0), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 596_000L)!!))
+        // Still in the middle, or back in an earlier track: nothing.
+        assertEquals(emptyList(), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 300_000L)!!))
+        assertEquals(emptyList(), plexCompletedTracks(three, previousIndex = 2, point = plexTimelinePoint(three, 300_000L)!!))
+        // The first report of a session does not finish the tracks before it (they were heard before, or skipped).
+        assertEquals(emptyList(), plexCompletedTracks(three, previousIndex = null, point = plexTimelinePoint(three, 1_510_000L)!!))
+    }
+
+    @Test
+    fun `a track of unknown length is never done by its position`() {
+        val tracks = listOf(track("1", 0L), track("2", 1_000L))
+        assertEquals(emptyList(), plexCompletedTracks(tracks, previousIndex = 0, point = PlexTimelinePoint(0, "1", 0L, 0L)))
+    }
+
+    // -- A position sent without a session (the queue, marks) -----------------------------------
+
+    @Test
+    fun `a position finishes the unheard tracks before it, clears the ones from it on and sets the offset`() {
+        val tracks = listOf(
+            track("1", 600_000),
+            track("2", 900_000, viewCount = 1),
+            track("3", 300_000, viewCount = 1),
+        )
+
+        assertEquals(
+            PlexProgressPlan(scrobble = listOf("1"), unscrobble = listOf("2", "3"), point = PlexTimelinePoint(1, "2", 100_000L, 900_000L)),
+            plexProgressPlan(tracks, positionMs = 700_000L, isFinished = false),
+        )
+    }
+
+    @Test
+    fun `a position near the end of its track finishes that track too`() {
+        assertEquals(
+            PlexProgressPlan(scrobble = listOf("1"), unscrobble = emptyList(), point = PlexTimelinePoint(0, "1", 598_000L, 600_000L)),
+            plexProgressPlan(three, positionMs = 598_000L, isFinished = false),
+        )
+    }
+
+    @Test
+    fun `finished scrobbles every track, not finished at the start clears them all`() {
+        assertEquals(PlexProgressPlan(scrobble = listOf("1", "2", "3"), unscrobble = emptyList(), point = null), plexProgressPlan(three, 5_000L, isFinished = true))
+        val heard = three.map { it.copy(viewCount = 1) }
+        assertEquals(
+            PlexProgressPlan(scrobble = emptyList(), unscrobble = listOf("1", "2", "3"), point = PlexTimelinePoint(0, "1", 0L, 600_000L)),
+            plexProgressPlan(heard, positionMs = 0L, isFinished = false),
+        )
+    }
+
+    @Test
+    fun `a book without tracks has nothing to send`() {
+        assertEquals(PlexProgressPlan(emptyList(), emptyList(), null), plexProgressPlan(emptyList(), 0L, isFinished = false))
+    }
 }

@@ -211,7 +211,7 @@ class LibraryVisibilityTest {
         override suspend fun loadDetails(bookId: String) = error("unused")
         override suspend fun startPlayback(bookId: String) = error("unused")
         override suspend fun closePlayback(session: com.chapterplayer.data.playback.PlaybackSession, positionMs: Long, listenedMs: Long) = error("unused")
-        override suspend fun syncPlayback(session: com.chapterplayer.data.playback.PlaybackSession, positionMs: Long, listenedMs: Long) = error("unused")
+        override suspend fun syncPlayback(session: com.chapterplayer.data.playback.PlaybackSession, positionMs: Long, listenedMs: Long, isPlaying: Boolean) = error("unused")
         override suspend fun fetchServerProgress(bookId: String) = error("unused")
         override suspend fun queueProgress(pending: com.chapterplayer.domain.playback.PendingProgress) = error("unused")
         override suspend fun pendingProgress() = error("unused")

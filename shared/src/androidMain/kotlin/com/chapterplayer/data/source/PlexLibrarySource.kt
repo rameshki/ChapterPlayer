@@ -16,7 +16,10 @@ import com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT
 import com.chapterplayer.domain.plex.PlexBookContent
 import com.chapterplayer.domain.plex.PlexTrack
 import com.chapterplayer.domain.plex.plexPlaybackTracks
+import com.chapterplayer.domain.plex.plexCompletedTracks
+import com.chapterplayer.domain.plex.plexProgressPlan
 import com.chapterplayer.domain.plex.plexServerProgress
+import com.chapterplayer.domain.plex.plexTimelinePoint
 import com.chapterplayer.domain.plex.PlexEntryKind
 import com.chapterplayer.domain.plex.isPlexTrack
 import com.chapterplayer.domain.plex.plexBookContent
@@ -27,13 +30,18 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /** How many track details a book's details read at once. */
 internal const val PLEX_DETAIL_CONCURRENCY = 4
+
+private const val TIMELINE_PLAYING = "playing"
+private const val TIMELINE_STOPPED = "stopped"
 
 /**
  * Lists the books on a Plex Media Server. In a Plex music library each audiobook is an album (the author is the
@@ -46,8 +54,18 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
 
     private val sessionCount = AtomicLong()
 
-    /** The tracks of each session this app opened (Plex has no sessions of its own), by session id. */
-    private val sessions = ConcurrentHashMap<String, List<PlexTrack>>()
+    /**
+     * A session this app opened (Plex has no sessions of its own): the book's tracks, the track of the last report and
+     * the tracks already scrobbled in it. One report at a time per session ([lock]).
+     */
+    private class LiveSession(val tracks: List<PlexTrack>) {
+        val lock = Mutex()
+        var lastIndex: Int? = null
+        val scrobbled = HashSet<Int>()
+    }
+
+    /** The sessions this app opened, by session id; a closed one is forgotten. */
+    private val sessions = ConcurrentHashMap<String, LiveSession>()
 
     /**
      * Plex has no playback session to open: the app makes one from the book's tracks, read fresh ([fetchContent]).
@@ -60,7 +78,7 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
         val tracks = plexPlaybackTracks(server.baseUrl, content.tracks) ?: error(PLEX_AUDIO_MISSING_TEXT)
         val progress = plexServerProgress(content.tracks)
         val sessionId = "plex-${plexRatingKey(bookId)}-${sessionCount.incrementAndGet()}"
-        sessions[sessionId] = content.tracks
+        sessions[sessionId] = LiveSession(content.tracks)
         return PlaybackSession(
             sessionId = sessionId,
             serverId = server.id,
@@ -180,6 +198,53 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
             rest.forEach { (key, detail) -> if (detail != null) details[key] = detail }
         }
         return plexBookContent(tracks, details)
+    }
+
+    /**
+     * Reports the session's position to Plex: a timeline for the track that holds it (`playing`, or `stopped` when
+     * playback paused or stopped), then a scrobble for each track this report finishes ([plexCompletedTracks]; each
+     * at most once per session). An unknown session (the app was restarted) throws, so the position is queued and
+     * sent through [pushProgress]. Throws when a call fails.
+     */
+    override suspend fun syncPlayback(
+        server: ServerConfig,
+        sessionId: String,
+        positionMs: Long,
+        listenedMs: Long,
+        durationMs: Long,
+        isPlaying: Boolean,
+    ) {
+        val live = sessions[sessionId] ?: error("The playback session is over")
+        report(server, live, positionMs, if (isPlaying) TIMELINE_PLAYING else TIMELINE_STOPPED)
+    }
+
+    /** Ends the session: a stopped timeline at [positionMs] (and the scrobbles it finishes); the session is forgotten. */
+    override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
+        val live = sessions.remove(sessionId) ?: return
+        report(server, live, positionMs, TIMELINE_STOPPED)
+    }
+
+    private suspend fun report(server: ServerConfig, live: LiveSession, positionMs: Long, state: String) = live.lock.withLock {
+        val point = plexTimelinePoint(live.tracks, positionMs) ?: return@withLock
+        api.timeline(server.baseUrl, server.token, point.ratingKey, state, point.offsetMs, point.durationMs)
+        for (index in plexCompletedTracks(live.tracks, live.lastIndex, point)) {
+            if (index in live.scrobbled) continue
+            api.scrobble(server.baseUrl, server.token, live.tracks[index].ratingKey)
+            live.scrobbled += index
+        }
+        live.lastIndex = point.trackIndex
+    }
+
+    /**
+     * Sets the book to [positionMs] without a session (a queued position, or Mark as finished / not finished): the
+     * tracks are read fresh for their state and [plexProgressPlan] says which to unscrobble, where to set the offset
+     * and which to scrobble. Finished scrobbles every track. Throws when a call fails (the queue tries again later).
+     */
+    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {
+        val plan = plexProgressPlan(tracksOf(server, bookId), positionMs, isFinished)
+        for (key in plan.unscrobble) api.unscrobble(server.baseUrl, server.token, key)
+        plan.point?.let { api.timeline(server.baseUrl, server.token, it.ratingKey, TIMELINE_STOPPED, it.offsetMs, it.durationMs) }
+        for (key in plan.scrobble) api.scrobble(server.baseUrl, server.token, key)
     }
 
     /**

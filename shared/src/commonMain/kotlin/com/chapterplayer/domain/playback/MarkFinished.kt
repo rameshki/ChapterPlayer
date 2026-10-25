@@ -5,7 +5,7 @@ import com.chapterplayer.data.model.ReadingProgress
 /** What the player menu offers for a book's finished state. */
 enum class MarkAction { MarkFinished, MarkNotFinished }
 
-/** What happened to a mark: the server took it, it waits in the queue for the server, or the book has no server progress (Plex). The local state changed in all three. */
+/** What happened to a mark: the server took it, it waits in the queue for the server, or the book's server keeps no progress. The local state changed in all three. */
 enum class MarkOutcome { SYNCED, QUEUED, LOCAL_ONLY }
 
 /** "Mark as not finished" for a book that counts as finished, "Mark as finished" for everything else (no progress included). */

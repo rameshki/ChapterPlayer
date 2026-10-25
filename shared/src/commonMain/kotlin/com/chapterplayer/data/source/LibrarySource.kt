@@ -53,8 +53,19 @@ interface LibrarySource {
     /** Ends the session [sessionId] with the stop position and the time listened, both in milliseconds. A source without sessions does nothing. */
     suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {}
 
-    /** Tells the server where the open session [sessionId] is: position, time listened since the last sync and book length, in milliseconds. A source without sessions does nothing. Throws when the call fails. */
-    suspend fun syncPlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long, durationMs: Long) {}
+    /**
+     * Tells the server where the open session [sessionId] is: position, time listened since the last sync and book length, in
+     * milliseconds. [isPlaying] is false for the report made when playback paused or stopped (Plex reports that state;
+     * Audiobookshelf does not need it). A source without sessions does nothing. Throws when the call fails.
+     */
+    suspend fun syncPlayback(
+        server: ServerConfig,
+        sessionId: String,
+        positionMs: Long,
+        listenedMs: Long,
+        durationMs: Long,
+        isPlaying: Boolean = true,
+    ) {}
 
     /** The server's progress for [bookId] (the app's id); null when it has none or the source has no progress. Throws when the call fails. */
     suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? = null

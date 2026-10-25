@@ -103,7 +103,7 @@ class PlayerMenuViewModel(
             moreBy = links.authors.firstOrNull(),
             series = links.series,
             download = download,
-            mark = if (book.source == ServerSource.ABS) facts.mark else null,
+            mark = facts.mark,
             confirmingRemove = confirming && download.kind == MenuDownloadKind.REMOVE,
             message = text,
         )

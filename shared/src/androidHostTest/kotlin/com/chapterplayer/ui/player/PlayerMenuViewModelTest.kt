@@ -95,12 +95,12 @@ class PlayerMenuViewModelTest {
     }
 
     @Test
-    fun `a Plex book hides Download and Mark as finished`() = runTest {
+    fun `a Plex book hides Download but offers Mark as finished`() = runTest {
         val r = rig(book.copy(source = ServerSource.PLEX))
         val state = collect(r)
         load(r)
         assertEquals(MenuDownloadKind.HIDDEN, state().download.kind)
-        assertNull(state().mark)
+        assertEquals(MarkAction.MarkFinished, state().mark)
     }
 
     @Test
@@ -304,13 +304,14 @@ class PlayerMenuViewModelTest {
     }
 
     @Test
-    fun `mark does nothing for a Plex book or when nothing is loaded`() = runTest {
+    fun `mark does nothing when nothing is loaded, and marks a loaded Plex book`() = runTest {
         val r = rig(book.copy(source = ServerSource.PLEX))
         collect(r)
         r.vm.onMarkClicked()
+        assertTrue(r.repo.markCalls.isEmpty())
         load(r)
         r.vm.onMarkClicked()
-        assertTrue(r.repo.markCalls.isEmpty())
+        assertEquals(listOf("a" to true), r.repo.markCalls)
     }
 
     @Test
