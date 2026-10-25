@@ -48,6 +48,9 @@ import coil3.compose.AsyncImage
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.settings.LibraryLayout
 import com.chapterplayer.domain.browse.BrowseItem
+import com.chapterplayer.domain.browse.sourcesDescription
+import com.chapterplayer.domain.browse.sourcesMark
+import com.chapterplayer.ui.components.SourcesPill
 import com.chapterplayer.domain.browse.DownloadBadgeKind
 import com.chapterplayer.domain.browse.LetterIndex
 import com.chapterplayer.domain.browse.coverOverlay
@@ -185,7 +188,9 @@ private fun BookGrid(
                 progress = item.progress,
                 downloadState = item.downloadState,
                 dimmed = isDimmed(item),
-                onClick = { onBookClick(item.book.id) }
+                onClick = { onBookClick(item.book.id) },
+                sourcesMark = sourcesMark(item),
+                sourcesDescription = sourcesDescription(item)
             )
         }
     }
@@ -237,6 +242,7 @@ private fun BookRow(item: BrowseItem, dimmed: Boolean, onClick: () -> Unit) {
             overlay.progressFraction?.let { ReadingProgressBar(it, Modifier.padding(top = 6.dp)) }
         }
         SourceBadge(book.source)
+        sourcesMark(item)?.let { SourcesPill(it, sourcesDescription(item)) }
         if (overlay.badge != DownloadBadgeKind.NONE) DownloadBadge(item.downloadState)
         if (overlay.finished) FinishedCheck()
     }

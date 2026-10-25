@@ -14,6 +14,7 @@ import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.SessionError
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -81,6 +82,7 @@ class CarLibraryCallback(
     private val playback: PlaybackController,
     private val scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
+    private val merging: SourceMerging = SourceMerging.None,
 ) : MediaLibrarySession.Callback {
 
     private val carConnections = CarConnectionTracker<MediaSession.ControllerInfo>()
@@ -333,7 +335,7 @@ class CarLibraryCallback(
 
     // One consistent view of the visible books (the same set Home and Library show) per call.
     private suspend fun snapshot(): Snapshot = withContext(Dispatchers.Default) {
-        val items = observeBrowseItems(books, downloads).first()
+        val items = observeBrowseItems(books, downloads, merging).first()
         val collections = books.observeCollections().first()
         val online = connectivity.isOnline.first()
         Snapshot(CarData(items, collections), online)
@@ -346,7 +348,8 @@ class CarLibraryCallback(
         val state = playback.state.value
         val id = state.bookId ?: return null
         if (!playerHoldsBook(mediaIds(), id)) return null
-        val title = data.items.firstOrNull { it.book.id == id }?.book?.title.orEmpty()
+        // The playing copy may be a merged book's other member.
+        val title = data.items.firstNotNullOfOrNull { item -> item.allSources.firstOrNull { it.book.id == id } }?.book?.title.orEmpty()
         return CarNowPlaying(id, title, state.chapters)
     }
 

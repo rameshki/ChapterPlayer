@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE
+import com.chapterplayer.domain.browse.SourcePreference
 import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
 import com.chapterplayer.domain.playback.MIN_PLAYBACK_SPEED
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +50,10 @@ interface AppSettings {
     val playbackSpeed: Flow<Float>
     /** Saves [speed], clamped to 0.5..3.0. */
     suspend fun setPlaybackSpeed(speed: Float)
+
+    /** Which copy plays when a book is on several servers; by default the downloaded one, then Audiobookshelf. */
+    val sourcePreference: Flow<SourcePreference>
+    suspend fun setSourcePreference(preference: SourcePreference)
 }
 
 class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSettings {
@@ -61,6 +67,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val downloadWifiOnly = booleanPreferencesKey("download_wifi_only")
         val downloadLimit = longPreferencesKey("download_storage_limit_bytes")
         val downloadLocation = stringPreferencesKey("download_location_id")
+        val sourcePreference = stringPreferencesKey("source_preference")
     }
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
@@ -88,6 +95,10 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val playbackSpeed: Flow<Float> = prefs.map { (it[Keys.playbackSpeed] ?: 1.0f).coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
 
+    override val sourcePreference: Flow<SourcePreference> = prefs.map { p ->
+        p[Keys.sourcePreference]?.let { name -> SourcePreference.entries.firstOrNull { it.name == name } } ?: DEFAULT_SOURCE_PREFERENCE
+    }
+
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
@@ -103,4 +114,5 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         if (speed.isNaN()) return
         store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
     }
+    override suspend fun setSourcePreference(preference: SourcePreference) { store.edit { it[Keys.sourcePreference] = preference.name } }
 }

@@ -6,6 +6,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.BookMergeDao
 import com.chapterplayer.data.local.dao.BookmarkDao
 import com.chapterplayer.data.local.dao.CollectionDao
 import com.chapterplayer.data.local.dao.DownloadDao
@@ -16,6 +17,7 @@ import com.chapterplayer.data.local.dao.PendingProgressDao
 import com.chapterplayer.data.local.dao.ProgressDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
 import com.chapterplayer.data.local.entity.BookEntity
+import com.chapterplayer.data.local.entity.BookMergeEntity
 import com.chapterplayer.data.local.entity.BookmarkEntity
 import com.chapterplayer.data.local.entity.CollectionBookEntity
 import com.chapterplayer.data.local.entity.CollectionEntity
@@ -41,13 +43,16 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
         BookmarkEntity::class,
         HistoryEntity::class,
         DownloadEntity::class,
-        DownloadFileEntity::class
+        DownloadFileEntity::class,
+        BookMergeEntity::class
     ],
     // Version 9 changes no table: its migration (Migration8To9, Android) drops the Plex rows stored before albums were read.
-    version = 9,
+    // Version 10 adds book_merges (the user's corrections of merged sources).
+    version = 10,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 9, to = 10),
     ],
     exportSchema = true
 )
@@ -63,6 +68,7 @@ abstract class ChapterPlayerDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun historyDao(): HistoryDao
     abstract fun downloadDao(): DownloadDao
+    abstract fun bookMergeDao(): BookMergeDao
 
     companion object {
         const val DATABASE_NAME = "chapter_player.db"

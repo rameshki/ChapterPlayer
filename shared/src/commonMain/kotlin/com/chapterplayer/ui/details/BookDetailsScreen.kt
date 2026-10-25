@@ -35,6 +35,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,8 +71,19 @@ fun BookDetailsScreen(
     viewModel: BookDetailsViewModel = koinViewModel(parameters = { parametersOf(bookId) })
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val sourceActions = remember(viewModel) {
+        SourceActions(
+            onSourceChosen = viewModel::onSourceChosen,
+            onSourceSheetDismissed = viewModel::onSourceSheetDismissed,
+            onNotSameBook = viewModel::onNotSameBookClicked,
+            onMergeWith = viewModel::onMergeWithClicked,
+            onMergeQueryChanged = viewModel::onMergeQueryChanged,
+            onMergeCandidateChosen = viewModel::onMergeCandidateChosen,
+            onMergeSheetDismissed = viewModel::onMergeSheetDismissed,
+        )
+    }
     Column(modifier = Modifier.fillMaxSize()) {
-        DetailsTopBar(onBack)
+        DetailsTopBar(onBack) { DetailsOverflowMenu(state.canSplit, state.canMerge, sourceActions) }
         OfflineHeader()
         BookDetailsContent(
             state = state,
@@ -79,6 +91,7 @@ fun BookDetailsScreen(
             onRetry = viewModel::retry,
             onPlayClick = viewModel::onResumeClicked,
             onDismissPlayError = viewModel::dismissPlayError,
+            onDismissNotice = viewModel::onNoticeDismissed,
             onChapterClick = viewModel::onChapterClicked,
             onSelectTab = viewModel::selectTab,
             onOpenBook = onOpenBook,
@@ -95,13 +108,16 @@ fun BookDetailsScreen(
             )
         )
     }
+    state.sourceSheet?.let { SourceSheet(it, sourceActions) }
+    state.mergeSheet?.let { MergeWithSheet(it, sourceActions) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailsTopBar(onBack: () -> Unit) {
+private fun DetailsTopBar(onBack: () -> Unit, actions: @Composable () -> Unit = {}) {
     TopAppBar(
         title = {},
+        actions = { actions() },
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
@@ -125,7 +141,8 @@ fun BookDetailsContent(
     onOpenGroup: (kind: LibraryView, key: String) -> Unit,
     onOpenPlayer: () -> Unit,
     downloadActions: DownloadActions,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDismissNotice: () -> Unit = {}
 ) {
     val book = state.book
     when {
@@ -164,6 +181,7 @@ fun BookDetailsContent(
                 )
             }
             state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
+            state.notice?.let { ErrorBanner(it, onRetry = null, onDismiss = onDismissNotice) }
             detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
             LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions, Modifier.weight(1f))
         }
@@ -191,7 +209,8 @@ private fun LoadedList(
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
             DetailsTab.CHAPTERS -> {
-                val taps = chapterTapsEnabled(state.playback, state.canPlay)
+                // Another copy in the player: its position is not this page's, so the chapters do not seek.
+                val taps = chapterTapsEnabled(state.playback, state.canPlay) && state.playingFrom == null
                 chaptersTab(state.chapters, emptyChaptersText(state.detailsLoaded, state.loadingDetails), taps, onChapterClick)
             }
             DetailsTab.ABOUT -> aboutTab(state.about, state.links, onOpenGroup)
@@ -259,7 +278,7 @@ private fun DetailsHeader(
                 style = MaterialTheme.typography.titleMedium
             )
         }
-        playCaption(state.playback, state.canPlay, state.cannotPlayReason)?.let {
+        (state.playingFrom ?: playCaption(state.playback, state.canPlay, state.cannotPlayReason))?.let {
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
@@ -275,6 +294,7 @@ private fun DetailsHeader(
             ) { Text("Open player", color = AmberGold, style = MaterialTheme.typography.titleSmall) }
         }
         DownloadControl(state.download, downloadActions)
+        SourcesSection(state.sources, state.sourcesDescription)
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -338,7 +358,7 @@ private fun DetailsTabs(selected: DetailsTab, hasSeries: Boolean, onSelect: (Det
 }
 
 @Composable
-private fun ErrorBanner(message: String, onRetry: () -> Unit, onDismiss: (() -> Unit)? = null) {
+private fun ErrorBanner(message: String, onRetry: (() -> Unit)?, onDismiss: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -354,8 +374,10 @@ private fun ErrorBanner(message: String, onRetry: () -> Unit, onDismiss: (() -> 
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(vertical = 8.dp)
         )
-        TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("Retry", color = AmberGold)
+        if (onRetry != null) {
+            TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Retry", color = AmberGold)
+            }
         }
         if (onDismiss != null) {
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {

@@ -8,14 +8,12 @@ fun searchItems(items: List<BrowseItem>, query: String): List<BrowseItem> {
     
     val words = trimmedQuery.split(WHITESPACE)
     
+    // A merged book matches on any member's details (the servers may spell them differently).
     return items.filter { item ->
-        val book = item.book
-        val fields = listOfNotNull(
-            book.title,
-            book.author,
-            book.narrator,
-            book.seriesName
-        )
+        val fields = item.allSources.flatMap { member ->
+            val book = member.book
+            listOfNotNull(book.title, book.author, book.narrator, book.seriesName)
+        }
         
         words.all { word ->
             fields.any { field ->

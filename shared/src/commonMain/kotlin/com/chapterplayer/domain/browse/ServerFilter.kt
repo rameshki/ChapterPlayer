@@ -32,7 +32,8 @@ fun serverFilterOptions(
     selected: Set<String>
 ): List<ServerFilterOption> {
     if (servers.size < 2) return emptyList()
-    val counts = allItems.groupingBy { it.book.serverId }.eachCount()
+    // A merged book counts once on each of its servers.
+    val counts = allItems.flatMap { it.serverIds }.groupingBy { it }.eachCount()
     val live = liveSelection(selected, servers.map { it.id })
     return servers.map { server ->
         ServerFilterOption(

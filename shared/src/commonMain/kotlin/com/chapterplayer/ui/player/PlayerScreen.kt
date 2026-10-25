@@ -109,6 +109,7 @@ fun PlayerScreen(
         onRemoveConfirmed = menuViewModel::onRemoveConfirmed,
         onRemoveDismissed = menuViewModel::onRemoveDismissed,
         onMessageShown = menuViewModel::onMessageShown,
+        onNotSameBook = menuViewModel::onNotSameBookClicked,
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()

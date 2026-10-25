@@ -89,10 +89,11 @@ fun groupBySeries(items: List<BrowseItem>): List<BookGroup> {
 }
 
 fun groupByCollection(items: List<BrowseItem>, collections: List<BookCollection>): List<BookGroup> {
-    val byServer: Map<String, Map<String, BrowseItem>> = items.groupBy { it.book.serverId }.mapValues { (_, list) ->
-        val m = HashMap<String, BrowseItem>(list.size * 2)
-        for (i in list) if (i.book.id !in m) m[i.book.id] = i
-        m
+    // A merged book is in a server's collection when its member on that server is.
+    val byServer = HashMap<String, HashMap<String, BrowseItem>>()
+    for (item in items) for (member in item.allSources) {
+        val m = byServer.getOrPut(member.book.serverId) { HashMap() }
+        if (member.book.id !in m) m[member.book.id] = item
     }
     
     val groups = mutableListOf<BookGroup>()

@@ -323,4 +323,39 @@ class PlayerMenuViewModelTest {
         r.vm.onMessageShown()
         assertNull(state().message)
     }
+    // ---- a book on several servers ----
+
+    private class Splits : com.chapterplayer.data.merge.BookMergeRepository {
+        val calls = mutableListOf<String>()
+        override val overrides = kotlinx.coroutines.flow.MutableStateFlow(com.chapterplayer.domain.browse.MergeOverrides())
+        override suspend fun split(bookId: String, otherIds: Collection<String>) { calls += "split $bookId $otherIds" }
+        override suspend fun merge(bookId: String, otherId: String, group: Collection<String>, otherGroup: Collection<String>) {}
+        override suspend fun forgetBooks(bookIds: Collection<String>) {}
+    }
+
+    @Test
+    fun `the playing copy of a merged book can be split from the other`() = runTest {
+        val a = testBook("a", title = "Same").copy(serverId = "abs1", durationMs = 3_600_000L)
+        val p = a.copy(id = "p", serverId = "plex1", source = com.chapterplayer.data.model.ServerSource.PLEX)
+        val controller = FakePlaybackController()
+        val splits = Splits()
+        val vm = PlayerMenuViewModel(
+            controller, FakeBookRepository(listOf(a, p)), FakeDownloadOverview(), FakeDownloadController(), FakeConnectivity(true), Dispatchers.Main,
+            merging = com.chapterplayer.data.merge.FixedSourceMerging(), merges = splits
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect {} }
+        controller.playback.value = PlaybackState(bookId = "p", durationMs = 1_000L)
+        assertTrue(vm.state.value.canSplit)
+        vm.onNotSameBookClicked()
+        assertEquals(listOf("split p [a]"), splits.calls)
+        assertEquals("Shown as separate books", vm.state.value.message)
+    }
+
+    @Test
+    fun `a book on one server offers no split`() = runTest {
+        val r = rig(book)
+        val state = collect(r)
+        load(r)
+        assertFalse(state().canSplit)
+    }
 }

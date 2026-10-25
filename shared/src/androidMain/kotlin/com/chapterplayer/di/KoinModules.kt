@@ -60,6 +60,10 @@ import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
+import com.chapterplayer.data.merge.BookMergeRepository
+import com.chapterplayer.data.merge.RoomBookMergeRepository
+import com.chapterplayer.data.merge.AppSourceMerging
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.BookRepositoryImpl
 import com.chapterplayer.data.repository.LibraryCatalog
@@ -153,6 +157,7 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().bookmarkDao() }
     single { get<ChapterPlayerDatabase>().historyDao() }
     single { get<ChapterPlayerDatabase>().downloadDao() }
+    single { get<ChapterPlayerDatabase>().bookMergeDao() }
 }
 
 val networkModule = module {
@@ -203,8 +208,10 @@ val repositoryModule = module {
             // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
             onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith }
         ) }
-    singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
+    single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get()) }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
+    // The user's "Not the same book" and "Merge with" choices for books on several servers.
+    single<BookMergeRepository> { RoomBookMergeRepository(get()) }
     single<DownloadStates> { RoomDownloadStates(get()) }
     // A downloaded book's files, for playing it from the phone (playback and the downloads share it).
     single<LocalBookFiles> { RoomLocalBookFiles(get(), AndroidLocalDisk, Dispatchers.IO, nowMs = System::currentTimeMillis) }
@@ -234,6 +241,8 @@ val browseModule = module {
             store.followServers(serverIds, get(AppScopeQualifier))
         }
     }
+    // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).
+    single<SourceMerging> { AppSourceMerging(get(), get(), get(), get(), get()) }
     // Where the browse view models do their list work; tests pass their own.
     single<CoroutineDispatcher>(IoDispatcherQualifier) { Dispatchers.Default }
 }
@@ -283,31 +292,34 @@ val deviceModule = module {
 }
 
 val viewModelModule = module {
-    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get()) }
+    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get()) }
     viewModelOf(::LibrariesViewModel)
     // Built with parametersOf(kind, groupKey) by the group detail screen.
     viewModel { params ->
         GroupDetailViewModel(
-            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)
+            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
-    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get()) }
+    viewModel { params -> BookDetailsViewModel(
+            params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
+            merging = get(), merges = get(), servers = get()
+        ) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
     // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
     viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
     viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
     viewModelOf(::OfflineStateViewModel)
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
+    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
 }
 
 val widgetModule = module {
     // What the home screen widgets show, and the Now Playing buttons (they act on the loaded book only).
-    single { WidgetStates(get(), get(), get(), get(), get()) }
+    single { WidgetStates(get(), get(), get(), get(), get(), merging = get()) }
     single { WidgetActions(get()) }
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
     single<WidgetHost> { GlanceWidgetHost(androidContext()) }

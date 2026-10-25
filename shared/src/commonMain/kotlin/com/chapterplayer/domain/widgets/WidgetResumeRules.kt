@@ -2,6 +2,8 @@ package com.chapterplayer.domain.widgets
 
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.resumeCandidate
+import com.chapterplayer.domain.browse.entryContaining
+import com.chapterplayer.domain.browse.hasCopy
 
 /**
  * Whether the main activity acts on the Continue widget's Resume extra. Only a fresh tap counts: an activity
@@ -16,7 +18,11 @@ fun shouldHandleWidgetResume(restoredFromSavedState: Boolean, launchedFromHistor
  * activity is exported.
  */
 fun widgetMayResume(items: List<BrowseItem>, online: Boolean, downloadedOnly: Boolean, bookId: String): Boolean {
+    // Any copy of the offered book or of Home's Resume book counts, so a primary that changed since the widget was
+    // drawn (a download finished, a server came back) is not refused.
     val offered = continueWidgetState(items, online, downloadedOnly)
-    if (offered is ContinueWidgetState.Book && offered.bookId == bookId) return true
-    return resumeCandidate(items)?.item?.book?.id == bookId
+    if (offered is ContinueWidgetState.Book) {
+        if (offered.bookId == bookId || entryContaining(items, offered.bookId)?.hasCopy(bookId) == true) return true
+    }
+    return resumeCandidate(items)?.entry?.hasCopy(bookId) == true
 }

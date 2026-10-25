@@ -54,6 +54,8 @@ import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.ResumeInfo
 import com.chapterplayer.domain.browse.parseSeriesName
+import com.chapterplayer.domain.browse.sourcesDescription
+import com.chapterplayer.domain.browse.sourcesMark
 import com.chapterplayer.ui.components.BookCard
 import com.chapterplayer.ui.components.DimmedCoverOverlay
 import com.chapterplayer.ui.library.CoverArt
@@ -205,7 +207,9 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                             progress = item.progress,
                             downloadState = item.downloadState,
                             dimmed = state.dimmed(item),
-                            onClick = { onBookClick(item.book.id) }
+                            onClick = { onBookClick(item.book.id) },
+                            sourcesMark = sourcesMark(item),
+                            sourcesDescription = sourcesDescription(item)
                         )
                         nextInSeriesCaption(item)?.let {
                             Text(
@@ -226,7 +230,8 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
         if (state.inProgress.isNotEmpty()) {
             ContinueReadingStrip(
                 books = state.inProgress.map { it.book },
-                progressMap = state.inProgress.mapNotNull { it.progress }.associateBy { it.bookId },
+                // Keyed by the entry's book: a merged entry's progress may come from its other copy.
+                progressMap = state.inProgress.mapNotNull { item -> item.progress?.let { item.book.id to it } }.toMap(),
                 onBookClick = onBookClick,
                 dimmedIds = state.inProgress.filter { state.dimmed(it) }.map { it.book.id }.toSet()
             )
@@ -252,7 +257,9 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                         downloadState = item.downloadState,
                         dimmed = state.dimmed(item),
                         onClick = { onBookClick(item.book.id) },
-                        modifier = Modifier.width(150.dp)
+                        modifier = Modifier.width(150.dp),
+                        sourcesMark = sourcesMark(item),
+                        sourcesDescription = sourcesDescription(item)
                     )
                 }
             }

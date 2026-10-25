@@ -35,6 +35,7 @@ class PlayerMenuActions(
     val onRemoveConfirmed: () -> Unit,
     val onRemoveDismissed: () -> Unit,
     val onMessageShown: () -> Unit,
+    val onNotSameBook: () -> Unit = {},
 )
 
 /** The ⋮ button at the top right of the player and the menu it opens. */
@@ -62,6 +63,9 @@ fun PlayerMenuButton(menu: PlayerMenuState, actions: PlayerMenuActions, modifier
             }
             menu.mark?.let { mark ->
                 MenuItem(if (mark == MarkAction.MarkFinished) "Mark as finished" else "Mark as not finished", close = close) { actions.onMark() }
+            }
+            if (menu.canSplit) {
+                MenuItem("Not the same book", "Show this server's copy as a separate book", close = close) { actions.onNotSameBook() }
             }
             MenuItem("Settings", close = close) { actions.onOpenSettings() }
         }

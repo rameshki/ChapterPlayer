@@ -10,7 +10,8 @@ package com.chapterplayer.domain.browse
  */
 fun continueSeries(items: List<BrowseItem>, excludeBookId: String? = null): List<BrowseItem> {
     // Group by serverId to ensure series are never merged across different servers
-    val itemsByServer = items.groupBy { it.book.serverId }
+    // A merged book counts on the server whose copy gave its series (see seriesServerId).
+    val itemsByServer = items.groupBy { it.seriesServerId }
     val candidates = mutableListOf<Pair<BrowseItem, Long>>()
 
     for (serverItems in itemsByServer.values) {

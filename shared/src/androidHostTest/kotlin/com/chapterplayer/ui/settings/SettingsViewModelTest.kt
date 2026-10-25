@@ -82,6 +82,17 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `the several-servers choice shows the saved one and saves a new one`() = runTest {
+        val settings = FakeAppSettings()
+        val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_DOWNLOADED, vm.sourcePreference.value)
+
+        vm.setSourcePreference(com.chapterplayer.domain.browse.SourcePreference.PREFER_PLEX)
+        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_PLEX, settings.sourcePreferenceFlow.value)
+        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_PLEX, vm.sourcePreference.value)
+    }
+
+    @Test
     fun `resume when connected to the car starts on and can be switched off and on`() = runTest {
         val settings = FakeAppSettings()
         val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
