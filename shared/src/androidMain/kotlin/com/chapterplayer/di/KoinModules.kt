@@ -44,6 +44,7 @@ import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.AbsSessionManager
 import com.chapterplayer.data.remote.abs.AbsSignIn
+import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.remote.createDownloadHttpClient
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.plex.PlexApiService
@@ -177,6 +178,8 @@ val repositoryModule = module {
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     single { LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier)) }
+    // The Plex servers the cover loader adds the token header for.
+    single { PlexImageServers(get(), get(AppScopeQualifier)) }
     single<LibrarySync> { get<LibrarySyncCoordinator>() }
 }
 
