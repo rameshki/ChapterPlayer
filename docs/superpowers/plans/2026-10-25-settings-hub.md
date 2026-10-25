@@ -21,3 +21,5 @@ No Playback and no Widgets rows (nothing to set yet; do not add placeholders).
 
 ## Finish
 `:shared:testAndroidHostTest`, `:androidApp:assembleDebug`, `:androidApp:assembleRelease` green; privacy scan; commits with trailers `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01M55YRaxmRRG8NmDaVhSmey` (exactly "Claude Sonnet 5.5"). Never push, never dispatch subagents. One gradle command at a time, JDK 17, CRLF tree (grep after edits). Report to `C:/Users/Robert/AppData/Local/Temp/claude/C--Users-Robert-ClaudeProjects-ChapterPlayer/5951ad6b-9e9b-494e-886e-6d21b9103272/scratchpad/settings-hub-report.md`; return only status, commits, one-line test count, concerns.
+
+Note after implementation: `SettingsViewModel` is one class, but Koin gives each page its own instance (scoped to its back-stack entry), not one shared instance. The state is persisted settings, so the pages agree.

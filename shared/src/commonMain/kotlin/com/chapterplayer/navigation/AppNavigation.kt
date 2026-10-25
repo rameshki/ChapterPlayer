@@ -251,11 +251,11 @@ fun AppNavigation() {
 
                     composable(Screen.Settings.route) {
                         SettingsHubScreen(
-                            onOpenServers = { navController.navigate(Screen.SettingsServers.route) },
-                            onOpenAppearance = { navController.navigate(Screen.SettingsAppearance.route) },
-                            onOpenDownloads = { navController.navigate(Screen.SettingsDownloads.route) },
-                            onOpenCar = { navController.navigate(Screen.SettingsCar.route) },
-                            onOpenAbout = { navController.navigate(Screen.SettingsAbout.route) },
+                            onOpenServers = { navController.navigate(Screen.SettingsServers.route) { launchSingleTop = true } },
+                            onOpenAppearance = { navController.navigate(Screen.SettingsAppearance.route) { launchSingleTop = true } },
+                            onOpenDownloads = { navController.navigate(Screen.SettingsDownloads.route) { launchSingleTop = true } },
+                            onOpenCar = { navController.navigate(Screen.SettingsCar.route) { launchSingleTop = true } },
+                            onOpenAbout = { navController.navigate(Screen.SettingsAbout.route) { launchSingleTop = true } },
                             onBack = { navController.popBackStack() }
                         )
                     }

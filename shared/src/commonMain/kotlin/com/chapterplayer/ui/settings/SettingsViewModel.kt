@@ -47,7 +47,9 @@ data class LocationOption(val id: String, val label: String, val detail: String)
 /** The download locations available now and the one new downloads go to. */
 data class DownloadLocationsUi(
     val options: List<LocationOption> = emptyList(),
-    val selectedId: String = INTERNAL_VOLUME_ID
+    val selectedId: String = INTERNAL_VOLUME_ID,
+    /** The saved choice, whether or not its volume has been read yet (null is internal storage). */
+    val chosenId: String? = null
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,7 +239,8 @@ class SettingsViewModel(
         combine(volumes, appSettings.downloadLocationId) { available, chosen ->
             DownloadLocationsUi(
                 options = available.map { LocationOption(it.id, it.label, "${formatBytes(it.freeBytes)} free") },
-                selectedId = chooseVolume(chosen, available)?.id ?: INTERNAL_VOLUME_ID
+                selectedId = chooseVolume(chosen, available)?.id ?: INTERNAL_VOLUME_ID,
+                chosenId = chosen
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadLocationsUi())
 

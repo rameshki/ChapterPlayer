@@ -46,6 +46,17 @@ class SettingsSummaryTest {
     }
 
     @Test
+    fun `the location label follows the saved choice even before the volumes are read`() {
+        assertEquals("Internal storage", downloadLocationLabel(null, emptyMap()))
+        assertEquals("Internal storage", downloadLocationLabel("internal", emptyMap()))
+        assertEquals("External storage", downloadLocationLabel("sd-1", emptyMap()))
+        val read = mapOf("internal" to "Internal storage", "sd-1" to "SD card")
+        assertEquals("SD card", downloadLocationLabel("sd-1", read))
+        assertEquals("Internal storage", downloadLocationLabel("sd-gone", read))
+        assertEquals("Internal storage", downloadLocationLabel(null, read))
+    }
+
+    @Test
     fun `car and about summaries`() {
         assertEquals("Resume on connect: on", carSummary(true))
         assertEquals("Resume on connect: off", carSummary(false))

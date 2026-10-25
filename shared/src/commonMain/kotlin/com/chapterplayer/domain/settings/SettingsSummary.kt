@@ -3,6 +3,7 @@ package com.chapterplayer.domain.settings
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.settings.ThemeMode
+import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
 import com.chapterplayer.domain.downloads.storageLimitLabel
 
 /** The one-line live summaries on the Settings home rows. Pure text rules. */
@@ -32,6 +33,21 @@ fun downloadsSummary(wifiOnly: Boolean, locationLabel: String?, limitBytes: Long
         locationLabel ?: "Internal storage",
         storageLimitLabel(limitBytes)
     ).joinToString(SEPARATOR)
+
+/**
+ * The name of the place new downloads go. [chosenId] is the saved choice (null is internal storage),
+ * [labels] the volumes read so far by id. While they are not read yet an external choice reads as
+ * "External storage" rather than wrongly as internal; once read, a missing volume falls back to internal.
+ */
+fun downloadLocationLabel(chosenId: String?, labels: Map<String, String>): String {
+    val id = chosenId ?: INTERNAL_VOLUME_ID
+    labels[id]?.let { return it }
+    return when {
+        id == INTERNAL_VOLUME_ID -> "Internal storage"
+        labels.isEmpty() -> "External storage"
+        else -> labels[INTERNAL_VOLUME_ID] ?: "Internal storage"
+    }
+}
 
 fun carSummary(resumeOnConnect: Boolean): String = "Resume on connect: ${if (resumeOnConnect) "on" else "off"}"
 

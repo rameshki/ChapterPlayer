@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,7 @@ import com.chapterplayer.data.AppInfo
 import com.chapterplayer.domain.settings.aboutSummary
 import com.chapterplayer.domain.settings.appearanceSummary
 import com.chapterplayer.domain.settings.carSummary
+import com.chapterplayer.domain.settings.downloadLocationLabel
 import com.chapterplayer.domain.settings.downloadsSummary
 import com.chapterplayer.domain.settings.rowDescription
 import com.chapterplayer.domain.settings.serversSummary
@@ -63,7 +65,9 @@ fun SettingsHubScreen(
     val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
     val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
 
-    val locationLabel = downloadLocations.options.firstOrNull { it.id == downloadLocations.selectedId }?.label
+    // A card may have been put in or taken out since the hub was last open.
+    LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
+    val locationLabel = downloadLocationLabel(downloadLocations.chosenId, downloadLocations.options.associate { it.id to it.label })
 
     SettingsPage(title = "Settings", onBack = onBack) {
         HubGroup(null) {
