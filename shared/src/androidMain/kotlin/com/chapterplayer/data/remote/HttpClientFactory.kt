@@ -89,6 +89,28 @@ internal fun HttpClientConfig<*>.installDownloadDefaults(
     installSafeLogging(isDebuggable, sink)
 }
 
+/** How long a connection probe waits to connect, and for each read. */
+internal const val PROBE_HTTP_TIMEOUT_MS = 3_000L
+
+/** The client that probes Plex connections: see [installProbeDefaults]. */
+internal fun createProbeHttpClient(isDebuggable: Boolean): HttpClient =
+    HttpClient(OkHttp) { installProbeDefaults(isDebuggable) }
+
+/**
+ * Settings for connection probes: 3 s to connect and per read, no redirects followed (a probe that is sent elsewhere
+ * failed, and its token header must not travel), statuses left to the caller, and the same safe logging.
+ */
+internal fun HttpClientConfig<*>.installProbeDefaults(isDebuggable: Boolean, sink: (String) -> Unit = { Log.d(LOG_TAG, it) }) {
+    followRedirects = false
+    expectSuccess = false
+    install(HttpTimeout) {
+        connectTimeoutMillis = PROBE_HTTP_TIMEOUT_MS
+        socketTimeoutMillis = PROBE_HTTP_TIMEOUT_MS
+        requestTimeoutMillis = 2 * PROBE_HTTP_TIMEOUT_MS
+    }
+    installSafeLogging(isDebuggable, sink)
+}
+
 // Debug builds only. Auth headers are never logged (project rule), and neither are bodies,
 // because login carries a password and its response carries the tokens.
 private fun HttpClientConfig<*>.installSafeLogging(isDebuggable: Boolean, sink: (String) -> Unit) {

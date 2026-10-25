@@ -44,6 +44,32 @@ class AndroidConnectivityMonitor(context: Context) : ConnectivityMonitor {
         }
     }.distinctUntilChanged()
 
+    /** The default network's handle (a different value per network), null when there is none. */
+    override val currentNetwork: Flow<String?> = callbackFlow {
+        trySend(
+            try {
+                manager?.activeNetwork?.toString()
+            } catch (e: RuntimeException) {
+                null
+            }
+        )
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { trySend(network.toString()) }
+            override fun onLost(network: Network) { trySend(null) }
+        }
+        val registered = try {
+            manager?.registerDefaultNetworkCallback(callback)
+            manager != null
+        } catch (e: RuntimeException) {
+            false
+        }
+        awaitClose {
+            if (registered) {
+                try { manager?.unregisterNetworkCallback(callback) } catch (_: RuntimeException) {}
+            }
+        }
+    }.distinctUntilChanged()
+
     private fun initialValue(): Boolean {
         val m = manager
         var failed = false

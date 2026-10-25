@@ -67,6 +67,17 @@ class PlexFixtureParsingTest {
     }
 
     @Test
+    fun `a saved server is found among the resources by its address, the raw local one too`() {
+        val servers = PlexParsers.resources(fixture("plex/plextv-resources.json"))
+
+        val byName = matchingCandidates("https://192-0-2-12.fixturemachine020000000000000000.plex.direct:32400/", servers)
+        assertEquals("https://192-0-2-12.fixturemachine020000000000000000.plex.direct:32400", byName?.first()?.uri)
+        val byRaw = matchingCandidates("http://192.0.2.11:32400", servers)
+        assertEquals(4, byRaw?.size)
+        assertNull(matchingCandidates("http://203.0.113.9:32400", servers))
+    }
+
+    @Test
     fun `parses the library sections`() {
         val sections = PlexParsers.sections(fixture("plex/sections.json")).mediaContainer
 
