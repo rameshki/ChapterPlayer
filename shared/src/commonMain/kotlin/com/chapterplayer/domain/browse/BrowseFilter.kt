@@ -6,7 +6,23 @@ import com.chapterplayer.data.model.ReadingProgress
 
 enum class ProgressFilter { ALL, IN_PROGRESS, NOT_STARTED, FINISHED }
 enum class DownloadFilter { ALL, DOWNLOADED, NOT_DOWNLOADED }
-data class BrowseItem(val book: AudioBook, val progress: ReadingProgress?, val downloadState: DownloadState)
+/**
+ * One entry of the lists. A book several servers have is one entry: [book] and [downloadState] are the primary
+ * member's (see `mergeDuplicates`), [progress] is the member progress played most recently, and [sources] holds
+ * every member as it is on its own server, the primary first. A book on one server has no [sources].
+ */
+data class BrowseItem(
+    val book: AudioBook,
+    val progress: ReadingProgress?,
+    val downloadState: DownloadState,
+    val sources: List<BrowseItem> = emptyList(),
+) {
+    /** More than one server has this book. */
+    val isMerged: Boolean get() = sources.size > 1
+
+    /** Every member, the primary first; just this item for a book on one server. */
+    val allSources: List<BrowseItem> get() = sources.ifEmpty { listOf(this) }
+}
 data class BrowseQuery(
     val progress: ProgressFilter = ProgressFilter.ALL,
     val download: DownloadFilter = DownloadFilter.ALL,
@@ -15,7 +31,9 @@ data class BrowseQuery(
     val serverIds: Set<String> = emptySet(),
 )
 fun applyQuery(items: List<BrowseItem>, query: BrowseQuery): List<BrowseItem> {
-    val filtered = items.filter { item ->
+    // A merged book stays when any member is on a chosen server, shown as that member.
+    val onChosenServers = if (query.serverIds.isEmpty()) items else items.mapNotNull { it.onServers(query.serverIds) }
+    val filtered = onChosenServers.filter { item ->
         val progressMatch = when (query.progress) {
             ProgressFilter.ALL -> true
             ProgressFilter.IN_PROGRESS -> item.progress != null && !item.progress.isFinished && item.progress.positionMs > 0L
@@ -29,9 +47,7 @@ fun applyQuery(items: List<BrowseItem>, query: BrowseQuery): List<BrowseItem> {
             DownloadFilter.NOT_DOWNLOADED -> item.downloadState != DownloadState.DOWNLOADED
         }
         
-        val serverMatch = query.serverIds.isEmpty() || item.book.serverId in query.serverIds
-
-        progressMatch && downloadMatch && serverMatch
+        progressMatch && downloadMatch
     }
     
     return sortItems(filtered, query.sort)
