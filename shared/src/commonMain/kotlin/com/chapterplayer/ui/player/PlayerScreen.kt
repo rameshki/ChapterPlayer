@@ -4,6 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -152,71 +156,112 @@ fun PlayerContent(
         return
     }
 
-    Column(modifier = modifier.fillMaxSize().background(BackgroundDeep)) {
-        state.error?.let { ErrorBanner(it, onDismissError) }
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            PlayerTopBar(state.title, onBack)
-            Spacer(Modifier.height(8.dp))
-            Cover(state)
-            Spacer(Modifier.height(16.dp))
-            ChapterHeading(state) { sheet = SHEET_CHAPTERS }
-            if (state.author.isNotBlank()) {
-                Text(
-                    text = state.author,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            val chapterIndex = state.currentChapterIndex
-            val chapterDuration = chapterIndex?.let { state.chapters.getOrNull(it)?.durationMs } ?: 0L
-            if (state.chapterFraction != null) {
-                SeekSlider(
-                    name = "Chapter progress",
-                    fraction = state.chapterFraction,
-                    totalMs = chapterDuration,
-                    elapsed = state.chapterElapsed.orEmpty(),
-                    remaining = state.chapterRemaining.orEmpty(),
-                    onSeek = onSeekChapter
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-            SeekSlider(
-                name = "Book progress",
-                fraction = state.bookFraction,
-                totalMs = state.durationMs,
-                elapsed = state.elapsed,
-                remaining = state.remaining,
-                onSeek = onSeekBook
+    BoxWithConstraints(modifier = modifier.fillMaxSize().background(BackgroundDeep)) {
+        val availWidth = maxWidth
+        val landscape = maxWidth > maxHeight
+        // Under this height the controls do not fit beside a worthwhile cover: scroll instead.
+        val tight = !landscape && maxHeight < 560.dp
+        val controls: @Composable ColumnScope.() -> Unit = {
+        ChapterHeading(state) { sheet = SHEET_CHAPTERS }
+        if (state.author.isNotBlank()) {
+            Text(
+                text = state.author,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
             )
-            if (state.timeLeft.isNotBlank()) {
-                Text(
-                    text = state.timeLeft,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center
-                )
-            }
+        }
+        Spacer(Modifier.height(16.dp))
+        val chapterIndex = state.currentChapterIndex
+        val chapterDuration = chapterIndex?.let { state.chapters.getOrNull(it)?.durationMs } ?: 0L
+        if (state.chapterFraction != null) {
+            SeekSlider(
+                name = "Chapter progress",
+                fraction = state.chapterFraction,
+                totalMs = chapterDuration,
+                elapsed = state.chapterElapsed.orEmpty(),
+                remaining = state.chapterRemaining.orEmpty(),
+                onSeek = onSeekChapter
+            )
             Spacer(Modifier.height(8.dp))
-            TransportRow(state, onPreviousChapter, onSkipBack, onPlayPause, onSkipForward, onNextChapter)
-            Spacer(Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ToolButton(Icons.Default.Speed, state.speedLabel, "Playback speed", Modifier.weight(1f)) { sheet = SHEET_SPEED }
-                ToolButton(Icons.Default.Bedtime, state.sleepLabel, "Sleep timer", Modifier.weight(1f)) { sheet = SHEET_SLEEP }
-                ToolButton(Icons.Default.Bookmark, "Bookmarks", "Bookmarks", Modifier.weight(1f)) { sheet = SHEET_BOOKMARKS }
-                ToolButton(Icons.Default.History, "History", "History", Modifier.weight(1f)) { sheet = SHEET_HISTORY }
+        }
+        SeekSlider(
+            name = "Book progress",
+            fraction = state.bookFraction,
+            totalMs = state.durationMs,
+            elapsed = state.elapsed,
+            remaining = state.remaining,
+            onSeek = onSeekBook
+        )
+        if (state.timeLeft.isNotBlank()) {
+            Text(
+                text = state.timeLeft,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        TransportRow(state, onPreviousChapter, onSkipBack, onPlayPause, onSkipForward, onNextChapter)
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            ToolButton(Icons.Default.Speed, state.speedLabel, "Playback speed", Modifier.weight(1f)) { sheet = SHEET_SPEED }
+            ToolButton(Icons.Default.Bedtime, state.sleepLabel, "Sleep timer", Modifier.weight(1f)) { sheet = SHEET_SLEEP }
+            ToolButton(Icons.Default.Bookmark, "Bookmarks", "Bookmarks", Modifier.weight(1f)) { sheet = SHEET_BOOKMARKS }
+            ToolButton(Icons.Default.History, "History", "History", Modifier.weight(1f)) { sheet = SHEET_HISTORY }
+        }
+        }
+        Column(modifier = Modifier.fillMaxSize()) {
+            state.error?.let { ErrorBanner(it, onDismissError) }
+            when {
+                landscape -> Row(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Column(modifier = Modifier.weight(0.42f).fillMaxHeight()) {
+                        PlayerTopBar(state.title, onBack)
+                        BoxWithConstraints(
+                            modifier = Modifier.weight(1f).fillMaxWidth().padding(bottom = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Cover(state, Modifier.size(minOf(maxWidth, maxHeight, 320.dp)))
+                        }
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column(
+                        modifier = Modifier.weight(0.58f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        content = controls
+                    )
+                }
+                tight -> Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    PlayerTopBar(state.title, onBack)
+                    Spacer(Modifier.height(8.dp))
+                    Cover(state, Modifier.size(minOf(availWidth, 160.dp)))
+                    Spacer(Modifier.height(16.dp))
+                    controls()
+                }
+                else -> Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    PlayerTopBar(state.title, onBack)
+                    Spacer(Modifier.height(8.dp))
+                    // The cover takes what the controls leave, so the whole player fits without scrolling.
+                    BoxWithConstraints(
+                        modifier = Modifier.weight(1f).fillMaxWidth().heightIn(min = 96.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Cover(state, Modifier.size(minOf(maxWidth, maxHeight, 320.dp)))
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    controls()
+                }
             }
         }
     }
@@ -299,12 +344,9 @@ private fun PlayerTopBar(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun Cover(state: PlayerUiState) {
+private fun Cover(state: PlayerUiState, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
-            .widthIn(max = 320.dp)
-            .fillMaxWidth()
-            .aspectRatio(1f)
+        modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .clearAndSetSemantics { contentDescription = "Cover art for ${state.title}" }
     ) {
