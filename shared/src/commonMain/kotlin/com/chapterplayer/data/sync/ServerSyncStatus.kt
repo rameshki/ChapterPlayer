@@ -5,6 +5,7 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.plex.PlexConnectionKind
 import com.chapterplayer.domain.plex.classifyConnectionError
+import com.chapterplayer.domain.plex.hostOf
 import com.chapterplayer.domain.plex.ProblemKind
 
 /** Where one server's sync stands. */
@@ -58,9 +59,12 @@ fun serverSyncStatus(server: ServerConfig, record: ServerStatusRecord, bookCount
  * A short reason for a failed sync: a refused sign-in and a connection failure in fixed words (the platform's text for
  * those names the host and is long), anything else as its message (the app's own messages hold no token).
  */
-fun syncFailureReason(error: Throwable): String {
+fun syncFailureReason(error: Throwable, baseUrl: String = ""): String {
     if (error is SignInRequiredException) return "Sign in again in Settings"
     val problem = classifyConnectionError(error)
+    if (problem.kind == ProblemKind.UNKNOWN_HOST && hostOf(baseUrl).endsWith(".plex.direct")) {
+        return "Could not resolve the plex.direct name; this network may block it"
+    }
     if (problem.kind != ProblemKind.OTHER) return "Could not reach the server: ${problem.text}"
     return error.message?.takeIf { it.isNotBlank() } ?: "Unknown error"
 }

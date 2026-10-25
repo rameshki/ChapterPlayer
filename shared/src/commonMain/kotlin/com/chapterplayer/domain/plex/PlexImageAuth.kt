@@ -3,6 +3,9 @@ package com.chapterplayer.domain.plex
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 
+/** The sync's words for a Plex server without any music library (Plex keeps audiobooks in music libraries). */
+const val PLEX_NO_MUSIC_LIBRARY_TEXT = "This Plex server has no music library; audiobooks must be in a music library"
+
 /** The header Plex reads the token from; the app never puts the token in an address. */
 const val PLEX_TOKEN_HEADER = "X-Plex-Token"
 

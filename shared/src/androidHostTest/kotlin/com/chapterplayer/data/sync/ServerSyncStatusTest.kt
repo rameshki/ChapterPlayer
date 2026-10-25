@@ -62,5 +62,10 @@ class ServerSyncStatusTest {
         assertEquals("Sign in again in Settings", syncFailureReason(SignInRequiredException("x")))
         assertEquals("HTTP 500 Internal Server Error", syncFailureReason(IllegalStateException("HTTP 500 Internal Server Error")))
         assertEquals("Unknown error", syncFailureReason(IllegalStateException()))
+        assertEquals(
+            "Could not resolve the plex.direct name; this network may block it",
+            syncFailureReason(UnknownHostException("x"), "https://192-0-2-11.abc.plex.direct:32400")
+        )
+        assertEquals("Could not reach the server: name not found", syncFailureReason(UnknownHostException("x"), "http://192.0.2.11:32400"))
     }
 }

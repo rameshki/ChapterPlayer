@@ -91,6 +91,15 @@ class PlexLibrarySourceTest {
     }
 
     @Test
+    fun `a server with no music library fails the sync with words, never an empty library`() = runTest {
+        val noMusic = """{"MediaContainer":{"size":1,"Directory":[{"key":"1","type":"movie","title":"Films"}]}}"""
+
+        val error = kotlin.test.assertFailsWith<IllegalStateException> { source(sections = noMusic).fetchSnapshot(server) }
+
+        assertEquals(com.chapterplayer.domain.plex.PLEX_NO_MUSIC_LIBRARY_TEXT, error.message)
+    }
+
+    @Test
     fun `reads no section when every music section is turned off`() = runTest {
         source().fetchBooks(server.copy(excludedLibraryIds = setOf("4")))
 

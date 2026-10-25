@@ -244,7 +244,7 @@ fun connectionNote(pick: ConnectionPick): String? {
 }
 
 /** The host of [uri], lower case, without port or brackets. */
-internal fun hostOf(uri: String): String {
+fun hostOf(uri: String): String {
     val afterScheme = uri.substringAfter("://", uri)
     val authority = afterScheme.substringBefore('/').substringBefore('?').substringBefore('#').substringAfter('@')
     val host = if (authority.startsWith("[")) authority.substringAfter('[').substringBefore(']') else authority.substringBefore(':')

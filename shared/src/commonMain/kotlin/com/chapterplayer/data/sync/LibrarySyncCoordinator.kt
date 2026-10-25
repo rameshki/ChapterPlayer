@@ -312,7 +312,7 @@ class LibrarySyncCoordinator(
         }
         val reason = outcome.exceptionOrNull()?.let { throwable ->
             if (throwable is CancellationException) throw throwable
-            if (throwable is SignInRequiredException) SIGN_IN_AGAIN_TEXT else connectionMessage ?: syncFailureReason(throwable)
+            if (throwable is SignInRequiredException) SIGN_IN_AGAIN_TEXT else connectionMessage ?: syncFailureReason(throwable, server.baseUrl)
         }
         if (reason != null) errors.add("${server.name}: $reason")
         recordOutcome(server.id, reason)
