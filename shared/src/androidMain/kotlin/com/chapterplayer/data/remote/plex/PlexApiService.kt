@@ -15,8 +15,12 @@ import io.ktor.http.encodeURLPathPart
  *
  * Auth: X-Plex-Token header. JSON is requested with an Accept header on every call.
  * Every call takes the server's base URL, because each configured server has its own address.
+ * The playback reports (timeline, scrobble) also say which app is playing ([clientIdentifier]).
  */
-class PlexApiService(private val client: HttpClient) {
+class PlexApiService(
+    private val client: HttpClient,
+    private val clientIdentifier: PlexClientIdentifier? = null,
+) {
 
     /**
      * Fetch all library sections on this Plex server.

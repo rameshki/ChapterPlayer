@@ -7,7 +7,9 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
+import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.domain.plex.PLEX_TOKEN_HEADER
 import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.repository.ServerRepository
@@ -16,10 +18,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
 /**
- * Opens audio streams with the bearer token of the server the address belongs to. The token is added
- * to each request as it opens (never stored in the address). A 401 answer goes through the same
- * refresh-once-and-retry-once path as the API calls ([AbsAuthorizer]); a second 401 is a
- * [com.chapterplayer.data.auth.SignInRequiredException], which the loader treats as fatal (no retry loop).
+ * Opens audio streams with the token of the server the address belongs to. The token is added
+ * to each request as it opens (never stored in the address). For Audiobookshelf it is the bearer, and a 401
+ * answer goes through the same refresh-once-and-retry-once path as the API calls ([AbsAuthorizer]); a second
+ * 401 is a [com.chapterplayer.data.auth.SignInRequiredException], which the loader treats as fatal (no retry
+ * loop). For Plex it is the `X-Plex-Token` header; Plex tokens are long lived and cannot be refreshed, so a
+ * 401 is at once a [com.chapterplayer.data.auth.SignInRequiredException].
  *
  * Redirects: [DefaultHttpDataSource] follows them inside `open`, so the request header cannot be kept
  * from a redirect target beforehand. What is guaranteed is that no audio is played from another host:
@@ -40,10 +44,15 @@ class AuthorizingDataSourceFactory(
 /** The audio stream opened for one request was answered from another host. Fixed text, no address. */
 class UnsafeRedirectException : RuntimeException("The audio moved to another address")
 
+/** One request header that carries a token. Its [toString] never shows the value. */
+internal class AuthHeader(val name: String, val value: String) {
+    override fun toString() = "AuthHeader(name=$name)"
+}
+
 /** What the authorizing opener needs from the real HTTP source; a fake stands in for it in tests. */
 internal interface Upstream {
-    /** Opens the stream with [authorization] as the Authorization header (none when null). */
-    fun open(authorization: String?): Long
+    /** Opens the stream with [header] added to the request (none when null). */
+    fun open(header: AuthHeader?): Long
 
     fun close()
 
@@ -69,10 +78,10 @@ private class AuthorizingDataSource(
             servers = servers,
             authorizer = authorizer,
             upstream = object : Upstream {
-                override fun open(authorization: String?): Long =
+                override fun open(header: AuthHeader?): Long =
                     upstream.open(
-                        if (authorization == null) dataSpec
-                        else dataSpec.withAdditionalHeaders(mapOf("Authorization" to authorization))
+                        if (header == null) dataSpec
+                        else dataSpec.withAdditionalHeaders(mapOf(header.name to header.value))
                     )
 
                 override fun close() = upstream.close()
@@ -103,11 +112,11 @@ internal fun openStream(
     servers: ServerRepository,
     authorizer: AbsAuthorizer,
     upstream: Upstream,
-): Long = openAuthorized(url, servers, authorizer, upstream::isUnauthorized) { authorization ->
+): Long = openAuthorized(url, servers, authorizer, upstream::isUnauthorized) { header ->
     try {
-        val length = upstream.open(authorization)
+        val length = upstream.open(header)
         val answeredFrom = upstream.resolvedUrl()
-        if (authorization != null && answeredFrom != null && !sameHost(url, answeredFrom)) {
+        if (header != null && answeredFrom != null && !sameHost(url, answeredFrom)) {
             throw UnsafeRedirectException()
         }
         length
@@ -119,24 +128,34 @@ internal fun openStream(
 
 /**
  * Runs [open] for a request to [url]. For an address that belongs to a configured Audiobookshelf server,
- * [open] gets the full header value ("Bearer ...") and runs through [authorizer], so an expiring token is
- * refreshed first and a 401 (see [isUnauthorized]) refreshes once and retries once. Any other address
- * gets [open] with null. Blocking, for the player's loader thread.
+ * [open] gets the Authorization header ("Bearer ...") and runs through [authorizer], so an expiring token is
+ * refreshed first and a 401 (see [isUnauthorized]) refreshes once and retries once. An address under a Plex
+ * server gets its `X-Plex-Token` header, and a 401 there is a [SignInRequiredException] (no refresh exists).
+ * Any other address gets [open] with null. Blocking, for the player's loader thread.
  */
 internal fun <T> openAuthorized(
     url: String,
     servers: ServerRepository,
     authorizer: AbsAuthorizer,
     isUnauthorized: (Exception) -> Boolean,
-    open: (authorization: String?) -> T,
+    open: (header: AuthHeader?) -> T,
 ): T {
-    val configured = runBlocking { servers.observeAll().first() }.filter { it.source == ServerSource.ABS }
+    val configured = runBlocking { servers.observeAll().first() }
+        .filter { it.source == ServerSource.ABS || it.source == ServerSource.PLEX }
     val match = serverFor(url, configured.map { ServerBearer(it.baseUrl, it.token) }) ?: return open(null)
     val server = configured.first { it.baseUrl == match.baseUrl && it.token == match.token }
+    if (server.source == ServerSource.PLEX) {
+        return try {
+            open(AuthHeader(PLEX_TOKEN_HEADER, server.token))
+        } catch (e: Exception) {
+            if (isUnauthorized(e)) throw SignInRequiredException(server.name)
+            throw e
+        }
+    }
     return runBlocking {
         authorizer.authorized(server) { bearer ->
             try {
-                open(bearer)
+                open(AuthHeader("Authorization", bearer))
             } catch (e: Exception) {
                 if (isUnauthorized(e)) throw HttpStatusException(HttpStatusCode.Unauthorized)
                 throw e

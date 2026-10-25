@@ -1,0 +1,186 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "allowSync": true,
+    "art": "/:/resources/artist-fanart.jpg",
+    "grandparentRatingKey": 1005,
+    "grandparentTitle": "Fixture grandparentTitle 2",
+    "identifier": "com.plexapp.plugins.library",
+    "key": "1101",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "librarySectionUUID": "Fixture librarySectionUUID 1",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1775695608,
+    "nocache": true,
+    "parentIndex": 1,
+    "parentTitle": "Fixture parentTitle 4",
+    "parentYear": 2024,
+    "thumb": "/library/metadata/1101/thumb/1700000000",
+    "title1": "Fixture title1 3",
+    "title2": "Fixture title2 2",
+    "viewGroup": "track",
+    "viewMode": 65593,
+    "Metadata": [
+      {
+        "ratingKey": "1102",
+        "viewCount": 1,
+        "lastViewedAt": 1700000100,
+        "key": "/library/metadata/1102",
+        "parentRatingKey": "1101",
+        "grandparentRatingKey": "1005",
+        "guid": "local://fixture1152",
+        "parentGuid": "local://fixture1151",
+        "grandparentGuid": "plex://artist/fixture1006",
+        "type": "track",
+        "title": "Fixture title 13",
+        "grandparentKey": "/library/metadata/1005",
+        "parentKey": "/library/metadata/1101",
+        "grandparentTitle": "Fixture grandparentTitle 1",
+        "parentTitle": "Fixture parentTitle 4",
+        "summary": "Fixture summary 1",
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1101/thumb/1700000000",
+        "parentThumb": "/library/metadata/1101/thumb/1700000000",
+        "duration": 600000,
+        "addedAt": 1700000000,
+        "Media": [
+          {
+            "id": 1201,
+            "duration": 600000,
+            "bitrate": 126,
+            "audioChannels": 2,
+            "audioCodec": "Fixture audioCodec 2",
+            "container": "mp3",
+            "optimizedForStreaming": 0,
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1202,
+                "key": "/library/parts/1202/1700000000/file.mp3",
+                "duration": 600000,
+                "file": "/fixtures/Fixture Author 2/Fixture Book 2/Fixture Track 1.mp3",
+                "size": 9600000,
+                "container": "mp3"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Fixture alt 5",
+            "type": "coverPoster",
+            "url": "/library/metadata/1101/thumb/1700000000"
+          }
+        ],
+        "index": 1
+      },
+      {
+        "ratingKey": "1103",
+        "viewCount": 2,
+        "lastViewedAt": 1700000200,
+        "key": "/library/metadata/1103",
+        "parentRatingKey": "1101",
+        "grandparentRatingKey": "1005",
+        "guid": "local://fixture1153",
+        "parentGuid": "local://fixture1151",
+        "grandparentGuid": "plex://artist/fixture1006",
+        "type": "track",
+        "title": "Fixture title 14",
+        "grandparentKey": "/library/metadata/1005",
+        "parentKey": "/library/metadata/1101",
+        "grandparentTitle": "Fixture grandparentTitle 1",
+        "parentTitle": "Fixture parentTitle 4",
+        "summary": "Fixture summary 1",
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1101/thumb/1700000000",
+        "parentThumb": "/library/metadata/1101/thumb/1700000000",
+        "duration": 900000,
+        "addedAt": 1700000000,
+        "Media": [
+          {
+            "id": 1202,
+            "duration": 900000,
+            "bitrate": 126,
+            "audioChannels": 2,
+            "audioCodec": "Fixture audioCodec 2",
+            "container": "mp3",
+            "optimizedForStreaming": 0,
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1203,
+                "key": "/library/parts/1203/1700000000/file.mp3",
+                "duration": 900000,
+                "file": "/fixtures/Fixture Author 2/Fixture Book 2/Fixture Track 2.mp3",
+                "size": 14400000,
+                "container": "mp3"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Fixture alt 5",
+            "type": "coverPoster",
+            "url": "/library/metadata/1101/thumb/1700000000"
+          }
+        ],
+        "index": 2
+      },
+      {
+        "ratingKey": "1104",
+        "viewOffset": 120000,
+        "lastViewedAt": 1700000300,
+        "key": "/library/metadata/1104",
+        "parentRatingKey": "1101",
+        "grandparentRatingKey": "1005",
+        "guid": "local://fixture1154",
+        "parentGuid": "local://fixture1151",
+        "grandparentGuid": "plex://artist/fixture1006",
+        "type": "track",
+        "title": "Fixture title 15",
+        "grandparentKey": "/library/metadata/1005",
+        "parentKey": "/library/metadata/1101",
+        "grandparentTitle": "Fixture grandparentTitle 1",
+        "parentTitle": "Fixture parentTitle 4",
+        "summary": "Fixture summary 1",
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1101/thumb/1700000000",
+        "parentThumb": "/library/metadata/1101/thumb/1700000000",
+        "addedAt": 1700000000,
+        "Media": [
+          {
+            "id": 1203,
+            "bitrate": 126,
+            "audioChannels": 2,
+            "audioCodec": "Fixture audioCodec 2",
+            "container": "mp3",
+            "optimizedForStreaming": 0,
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1204,
+                "key": "/library/parts/1204/1700000000/file.mp3",
+                "file": "/fixtures/Fixture Author 2/Fixture Book 2/Fixture Track 3.mp3",
+                "size": 1000000,
+                "container": "mp3"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Fixture alt 5",
+            "type": "coverPoster",
+            "url": "/library/metadata/1101/thumb/1700000000"
+          }
+        ],
+        "index": 3
+      }
+    ]
+  }
+}

@@ -10,7 +10,12 @@ import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.dto.PlexSectionDto
 import com.chapterplayer.data.remote.plex.fetchAllPlexItems
 import com.chapterplayer.data.remote.plex.dto.PlexMetadataDto
+import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT
 import com.chapterplayer.domain.plex.PlexBookContent
+import com.chapterplayer.domain.plex.PlexTrack
+import com.chapterplayer.domain.plex.plexPlaybackTracks
+import com.chapterplayer.domain.plex.plexServerProgress
 import com.chapterplayer.domain.plex.PlexEntryKind
 import com.chapterplayer.domain.plex.isPlexTrack
 import com.chapterplayer.domain.plex.plexBookContent
@@ -23,6 +28,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /** How many track details a book's details read at once. */
 internal const val PLEX_DETAIL_CONCURRENCY = 4
@@ -35,6 +42,34 @@ internal const val PLEX_DETAIL_CONCURRENCY = 4
 class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
 
     override val type: ServerSource = ServerSource.PLEX
+
+    private val sessionCount = AtomicLong()
+
+    /** The tracks of each session this app opened (Plex has no sessions of its own), by session id. */
+    private val sessions = ConcurrentHashMap<String, List<PlexTrack>>()
+
+    /**
+     * Plex has no playback session to open: the app makes one from the book's tracks, read fresh ([fetchContent]).
+     * One item per track on one timeline; the addresses are the parts' paths under the server address, with no token
+     * (the player's data source adds the `X-Plex-Token` header). Listening resumes where the server's track states say
+     * ([plexServerProgress]; a finished book starts over). Throws when a track has no file or a call fails.
+     */
+    override suspend fun startPlayback(server: ServerConfig, bookId: String): PlaybackSession {
+        val content = fetchContent(server, bookId)
+        val tracks = plexPlaybackTracks(server.baseUrl, content.tracks) ?: error(PLEX_AUDIO_MISSING_TEXT)
+        val progress = plexServerProgress(content.tracks)
+        val sessionId = "plex-${plexRatingKey(bookId)}-${sessionCount.incrementAndGet()}"
+        sessions[sessionId] = content.tracks
+        return PlaybackSession(
+            sessionId = sessionId,
+            serverId = server.id,
+            bookId = bookId,
+            durationMs = content.durationMs,
+            startPositionMs = if (progress == null || progress.isFinished) 0L else progress.positionMs,
+            tracks = tracks,
+            chapters = content.chapters,
+        )
+    }
 
     override suspend fun fetchBooks(server: ServerConfig): List<AudioBook> =
         sectionIds(server, if (server.libraryId.isNullOrBlank()) musicSections(server) else null)

@@ -144,7 +144,8 @@ val networkModule = module {
     single { createHttpClient(get<Boolean>(DebuggableQualifier)) }
     singleOf(::AbsApiService)
     singleOf(::AbsSignIn) { bind<AbsSignInPort>() }
-    singleOf(::PlexApiService)
+    // The playback reports name this installation to the server.
+    single { PlexApiService(get(), get<PlexClientIdentifier>()) }
     singleOf(::PlexTvApiService)
     singleOf(::AndroidPlexClientIdentifier) { bind<PlexClientIdentifier>() }
 }

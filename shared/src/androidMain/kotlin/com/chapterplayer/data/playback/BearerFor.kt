@@ -64,6 +64,7 @@ private val OWN_START_MESSAGES = setOf(
     "Unknown book",
     "The book's server is no longer configured",
     "This server cannot play books yet",
+    com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT,
 )
 
 /**

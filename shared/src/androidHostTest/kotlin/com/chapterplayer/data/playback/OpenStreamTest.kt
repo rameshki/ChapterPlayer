@@ -43,9 +43,11 @@ class OpenStreamTest {
         var answeredFrom: String? = null,
     ) : Upstream {
         val authorizations = mutableListOf<String?>()
+        val headerNames = mutableListOf<String?>()
         var closes = 0
-        override fun open(authorization: String?): Long {
-            authorizations += authorization
+        override fun open(header: AuthHeader?): Long {
+            authorizations += header?.value
+            headerNames += header?.name
             return answers.removeAt(0)()
         }
         override fun close() { closes++ }
@@ -63,7 +65,27 @@ class OpenStreamTest {
         val up = FakeUpstream(mutableListOf({ 42L }), answeredFrom = url)
         assertEquals(42L, openStream(url, servers, RetryOnce, up))
         assertEquals(listOf<String?>("Bearer first"), up.authorizations)
+        assertEquals(listOf<String?>("Authorization"), up.headerNames)
         assertEquals(0, up.closes)
+    }
+
+    @Test
+    fun `a plex stream gets the token header and is refused when answered from another host`() {
+        val plex = Servers(listOf(ServerConfig("p", ServerSource.PLEX, "P", "http://plex.test:32400", "plextok")))
+        val part = "http://plex.test:32400/library/parts/1/1700000000/file.mp3"
+        val up = FakeUpstream(mutableListOf({ 3L }), answeredFrom = part)
+        assertEquals(3L, openStream(part, plex, RetryOnce, up))
+        assertEquals(listOf<String?>("X-Plex-Token"), up.headerNames)
+        assertEquals(listOf<String?>("plextok"), up.authorizations)
+
+        val moved = FakeUpstream(mutableListOf({ 3L }), answeredFrom = "http://evil.test/file.mp3")
+        assertFailsWith<UnsafeRedirectException> { openStream(part, plex, RetryOnce, moved) }
+        assertEquals(1, moved.closes)
+    }
+
+    @Test
+    fun `the auth header never shows its value`() {
+        assertFalse("plextok" in AuthHeader("X-Plex-Token", "plextok").toString())
     }
 
     @Test
