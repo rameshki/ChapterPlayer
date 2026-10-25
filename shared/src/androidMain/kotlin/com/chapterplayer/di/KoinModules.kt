@@ -164,7 +164,8 @@ val repositoryModule = module {
             get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(), bookmarkDao = get(), historyDao = get(),
             inTransaction = { block ->
                 get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
-            }
+            },
+            onQueued = { get<PendingProgressFlusher>().kick() }
         ) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }

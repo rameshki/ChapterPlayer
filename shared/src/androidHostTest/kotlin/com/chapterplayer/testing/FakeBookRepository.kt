@@ -15,6 +15,7 @@ import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.addToHistory
 import com.chapterplayer.domain.playback.bookmarkTitleOrDefault
@@ -105,6 +106,14 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override fun observeAllProgress(): Flow<List<ReadingProgress>> = progress
     val saved = mutableListOf<ReadingProgress>()
     override suspend fun saveProgress(progress: ReadingProgress) { saved += progress }
+
+    /** Every [markFinished] call as (book, finished); [onMarkFinished] decides the result. */
+    val markCalls = mutableListOf<Pair<String, Boolean>>()
+    var onMarkFinished: suspend (String, Boolean) -> Result<MarkOutcome> = { _, _ -> Result.success(MarkOutcome.SYNCED) }
+    override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> {
+        markCalls += bookId to finished
+        return onMarkFinished(bookId, finished)
+    }
 
     /** Bookmark and history state for view model tests; the real rules are tested on the repository. */
     val bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())

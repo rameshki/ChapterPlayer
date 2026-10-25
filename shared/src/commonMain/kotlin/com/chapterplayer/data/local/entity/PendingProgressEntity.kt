@@ -15,7 +15,9 @@ data class PendingProgressEntity(
     val listenedMs: Long,
     val updatedAtMs: Long,
     val attempts: Int,
-    @ColumnInfo(defaultValue = "0") val nextAttemptAtMs: Long = 0L
+    @ColumnInfo(defaultValue = "0") val nextAttemptAtMs: Long = 0L,
+    /** The finished state a "Mark as finished / not finished" asked for; null for an ordinary position. */
+    @ColumnInfo(defaultValue = "NULL") val markedFinished: Boolean? = null
 ) {
     fun toDomain(): PendingProgress = PendingProgress(
         bookId = bookId,
@@ -25,7 +27,8 @@ data class PendingProgressEntity(
         listenedMs = listenedMs,
         updatedAtMs = updatedAtMs,
         attempts = attempts,
-        nextAttemptAtMs = nextAttemptAtMs
+        nextAttemptAtMs = nextAttemptAtMs,
+        markedFinished = markedFinished
     )
 
     companion object {
@@ -37,7 +40,8 @@ data class PendingProgressEntity(
             listenedMs = pending.listenedMs,
             updatedAtMs = pending.updatedAtMs,
             attempts = pending.attempts,
-            nextAttemptAtMs = nextAttemptAtMs
+            nextAttemptAtMs = nextAttemptAtMs,
+            markedFinished = pending.markedFinished
         )
     }
 }

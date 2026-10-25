@@ -9,6 +9,7 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
 import kotlinx.coroutines.flow.Flow
@@ -143,4 +144,12 @@ interface BookRepository {
     /** Progress of every book that has any, including finished ones. */
     fun observeAllProgress(): Flow<List<ReadingProgress>>
     suspend fun saveProgress(progress: ReadingProgress)
+
+    /**
+     * Marks the book as finished (position kept) or not finished (starts over at 0). The local progress changes first, so
+     * the UI follows at once and it works offline; then an Audiobookshelf server is told and its answer is adopted. A server
+     * that cannot be reached gets the mark through the pending queue later ([MarkOutcome.QUEUED]); a book without server
+     * progress changes locally only. Fails (changing nothing) for a book that is not in the library; cancellation propagates.
+     */
+    suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome>
 }
