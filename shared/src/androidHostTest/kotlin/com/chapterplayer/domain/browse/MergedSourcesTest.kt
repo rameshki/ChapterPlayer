@@ -254,8 +254,13 @@ class MergedSourcesTest {
         assertEquals("p", chosenSource(downloaded, SourcePreference.PREFER_DOWNLOADED, everyServer)?.book?.id)
         val neither = merge(listOf(item("a", "abs1"), item("p", "plex1"))).single()
         assertEquals("a", chosenSource(neither, SourcePreference.PREFER_DOWNLOADED, everyServer)?.book?.id)
-        // Audiobookshelf unreachable: ask.
-        assertNull(chosenSource(neither, SourcePreference.PREFER_DOWNLOADED, setOf("plex1")))
+        // Only Plex reachable: the one copy that can play.
+        assertEquals("p", chosenSource(neither, SourcePreference.PREFER_DOWNLOADED, setOf("plex1"))?.book?.id)
+        // Nothing can play: ask (the sheet says why).
+        assertNull(chosenSource(neither, SourcePreference.PREFER_DOWNLOADED, emptySet()))
+        // Two Plex copies, no Audiobookshelf: ask.
+        val twoPlex = merge(listOf(item("p", "plex1"), item("q", "plex2"))).single()
+        assertNull(chosenSource(twoPlex, SourcePreference.PREFER_DOWNLOADED, everyServer))
     }
 
     @Test
@@ -263,7 +268,10 @@ class MergedSourcesTest {
         val entry = merge(listOf(item("a", "abs1"), item("p", "plex1"))).single()
         assertEquals("p", chosenSource(entry, SourcePreference.PREFER_PLEX, everyServer)?.book?.id)
         assertEquals("a", chosenSource(entry, SourcePreference.PREFER_ABS, everyServer)?.book?.id)
-        assertNull(chosenSource(entry, SourcePreference.PREFER_PLEX, setOf("abs1")))
+        // Plex cannot play but Audiobookshelf can: the one copy that can play.
+        assertEquals("a", chosenSource(entry, SourcePreference.PREFER_PLEX, setOf("abs1"))?.book?.id)
+        val three = merge(listOf(item("a", "abs1"), item("b", "abs2"), item("p", "plex1"))).single()
+        assertNull(chosenSource(three, SourcePreference.PREFER_PLEX, setOf("abs1", "abs2")))
     }
 
     @Test

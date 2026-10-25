@@ -243,19 +243,21 @@ private fun canPlay(member: BrowseItem, onlineServerIds: Set<String>): Boolean =
 /**
  * The member to play without asking, or null when the user has to choose. A book on one server is always itself.
  * Prefer downloaded: the downloaded copy, otherwise a reachable Audiobookshelf copy. Prefer Audiobookshelf or Plex:
- * the first copy of that type that can play (downloaded or reachable). Always ask: null.
+ * the first copy of that type that can play (downloaded or reachable). For these three, when the preferred copy
+ * cannot play but exactly one other copy can, that one plays (only Plex reachable: Plex). Always ask: null.
  */
 fun chosenSource(item: BrowseItem, preference: SourcePreference, onlineServerIds: Set<String>): BrowseItem? {
     if (!item.isMerged) return item
     val members = item.sources
-    return when (preference) {
-        SourcePreference.ASK -> null
+    val preferred = when (preference) {
+        SourcePreference.ASK -> return null
         SourcePreference.PREFER_DOWNLOADED ->
             members.firstOrNull { it.downloadState == DownloadState.DOWNLOADED }
                 ?: members.firstOrNull { it.book.source == ServerSource.ABS && it.book.serverId in onlineServerIds }
         SourcePreference.PREFER_ABS -> members.firstOrNull { it.book.source == ServerSource.ABS && canPlay(it, onlineServerIds) }
         SourcePreference.PREFER_PLEX -> members.firstOrNull { it.book.source == ServerSource.PLEX && canPlay(it, onlineServerIds) }
     }
+    return preferred ?: members.filter { canPlay(it, onlineServerIds) }.singleOrNull()
 }
 
 /** One row of the source sheet. */
