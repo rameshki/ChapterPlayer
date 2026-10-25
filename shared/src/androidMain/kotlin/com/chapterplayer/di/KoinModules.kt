@@ -244,7 +244,7 @@ val viewModelModule = module {
     viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get()) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier)) }
+    viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }

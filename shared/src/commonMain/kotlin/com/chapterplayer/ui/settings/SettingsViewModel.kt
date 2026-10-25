@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.auth.normalizeServerAddress
 import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.downloads.DownloadStorage
 import com.chapterplayer.domain.downloads.DownloadVolume
 import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
@@ -108,7 +109,8 @@ class SettingsViewModel(
     private val downloads: DownloadController,
     private val storage: DownloadStorage,
     /** Lives as long as the app: a setting change finishes even when Settings is closed at once. */
-    private val appScope: CoroutineScope
+    private val appScope: CoroutineScope,
+    overview: DownloadOverview
 ) : ViewModel() {
 
     val settingsUiState: StateFlow<SettingsUiState> =
@@ -223,6 +225,10 @@ class SettingsViewModel(
             }
         }
     }
+
+    /** Bytes the downloads hold on the device now (Downloads and offline page). */
+    val downloadStorageUsed: StateFlow<Long> =
+        overview.storageUsedBytes().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
 
     private val volumes = MutableStateFlow<List<DownloadVolume>>(emptyList())
 
