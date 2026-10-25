@@ -39,10 +39,12 @@ fun applyQuery(items: List<BrowseItem>, query: BrowseQuery): List<BrowseItem> {
 
 /**
  * [query] with only the server ids that still exist. A choice made only of deleted servers becomes
- * "every server", so a stale id never hides the whole library.
+ * "every server", so a stale id never hides the whole library; so does any choice once fewer than two
+ * servers remain, because the Server section (the only way to change it) is hidden then.
  */
 fun pruneServerFilter(query: BrowseQuery, existingServerIds: Set<String>): BrowseQuery {
     if (query.serverIds.isEmpty()) return query
+    if (existingServerIds.size < 2) return query.copy(serverIds = emptySet())
     val kept = query.serverIds.filterTo(mutableSetOf()) { it in existingServerIds }
     return if (kept == query.serverIds) query else query.copy(serverIds = kept)
 }

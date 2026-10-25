@@ -1,5 +1,9 @@
 package com.chapterplayer.domain.browse
 
+import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.DownloadState
+import com.chapterplayer.data.model.ServerSource
+
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -25,10 +29,10 @@ class FastScrollTest {
     }
 
     @Test
-    fun `digits, symbols and other scripts share the hash group`() {
+    fun `digits, symbols and other scripts share the hash group and accents count as their letter`() {
         assertEquals(
-            listOf(LetterIndex('#', 0), LetterIndex('A', 2), LetterIndex('Z', 4)),
-            letters("1984", "'Salem's Lot", "Anna", "Émile", "Zoo")
+            listOf(LetterIndex('#', 0), LetterIndex('A', 3), LetterIndex('E', 4), LetterIndex('Z', 5)),
+            letters("1984", "'Salem's Lot", "Война и мир", "Anna", "Émile", "Zoo")
         )
     }
 
@@ -107,8 +111,82 @@ class FastScrollTest {
     @Test
     fun `the scroller shows only from the minimum list size`() {
         val nineteen = List(19) { "Book $it" }
-        assertEquals(emptyList(), fastScrollIndex(nineteen))
-        assertEquals(listOf(LetterIndex('B', 0)), fastScrollIndex(nineteen + "Book 19"))
+        assertEquals(emptyList(), fastScrollIndex(FastScrollKeys(nineteen, LetterRule.TITLE)))
+        assertEquals(listOf(LetterIndex('B', 0)), fastScrollIndex(FastScrollKeys(nineteen + "Book 19", LetterRule.TITLE)))
         assertEquals(emptyList(), fastScrollIndex(null))
+    }
+
+    // ---- names, accents and the real sorts ----
+
+    @Test
+    fun `names keep a leading article and fold accents`() {
+        assertEquals('T', personLetter("The Great Courses"))
+        assertEquals('A', personLetter("A. J. Finn"))
+        assertEquals('A', personLetter("A J Finn"))
+        assertEquals('E', personLetter("Émile Zola"))
+        assertEquals('#', personLetter("Лев Толстой"))
+        assertEquals('#', personLetter("  "))
+        assertEquals('G', titleLetterOf("The Great Gatsby"))
+        assertEquals('O', titleLetterOf("Ödipus"))
+    }
+
+    private fun book(id: String, title: String = "Title $id", author: String = "Author") = BrowseItem(
+        AudioBook(
+            id = id, title = title, author = author, narrator = author, durationMs = 1_000L,
+            chapters = emptyList(), streamUrl = "", coverUrl = null, source = ServerSource.ABS, serverId = "s1",
+        ),
+        null,
+        DownloadState.NOT_DOWNLOADED
+    )
+
+    /** Each letter's items are one block and the blocks come in strip order ('#' first, then A to Z). */
+    private fun assertContiguousInStripOrder(keys: List<String>, rule: LetterRule) {
+        val perItem = keys.map { if (rule == LetterRule.TITLE) titleLetterOf(it) else personLetter(it) }
+        val blocks = perItem.fold(mutableListOf<Char>()) { acc, c -> if (acc.lastOrNull() != c) acc += c; acc }
+        assertEquals(blocks.distinct(), blocks, "a letter is split in $keys")
+        assertEquals(blocks.sortedBy { FAST_SCROLL_ALPHABET.indexOf(it) }, blocks, "letters out of strip order in $keys")
+        val index = fastScrollLetters(keys, rule)
+        assertEquals(blocks, index.map { it.letter })
+        index.forEach { assertEquals(it.letter, perItem[it.firstIndex]) }
+    }
+
+    private val authors = listOf(
+        "The Great Courses", "Émile Zola", "Ernest Hemingway", "A. J. Finn", "zadie smith", "Ödön von Horváth",
+        "Ottessa Moshfegh", "Лев Толстой", "50 Cent", "Tana French", "Bob", "Anne Rice", "Élodie Harper"
+    )
+
+    @Test
+    fun `the Author sort gives one block per letter with the person letters`() {
+        val sorted = sortItems(authors.mapIndexed { i, a -> book("b$i", author = a) }, BrowseSort.AUTHOR)
+        assertContiguousInStripOrder(sorted.map { it.book.author }, LetterRule.PERSON)
+        // "The Great Courses" is under T, next to Tana French, not under G.
+        val keys = sorted.map { it.book.author }
+        assertEquals(keys.indexOf("Tana French") + 1, keys.indexOf("The Great Courses"))
+    }
+
+    @Test
+    fun `the Authors list gives one block per letter with the person letters`() {
+        val groups = groupByAuthor(authors.mapIndexed { i, a -> book("b$i", author = a) })
+        assertContiguousInStripOrder(groups.map { it.title }, LetterRule.PERSON)
+        assertEquals('#', personLetter(groups.first().title))
+    }
+
+    @Test
+    fun `the Title sort gives one block per letter with the title letters`() {
+        val titles = listOf(
+            "The Great Gatsby", "Émile", "Echo", "An Elephant", "1984", "Œdipus", "Война и мир", "zebra", "Ölmez",
+            "A Man Called Ove", "'Salem's Lot", "Gone Girl", "Ältere Geschichten"
+        )
+        val sorted = sortItems(titles.mapIndexed { i, t -> book("b$i", title = t) }, BrowseSort.TITLE)
+        assertContiguousInStripOrder(sorted.map { it.book.title }, LetterRule.TITLE)
+        // The '#' group (digits, symbols, other scripts) is one block at the top, where '#' is on the strip.
+        assertEquals(setOf("1984", "'Salem's Lot", "Война и мир"), sorted.take(3).map { it.book.title }.toSet())
+    }
+
+    @Test
+    fun `series names letter and sort the same way`() {
+        val names = listOf("The Expanse", "Ériador", "Discworld", "1Q84", "Œuvres")
+        val groups = groupBySeries(names.mapIndexed { i, n -> book("b$i").let { it.copy(book = it.book.copy(seriesName = n)) } })
+        assertContiguousInStripOrder(groups.map { it.title }, LetterRule.TITLE)
     }
 }

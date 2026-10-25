@@ -62,6 +62,7 @@ import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.components.ContinueReadingStrip
 import com.chapterplayer.ui.components.EmptyState
 import com.chapterplayer.ui.components.OfflineHeader
+import com.chapterplayer.ui.components.ServerFilterHint
 import com.chapterplayer.ui.components.SettingsAction
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -96,6 +97,7 @@ fun HomeScreen(
             )
         )
         OfflineHeader()
+        if (state.serverFilterOn) ServerFilterHint(onClear = viewModel::onServerFilterCleared)
         state.playError?.let { message ->
             val book = state.resume?.item?.book
             PlayErrorBanner(

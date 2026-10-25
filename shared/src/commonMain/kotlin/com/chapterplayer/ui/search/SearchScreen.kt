@@ -40,6 +40,7 @@ import com.chapterplayer.domain.browse.isDimmed
 import com.chapterplayer.ui.components.BookCard
 import com.chapterplayer.ui.components.EmptyState
 import com.chapterplayer.ui.components.OfflineHeader
+import com.chapterplayer.ui.components.ServerFilterHint
 import com.chapterplayer.ui.components.SettingsAction
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -68,6 +69,7 @@ fun SearchScreen(
             )
         )
         OfflineHeader()
+        if (state.serverFilterOn) ServerFilterHint(onClear = viewModel::onServerFilterCleared)
 
         OutlinedTextField(
             value = text,

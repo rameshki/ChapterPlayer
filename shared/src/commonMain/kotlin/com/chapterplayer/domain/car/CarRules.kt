@@ -1,5 +1,7 @@
 package com.chapterplayer.domain.car
 
+import com.chapterplayer.domain.browse.titleLetterOf
+
 /** A browse node of the car's tree: [kind] (continue, series, ...) and an optional [arg] (a group key or id). */
 data class CarNode(val kind: String, val arg: String?)
 
@@ -47,18 +49,11 @@ fun isTrustedCarController(callerPackage: String?, ownPackage: String): CarTrust
     else -> CarTrust.NONE
 }
 
-/** The letter a title is listed under: the first letter after a leading "The ", "A " or "An "; '#' for anything else. */
-fun titleLetter(title: String): Char {
-    var t = title.trim().lowercase()
-    for (article in listOf("the ", "an ", "a ")) {
-        if (t.startsWith(article)) {
-            t = t.substring(article.length)
-            break
-        }
-    }
-    val c = t.firstOrNull() ?: return '#'
-    return if (c in 'a'..'z') c.uppercaseChar() else '#'
-}
+/**
+ * The letter a title is listed under: the first letter after a leading "The ", "A " or "An ", accents
+ * folded ("Émile" is under E); '#' for anything else. The same rule as the Title sort ([titleLetterOf]).
+ */
+fun titleLetter(title: String): Char = titleLetterOf(title)
 
 /** Groups the letters that occur into ranges of at most 25 titles; a letter with more titles stands alone. */
 fun letterRanges(titles: List<String>): List<LetterRange> {

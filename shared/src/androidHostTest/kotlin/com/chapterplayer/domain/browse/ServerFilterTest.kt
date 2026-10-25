@@ -195,4 +195,12 @@ class ServerFilterTest {
         assertFalse("s1" in store.query.value.serverIds)
         assertEquals(emptySet(), store.query.value.serverIds)
     }
+
+    @Test
+    fun `with fewer than two servers left the server choice is dropped`() {
+        val query = BrowseQuery(serverIds = setOf("s1"))
+        assertEquals(emptySet(), pruneServerFilter(query, setOf("s1")).serverIds)
+        assertEquals(emptySet(), pruneServerFilter(query, emptySet()).serverIds)
+        assertFalse(isFiltering(pruneServerFilter(query, setOf("s1"))))
+    }
 }

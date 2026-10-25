@@ -243,5 +243,12 @@ class SearchViewModelTest {
         search(s, "dune")
 
         assertEquals(listOf("b"), s.ids())
+        assertTrue(s.vm.uiState.value.serverFilterOn)
+
+        s.vm.onServerFilterCleared()
+        runCurrent()
+
+        assertFalse(s.vm.uiState.value.serverFilterOn)
+        assertEquals(setOf("a", "b"), s.ids().toSet())
     }
 }

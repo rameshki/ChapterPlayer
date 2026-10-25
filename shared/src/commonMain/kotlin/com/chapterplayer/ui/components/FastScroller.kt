@@ -35,7 +35,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -55,8 +55,8 @@ import kotlin.math.roundToInt
 /** The visible strip. */
 private val StripWidth = 24.dp
 
-/** The touch area around it, wider than the strip so a thumb finds it; nothing left of it is touched. */
-private val TouchWidth = 40.dp
+/** The touch area: the strip plus a little slop, so taps further left still reach the list. */
+private val TouchWidth = StripWidth + 8.dp
 private val BubbleSize = 64.dp
 private val BubbleGap = 8.dp
 private const val HIDE_DELAY_MS = 1_500L
@@ -66,7 +66,8 @@ private const val HIDE_DELAY_MS = 1_500L
  * Touching or dragging along the strip jumps the list to the letter under the finger at once, with a
  * bubble showing the letter and a haptic tick on each new letter. The strip shows while the list scrolls
  * or the strip is used and fades a moment after; it only takes touches while it shows, and only within
- * [TouchWidth] of the edge (a hidden strip has no touch handler, so the list edge stays tappable). Letters that no item starts with are dimmed and skipped.
+ * [TouchWidth] of the edge (a hidden strip has no touch handler, so the list edge stays tappable). For
+ * TalkBack it is one node, "Jump to letter", with an action per present letter, hidden or not. Letters that no item starts with are dimmed and skipped.
  *
  * @param letters the index from the list as shown; empty draws nothing.
  * @param onScrollTo jumps the list to an item position (for example `LazyListState.scrollToItem`).
@@ -83,19 +84,25 @@ fun FastScroller(
     bottomPadding: Dp = 16.dp,
     haptics: Haptics = LocalHaptics.current
 ) {
-    if (letters.isEmpty()) return
-    val scope = rememberCoroutineScope()
-    val currentLetters by rememberUpdatedState(letters)
-    val currentOffset by rememberUpdatedState(indexOffset)
-    val currentScroll by rememberUpdatedState(onScrollTo)
-    val currentHaptics by rememberUpdatedState(haptics)
-
+    // The state is kept before the early return, so a list that is briefly too short keeps it.
     var dragging by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<LetterIndex?>(null) }
     var touchY by remember { mutableFloatStateOf(0f) }
     var stripHeight by remember { mutableIntStateOf(0) }
     // Shown at first so the strip is found, then only while the list scrolls or the strip is in use.
     var shown by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    if (letters.isEmpty()) return
+
+    val currentLetters by rememberUpdatedState(letters)
+    val byLetter = remember(letters) { letters.associateBy { it.letter } }
+    val currentByLetter by rememberUpdatedState(byLetter)
+    val currentOffset by rememberUpdatedState(indexOffset)
+    val currentScroll by rememberUpdatedState(onScrollTo)
+    val currentHaptics by rememberUpdatedState(haptics)
+
+    // A new list (another filter or sort) starts with no letter chosen, so its first touch always jumps.
+    LaunchedEffect(letters) { selected = null }
     LaunchedEffect(isListScrolling, dragging) {
         if (isListScrolling || dragging) {
             shown = true
@@ -109,7 +116,7 @@ fun FastScroller(
     fun touchAt(y: Float) {
         touchY = y
         if (stripHeight <= 0) return
-        val letter = letterAtFraction(currentLetters, y / stripHeight) ?: return
+        val letter = letterAtFraction(currentByLetter, y / stripHeight) ?: return
         if (letter != selected) {
             selected = letter
             currentHaptics.tick()
@@ -160,7 +167,8 @@ fun FastScroller(
                 .width(TouchWidth)
                 .fillMaxHeight()
                 .onSizeChanged { stripHeight = it.height }
-                .semantics {
+                // One TalkBack stop for the whole strip, not 27 letters; kept while hidden.
+                .clearAndSetSemantics {
                     contentDescription = "Jump to letter"
                     customActions = actions
                 }

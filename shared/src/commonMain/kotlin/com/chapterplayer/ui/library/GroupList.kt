@@ -51,8 +51,8 @@ fun GroupList(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // The strip sits over the right edge, so the rows leave it room when it is offered.
-            contentPadding = PaddingValues(end = if (fastScroll.isEmpty()) 0.dp else 8.dp, bottom = 16.dp)
+            // The strip sits over the right edge, so the rows always leave it room (no shift when it comes and goes).
+            contentPadding = PaddingValues(end = 8.dp, bottom = 16.dp)
         ) {
             items(groups, key = { it.key }) { group ->
                 GroupRow(group, onClick = { onGroupClick(group) })

@@ -118,8 +118,8 @@ fun BookLayout(
     /** The A to Z scroller's index over [items]; empty shows no scroller. */
     fastScroll: List<LetterIndex> = emptyList()
 ) {
-    // The strip sits over the right edge, so the items leave it room when it is offered.
-    val scrollerRoom = if (fastScroll.isEmpty()) 0.dp else 8.dp
+    // The strip sits over the right edge, so the items always leave it room (no shift when it comes and goes).
+    val scrollerRoom = 8.dp
     when (layout) {
         LibraryLayout.LIST -> Box(modifier = modifier) {
             val listState = rememberLazyListState()
