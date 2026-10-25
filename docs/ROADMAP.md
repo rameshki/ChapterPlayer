@@ -1,6 +1,6 @@
 # ChapterPlayer Roadmap
 
-_Last updated: 2026-10-12_
+_Last updated: 2026-10-25_
 
 ## Vision
 
@@ -146,8 +146,8 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 **Done when:** the widgets work and books play without network. Downloads also appear in the Android Auto browse tree.
 
 ### Stage 4: Plex parity (priority 2)
-- [ ] Fix the Plex library call: a Plex music library lists artists at the top level, so the app currently imports artists (no author, duration, audio or chapters). Audiobooks are albums (type 9, author in `parentTitle`), the audio is in each album's tracks, and chapters come from the track detail (`/library/metadata/{id}?includeChapters=1`), not the track list
-- [ ] Plex section picker; chapters from Plex metadata
+- [x] Fix the Plex library call: a Plex music library lists artists at the top level, so the app imported artists (no author, duration, audio or chapters). Audiobooks are albums (type 9, author in `parentTitle`), the audio is in each album's tracks, and chapters come from the track detail (`/library/metadata/{id}?includeChapters=1`), not the track list (step 1: sections are listed as albums in pages of 200, a server that still sends artists has them opened for their albums, one failing section keeps its cached books and is reported; cover and stream addresses carry no token, covers get `X-Plex-Token` in a header from the image loader; Room v9 drops the artist rows stored before. Host-tested against recorded-shape fixtures only (synthetic text); not yet tried on a real Plex server or a phone)
+- [x] Plex section picker; chapters from Plex metadata (step 1: the Libraries check-list shows the music sections by name, as before; opening a book reads its tracks and the first track's chapters (every track's when that one has some), chapters span the tracks and a track without chapters is one chapter; the details store the book's length and the ordered tracks are ready for playback in step 2. Plex books still cannot play or download. Fixtures only (a one-file book with 24 chapters, a three-track book, a track without chapters, missing lengths); not yet tried on a real server)
 - [ ] Smart connection choice: local → remote (plex.direct) → relay, re-checked on network change. plex.tv reports `dnsRebindingProtection` and `natLoopbackSupported` per server: on a network whose router blocks the `*.plex.direct` name (seen on a Fritz!Box) the app currently fails with `UnknownHostException`, so it must fall back to the server address or another connection
 - [ ] Progress sync via the Plex timeline/scrobble API
 - [ ] Unified library: ABS + Plex side by side, with filters and source badges
