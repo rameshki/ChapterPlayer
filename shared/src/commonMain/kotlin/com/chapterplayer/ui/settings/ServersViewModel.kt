@@ -12,6 +12,7 @@ import com.chapterplayer.data.sync.ServerSyncStatus
 import com.chapterplayer.domain.settings.serverStatusLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -128,8 +129,12 @@ class ServersViewModel(
         appScope.launch { sync.syncNow(serverId) }
     }
 
+    private var testJob: Job? = null
+
+    /** Starts a test; one at a time, so a test still running is cancelled and its result never shows. */
     fun testConnection(serverId: String) {
-        viewModelScope.launch {
+        testJob?.cancel()
+        testJob = viewModelScope.launch {
             val name = try {
                 servers.getById(serverId)?.name
             } catch (e: Exception) {
@@ -143,12 +148,13 @@ class ServersViewModel(
                 if (e is CancellationException) throw e
                 null
             }
-            // The dialog may have been closed meanwhile.
-            if (_connectionTest.value != null) _connectionTest.value = connectionTestUi(name, test)
+            _connectionTest.value = connectionTestUi(name, test)
         }
     }
 
     fun dismissConnectionTest() {
+        testJob?.cancel()
+        testJob = null
         _connectionTest.value = null
     }
 

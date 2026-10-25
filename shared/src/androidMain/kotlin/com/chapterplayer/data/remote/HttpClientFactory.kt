@@ -89,15 +89,15 @@ internal fun HttpClientConfig<*>.installDownloadDefaults(
     installSafeLogging(isDebuggable, sink)
 }
 
-/** How long a connection probe waits to connect, and for each read. */
-internal const val PROBE_HTTP_TIMEOUT_MS = 3_000L
+/** How long a connection probe waits to connect, and for each read (a phone's radio can take seconds to wake). */
+internal const val PROBE_HTTP_TIMEOUT_MS = 5_000L
 
 /** The client that probes Plex connections: see [installProbeDefaults]. */
 internal fun createProbeHttpClient(isDebuggable: Boolean): HttpClient =
     HttpClient(OkHttp) { installProbeDefaults(isDebuggable) }
 
 /**
- * Settings for connection probes: 3 s to connect and per read, no redirects followed (a probe that is sent elsewhere
+ * Settings for connection probes: 5 s to connect and per read, no redirects followed (a probe that is sent elsewhere
  * failed, and its token header must not travel), statuses left to the caller, and the same safe logging.
  */
 internal fun HttpClientConfig<*>.installProbeDefaults(isDebuggable: Boolean, sink: (String) -> Unit = { Log.d(LOG_TAG, it) }) {

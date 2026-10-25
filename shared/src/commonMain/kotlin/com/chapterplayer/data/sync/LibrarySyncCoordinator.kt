@@ -324,7 +324,13 @@ class LibrarySyncCoordinator(
         try {
             val now = nowMs()
             statusStore.update(serverId) {
-                if (failure == null) it.copy(lastSuccessAtMs = now, lastErrorText = null, lastErrorAtMs = null)
+                // A success also ends a failed probe's note ("Could not reach the server"): it reached it after all.
+                if (failure == null) it.copy(
+                    lastSuccessAtMs = now, lastErrorText = null, lastErrorAtMs = null,
+                    probeNote = if (it.probeFailed) null else it.probeNote,
+                    probeFailures = if (it.probeFailed) emptyList() else it.probeFailures,
+                    probeFailed = false,
+                )
                 else it.copy(lastErrorText = failure, lastErrorAtMs = now)
             }
         } catch (e: CancellationException) {

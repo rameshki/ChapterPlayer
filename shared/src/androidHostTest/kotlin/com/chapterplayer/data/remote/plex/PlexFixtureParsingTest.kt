@@ -71,9 +71,11 @@ class PlexFixtureParsingTest {
         val servers = PlexParsers.resources(fixture("plex/plextv-resources.json"))
 
         val byName = matchingCandidates("https://192-0-2-12.fixturemachine020000000000000000.plex.direct:32400/", servers)
-        assertEquals("https://192-0-2-12.fixturemachine020000000000000000.plex.direct:32400", byName?.first()?.uri)
+        assertEquals("https://192-0-2-12.fixturemachine020000000000000000.plex.direct:32400", byName?.candidates?.first()?.uri)
+        assertEquals("fixturemachine020000000000000000", byName?.machineId)
         val byRaw = matchingCandidates("http://192.0.2.11:32400", servers)
-        assertEquals(4, byRaw?.size)
+        assertEquals(4, byRaw?.candidates?.size)
+        assertEquals("fixturemachine010000000000000000", byRaw?.machineId)
         assertNull(matchingCandidates("http://203.0.113.9:32400", servers))
     }
 

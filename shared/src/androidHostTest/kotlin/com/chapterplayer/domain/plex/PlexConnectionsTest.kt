@@ -108,16 +108,56 @@ class PlexConnectionsTest {
     }
 
     @Test
-    fun `the first two run at the same time and the faster answer wins`() = runTest {
+    fun `the first two run at the same time and a lower-ranked answer wins after the grace window`() = runTest {
         val probed = mutableListOf<String>()
         val pick = pickConnection(listOf(a, b, c)) { uri ->
             probed += uri
-            if (uri == a.uri) { delay(2_000); null } else { delay(100); null }
+            if (uri == a.uri) { delay(5_000); null } else { delay(100); null }
         }
 
         assertEquals(b, pick.winner)
-        assertEquals(100, currentTime)
+        assertEquals(100 + PROBE_GRACE_MS, currentTime)
         assertEquals(listOf(a.uri, b.uri), probed)
+    }
+
+    @Test
+    fun `a better-ranked answer inside the grace window wins`() = runTest {
+        val pick = pickConnection(listOf(c, d)) { uri -> if (uri == c.uri) { delay(1_200); null } else { delay(100); null } }
+
+        assertEquals(c, pick.winner)
+        assertEquals(1_200, currentTime)
+    }
+
+    @Test
+    fun `a timeout is tried once more`() = runTest {
+        var tries = 0
+        val pick = pickConnection(listOf(b)) { tries++; if (tries == 1) ConnectionProblem(ProblemKind.TIMEOUT) else null }
+
+        assertEquals(b, pick.winner)
+        assertEquals(2, tries)
+    }
+
+    @Test
+    fun `a local plex direct name that is not found moves the raw local address ahead of remote`() = runTest {
+        // Ranked as plex.tv gives it without the DNS rebinding flag: local, remote, raw local.
+        val pick = pickConnection(listOf(a, c, b)) { uri ->
+            when (uri) {
+                a.uri -> ConnectionProblem(ProblemKind.UNKNOWN_HOST)
+                c.uri -> { delay(10); null }
+                else -> { delay(200); null }
+            }
+        }
+
+        assertEquals(b, pick.winner)
+        assertEquals(listOf(a), pick.failures.map { it.candidate })
+    }
+
+    @Test
+    fun `a wrong server is a failure`() = runTest {
+        val pick = pickConnection(listOf(b, c)) { uri -> if (uri == b.uri) ConnectionProblem(ProblemKind.WRONG_SERVER) else null }
+
+        assertEquals(c, pick.winner)
+        assertEquals("another device answered", pick.failures.single().problem.text)
     }
 
     @Test
@@ -152,7 +192,8 @@ class PlexConnectionsTest {
 
         assertNull(pick.winner)
         assertEquals(ProblemKind.TIMEOUT, pick.failures.single().problem.kind)
-        assertEquals(4_000, currentTime)
+        // Tried twice: a timeout gets a second chance.
+        assertEquals(8_000, currentTime)
     }
 
     @Test

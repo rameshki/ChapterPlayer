@@ -7,6 +7,7 @@ import com.chapterplayer.domain.plex.ConnectionProblem
 import com.chapterplayer.domain.plex.PlexCandidate
 import com.chapterplayer.domain.plex.PlexConnectionKind
 import com.chapterplayer.domain.plex.ProblemKind
+import com.chapterplayer.domain.plex.plexTokenFor
 import com.chapterplayer.testing.InMemoryPreferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import java.net.UnknownHostException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -41,6 +43,7 @@ class PlexConnectionManagerTest {
         override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {}
     }
 
+    private val machine = "fixturemachine01"
     private val local = PlexCandidate("https://192-0-2-11.abc.plex.direct:32400", PlexConnectionKind.LOCAL)
     private val raw = PlexCandidate("http://192.0.2.11:32400", PlexConnectionKind.LOCAL_ADDRESS)
     private val remote = PlexCandidate("https://198-51-100-1.abc.plex.direct:32400", PlexConnectionKind.REMOTE)
@@ -49,33 +52,46 @@ class PlexConnectionManagerTest {
         ServerConfig("p1", ServerSource.PLEX, "Home Plex", baseUrl, token)
 
     private var now = 100_000L
-    private val probed = mutableListOf<Pair<String, String>>()
+    private val probed = mutableListOf<Pair<String, String?>>()
     private var answers: (String) -> ConnectionProblem? = { null }
     private var lookedUp = 0
-    private var lookupResult: List<PlexCandidate>? = null
+    private var lookupResult: PlexServerConnections? = null
+    private val switches = mutableListOf<String>()
 
     private val store = DataStoreServerStatusStore(InMemoryPreferencesDataStore())
 
-    private fun manager(servers: ServerRepository) = PlexConnectionManager(
+    private fun TestScope.manager(servers: ServerRepository, nowMs: () -> Long = { now }) = PlexConnectionManager(
         servers = servers,
         store = store,
-        probe = { uri, token -> probed += uri to token; answers(uri) },
+        probe = { uri, machineId -> probed += uri to machineId; answers(uri) },
         lookup = { lookedUp++; lookupResult },
-        nowMs = { now },
-    )
+        nowMs = nowMs,
+        io = UnconfinedTestDispatcher(testScheduler),
+    ).also { it.onSwitched = { id -> switches += id } }
 
-    private suspend fun remembered(vararg candidates: PlexCandidate, chosen: PlexCandidate? = null, probedAt: Long? = null) =
-        store.update("p1") { it.copy(candidates = candidates.map(StoredCandidate::of), chosenUri = chosen?.uri, lastProbeAtMs = probedAt) }
+    private suspend fun remembered(
+        vararg candidates: PlexCandidate,
+        chosen: PlexCandidate? = null,
+        probedAt: Long? = null,
+        verified: List<String> = listOfNotNull(chosen?.uri),
+    ) = store.update("p1") {
+        it.copy(
+            candidates = candidates.map(StoredCandidate::of), machineId = machine, chosenUri = chosen?.uri,
+            lastProbeAtMs = probedAt, verifiedUris = verified,
+        )
+    }
 
     @Test
-    fun `remembering a new server stores its connections and the one chosen`() = runTest {
+    fun `remembering a new server stores its connections, machine id and the one chosen`() = runTest {
         val m = manager(SavingServers(listOf(plex())))
 
-        m.remember("p1", listOf(local, raw, remote), local)
+        m.remember("p1", machine, listOf(local, raw, remote), local)
 
         val record = store.get("p1")
         assertEquals(listOf(local, raw, remote), record.candidates.map { it.toCandidate() })
+        assertEquals(machine, record.machineId)
         assertEquals(local.uri, record.chosenUri)
+        assertEquals(listOf(local.uri), record.verifiedUris)
         assertEquals(now, record.lastProbeAtMs)
     }
 
@@ -93,10 +109,24 @@ class PlexConnectionManagerTest {
         assertEquals("plex-token", servers.saved.single().token)
         val record = store.get("p1")
         assertEquals(raw.uri, record.chosenUri)
+        assertEquals(listOf(local.uri, raw.uri), record.verifiedUris)
         assertEquals("This network blocks the plex.direct name; using the local address", record.probeNote)
         assertEquals(listOf(StoredProbeFailure(local.uri, "LOCAL", "name not found")), record.probeFailures)
-        // Every probe carried the server's token, as a parameter for the header.
-        assertTrue(probed.all { it.second == "plex-token" })
+        // Every probe asked for this server by its machine id; no probe is given the token.
+        assertTrue(probed.all { it.second == machine })
+        assertEquals(listOf("p1"), switches)
+    }
+
+    @Test
+    fun `another device answering on an address does not win`() = runTest {
+        val servers = SavingServers(listOf(plex()))
+        remembered(local, raw, remote, chosen = local)
+        answers = { uri -> if (uri == remote.uri) null else ConnectionProblem(ProblemKind.WRONG_SERVER) }
+        val m = manager(servers)
+
+        assertEquals(remote, m.reprobe("p1")?.winner)
+        assertEquals(remote.uri, servers.getById("p1")!!.baseUrl)
+        assertFalse(raw.uri in store.get("p1").verifiedUris)
     }
 
     @Test
@@ -119,7 +149,7 @@ class PlexConnectionManagerTest {
     fun `the address stays when nothing answers, and the note says why`() = runTest {
         val servers = SavingServers(listOf(plex()))
         remembered(local, remote, chosen = local)
-        answers = { ConnectionProblem(ProblemKind.TIMEOUT) }
+        answers = { ConnectionProblem(ProblemKind.REFUSED) }
         val m = manager(servers)
 
         val pick = assertNotNull(m.reprobe("p1"))
@@ -127,14 +157,15 @@ class PlexConnectionManagerTest {
         assertNull(pick.winner)
         assertEquals(local.uri, servers.getById("p1")!!.baseUrl)
         assertTrue(servers.saved.isEmpty())
-        assertEquals("Could not reach the server: timeout", store.get("p1").probeNote)
+        assertEquals("Could not reach the server: connection refused", store.get("p1").probeNote)
+        assertTrue(store.get("p1").probeFailed)
         assertEquals(local.uri, store.get("p1").chosenUri)
     }
 
     @Test
     fun `a server saved before connections were kept asks plex tv for them`() = runTest {
         val servers = SavingServers(listOf(plex()))
-        lookupResult = listOf(local, raw, remote)
+        lookupResult = PlexServerConnections(machine, listOf(local, raw, remote))
         answers = { uri -> if (uri == local.uri) ConnectionProblem(ProblemKind.UNKNOWN_HOST) else null }
         val m = manager(servers)
 
@@ -142,17 +173,19 @@ class PlexConnectionManagerTest {
 
         assertEquals(1, lookedUp)
         assertEquals(listOf(local, raw, remote), store.get("p1").candidates.map { it.toCandidate() })
+        assertEquals(machine, store.get("p1").machineId)
         assertEquals(raw.uri, servers.getById("p1")!!.baseUrl)
     }
 
     @Test
-    fun `without a list from plex tv the saved address is probed alone`() = runTest {
+    fun `without a list from plex tv the saved address is probed alone and nothing is verified`() = runTest {
         val m = manager(SavingServers(listOf(plex())))
 
         val pick = assertNotNull(m.reprobe("p1"))
 
         assertEquals(PlexCandidate(local.uri, PlexConnectionKind.SAVED), pick.winner)
-        assertEquals(listOf(local.uri), probed.map { it.first })
+        assertEquals(listOf<Pair<String, String?>>(local.uri to null), probed)
+        assertEquals(emptyList<String>(), store.get("p1").verifiedUris)
     }
 
     @Test
@@ -168,25 +201,39 @@ class PlexConnectionManagerTest {
 
         val outcome = m.afterFailure(plex(), UnknownHostException("x"), force = false)
         assertEquals(raw.uri, outcome.retryWith?.baseUrl)
+        // The caller retries itself: no extra sync is asked for.
+        assertEquals(emptyList<String>(), switches)
+    }
+
+    @Test
+    fun `a failure on an address that was already replaced retries on the new one without probing`() = runTest {
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri)))
+        remembered(local, raw, chosen = raw)
+        val m = manager(servers)
+
+        val outcome = m.afterFailure(plex(baseUrl = local.uri + "/"), UnknownHostException("x"), force = true)
+
+        assertEquals(raw.uri, outcome.retryWith?.baseUrl)
+        assertTrue(probed.isEmpty())
     }
 
     @Test
     fun `a failure with no connection that answers gives the reason`() = runTest {
         remembered(local, remote, chosen = local)
-        answers = { ConnectionProblem(ProblemKind.TIMEOUT) }
+        answers = { ConnectionProblem(ProblemKind.REFUSED) }
         val m = manager(SavingServers(listOf(plex())))
 
         val outcome = m.afterFailure(plex(), UnknownHostException("x"), force = false)
 
         assertNull(outcome.retryWith)
-        assertEquals("Could not reach the server: timeout", outcome.message)
+        assertEquals("Could not reach the server: connection refused", outcome.message)
     }
 
     @Test
     fun `before a sync a server with no chosen connection is probed once`() = runTest {
         val servers = SavingServers(listOf(plex()))
-        lookupResult = listOf(local, remote)
-        answers = { uri -> if (uri == local.uri) ConnectionProblem(ProblemKind.TIMEOUT) else null }
+        lookupResult = PlexServerConnections(machine, listOf(local, remote))
+        answers = { uri -> if (uri == local.uri) ConnectionProblem(ProblemKind.REFUSED) else null }
         val m = manager(servers)
 
         val fresh = m.beforeSync(plex())
@@ -195,6 +242,19 @@ class PlexConnectionManagerTest {
 
         m.beforeSync(servers.getById("p1")!!)
         assertEquals(count, probed.size)
+    }
+
+    @Test
+    fun `before a sync a plain address not verified on this network is checked, and left for https when it fails`() = runTest {
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri)))
+        remembered(local, raw, remote, chosen = raw, probedAt = now, verified = listOf(local.uri))
+        answers = { uri -> if (uri == remote.uri) null else ConnectionProblem(ProblemKind.REFUSED) }
+        val m = manager(servers)
+
+        val fresh = m.beforeSync(servers.getById("p1")!!)
+
+        assertTrue(probed.isNotEmpty()) // despite the 30 s window
+        assertEquals(remote.uri, fresh.baseUrl)
     }
 
     @Test
@@ -213,7 +273,7 @@ class PlexConnectionManagerTest {
     fun `testing a connection probes every candidate with a fresh list and switches to the best`() = runTest {
         val servers = SavingServers(listOf(plex()))
         remembered(local, chosen = local)
-        lookupResult = listOf(local, raw, remote)
+        lookupResult = PlexServerConnections(machine, listOf(local, raw, remote))
         answers = { uri -> if (uri == local.uri) ConnectionProblem(ProblemKind.UNKNOWN_HOST) else null }
         val m = manager(servers)
 
@@ -224,6 +284,22 @@ class PlexConnectionManagerTest {
         assertEquals(raw, test.chosen)
         assertEquals(raw.uri, servers.getById("p1")!!.baseUrl)
         assertEquals("This network blocks the plex.direct name; using the local address", test.note)
+        assertEquals(setOf(local.uri, raw.uri, remote.uri), store.get("p1").verifiedUris.toSet())
+        assertEquals(listOf("p1"), switches)
+    }
+
+    @Test
+    fun `forgetting clears the connections`() = runTest {
+        remembered(local, raw, chosen = raw)
+        val m = manager(SavingServers(listOf(plex())))
+
+        m.forget("p1")
+
+        val record = store.get("p1")
+        assertTrue(record.candidates.isEmpty())
+        assertNull(record.chosenUri)
+        assertNull(record.machineId)
+        assertEquals(emptyList<String>(), record.verifiedUris)
     }
 
     private fun TestScope.appScope() = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
@@ -233,18 +309,14 @@ class PlexConnectionManagerTest {
         val servers = SavingServers(listOf(plex()))
         remembered(local, remote, chosen = local, probedAt = now)
         val network = MutableStateFlow<String?>("wifi")
-        // The test clock drives the throttle window.
         val start = now
-        val timed = PlexConnectionManager(
-            servers, store, { uri, token -> probed += uri to token; answers(uri) }, { lookupResult },
-            nowMs = { start + testScheduler.currentTime },
-        )
+        val m = manager(servers, nowMs = { start + testScheduler.currentTime })
 
-        timed.watchNetwork(appScope(), network)
+        m.watchNetwork(appScope(), network)
         runCurrent()
         assertTrue(probed.isEmpty())
 
-        answers = { uri -> if (uri == local.uri) ConnectionProblem(ProblemKind.TIMEOUT) else null }
+        answers = { uri -> if (uri == local.uri) ConnectionProblem(ProblemKind.REFUSED) else null }
         network.value = "cellular"
         advanceTimeBy(29_000)
         assertTrue(probed.isEmpty())
@@ -252,5 +324,45 @@ class PlexConnectionManagerTest {
         runCurrent()
         assertTrue(probed.isNotEmpty())
         assertEquals(remote.uri, servers.getById("p1")!!.baseUrl)
+    }
+
+    @Test
+    fun `on a new network a plain LAN address loses the token at once and is checked before it gets it back`() = runTest {
+        // Verified at home: the raw LAN address is in use and gets the token.
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri)))
+        remembered(local, raw, remote, chosen = raw, probedAt = now, verified = listOf(local.uri, raw.uri))
+        val network = MutableStateFlow<String?>("hotel-wifi")
+        answers = { ConnectionProblem(ProblemKind.REFUSED) }
+        val m = manager(servers)
+
+        m.watchNetwork(appScope(), network)
+        runCurrent()
+
+        // Elsewhere, nothing answers: the server is back on its https name, and the LAN address is not trusted.
+        val current = servers.getById("p1")!!.copy(alternateBaseUrls = store.get("p1").verifiedUris)
+        assertEquals(local.uri, current.baseUrl)
+        assertEquals(listOf(local.uri), current.alternateBaseUrls)
+        assertNull(plexTokenFor("http://192.0.2.11:32400/library/metadata/1/thumb/2", listOf(current)))
+    }
+
+    @Test
+    fun `after a remote pick the local connections are tried again a minute later`() = runTest {
+        val servers = SavingServers(listOf(plex()))
+        remembered(local, remote, chosen = local)
+        val network = MutableStateFlow<String?>("wifi")
+        answers = { uri -> if (uri == local.uri) ConnectionProblem(ProblemKind.REFUSED) else null }
+        val start = now
+        val m = manager(servers, nowMs = { start + testScheduler.currentTime })
+
+        m.watchNetwork(appScope(), network)
+        runCurrent()
+        assertEquals(remote.uri, servers.getById("p1")!!.baseUrl)
+
+        // The home network was slow to answer; a minute later it does.
+        answers = { null }
+        advanceTimeBy(LOCAL_RETRY_DELAY_MS + 100)
+        runCurrent()
+        assertEquals(local.uri, servers.getById("p1")!!.baseUrl)
+        assertEquals(listOf("p1", "p1"), switches)
     }
 }

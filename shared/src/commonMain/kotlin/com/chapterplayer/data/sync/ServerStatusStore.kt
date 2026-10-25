@@ -32,13 +32,20 @@ data class StoredProbeFailure(val uri: String, val kind: String, val reason: Str
 
 /**
  * What the app remembers about one server's connection and sync, apart from the server row: for Plex the connections
- * plex.tv listed ([candidates], in rank order), the one in use ([chosenUri]) and the last probe; for every server the
- * last successful sync and the last error. Nothing here is a secret: no token is ever stored in it.
+ * plex.tv listed ([candidates], in rank order), the server's `machineIdentifier` ([machineId], what a probe's answer
+ * must name), the one in use ([chosenUri]), the connections that answered as that server ([verifiedUris]: https ones
+ * stay, plain http ones only until the network changes; these are the addresses the token may go to besides the one
+ * in use) and the last probe; for every server the last successful sync and the last error. Nothing here is a secret:
+ * no token is ever stored in it.
  */
 @Serializable
 data class ServerStatusRecord(
     val candidates: List<StoredCandidate> = emptyList(),
+    val machineId: String? = null,
     val chosenUri: String? = null,
+    val verifiedUris: List<String> = emptyList(),
+    /** The last probe found no connection that answered, so its note describes a failure. */
+    val probeFailed: Boolean = false,
     val lastProbeAtMs: Long? = null,
     val probeFailures: List<StoredProbeFailure> = emptyList(),
     val probeNote: String? = null,

@@ -136,7 +136,8 @@ class ServersUiTest {
         }
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher())
         val manager = PlexConnectionManager(
-            servers, store, { uri, _ -> if (uri.contains("plex.direct")) ConnectionProblem(ProblemKind.UNKNOWN_HOST) else null }, { null }
+            servers, store, { uri, _ -> if (uri.contains("plex.direct")) ConnectionProblem(ProblemKind.UNKNOWN_HOST) else null }, { null },
+            io = UnconfinedTestDispatcher()
         )
         val coordinator = LibrarySyncCoordinator(FakeBookRepository(), servers, scope, connections = manager, statusStore = store)
         val vm = ServersViewModel(servers, coordinator, scope)

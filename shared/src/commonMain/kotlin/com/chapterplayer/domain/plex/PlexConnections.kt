@@ -1,10 +1,13 @@
 package com.chapterplayer.domain.plex
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -38,7 +41,7 @@ data class PlexConnectionInfo(
 data class PlexCandidate(val uri: String, val kind: PlexConnectionKind)
 
 /** What went wrong with one try. Words only: never an address, never a token. */
-enum class ProblemKind { UNKNOWN_HOST, TIMEOUT, REFUSED, UNREACHABLE, TLS, HTTP, OTHER }
+enum class ProblemKind { UNKNOWN_HOST, TIMEOUT, REFUSED, UNREACHABLE, TLS, HTTP, WRONG_SERVER, OTHER }
 
 data class ConnectionProblem(val kind: ProblemKind, val httpStatus: Int? = null) {
     val text: String
@@ -53,6 +56,7 @@ data class ConnectionProblem(val kind: ProblemKind, val httpStatus: Int? = null)
                 null -> "unexpected answer"
                 else -> "HTTP $httpStatus"
             }
+            ProblemKind.WRONG_SERVER -> "another device answered"
             ProblemKind.OTHER -> "could not connect"
         }
 }
@@ -68,8 +72,14 @@ data class ProbeResult(val candidate: PlexCandidate, val problem: ConnectionProb
 /** The best-ranked candidate that answered. */
 fun List<ProbeResult>.winner(): PlexCandidate? = firstOrNull { it.problem == null }?.candidate
 
-/** How long one probe may take in all, on top of the HTTP client's own 3 s connect and read timeouts. */
-const val PROBE_TIMEOUT_MS = 7_000L
+/** How long one probe may take in all, on top of the HTTP client's own 5 s connect and read timeouts. */
+const val PROBE_TIMEOUT_MS = 11_000L
+
+/**
+ * When a lower-ranked connection answers first, better-ranked ones still trying get this long to answer too (so a
+ * remote answer does not beat the local one by a few milliseconds).
+ */
+const val PROBE_GRACE_MS = 1_500L
 
 /** At most one re-probe of a server per this long (a forced one, from the user, ignores it). */
 const val REPROBE_INTERVAL_MS = 30_000L
@@ -118,41 +128,80 @@ fun rankPlexConnections(
 }
 
 /**
- * Tries [candidates] in rank order with [probe] (null = the server answered, else what went wrong; a throw is
- * classified with [classifyConnectionError]). The first two run at the same time and the first to answer wins (the
- * other is cancelled); after that the rest are tried one by one. Each try is cut off after [probeTimeoutMs].
+ * Tries [candidates] in rank order with [probe] (null = the right server answered, else what went wrong; a throw is
+ * classified with [classifyConnectionError]). Two tries run at a time. A connection wins once every better-ranked one
+ * has failed, or when better-ranked ones are still trying [graceMs] after it answered. A timeout is tried once more (a
+ * phone's radio can be slow to wake). When a local `plex.direct` name is not found, the raw local addresses not tried
+ * yet move up to right after it, ahead of remote and relay, whatever plex.tv said about DNS rebinding.
  */
 suspend fun pickConnection(
     candidates: List<PlexCandidate>,
     probeTimeoutMs: Long = PROBE_TIMEOUT_MS,
+    graceMs: Long = PROBE_GRACE_MS,
     probe: suspend (uri: String) -> ConnectionProblem?,
-): ConnectionPick {
-    val failures = mutableListOf<ProbeFailure>()
-    val head = candidates.take(2)
-    if (head.isNotEmpty()) {
-        val winner = coroutineScope {
-            val results = Channel<Pair<Int, ConnectionProblem?>>(capacity = head.size)
-            val jobs = head.mapIndexed { index, candidate ->
-                launch { results.send(index to safeProbe(candidate.uri, probeTimeoutMs, probe)) }
+): ConnectionPick = coroutineScope {
+    val order = candidates.distinct().toMutableList()
+    val done = HashMap<PlexCandidate, ConnectionProblem?>()
+    val running = mutableSetOf<PlexCandidate>()
+    val events = Channel<PickEvent>(Channel.UNLIMITED)
+    var graceJob: Job? = null
+    var graceFor: PlexCandidate? = null
+
+    fun start(c: PlexCandidate) {
+        running += c
+        launch { events.send(PickEvent.Done(c, probeWithRetry(c.uri, probeTimeoutMs, probe))) }
+    }
+    fun failuresInOrder() = order.mapNotNull { c -> done[c]?.let { ProbeFailure(c, it) } }
+    fun answered(c: PlexCandidate) = c in done && done[c] == null
+
+    var pick: ConnectionPick? = null
+    while (pick == null) {
+        // The winner: the first in rank order that answered, with everything ranked above it failed.
+        val decided = order.firstOrNull { it !in done || answered(it) }?.takeIf { answered(it) }
+        if (decided != null) { pick = ConnectionPick(decided, failuresInOrder()); continue }
+        val provisional = order.firstOrNull { answered(it) }
+        if (provisional != null) {
+            // Better-ranked ones get their chance: start them now, and give them the grace window.
+            order.takeWhile { it != provisional }.filter { it !in done && it !in running }.forEach(::start)
+            if (graceFor != provisional) {
+                graceJob?.cancel()
+                graceFor = provisional
+                graceJob = launch { delay(graceMs); events.send(PickEvent.Grace(provisional)) }
             }
-            val headFailures = arrayOfNulls<ConnectionProblem>(head.size)
-            var found: PlexCandidate? = null
-            repeat(head.size) {
-                if (found != null) return@repeat
-                val (index, problem) = results.receive()
-                if (problem == null) found = head[index] else headFailures[index] = problem
+        } else {
+            for (c in order) {
+                if (running.size >= 2) break
+                if (c !in done && c !in running) start(c)
             }
-            jobs.forEach { it.cancel() }
-            headFailures.forEachIndexed { index, problem -> if (problem != null) failures += ProbeFailure(head[index], problem) }
-            found
+            if (running.isEmpty()) { pick = ConnectionPick(null, failuresInOrder()); continue }
         }
-        if (winner != null) return ConnectionPick(winner, failures)
+        when (val event = events.receive()) {
+            is PickEvent.Done -> {
+                running -= event.candidate
+                done[event.candidate] = event.problem
+                if (event.problem?.kind == ProblemKind.UNKNOWN_HOST && event.candidate.kind == PlexConnectionKind.LOCAL &&
+                    hostOf(event.candidate.uri).endsWith(PLEX_DIRECT_SUFFIX)
+                ) {
+                    val raw = order.filter { it.kind == PlexConnectionKind.LOCAL_ADDRESS && it !in done && it !in running }
+                    if (raw.isNotEmpty()) {
+                        order.removeAll(raw)
+                        order.addAll(order.indexOf(event.candidate) + 1, raw)
+                        graceFor = null // a fresh window for the moved addresses
+                    }
+                }
+            }
+            is PickEvent.Grace -> if (event.candidate == order.firstOrNull { answered(it) }) {
+                pick = ConnectionPick(event.candidate, failuresInOrder())
+            }
+        }
     }
-    for (candidate in candidates.drop(2)) {
-        val problem = safeProbe(candidate.uri, probeTimeoutMs, probe) ?: return ConnectionPick(candidate, failures)
-        failures += ProbeFailure(candidate, problem)
-    }
-    return ConnectionPick(null, failures)
+    coroutineContext.cancelChildren()
+    checkNotNull(pick)
+}
+
+private sealed interface PickEvent {
+    data class Done(val candidate: PlexCandidate, val problem: ConnectionProblem?) : PickEvent
+    data class Grace(val candidate: PlexCandidate) : PickEvent
 }
 
 /** Tries every candidate at the same time (for "Test connection"); the results come back in rank order. */
@@ -161,7 +210,17 @@ suspend fun probeAll(
     probeTimeoutMs: Long = PROBE_TIMEOUT_MS,
     probe: suspend (uri: String) -> ConnectionProblem?,
 ): List<ProbeResult> = coroutineScope {
-    candidates.map { candidate -> async { ProbeResult(candidate, safeProbe(candidate.uri, probeTimeoutMs, probe)) } }.awaitAll()
+    candidates.map { candidate -> async { ProbeResult(candidate, probeWithRetry(candidate.uri, probeTimeoutMs, probe)) } }.awaitAll()
+}
+
+/** One try, and one more after a timeout. */
+private suspend fun probeWithRetry(
+    uri: String,
+    timeoutMs: Long,
+    probe: suspend (uri: String) -> ConnectionProblem?,
+): ConnectionProblem? {
+    val first = safeProbe(uri, timeoutMs, probe)
+    return if (first?.kind == ProblemKind.TIMEOUT) safeProbe(uri, timeoutMs, probe) else first
 }
 
 private suspend fun safeProbe(

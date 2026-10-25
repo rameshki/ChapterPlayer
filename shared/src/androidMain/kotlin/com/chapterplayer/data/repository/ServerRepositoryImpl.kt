@@ -45,9 +45,13 @@ class ServerRepositoryImpl(
     private val statusStore: ServerStatusStore = NoServerStatusStore
 ) : ServerRepository {
 
-    /** Each server's listed connection addresses; a failing store means none (only the address in use gets the token). */
+    /**
+     * Each Plex server's other addresses the token may go to: the connections that answered as that server (https ones,
+     * and a plain http one only while verified on the current network; see PlexConnectionManager). A failing store
+     * means none (only the address in use gets the token).
+     */
     private val alternates: Flow<Map<String, List<String>>> = statusStore.all
-        .map { all -> all.mapValues { (_, record) -> record.candidates.map { it.uri } } }
+        .map { all -> all.mapValues { (_, record) -> record.verifiedUris } }
         .catch { e -> if (e is CancellationException) throw e else emit(emptyMap()) }
         .distinctUntilChanged()
 

@@ -52,13 +52,15 @@ class LibrarySyncCoordinatorConnectionTest {
 
     private fun TestScope.coordinator(books: FakeBookRepository, servers: ServerRepository) = LibrarySyncCoordinator(
         books, servers, CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)),
-        connections = PlexConnectionManager(servers, store, { uri, _ -> answers(uri) }, { null }, nowMs = { 1_000_000L }),
+        connections = PlexConnectionManager(servers, store, { uri, _ -> answers(uri) }, { null }, nowMs = { 1_000_000L }, io = UnconfinedTestDispatcher(testScheduler)),
     )
 
     @Test
     fun `a blocked plex direct name is worked around and the sync succeeds`() = runTest {
         // Chosen at add time, at home on a network that allowed the name.
-        store.update("p1") { it.copy(candidates = listOf(local, raw).map(StoredCandidate::of), chosenUri = local.uri, lastProbeAtMs = 0) }
+        store.update("p1") {
+            it.copy(candidates = listOf(local, raw).map(StoredCandidate::of), machineId = "m1", chosenUri = local.uri, verifiedUris = listOf(local.uri), lastProbeAtMs = 0)
+        }
         val servers = SavingServers(listOf(plex))
         val books = BlockedNameBooks()
         val c = coordinator(books, servers)
@@ -87,12 +89,45 @@ class LibrarySyncCoordinatorConnectionTest {
     }
 
     @Test
+    fun `a sync that loses the connection retries itself and asks for no extra sync`() = runTest {
+        store.update("p1") { it.copy(candidates = listOf(local, raw).map(StoredCandidate::of), machineId = "m1", chosenUri = local.uri, verifiedUris = listOf(local.uri)) }
+        val servers = SavingServers(listOf(plex))
+        val books = BlockedNameBooks()
+        val manager = PlexConnectionManager(servers, store, { uri, _ -> answers(uri) }, { null }, nowMs = { 1_000_000L }, io = UnconfinedTestDispatcher(testScheduler))
+        val c = LibrarySyncCoordinator(
+            books, servers, CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)), connections = manager
+        )
+        manager.onSwitched = { c.requestSync(it) }
+
+        c.syncNow("p1")
+
+        assertEquals(listOf(local.uri, raw.uri), books.syncedWith)
+    }
+
+    @Test
+    fun `a successful sync clears the note of a failed probe`() = runTest {
+        store.update("p1") { it.copy(probeNote = "Could not reach the server: timeout", probeFailed = true) }
+        val servers = SavingServers(listOf(plex.copy(baseUrl = raw.uri)))
+        val c = LibrarySyncCoordinator(
+            BlockedNameBooks(), servers, CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)),
+            statusStore = store
+        )
+
+        c.syncNow("p1")
+
+        assertNull(store.get("p1").probeNote)
+    }
+
+    @Test
     fun `a server added before connections were kept is probed before its first sync`() = runTest {
         val servers = SavingServers(listOf(plex))
         val books = BlockedNameBooks()
         val c = LibrarySyncCoordinator(
             books, servers, CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)),
-            connections = PlexConnectionManager(servers, store, { uri, _ -> answers(uri) }, { listOf(local, raw) }, nowMs = { 1_000_000L }),
+            connections = PlexConnectionManager(
+                servers, store, { uri, _ -> answers(uri) }, { PlexServerConnections("m1", listOf(local, raw)) }, nowMs = { 1_000_000L },
+                io = UnconfinedTestDispatcher(testScheduler)
+            ),
         )
 
         c.start()

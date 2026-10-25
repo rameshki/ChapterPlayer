@@ -114,7 +114,13 @@ class ServerRepositoryTest {
     @Test
     fun `a server's listed connections come with it, and deleting it forgets them`() = runTest {
         val store = DataStoreServerStatusStore(InMemoryPreferencesDataStore())
-        store.update("a") { it.copy(candidates = listOf(StoredCandidate("http://192.0.2.11:32400", "LOCAL_ADDRESS"))) }
+        // Only verified connections become token addresses, not every listed one.
+        store.update("a") {
+            it.copy(
+                candidates = listOf(StoredCandidate("http://192.0.2.11:32400", "LOCAL_ADDRESS"), StoredCandidate("https://r.plex.direct:8443", "RELAY")),
+                verifiedUris = listOf("http://192.0.2.11:32400"),
+            )
+        }
         val repo = ServerRepositoryImpl(
             FakeDao(), FakeExcludedDao(), FakeCredentials(), FakeBookDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
             InMemoryBookmarkDao(), InMemoryHistoryDao(), store

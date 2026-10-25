@@ -198,7 +198,7 @@ val repositoryModule = module {
             },
             onQueued = { get<PendingProgressFlusher>().kick() },
             // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
-            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false).retryWith }
+            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith }
         ) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
@@ -209,8 +209,13 @@ val repositoryModule = module {
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     // Chooses each Plex server's address; the application starts its network watch.
-    single { PlexConnectionManager(get(), get(), get(), get()) }
-    single { LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get()) }
+    single { PlexConnectionManager(get(), get(), get(), get(), io = Dispatchers.IO) }
+    // A switched Plex address syncs that server again, so stored cover addresses follow the address in use.
+    single {
+        LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get()).also { sync ->
+            get<PlexConnectionManager>().onSwitched = { id -> sync.requestSync(id) }
+        }
+    }
     // The Plex servers the cover loader adds the token header for.
     single { PlexImageServers(get(), get(AppScopeQualifier)) }
     single<LibrarySync> { get<LibrarySyncCoordinator>() }
@@ -283,7 +288,7 @@ val viewModelModule = module {
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
     // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
     viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
-    viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get()) }
+    viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
     viewModelOf(::OfflineStateViewModel)
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }

@@ -32,7 +32,9 @@ import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.ThemeMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +44,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,7 +76,9 @@ data class PlexServerOption(
     val url: String,
     val accessToken: String,
     /** Every way to reach the server, in the order to try them; [url] is the first. */
-    val candidates: List<PlexCandidate> = emptyList()
+    val candidates: List<PlexCandidate> = emptyList(),
+    /** The server's `machineIdentifier` from plex.tv: a probe's answer must name it. */
+    val machineId: String? = null
 ) {
     /** Left out so the access token can never reach a log. */
     override fun toString() = "PlexServerOption(name=$name)"
@@ -109,6 +114,7 @@ data class ServerSetupUiState(
     /** The picked server's connections are being tried; [baseUrl] is set when that ends. */
     val plexCheckingConnection: Boolean = false,
     val plexCandidates: List<PlexCandidate> = emptyList(),
+    val plexMachineId: String? = null,
     /** The connection that answered (null when none did, and [baseUrl] is the first one). */
     val plexChosen: PlexCandidate? = null,
     val plexProbeFailures: List<ProbeFailure> = emptyList(),
@@ -306,7 +312,9 @@ class ServerSetupViewModel(
     /** Keeps the connections of a Plex server once it is saved; null keeps nothing. */
     private val plexConnections: PlexConnectionManager? = null,
     /** Tries the picked Plex server's connections; null takes the first one untried. */
-    private val plexProbe: PlexConnectionProbe? = null
+    private val plexProbe: PlexConnectionProbe? = null,
+    /** Where plex.tv's server list is read and the connections are tried (off the main thread). */
+    private val work: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ServerSetupUiState(plexClientId = plexClientIdentifier.value))
@@ -451,12 +459,14 @@ class ServerSetupViewModel(
      */
     private suspend fun fetchPlexServers(token: String, clientId: String) {
         try {
-            val resources = plexTvApiService.getResources(
-                token = token,
-                product = PLEX_PRODUCT,
-                version = PLEX_VERSION,
-                clientId = clientId
-            )
+            val resources = withContext(work) {
+                plexTvApiService.getResources(
+                    token = token,
+                    product = PLEX_PRODUCT,
+                    version = PLEX_VERSION,
+                    clientId = clientId
+                )
+            }
             val servers = resources
                 .filter { it.provides.contains("server") }
                 .mapNotNull { resource ->
@@ -468,7 +478,8 @@ class ServerSetupViewModel(
                         url = first.uri,
                         // Shared servers reject the account token; use the server's own token
                         accessToken = resource.accessToken ?: token,
-                        candidates = candidates
+                        candidates = candidates,
+                        machineId = resource.clientIdentifier
                     )
                 }
 
@@ -507,6 +518,7 @@ class ServerSetupViewModel(
             availablePlexServers = emptyList(),
             plexCheckingConnection = true,
             plexCandidates = candidates,
+            plexMachineId = server.machineId,
             plexChosen = null,
             plexProbeFailures = emptyList(),
             plexConnectionNote = null
@@ -517,7 +529,8 @@ class ServerSetupViewModel(
             val pick = if (probe == null) {
                 ConnectionPick(candidates.first(), emptyList())
             } else {
-                pickConnection(candidates) { uri -> probe.probe(uri, server.accessToken) }
+                // The probe sends no token; the answer must name this server.
+                withContext(work) { pickConnection(candidates) { uri -> probe.probe(uri, server.machineId) } }
             }
             _uiState.value = _uiState.value.copy(
                 // With no answer the first connection is kept: the server may just be off; the app tries again later.
@@ -619,7 +632,7 @@ class ServerSetupViewModel(
                     }
                 }
                 serverRepository.save(config)
-                rememberPlexConnections(config, state)
+                rememberPlexConnections(config, stored, state)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 fail(SAVE_FAILED_MESSAGE)
@@ -629,12 +642,20 @@ class ServerSetupViewModel(
         }
     }
 
-    /** A Plex server saved from a fresh sign-in keeps the connections it was chosen from (best effort). */
-    private suspend fun rememberPlexConnections(config: ServerConfig, state: ServerSetupUiState) {
-        if (config.source != ServerSource.PLEX || state.plexCandidates.isEmpty()) return
-        if (state.plexCandidates.none { it.uri == config.baseUrl }) return
+    /**
+     * A Plex server saved from a fresh sign-in keeps the connections it was chosen from. One whose address or token was
+     * changed by hand (or whose address is not among the listed connections) forgets the old list, so nothing verified
+     * for the old address applies to the new one; the next sync asks plex.tv again. Best effort.
+     */
+    private suspend fun rememberPlexConnections(config: ServerConfig, stored: ServerConfig?, state: ServerSetupUiState) {
+        if (config.source != ServerSource.PLEX) return
+        val manager = plexConnections ?: return
         try {
-            plexConnections?.remember(config.id, state.plexCandidates, state.plexChosen, state.plexProbeFailures)
+            if (state.plexCandidates.any { it.uri == config.baseUrl }) {
+                manager.remember(config.id, state.plexMachineId, state.plexCandidates, state.plexChosen, state.plexProbeFailures)
+            } else if (stored == null || stored.baseUrl.trimEnd('/') != config.baseUrl.trimEnd('/') || stored.token != config.token) {
+                manager.forget(config.id)
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             // The first sync asks plex.tv for the connections again.
