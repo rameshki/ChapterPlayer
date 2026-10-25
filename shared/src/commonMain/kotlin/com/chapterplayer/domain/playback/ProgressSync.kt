@@ -12,7 +12,9 @@ data class ServerProgress(val positionMs: Long, val durationMs: Long, val isFini
  */
 data class PendingProgress(val bookId: String, val serverId: String, val positionMs: Long, val durationMs: Long, val listenedMs: Long, val updatedAtMs: Long, val attempts: Int = 0,
     /** The earliest time to try again; 0 when it may be sent at once. Kept by the queue, not by [coalescePending]. */
-    val nextAttemptAtMs: Long = 0L)
+    val nextAttemptAtMs: Long = 0L,
+    /** Set by "Mark as finished / not finished": the finished state to deliver as it is, instead of deriving it from the position. Null for ordinary positions. */
+    val markedFinished: Boolean? = null)
 
 /**
  * Dictates whether a pending progress update should be sent to the server or discarded.
@@ -76,11 +78,19 @@ fun nextBackoffMs(attempts: Int): Long {
 fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): PendingProgress {
     if (existing == null) return incoming
     val totalListened = existing.listenedMs + incoming.listenedMs
-    return if (incoming.updatedAtMs >= existing.updatedAtMs) {
-        incoming.copy(listenedMs = totalListened, attempts = 0)
+    val newer = incoming.updatedAtMs >= existing.updatedAtMs
+    // An explicit mark is a user action that must reach the server: a later ordinary position never removes it; of two marks the newer wins.
+    val mark = when {
+        existing.markedFinished == null -> incoming.markedFinished
+        incoming.markedFinished == null -> existing.markedFinished
+        newer -> incoming.markedFinished
+        else -> existing.markedFinished
+    }
+    return if (newer) {
+        incoming.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark)
     } else {
         // Keep existing metadata but update the cumulative listened time
-        existing.copy(listenedMs = totalListened)
+        existing.copy(listenedMs = totalListened, markedFinished = mark)
     }
 }
 

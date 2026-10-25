@@ -29,6 +29,7 @@ import com.chapterplayer.data.source.LibrarySource
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.addToHistory
@@ -37,7 +38,9 @@ import com.chapterplayer.domain.playback.coalescePending
 import com.chapterplayer.domain.playback.defaultBookmarkTitle
 import com.chapterplayer.domain.playback.isFinishedAt
 import com.chapterplayer.domain.playback.mergeBookmarks
+import com.chapterplayer.domain.playback.keepsFinishedMark
 import com.chapterplayer.domain.playback.mergeServerProgress
+import com.chapterplayer.domain.playback.progressAfterMark
 import com.chapterplayer.domain.playback.visibleBookmarks
 import com.chapterplayer.data.remote.HttpStatusException
 import io.ktor.http.HttpStatusCode
@@ -64,7 +67,9 @@ class BookRepositoryImpl(
     private val historyDao: HistoryDao,
     private val clock: () -> Long = { System.currentTimeMillis() },
     /** Runs the block as one database write transaction; the default runs it as is (for fakes). */
-    private val inTransaction: suspend (suspend () -> Unit) -> Unit = { it() }
+    private val inTransaction: suspend (suspend () -> Unit) -> Unit = { it() },
+    /** Called after a mark was queued, so the flusher can look at the queue. */
+    private val onQueued: () -> Unit = {}
 ) : BookRepository {
 
     // -------------------------------------------------------------------------
@@ -212,7 +217,7 @@ class BookRepositoryImpl(
             Result.success(
                 source.pushProgress(
                     server, pending.bookId, pending.positionMs, pending.durationMs,
-                    isFinished = isFinishedAt(pending.positionMs, pending.durationMs)
+                    isFinished = pending.markedFinished ?: isFinishedAt(pending.positionMs, pending.durationMs)
                 )
             )
         } catch (e: CancellationException) {
@@ -482,6 +487,93 @@ class BookRepositoryImpl(
 
     override suspend fun saveProgress(progress: ReadingProgress) {
         progressDao.upsert(ProgressEntity.fromDomain(progress))
+    }
+
+    // The player's save and a mark both read the row and write it back: one lock, so neither can overwrite the other from a stale read.
+    private val progressLock = Mutex()
+
+    /** Book id to the time of the finished mark the user made in this session (or of the last save that kept it). */
+    private val userMarks = HashMap<String, Long>()
+
+    override suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long) {
+        progressLock.withLock {
+            inTransaction {
+                val existing = progressDao.get(progress.bookId)?.toDomain()
+                val keep = keepsFinishedMark(existing, userMarks[progress.bookId], loadedSinceMs)
+                if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else userMarks.remove(progress.bookId)
+                progressDao.upsert(ProgressEntity.fromDomain(if (keep) progress.copy(isFinished = true) else progress))
+            }
+        }
+    }
+
+    override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> =
+        try {
+            val book = bookDao.getById(bookId) ?: error("Unknown book")
+            val now = clock()
+            // Local first: the UI follows at once and it works offline.
+            lateinit var local: ReadingProgress
+            progressLock.withLock {
+                inTransaction {
+                    local = progressAfterMark(progressDao.get(bookId)?.toDomain(), bookId, finished, book.durationMs, now)
+                    progressDao.upsert(ProgressEntity.fromDomain(local))
+                    if (finished) userMarks[bookId] = now else userMarks.remove(bookId)
+                }
+            }
+            val target = try {
+                serverAndSource(book.serverId).takeIf { (server, _) -> server.source == ServerSource.ABS }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            if (target == null) {
+                Result.success(MarkOutcome.LOCAL_ONLY)
+            } else {
+                val pending = PendingProgress(
+                    bookId, book.serverId, local.positionMs, local.durationMs, listenedMs = 0L, updatedAtMs = now, markedFinished = finished
+                )
+                if (pushProgress(pending).isSuccess) {
+                    // The mark replaces older queued positions of the book (a newer one is kept and delivered after it).
+                    inTransaction {
+                        val queued = pendingDao.get(bookId)
+                        if (queued != null && queued.updatedAtMs <= now) pendingDao.delete(bookId, queued.updatedAtMs)
+                    }
+                    adoptServerAnswer(bookId, local)
+                    Result.success(MarkOutcome.SYNCED)
+                } else {
+                    queueProgress(pending)
+                    onQueued()
+                    Result.success(MarkOutcome.QUEUED)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    /**
+     * After the server took a mark, reads what it holds (an un-finished book is reset to 0 there, whatever was sent) and stores
+     * it, unless the progress changed again meanwhile. A failed or empty read keeps the local mark.
+     */
+    private suspend fun adoptServerAnswer(bookId: String, mark: ReadingProgress) {
+        val answer = fetchServerProgress(bookId).getOrNull() ?: return
+        progressLock.withLock {
+            inTransaction {
+                val current = progressDao.get(bookId)
+                if (current == null || current.lastPlayedAt <= mark.lastPlayedAt) {
+                    progressDao.upsert(
+                        ProgressEntity.fromDomain(
+                            ReadingProgress(
+                                bookId, answer.positionMs, answer.durationMs.takeIf { it > 0L } ?: mark.durationMs,
+                                mark.lastPlayedAt, answer.isFinished
+                            )
+                        )
+                    )
+                    if (!answer.isFinished) userMarks.remove(bookId)
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------------

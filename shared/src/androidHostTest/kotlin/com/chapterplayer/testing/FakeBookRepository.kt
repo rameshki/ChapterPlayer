@@ -15,6 +15,7 @@ import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.addToHistory
 import com.chapterplayer.domain.playback.bookmarkTitleOrDefault
@@ -105,6 +106,32 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override fun observeAllProgress(): Flow<List<ReadingProgress>> = progress
     val saved = mutableListOf<ReadingProgress>()
     override suspend fun saveProgress(progress: ReadingProgress) { saved += progress }
+
+    /** Every [markFinished] call as (book, finished); [onMarkFinished] decides the result. */
+    val markCalls = mutableListOf<Pair<String, Boolean>>()
+    var onMarkFinished: suspend (String, Boolean) -> Result<MarkOutcome> = { _, _ -> Result.success(MarkOutcome.SYNCED) }
+    /** Time of the user's finished marks, like the real repository keeps them; [markTime] is the time a mark gets. */
+    val userMarks = mutableMapOf<String, Long>()
+    var markTime = 800L
+    override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> {
+        markCalls += bookId to finished
+        val result = onMarkFinished(bookId, finished)
+        if (result.isSuccess) {
+            val old = progress.value.firstOrNull { it.bookId == bookId }
+            val row = com.chapterplayer.domain.playback.progressAfterMark(old, bookId, finished, 100_000L, markTime)
+            progress.value = progress.value.filter { it.bookId != bookId } + row
+            if (finished) userMarks[bookId] = markTime else userMarks.remove(bookId)
+        }
+        return result
+    }
+    override suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long) {
+        val existing = this.progress.value.firstOrNull { it.bookId == progress.bookId }
+        val keep = com.chapterplayer.domain.playback.keepsFinishedMark(existing, userMarks[progress.bookId], loadedSinceMs)
+        if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else userMarks.remove(progress.bookId)
+        val row = if (keep) progress.copy(isFinished = true) else progress
+        saved += row
+        this.progress.value = this.progress.value.filter { it.bookId != row.bookId } + row
+    }
 
     /** Bookmark and history state for view model tests; the real rules are tested on the repository. */
     val bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())

@@ -29,6 +29,16 @@ class PlaybackProgressSaver(
 ) {
     private var started = false
 
+    // The loaded book and since when, for the finished mark rule: a book the user marks as finished while it is loaded stays finished.
+    private var trackedBook: String? = null
+    private var trackedSince = 0L
+
+    private fun track(bookId: String?) {
+        if (bookId == trackedBook) return
+        trackedBook = bookId
+        trackedSince = nowMs()
+    }
+
     fun start() {
         if (started) return
         started = true
@@ -53,11 +63,13 @@ class PlaybackProgressSaver(
             controller.state.collect { current ->
                 val before = previous
                 previous = current
+                if (current.bookId != before?.bookId && (before == null || !before.isPlaying)) track(current.bookId)
                 if (before == null || !before.isPlaying) return@collect
                 if (current.isPlaying && current.bookId == before.bookId) return@collect
                 // Another book took over (or the player went away): the last position seen is the best there is.
                 val last = if (current.bookId == before.bookId) current else before
                 save(before.bookId, last)
+                track(current.bookId)
             }
         }
     }
@@ -65,8 +77,10 @@ class PlaybackProgressSaver(
     private suspend fun save(bookId: String?, at: PlaybackState) {
         if (!shouldSaveProgress(bookId, at.positionMs, at.durationMs)) return
         try {
-            repository.saveProgress(
-                ReadingProgress(bookId!!, at.positionMs, at.durationMs, nowMs(), isFinishedAt(at.positionMs, at.durationMs))
+            track(bookId) // normally already tracked from the state; this covers a save that comes first
+            // Read and write happen in the repository in one step, so a mark made meanwhile is not overwritten.
+            repository.savePlaybackProgress(
+                ReadingProgress(bookId!!, at.positionMs, at.durationMs, nowMs(), isFinishedAt(at.positionMs, at.durationMs)), trackedSince
             )
         } catch (e: CancellationException) {
             throw e
