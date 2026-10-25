@@ -6,8 +6,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
-/** The version 9 migration runs one statement, whichever way Room calls it, and that statement touches only Plex books. */
+/** The version 9 migration runs the same statements whichever way Room calls it, and they touch only Plex rows. */
 class MigrationsTest {
 
     private val executed = mutableListOf<String>()
@@ -26,6 +27,22 @@ class MigrationsTest {
         null
     }
 
+    private val expected = listOf(
+        "DELETE FROM books WHERE source = 'PLEX'",
+        "DELETE FROM progress WHERE bookId LIKE 'plex\\_%' ESCAPE '\\'",
+        "DELETE FROM pending_progress WHERE bookId LIKE 'plex\\_%' ESCAPE '\\'",
+        "DELETE FROM position_history WHERE bookId LIKE 'plex\\_%' ESCAPE '\\'",
+        "DELETE FROM bookmarks WHERE bookId LIKE 'plex\\_%' ESCAPE '\\'",
+    )
+
+    @Test
+    fun `the id pattern is escaped, so an underscore is not a wildcard`() {
+        // In SQL the statements read: LIKE 'plex\_%' ESCAPE '\'
+        val backslash = '\\'
+        assertTrue(DROP_PLEX_ROWS_SQL.drop(1).all { it.endsWith("LIKE 'plex${backslash}_%' ESCAPE '$backslash'") })
+        assertTrue(DROP_PLEX_ROWS_SQL.none { "${backslash}${backslash}" in it })
+    }
+
     @Test
     fun `migrates from 8 to 9`() {
         assertEquals(8, Migration8To9.startVersion)
@@ -36,13 +53,13 @@ class MigrationsTest {
     fun `a driver connection runs the clean-up`() {
         Migration8To9.migrate(connection)
 
-        assertEquals(listOf("DELETE FROM books WHERE source = 'PLEX'"), executed)
+        assertEquals(expected, executed)
     }
 
     @Test
     fun `a support database runs the same clean-up`() {
         Migration8To9.migrate(database)
 
-        assertEquals(listOf("DELETE FROM books WHERE source = 'PLEX'"), executed)
+        assertEquals(expected, executed)
     }
 }

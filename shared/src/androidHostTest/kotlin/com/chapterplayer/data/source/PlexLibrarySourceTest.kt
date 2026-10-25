@@ -1,10 +1,11 @@
 package com.chapterplayer.data.source
 
+import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
-import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.HttpStatusException
+import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.installApiDefaults
 import com.chapterplayer.data.remote.plex.PlexApiService
 import io.ktor.client.HttpClient
@@ -14,7 +15,12 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -25,7 +31,8 @@ import kotlin.test.assertTrue
 /** What the Plex source turns server responses into, using the recorded fixtures. */
 class PlexLibrarySourceTest {
 
-    private val requests = mutableListOf<HttpRequestData>()
+    // Track details are read side by side, so the list is shared between threads.
+    private val requests: MutableList<HttpRequestData> = Collections.synchronizedList(mutableListOf())
 
     private val server = ServerConfig(
         id = "srv1", source = ServerSource.PLEX, name = "Test", baseUrl = "http://plex.test", token = "tok", libraryId = null
@@ -33,7 +40,8 @@ class PlexLibrarySourceTest {
 
     /** Answers by path: the section list, a section listing, or an item's children. */
     private fun source(
-        items: String = fixture("plex/library-albums.json"),
+        // The recorded page is the first 4 of 942; here the section holds just those 4.
+        items: String = fixture("plex/library-albums.json").replace("\"totalSize\": 942", "\"totalSize\": 4"),
         sections: String = fixture("plex/sections.json"),
         children: (String) -> String = { """{"MediaContainer":{"size":0}}""" },
     ) = PlexLibrarySource(
@@ -360,10 +368,10 @@ class PlexLibrarySourceTest {
 
         val content = source.fetchContent(server, "plex_1101")
 
-        assertEquals(
-            listOf("/library/metadata/1101/children", "/library/metadata/1102", "/library/metadata/1103", "/library/metadata/1104"),
-            requests.map { it.url.encodedPath }
-        )
+        val paths = requests.map { it.url.encodedPath }
+        assertEquals(listOf("/library/metadata/1101/children", "/library/metadata/1102"), paths.take(2))
+        assertEquals(setOf("/library/metadata/1103", "/library/metadata/1104"), paths.drop(2).toSet()) // read side by side
+        assertEquals(4, paths.size)
         assertEquals(listOf("1102", "1103", "1104"), content.tracks.map { it.ratingKey })
         assertEquals(5, content.chapters.size)
     }
@@ -391,7 +399,7 @@ class PlexLibrarySourceTest {
     }
 
     @Test
-    fun `a failing track detail fails the details`() = runTest {
+    fun `a track whose detail fails is one chapter and the details still load`() = runTest {
         val source = PlexLibrarySource(
             PlexApiService(
                 HttpClient(
@@ -404,6 +412,68 @@ class PlexLibrarySourceTest {
             )
         )
 
-        assertFailsWith<HttpStatusException> { source.fetchContent(server, "plex_1019") }
+        val content = source.fetchContent(server, "plex_1019")
+
+        assertEquals(listOf(Chapter(0, "Fixture title 12", 0L, 47_198_808L)), content.chapters)
+    }
+
+    /** An album of [count] tracks; every track's detail has one chapter, except the ones in [failing] (500). */
+    private fun manyTracks(count: Int, failing: Set<String> = emptySet(), onDetail: suspend () -> Unit = {}) = PlexLibrarySource(
+        PlexApiService(
+            HttpClient(
+                MockEngine { request ->
+                    requests += request
+                    val path = request.url.encodedPath
+                    val json = headersOf(HttpHeaders.ContentType, "application/json")
+                    if (path.endsWith("/children")) {
+                        val items = (1..count).joinToString(",") { """{"ratingKey":"t$it","type":"track","title":"Track $it","duration":1000}""" }
+                        respond("""{"MediaContainer":{"size":$count,"Metadata":[$items]}}""", HttpStatusCode.OK, json)
+                    } else {
+                        val key = path.removePrefix("/library/metadata/")
+                        onDetail()
+                        if (key in failing) respond("", HttpStatusCode.InternalServerError)
+                        else respond(
+                            """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"$key","type":"track","title":"Track","duration":1000,
+                                "Chapter":[{"id":1,"tag":"Chapter of $key","startTimeOffset":0,"endTimeOffset":1000}]}]}}""",
+                            HttpStatusCode.OK, json
+                        )
+                    }
+                }
+            ) { installApiDefaults(isDebuggable = false) }
+        )
+    )
+
+    @Test
+    fun `one failing track among many keeps the others' chapters`() = runTest {
+        val content = manyTracks(5, failing = setOf("t3")).fetchContent(server, "plex_1")
+
+        assertEquals(
+            listOf("Chapter of t1", "Chapter of t2", "Track 3", "Chapter of t4", "Chapter of t5"),
+            content.chapters.map { it.title }
+        )
+        assertEquals(listOf(0L, 1000L, 2000L, 3000L, 4000L), content.chapters.map { it.startMs })
+    }
+
+    @Test
+    fun `a first track that cannot be read still has the others read`() = runTest {
+        val content = manyTracks(3, failing = setOf("t1")).fetchContent(server, "plex_1")
+
+        assertEquals(listOf("Track 1", "Chapter of t2", "Chapter of t3"), content.chapters.map { it.title })
+    }
+
+    @Test
+    fun `track details are read at most four at a time`() = runTest {
+        val running = AtomicInteger(0)
+        val most = AtomicInteger(0)
+        val source = manyTracks(12, onDetail = {
+            most.accumulateAndGet(running.incrementAndGet(), ::maxOf)
+            delay(30)
+            running.decrementAndGet()
+        })
+
+        val content = withContext(Dispatchers.Default) { source.fetchContent(server, "plex_1") }
+
+        assertEquals(12, content.chapters.size)
+        assertTrue(most.get() in 2..4, "at most 4 at once, and more than one: ${most.get()}")
     }
 }

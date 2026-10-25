@@ -38,6 +38,29 @@ class PlexPagingTest {
     }
 
     @Test
+    fun `a server that caps pages below the asked size is read to the total`() = runTest {
+        // Asked for 200, the server sends at most 100 per page.
+        val items = fetchAllPlexItems(pageSize = 200) { start, size ->
+            asked += start to size
+            page(start until minOf(start + 100, 250), total = 250)
+        }
+
+        assertEquals(250, items.size)
+        assertEquals(listOf(0 to 200, 100 to 200, 200 to 200), asked)
+    }
+
+    @Test
+    fun `an empty page before the total stops`() = runTest {
+        val items = fetchAllPlexItems(pageSize = 2) { start, _ ->
+            asked += start to 2
+            if (start == 0) page(0..1, total = 10) else page(IntRange.EMPTY, total = 10)
+        }
+
+        assertEquals(2, items.size)
+        assertEquals(2, asked.size)
+    }
+
+    @Test
     fun `without a total a short page is the last`() = runTest {
         val items = fetchAllPlexItems(pageSize = 2, fetchPage = library(3, sendTotal = false))
 

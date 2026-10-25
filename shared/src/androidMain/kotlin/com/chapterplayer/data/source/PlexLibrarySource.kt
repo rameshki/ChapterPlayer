@@ -18,6 +18,14 @@ import com.chapterplayer.domain.plex.plexRatingKey
 import com.chapterplayer.domain.plex.plexAlbumToBook
 import com.chapterplayer.domain.plex.plexEntryKind
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+
+/** How many track details a book's details read at once. */
+internal const val PLEX_DETAIL_CONCURRENCY = 4
 
 /**
  * Lists the books on a Plex Media Server. In a Plex music library each audiobook is an album (the author is the
@@ -113,24 +121,43 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
 
     /**
      * The book's tracks in play order and its chapters. A track list never carries chapters, so the first track's own
-     * metadata is read with them; when it has some, every other track is read too (each file of a multi-file book may
-     * carry its own). When the first has none, the others are taken to have none either (one chapter per track), which
-     * saves a request per file for the common one-file-per-chapter book. What playback needs in step 2 is in the result.
+     * metadata is read with them; when it has some (or could not be read), every other track is read too, at most
+     * [PLEX_DETAIL_CONCURRENCY] at a time (each file of a multi-file book may carry its own). When the first has none,
+     * the others are taken to have none either (one chapter per track), which saves a request per file for the common
+     * one-file-per-chapter book. A track whose metadata cannot be read is one chapter, so one bad file does not fail the
+     * book; the track list itself must come. What playback needs in step 2 is in the result.
      */
     suspend fun fetchContent(server: ServerConfig, bookId: String): PlexBookContent {
         val tracks = api.getChildren(server.baseUrl, server.token, plexRatingKey(bookId)).mediaContainer.metadata.orEmpty()
             .filter(::isPlexTrack)
-        val details = LinkedHashMap<String, PlexMetadataDto>()
         val first = tracks.firstOrNull() ?: return plexBookContent(emptyList(), emptyMap())
-        trackDetail(server, first.ratingKey)?.let { details[first.ratingKey] = it }
-        if (!details[first.ratingKey]?.chapters.isNullOrEmpty()) {
-            for (track in tracks.drop(1)) trackDetail(server, track.ratingKey)?.let { details[track.ratingKey] = it }
+        val details = LinkedHashMap<String, PlexMetadataDto>()
+        val firstRead = trackDetailOrNull(server, first.ratingKey)
+        firstRead?.detail?.let { details[first.ratingKey] = it }
+        if (firstRead == null || !firstRead.detail?.chapters.isNullOrEmpty()) {
+            val gate = Semaphore(PLEX_DETAIL_CONCURRENCY)
+            val rest = coroutineScope {
+                tracks.drop(1).map { track ->
+                    async { track.ratingKey to gate.withPermit { trackDetailOrNull(server, track.ratingKey)?.detail } }
+                }.awaitAll()
+            }
+            rest.forEach { (key, detail) -> if (detail != null) details[key] = detail }
         }
         return plexBookContent(tracks, details)
     }
 
-    private suspend fun trackDetail(server: ServerConfig, ratingKey: String): PlexMetadataDto? =
-        api.getMetadata(server.baseUrl, server.token, ratingKey, includeChapters = true).mediaContainer.metadata?.firstOrNull()
+    /** What reading one track gave: [detail] is null when the server sent no entry. */
+    private class TrackRead(val detail: PlexMetadataDto?)
+
+    /** One track's metadata with its chapters; null when the call failed (cancellation still propagates). */
+    private suspend fun trackDetailOrNull(server: ServerConfig, ratingKey: String): TrackRead? =
+        try {
+            TrackRead(api.getMetadata(server.baseUrl, server.token, ratingKey, includeChapters = true).mediaContainer.metadata?.firstOrNull())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
 
     override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> = librariesOf(server, musicSections(server))
 
