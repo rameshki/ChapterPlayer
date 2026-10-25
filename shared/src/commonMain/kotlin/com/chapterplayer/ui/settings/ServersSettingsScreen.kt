@@ -138,6 +138,14 @@ private fun ServerRow(
                     modifier = Modifier.padding(top = 2.dp, end = 12.dp)
                 )
             }
+            row.lengthsNote?.let { note ->
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp, end = 12.dp)
+                )
+            }
             if (row.needsSignIn) {
                 Text(
                     text = "Sign in again",

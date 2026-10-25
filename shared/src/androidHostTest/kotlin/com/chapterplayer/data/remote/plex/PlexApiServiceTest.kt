@@ -40,6 +40,21 @@ class PlexApiServiceTest {
     }
 
     @Test
+    fun `lists one page of a section's tracks with their albums`() = runTest {
+        val items = PlexApiService(client(fixture("plex/section-tracks.json")), TestPlexClientId)
+            .getSectionTracks("https://plex.test:32400/", token = "tok", sectionId = "4", start = 0, size = 200)
+
+        val request = requests.single()
+        assertEquals("/library/sections/4/all", request.url.encodedPath)
+        assertEquals("10", request.url.parameters["type"])
+        assertEquals("0", request.url.parameters["X-Plex-Container-Start"])
+        assertEquals("200", request.headers["X-Plex-Container-Size"])
+        assertEquals("tok", request.headers["X-Plex-Token"])
+        assertEquals(4, items.mediaContainer.totalSize)
+        assertEquals(listOf("2001", "2001", "2002", "2003"), items.mediaContainer.metadata?.map { it.parentRatingKey })
+    }
+
+    @Test
     fun `lists one page of a section's albums`() = runTest {
         val items = PlexApiService(client(fixture("plex/library-albums.json")), TestPlexClientId)
             .getSectionAlbums("https://plex.test:32400/", token = "tok", sectionId = "4", start = 200, size = 200)

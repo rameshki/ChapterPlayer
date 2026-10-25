@@ -33,6 +33,11 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     val progress = MutableStateFlow<List<ReadingProgress>>(emptyList())
 
     override fun observeAllBooks(): Flow<List<AudioBook>> = books
+    val filledDurations = mutableListOf<Map<String, Long>>()
+    override suspend fun fillUnknownDurations(durations: Map<String, Long>) {
+        filledDurations += durations
+        books.value = books.value.map { b -> durations[b.id]?.takeIf { it > 0L && b.durationMs <= 0L }?.let { b.copy(durationMs = it) } ?: b }
+    }
     override fun observeBooksByServer(serverId: String): Flow<List<AudioBook>> =
         books.map { list -> list.filter { it.serverId == serverId } }
     val collections = MutableStateFlow<List<BookCollection>>(emptyList())

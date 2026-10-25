@@ -183,10 +183,13 @@ class BookDetailsViewModel(
             BookDetailsUiState(phase = DetailsPhase.NOT_FOUND, selectedTab = tab)
         } else {
             val chapters = live.details?.chapters ?: book.chapters
+            // A copy whose length is not known yet (a Plex album before it was opened) shows another copy's.
+            val knownLength = book.durationMs.takeIf { it > 0L }
+                ?: whole.entry?.allSources?.firstOrNull { it.book.durationMs > 0L }?.book?.durationMs ?: book.durationMs
             val timeLeft = when {
                 progress == null -> null
-                progress.isFinished || progress.positionMs >= book.durationMs -> "Finished"
-                progress.positionMs > 0 -> formatTimeLeft(book.durationMs, progress.positionMs)
+                progress.isFinished || progress.positionMs >= knownLength -> "Finished"
+                progress.positionMs > 0 -> formatTimeLeft(knownLength, progress.positionMs)
                 else -> null
             }
             val entry = whole.entry
@@ -223,7 +226,7 @@ class BookDetailsViewModel(
                 series = whole.series,
                 links = whole.links,
                 timeLeft = timeLeft,
-                lengthText = formatLength(book.durationMs),
+                lengthText = formatLength(knownLength),
                 loadingDetails = live.loading,
                 detailsLoaded = live.details != null,
                 error = live.error,

@@ -273,4 +273,11 @@ class BookDetailsMergeTest {
         assertEquals("p" to 1_000L, s.controller.loads.single())
         assertNull(state().sourceSheet)
     }
+    @Test
+    fun `a Plex copy without a length shows the length of the other copy`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p").copy(durationMs = 0L)), "p")
+        val state = collect(s)
+        assertEquals(listOf("a", "p"), state().sources.map { it.bookId })
+        assertEquals(com.chapterplayer.domain.browse.formatLength(3_600_000L), state().lengthText)
+    }
 }
