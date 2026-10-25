@@ -21,6 +21,7 @@ import com.chapterplayer.domain.browse.resumeCandidate
 import com.chapterplayer.domain.browse.FilterChip
 import com.chapterplayer.domain.browse.chipFor
 import com.chapterplayer.domain.browse.applyQuery
+import com.chapterplayer.domain.browse.pruneServerFilter
 import com.chapterplayer.domain.browse.isDimmed
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CancellationException
@@ -57,7 +58,9 @@ data class HomeUiState(
     val downloadedFilterOn: Boolean = false,
     val online: Boolean = true,
     val downloadedOnly: Boolean = false,
-    val isSyncing: Boolean = false
+    val isSyncing: Boolean = false,
+    /** The Library's server filter hides some books here too; Home says so and offers to clear it. */
+    val serverFilterOn: Boolean = false
 ) {
     /** Whether this book cannot play now (offline or Downloaded only, and not on the phone). */
     fun dimmed(item: BrowseItem): Boolean = isDimmed(item.downloadState, online, downloadedOnly)
@@ -67,7 +70,7 @@ class HomeViewModel(
     books: BookRepository,
     servers: ServerRepository,
     downloads: DownloadStates,
-    queryStore: BrowseQueryStore,
+    private val queryStore: BrowseQueryStore,
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
     syncCoordinator: LibrarySyncCoordinator,
@@ -87,7 +90,8 @@ class HomeViewModel(
             Triple(online, downloadedOnly, sync.isSyncing)
         },
         local
-    ) { items, serverList, query, (online, downloadedOnly, syncing), local ->
+    ) { items, serverList, rawQuery, (online, downloadedOnly, syncing), local ->
+        val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
         // The card and the series shelf come from every book, so a saved filter never hides them.
         val resume = resumeCandidate(items)
         val resumeId = resume?.item?.book?.id
@@ -101,10 +105,11 @@ class HomeViewModel(
             hasServers = serverList.isNotEmpty(),
             isLoading = false,
             hasBooks = items.isNotEmpty(),
-            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED,
+            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED && query.serverIds.isEmpty(),
             online = online,
             downloadedOnly = downloadedOnly,
-            isSyncing = syncing
+            isSyncing = syncing,
+            serverFilterOn = query.serverIds.isNotEmpty()
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -129,6 +134,9 @@ class HomeViewModel(
             if (result.isSuccess) onStarted()
         }
     }
+
+    /** Shows every server's books again (the hint's button). */
+    fun onServerFilterCleared() = queryStore.update { it.copy(serverIds = emptySet()) }
 
     fun dismissError() {
         if (!local.value.starting) local.value = Local()

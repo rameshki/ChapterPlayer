@@ -33,14 +33,16 @@ data class SearchUiState(
     /** The Downloaded filter is on (and no other), so a filtered-out result means nothing matching is on the phone. */
     val downloadedFilterOn: Boolean = false,
     val online: Boolean = true,
-    val downloadedOnly: Boolean = false
+    val downloadedOnly: Boolean = false,
+    /** The Library's server filter hides some results; Search says so and offers to clear it. */
+    val serverFilterOn: Boolean = false
 )
 
 @OptIn(FlowPreview::class)
 class SearchViewModel(
     books: BookRepository,
     downloads: DownloadStates,
-    queryStore: BrowseQueryStore,
+    private val queryStore: BrowseQueryStore,
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
     dispatcher: CoroutineDispatcher
@@ -76,11 +78,15 @@ class SearchViewModel(
                 else -> SearchStatus.RESULTS
             },
             results = shown,
-            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED,
+            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED && query.serverIds.isEmpty(),
             online = online,
-            downloadedOnly = downloadedOnly
+            downloadedOnly = downloadedOnly,
+            serverFilterOn = query.serverIds.isNotEmpty()
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchUiState())
+
+    /** Shows every server's books again (the hint's button). */
+    fun onServerFilterCleared() = queryStore.update { it.copy(serverIds = emptySet()) }
 
     companion object {
         const val DEBOUNCE_MS = 200L

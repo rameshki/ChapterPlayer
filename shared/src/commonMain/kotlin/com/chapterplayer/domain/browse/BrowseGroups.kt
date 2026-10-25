@@ -48,7 +48,7 @@ private fun groupPeople(
     
     val sortedGroups = groups.map { (key, itemsList) ->
         BookGroup(key, titles[key]!!, itemsList)
-    }.sortedWith(compareBy { it.title.lowercase() })
+    }.sortedWith(compareBy<BookGroup>({ personSortKey(it.title) }, { it.key }))
     
     val (unknown, others) = sortedGroups.partition { it.key == "unknown" }
     return others + unknown

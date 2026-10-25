@@ -415,4 +415,32 @@ class HomeViewModelTest {
         assertEquals(1, s.controller.plays)
         assertEquals(1, started)
     }
+
+    @Test
+    fun `the server filter hides other servers' books on the shelves and is reported`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1), longBook("b", addedAt = 2).copy(serverId = "s2"))))
+        s.servers.flow.value = listOf(testServer("s1"), testServer("s2"))
+        val state = collect(s)
+        assertFalse(state().serverFilterOn)
+
+        s.store.update { it.copy(serverIds = setOf("s2")) }
+
+        assertEquals(listOf("b"), state().recentlyAdded.map { it.book.id })
+        assertTrue(state().serverFilterOn)
+
+        s.vm.onServerFilterCleared()
+
+        assertFalse(state().serverFilterOn)
+        assertEquals(listOf("b", "a"), state().recentlyAdded.map { it.book.id })
+    }
+
+    @Test
+    fun `a server choice left over with one server does not filter Home`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("a"))))
+        s.store.update { it.copy(serverIds = setOf("s1")) }
+        val state = collect(s)
+
+        assertFalse(state().serverFilterOn)
+        assertEquals(listOf("a"), state().recentlyAdded.map { it.book.id })
+    }
 }

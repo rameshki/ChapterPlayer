@@ -234,4 +234,21 @@ class SearchViewModelTest {
 
         assertEquals(SearchStatus.PROMPT, s.vm.uiState.value.status)
     }
+
+    @Test
+    fun `the server filter applies to the results`() = runTest {
+        val s = Setup(listOf(testBook("a", title = "Dune"), testBook("b", title = "Dune Messiah").copy(serverId = "s2")))
+        collect(s)
+        s.store.update { it.copy(serverIds = setOf("s2")) }
+        search(s, "dune")
+
+        assertEquals(listOf("b"), s.ids())
+        assertTrue(s.vm.uiState.value.serverFilterOn)
+
+        s.vm.onServerFilterCleared()
+        runCurrent()
+
+        assertFalse(s.vm.uiState.value.serverFilterOn)
+        assertEquals(setOf("a", "b"), s.ids().toSet())
+    }
 }

@@ -14,7 +14,10 @@ import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.browse.BrowseSort
 import com.chapterplayer.domain.browse.DownloadFilter
 import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.domain.browse.LetterIndex
 import com.chapterplayer.domain.browse.ProgressFilter
+import com.chapterplayer.domain.browse.ServerFilterOption
+import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeDownloadStates
@@ -478,5 +481,152 @@ class LibraryViewModelTest {
         s.settings.downloadedOnlyFlow.value = true
         assertTrue(state().dimmed(item("a")))
         assertFalse(state().dimmed(item("b")))
+    }
+
+    // ---- server filter ----
+
+    private fun twoServers(vararg books: AudioBook) = Setup(
+        FakeBookRepository(books.toList()),
+        servers = listOf(testServer("s1"), testServer("s2").copy(name = "Plex box", source = ServerSource.PLEX))
+    )
+
+    @Test
+    fun `with one server there is no server section and no server chip`() = runTest {
+        val state = collect(library(testBook("a")))
+
+        assertEquals(emptyList(), state().serverOptions)
+        assertNull(state().serverChip)
+    }
+
+    @Test
+    fun `the server options count every book of each server whatever the filters`() = runTest {
+        val s = twoServers(testBook("a"), testBook("b"), testBook("c").copy(serverId = "s2"))
+        val state = collect(s)
+        s.vm.onChipSelected(FilterChip.FINISHED)
+
+        assertEquals(
+            listOf(
+                ServerFilterOption("s1", "Server s1", "ABS", 2, selected = true),
+                ServerFilterOption("s2", "Plex box", "Plex", 1, selected = true)
+            ),
+            state().serverOptions
+        )
+    }
+
+    @Test
+    fun `unticking a server hides its books and shows the chip`() = runTest {
+        val s = twoServers(testBook("a"), testBook("c").copy(serverId = "s2"))
+        val state = collect(s)
+
+        s.vm.onServerToggled("s1")
+
+        assertEquals(listOf("c"), state().items.map { it.book.id })
+        assertEquals(setOf("s2"), s.store.query.value.serverIds)
+        assertEquals("Plex box", state().serverChip)
+        assertEquals(listOf(false, true), state().serverOptions.map { it.selected })
+    }
+
+    @Test
+    fun `the server filter reaches the grouped views`() = runTest {
+        val s = twoServers(testBook("a", author = "Amy"), testBook("c", author = "Zed").copy(serverId = "s2"))
+        val state = collect(s)
+        s.vm.onViewSelected(LibraryView.AUTHORS)
+
+        s.vm.onServerToggled("s2")
+
+        assertEquals(listOf("Amy"), state().groups.map { it.title })
+    }
+
+    @Test
+    fun `clearing the server chip shows every server again and keeps the other filters`() = runTest {
+        val s = twoServers(testBook("a"), testBook("c").copy(serverId = "s2"))
+        val state = collect(s)
+        s.vm.onChipSelected(FilterChip.DOWNLOADED)
+        s.vm.onServerToggled("s1")
+
+        s.vm.onServerFilterCleared()
+
+        assertEquals(emptySet(), s.store.query.value.serverIds)
+        assertEquals(DownloadFilter.DOWNLOADED, s.store.query.value.download)
+        assertNull(state().serverChip)
+    }
+
+    @Test
+    fun `a server filter that hides everything is empty because of the filter`() = runTest {
+        val s = twoServers(testBook("a"))
+        val state = collect(s)
+
+        s.vm.onServerToggled("s1")
+
+        assertTrue(state().items.isEmpty())
+        assertTrue(state().emptyBecauseOfFilter)
+    }
+
+    // ---- A to Z scroller ----
+
+    private fun manyBooks(count: Int = 20) = Setup(
+        FakeBookRepository(List(count) { i -> testBook("b$i", title = "${'A' + (i % 26)}x title $i", author = "${'Z' - (i % 26)} author") })
+    )
+
+    @Test
+    fun `the scroller follows the title sort and the author sort`() = runTest {
+        val s = manyBooks()
+        val state = collect(s)
+
+        s.vm.onSortSelected(BrowseSort.TITLE)
+        assertEquals(LetterIndex('A', 0), state().fastScroll.first())
+        assertEquals(20, state().fastScroll.size)
+
+        s.vm.onSortSelected(BrowseSort.AUTHOR)
+        // The author sort starts with the 'G' author (Z minus 19) and ends with 'Z'.
+        assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+        assertEquals(LetterIndex('Z', 19), state().fastScroll.last())
+    }
+
+    @Test
+    fun `sorts that are not alphabetical have no scroller`() = runTest {
+        val s = manyBooks()
+        val state = collect(s)
+
+        for (sort in listOf(BrowseSort.RECENTLY_ADDED, BrowseSort.RECENTLY_PLAYED, BrowseSort.LENGTH)) {
+            s.vm.onSortSelected(sort)
+            assertEquals(emptyList(), state().fastScroll, "sort $sort")
+        }
+    }
+
+    @Test
+    fun `a short list has no scroller`() = runTest {
+        val s = manyBooks(19)
+        val state = collect(s)
+
+        s.vm.onSortSelected(BrowseSort.TITLE)
+
+        assertEquals(emptyList(), state().fastScroll)
+    }
+
+    @Test
+    fun `the alphabetical group lists have a scroller whatever the sort, and Collections has none`() = runTest {
+        val s = manyBooks()
+        s.books.collections.value = List(20) { i -> BookCollection("s1", "c$i", "Collection $i", listOf("b$i")) }
+        val state = collect(s)
+
+        s.vm.onViewSelected(LibraryView.AUTHORS)
+        assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+
+        s.vm.onViewSelected(LibraryView.COLLECTIONS)
+        assertEquals(emptyList(), state().fastScroll)
+    }
+
+    @Test
+    fun `the scroller is built from the filtered list`() = runTest {
+        val s = manyBooks(21)
+        val state = collect(s)
+        s.vm.onSortSelected(BrowseSort.TITLE)
+        assertTrue(state().fastScroll.isNotEmpty())
+
+        s.downloads.states.value = mapOf("b0" to DownloadState.DOWNLOADED)
+        s.vm.onChipSelected(FilterChip.DOWNLOADED)
+
+        assertEquals(emptyList(), state().fastScroll)
     }
 }

@@ -100,11 +100,14 @@ import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.data.widgets.WidgetHost
 import com.chapterplayer.data.widgets.WidgetResumer
 import com.chapterplayer.ui.widgets.GlanceWidgetHost
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -222,8 +225,15 @@ val repositoryModule = module {
 }
 
 val browseModule = module {
-    // The filters shared by Home, Library and Search; in memory only.
-    single { BrowseQueryStore() }
+    // The filters shared by Home, Library and Search; in memory only. A deleted server drops out of the server choice.
+    single {
+        BrowseQueryStore().also { store ->
+            val serverIds = get<ServerRepository>().observeAll()
+                .map { list -> list.mapTo(mutableSetOf()) { it.id } }
+                .catch { e -> if (e is CancellationException) throw e }
+            store.followServers(serverIds, get(AppScopeQualifier))
+        }
+    }
     // Where the browse view models do their list work; tests pass their own.
     single<CoroutineDispatcher>(IoDispatcherQualifier) { Dispatchers.Default }
 }

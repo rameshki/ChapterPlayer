@@ -24,4 +24,4 @@ fun queryFor(chip: FilterChip, current: BrowseQuery = BrowseQuery()): BrowseQuer
 
 /** Whether [query] hides any book (the sort does not). */
 fun isFiltering(query: BrowseQuery): Boolean =
-    query.progress != ProgressFilter.ALL || query.download != DownloadFilter.ALL
+    query.progress != ProgressFilter.ALL || query.download != DownloadFilter.ALL || query.serverIds.isNotEmpty()

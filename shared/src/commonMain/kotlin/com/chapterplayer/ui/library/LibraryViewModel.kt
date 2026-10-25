@@ -17,9 +17,16 @@ import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.browse.BrowseSort
 import com.chapterplayer.domain.browse.DownloadFilter
 import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.domain.browse.LetterIndex
+import com.chapterplayer.domain.browse.fastScrollIndex
 import com.chapterplayer.domain.browse.ProgressFilter
 import com.chapterplayer.domain.browse.applyQuery
+import com.chapterplayer.domain.browse.pruneServerFilter
 import com.chapterplayer.domain.browse.queryFor
+import com.chapterplayer.domain.browse.serverChipLabel
+import com.chapterplayer.domain.browse.serverFilterOptions
+import com.chapterplayer.domain.browse.toggleServer
+import com.chapterplayer.domain.browse.ServerFilterOption
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,7 +60,10 @@ class LibraryViewModel(
         val query: BrowseQuery,
         val items: List<BrowseItem>,
         val groups: List<BookGroup>,
-        val hasBooks: Boolean
+        val hasBooks: Boolean,
+        val serverOptions: List<ServerFilterOption>,
+        val serverChip: String?,
+        val fastScroll: List<LetterIndex>
     )
 
     private class Device(
@@ -66,15 +76,24 @@ class LibraryViewModel(
         observeBrowseItems(books, downloads),
         books.observeCollections(),
         queryStore.query,
-        _view
-    ) { all, collections, query, view ->
+        _view,
+        servers.observeAll()
+    ) { all, collections, rawQuery, view, serverList ->
+        // A deleted server's id never hides books, even before the store drops it.
+        val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
         val shown = applyQuery(all, query)
+        val items = if (view.isGrouped) emptyList() else shown
+        val groups = groupsFor(view, shown, collections)
         Content(
             view = view,
             query = query,
-            items = if (view.isGrouped) emptyList() else shown,
-            groups = groupsFor(view, shown, collections),
-            hasBooks = all.isNotEmpty()
+            items = items,
+            groups = groups,
+            hasBooks = all.isNotEmpty(),
+            // Counted from every book, so the numbers do not change with the filters.
+            serverOptions = serverFilterOptions(serverList, all, query.serverIds),
+            serverChip = serverChipLabel(query.serverIds, serverList),
+            fastScroll = fastScrollIndex(fastScrollKeys(view, query.sort, items, groups))
         )
     }.flowOn(dispatcher)
 
@@ -104,7 +123,10 @@ class LibraryViewModel(
             signInRequiredNames = sync.signInRequiredNames,
             allServersNeedSignIn = sync.allServersNeedSignIn,
             online = device.online,
-            downloadedOnly = device.downloadedOnly
+            downloadedOnly = device.downloadedOnly,
+            serverOptions = content.serverOptions,
+            serverChip = content.serverChip,
+            fastScroll = content.fastScroll
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
@@ -126,6 +148,16 @@ class LibraryViewModel(
     fun onDownloadFilterSelected(filter: DownloadFilter) = queryStore.update { it.copy(download = filter) }
 
     fun onSortSelected(sort: BrowseSort) = queryStore.update { it.copy(sort = sort) }
+
+    /** Ticks or unticks one server in the Filter sheet's Server section. */
+    fun onServerToggled(serverId: String) {
+        val allIds = uiState.value.serverOptions.map { it.id }
+        if (serverId !in allIds) return
+        queryStore.update { it.copy(serverIds = toggleServer(it.serverIds, serverId, allIds)) }
+    }
+
+    /** Shows every server again (the server chip's clear button). */
+    fun onServerFilterCleared() = queryStore.update { it.copy(serverIds = emptySet()) }
 
     /** Back to no filters and the default sort. */
     fun onClearFilters() = queryStore.update { BrowseQuery() }

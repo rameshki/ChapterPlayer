@@ -95,7 +95,9 @@ fun LibraryScreen(
                 FilterChipRow(
                     selected = state.chip,
                     onSelected = viewModel::onChipSelected,
-                    onOpenSheet = { sheetOpen = true }
+                    onOpenSheet = { sheetOpen = true },
+                    serverChip = state.serverChip,
+                    onClearServers = viewModel::onServerFilterCleared
                 )
             }
 
@@ -132,7 +134,9 @@ fun LibraryScreen(
             onProgressSelected = viewModel::onProgressFilterSelected,
             onSortSelected = viewModel::onSortSelected,
             onReset = viewModel::onClearFilters,
-            onDismiss = { sheetOpen = false }
+            onDismiss = { sheetOpen = false },
+            serverOptions = state.serverOptions,
+            onServerToggled = viewModel::onServerToggled
         )
     }
 }
@@ -162,7 +166,8 @@ private fun LibraryBody(
         state.view.isGrouped -> GroupList(
             groups = state.groups,
             onGroupClick = { group -> onGroupClick(state.view, group.key) },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            fastScroll = state.fastScroll
         )
 
         else -> BookLayout(
@@ -170,7 +175,8 @@ private fun LibraryBody(
             layout = state.layout,
             isDimmed = state::dimmed,
             onBookClick = onBookClick,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            fastScroll = state.fastScroll
         )
     }
 }
