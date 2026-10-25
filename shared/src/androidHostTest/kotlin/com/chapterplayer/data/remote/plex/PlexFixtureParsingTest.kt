@@ -1,6 +1,7 @@
 package com.chapterplayer.data.remote.plex
 
 import com.chapterplayer.data.remote.abs.fixture
+import com.chapterplayer.data.remote.plex.dto.connectionCandidates
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -40,6 +41,29 @@ class PlexFixtureParsingTest {
         assertEquals("fixture-access-token-1", servers[0].accessToken)
         assertEquals(listOf(true, false, false), servers[0].connections.map { it.local })
         assertTrue(servers[0].connections[0].uri.startsWith("https://192-0-2-11."))
+    }
+
+    @Test
+    fun `the connections are ranked with the raw local address when the network blocks plex direct names`() {
+        val servers = PlexParsers.resources(fixture("plex/plextv-resources.json"))
+
+        assertTrue(servers[0].dnsRebindingProtection)
+        assertEquals("fixturemachine010000000000000000", servers[0].clientIdentifier)
+        assertEquals(
+            listOf(
+                "https://192-0-2-11.fixturemachine010000000000000000.plex.direct:32400" to "Local",
+                "http://192.0.2.11:32400" to "Local address",
+                "https://198-51-100-1.fixturemachine010000000000000000.plex.direct:32400" to "Remote",
+                "https://198-51-100-200.fixturemachine010000000000000000.plex.direct:8443" to "Relay",
+            ),
+            servers[0].connectionCandidates().map { it.uri to it.kind.label }
+        )
+        // Without the protection the raw address comes after the remote one.
+        assertEquals(
+            listOf("Local", "Remote", "Local address", "Relay"),
+            servers[1].connectionCandidates().map { it.kind.label }
+        )
+        assertTrue("fixture-access-token" !in servers[0].toString())
     }
 
     @Test
