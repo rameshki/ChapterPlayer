@@ -133,6 +133,7 @@
       {
         "ratingKey": "1104",
         "viewOffset": 120000,
+        "duration": 300000,
         "lastViewedAt": 1700000300,
         "key": "/library/metadata/1104",
         "parentRatingKey": "1101",

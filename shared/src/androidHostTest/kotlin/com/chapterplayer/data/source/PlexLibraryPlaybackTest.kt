@@ -6,6 +6,7 @@ import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.installApiDefaults
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
+import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -20,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Playing a Plex book: the session the app builds from the tracks, the server's progress and the reports back. */
@@ -97,5 +99,28 @@ class PlexLibraryPlaybackTest {
 
         val e = assertFailsWith<IllegalStateException> { source(tracks).startPlayback(server, "plex_1101") }
         assertEquals(PLEX_AUDIO_MISSING_TEXT, e.message)
+    }
+
+    // -- The server's position ----------------------------------------------------------------
+
+    @Test
+    fun `the server position is the finished tracks plus the offset in the one in progress`() = runTest {
+        val progress = source(fixture("plex/album-tracks-progress.json")).fetchProgress(server, "plex_1101")
+
+        assertEquals(ServerProgress(1_620_000L, 1_800_000L, isFinished = false, updatedAtMs = 1_700_000_300_000L), progress)
+        // One call: the track list carries each track's state.
+        assertEquals(listOf("/library/metadata/1101/children"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `a book never played has no server progress`() = runTest {
+        assertNull(source().fetchProgress(server, "plex_1101"))
+    }
+
+    @Test
+    fun `a session resumes where the server says`() = runTest {
+        val session = source(fixture("plex/album-tracks-progress.json")).startPlayback(server, "plex_1101")
+
+        assertEquals(1_620_000L, session.startPositionMs)
     }
 }

@@ -11,6 +11,7 @@ import com.chapterplayer.data.remote.plex.dto.PlexSectionDto
 import com.chapterplayer.data.remote.plex.fetchAllPlexItems
 import com.chapterplayer.data.remote.plex.dto.PlexMetadataDto
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT
 import com.chapterplayer.domain.plex.PlexBookContent
 import com.chapterplayer.domain.plex.PlexTrack
@@ -180,6 +181,18 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
         }
         return plexBookContent(tracks, details)
     }
+
+    /**
+     * The server's progress for the book, from its tracks' listening state ([plexServerProgress]): one call, the track
+     * list carries each track's offset, play count and last play time. Null when no track was ever played.
+     */
+    override suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? =
+        plexServerProgress(tracksOf(server, bookId))
+
+    /** The book's tracks in play order with their listening state, from the track list alone (no chapters). */
+    private suspend fun tracksOf(server: ServerConfig, bookId: String): List<PlexTrack> =
+        plexBookContent(api.getChildren(server.baseUrl, server.token, plexRatingKey(bookId)).mediaContainer.metadata.orEmpty(), emptyMap())
+            .tracks
 
     /** What reading one track gave: [detail] is null when the server sent no entry. */
     private class TrackRead(val detail: PlexMetadataDto?)
