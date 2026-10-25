@@ -60,6 +60,28 @@ class PlexApiService(
             parameter(CONTAINER_SIZE, size)
         }.body()
 
+    /**
+     * One page of a section's tracks (type 10), each with its album's rating key (parentRatingKey) and length:
+     * summed per album, they give the books' lengths that the album list leaves out.
+     */
+    suspend fun getSectionTracks(
+        baseUrl: String,
+        token: String,
+        sectionId: String,
+        start: Int,
+        size: Int,
+        accept: String = "application/json",
+    ): PlexLibraryAllResponse =
+        client.get(endpoint(baseUrl, "library/sections/${sectionId.encodeURLPathPart()}/all")) {
+            header("X-Plex-Token", token)
+            header(HttpHeaders.Accept, accept)
+            header(CONTAINER_START, start)
+            header(CONTAINER_SIZE, size)
+            parameter("type", PLEX_TYPE_TRACK)
+            parameter(CONTAINER_START, start)
+            parameter(CONTAINER_SIZE, size)
+        }.body()
+
     /** The children of one item: an artist's albums or an album's tracks, in the server's order. */
     suspend fun getChildren(
         baseUrl: String,
@@ -142,6 +164,8 @@ class PlexApiService(
     private companion object {
         /** Plex's metadata type number for an album. */
         const val PLEX_TYPE_ALBUM = 9
+        /** Plex's metadata type number for a track. */
+        const val PLEX_TYPE_TRACK = 10
         const val CONTAINER_START = "X-Plex-Container-Start"
         const val CONTAINER_SIZE = "X-Plex-Container-Size"
         /** The library plug-in a scrobble or timeline is for. */

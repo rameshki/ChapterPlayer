@@ -1,5 +1,8 @@
 package com.chapterplayer.data.source
 
+import com.chapterplayer.data.sync.PlexSectionLengths
+import com.chapterplayer.data.remote.plex.PLEX_MAX_TRACK_PAGES
+import com.chapterplayer.domain.plex.albumLengths
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
@@ -60,7 +63,7 @@ private const val TIMELINE_STOPPED = "stopped"
 class PlexLibrarySource(
     private val api: PlexApiService,
     private val markSignedOut: suspend (ServerConfig) -> Unit = {},
-) : LibrarySource {
+) : LibrarySource, PlexSectionLengths {
 
     override val type: ServerSource = ServerSource.PLEX
 
@@ -119,6 +122,16 @@ class PlexLibrarySource(
             }
             throw SignInRequiredException(server.name)
         }
+
+    /** Every track of the section, read to the end (or this throws), summed per album. */
+    override suspend fun albumLengths(server: ServerConfig, sectionId: String, onProgress: (Int) -> Unit): Map<String, Long> = signedIn(server) {
+        val tracks = fetchAllPlexItems(
+            maxPages = PLEX_MAX_TRACK_PAGES,
+            requireComplete = true,
+            onPage = { walked, total -> if (total != null && total > 0) onProgress((walked * 100 / total).coerceIn(0, 100)) },
+        ) { start, size -> api.getSectionTracks(server.baseUrl, server.token, sectionId, start, size) }
+        albumLengths(tracks)
+    }
 
     override suspend fun fetchBooks(server: ServerConfig): List<AudioBook> =
         sectionIds(server, if (server.libraryId.isNullOrBlank()) musicSections(server) else null)

@@ -82,6 +82,9 @@ import com.chapterplayer.data.source.LibrarySource
 import com.chapterplayer.data.source.PlexLibrarySource
 import com.chapterplayer.data.sync.LibrarySync
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
+import com.chapterplayer.data.sync.NoPlexSectionLengths
+import com.chapterplayer.data.sync.PlexLengthFiller
+import com.chapterplayer.data.sync.PlexSectionLengths
 import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.ui.home.HomeViewModel
 import com.chapterplayer.ui.details.BookDetailsViewModel
@@ -222,9 +225,13 @@ val repositoryModule = module {
     single { PlexConnectionManager(get(), get(), get(), get(), io = Dispatchers.IO) }
     // A switched Plex address syncs that server again, so stored cover addresses follow the address in use.
     single {
-        LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get()).also { sync ->
+        LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get(), lengthFiller = get()).also { sync ->
             get<PlexConnectionManager>().onSwitched = { id -> sync.requestSync(id) }
         }
+    }
+    // After a Plex sync, reads the album lengths the album list leaves out (background, one pass per server).
+    single {
+        PlexLengthFiller(get(), getAll<LibrarySource>().filterIsInstance<PlexSectionLengths>().firstOrNull() ?: NoPlexSectionLengths, get(AppScopeQualifier))
     }
     // The Plex servers the cover loader adds the token header for.
     single { PlexImageServers(get(), get(AppScopeQualifier)) }

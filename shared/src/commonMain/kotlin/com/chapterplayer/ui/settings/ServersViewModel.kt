@@ -39,6 +39,8 @@ data class ServerRowUi(
     val syncing: Boolean,
     /** What the last connection check found worth saying (Plex), e.g. that the network blocks plex.direct names. */
     val connectionNote: String?,
+    /** "Reading lengths… 40%" while Plex album lengths are read in the background. */
+    val lengthsNote: String? = null,
     val canTestConnection: Boolean,
     val needsSignIn: Boolean,
     val libraryId: String?,
@@ -71,6 +73,7 @@ fun serverRows(servers: List<ServerConfig>, statuses: Map<String, ServerSyncStat
             failed = phase is ServerSyncPhase.Failed,
             syncing = phase is ServerSyncPhase.Syncing,
             connectionNote = status?.connectionNote,
+            lengthsNote = status?.lengthsNote,
             canTestConnection = server.source == ServerSource.PLEX,
             needsSignIn = server.needsSignIn,
             libraryId = server.libraryId,

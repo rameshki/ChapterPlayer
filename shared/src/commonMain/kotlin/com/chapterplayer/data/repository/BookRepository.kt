@@ -31,6 +31,12 @@ interface BookRepository {
     /** Live stream of books from a specific server. */
     fun observeBooksByServer(serverId: String): Flow<List<AudioBook>>
 
+    /**
+     * Stores the lengths found for books whose length is still unknown (0); a book with a known length keeps it, and
+     * a length of 0 or less is ignored. Used by the Plex album-length pass after a sync.
+     */
+    suspend fun fillUnknownDurations(durations: Map<String, Long>) {}
+
     /** Live stream of every cached collection; each lists its book ids in server order. */
     fun observeCollections(): Flow<List<BookCollection>>
 

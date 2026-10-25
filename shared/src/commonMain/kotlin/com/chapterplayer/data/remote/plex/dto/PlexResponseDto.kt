@@ -49,6 +49,8 @@ data class PlexMetadataDto(
     @SerialName("title") val title: String = "",
     /** "artist", "album" or "track" in a music section. */
     @SerialName("type") val type: String? = null,
+    /** For a track its album's rating key (a section's track list says which book each track belongs to). */
+    @SerialName("parentRatingKey") val parentRatingKey: String? = null,
     /** For an album the artist (the book's author); for a track the album. */
     @SerialName("parentTitle") val author: String? = null,
     @SerialName("summary") val summary: String? = null,

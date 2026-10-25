@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -57,7 +58,9 @@ class LibrarySyncCoordinator(
     private val connections: PlexConnectionManager? = null,
     /** Keeps each server's last successful sync and last error across restarts. */
     private val statusStore: ServerStatusStore = NoServerStatusStore,
-    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() }
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** Reads Plex album lengths after a Plex sync, in the background; null for none. */
+    private val lengthFiller: PlexLengthFiller? = null,
 ) : LibrarySync {
     private data class Activity(val running: Int = 0, val errors: List<String> = emptyList())
 
@@ -88,10 +91,12 @@ class LibrarySyncCoordinator(
         books.observeAllBooks()
             .map { list -> list.groupingBy { it.serverId }.eachCount() }
             .catch { e -> if (e is CancellationException) throw e else emit(emptyMap()) },
-        syncingIds
-    ) { list, records, counts, syncing ->
+        syncingIds,
+        lengthFiller?.progress ?: flowOf(emptyMap())
+    ) { list, records, counts, syncing, lengths ->
         list.associate { server ->
-            server.id to serverSyncStatus(server, records[server.id] ?: ServerStatusRecord(), counts[server.id] ?: 0, server.id in syncing)
+            val status = serverSyncStatus(server, records[server.id] ?: ServerStatusRecord(), counts[server.id] ?: 0, server.id in syncing)
+            server.id to status.copy(lengthsNote = lengths[server.id]?.let { lengthsNote(it) })
         }
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
@@ -310,6 +315,8 @@ class LibrarySyncCoordinator(
             mergeProgress(server)
             pullBookmarks(server)
         }
+        // Plex album lists carry no length: read the lengths afterwards, without holding up this sync.
+        if (outcome.isSuccess && server.source == ServerSource.PLEX) lengthFiller?.request(server)
         val reason = outcome.exceptionOrNull()?.let { throwable ->
             if (throwable is CancellationException) throw throwable
             if (throwable is SignInRequiredException) SIGN_IN_AGAIN_TEXT else connectionMessage ?: syncFailureReason(throwable, server.baseUrl)

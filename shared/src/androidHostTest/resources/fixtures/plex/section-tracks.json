@@ -1,0 +1,63 @@
+{
+  "MediaContainer": {
+    "size": 4,
+    "totalSize": 4,
+    "offset": 0,
+    "allowSync": true,
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "viewGroup": "track",
+    "Metadata": [
+      {
+        "ratingKey": "2101",
+        "key": "/library/metadata/2101",
+        "parentRatingKey": "2001",
+        "grandparentRatingKey": "1901",
+        "type": "track",
+        "title": "Fixture track 1",
+        "parentTitle": "Fixture album 1",
+        "grandparentTitle": "Fixture artist 1",
+        "index": 1,
+        "duration": 1800000,
+        "Media": [{ "duration": 1800000, "container": "mp3", "Part": [{ "id": 3101, "key": "/library/parts/3101/1700000000/file.mp3", "duration": 1800000 }] }]
+      },
+      {
+        "ratingKey": "2102",
+        "key": "/library/metadata/2102",
+        "parentRatingKey": "2001",
+        "grandparentRatingKey": "1901",
+        "type": "track",
+        "title": "Fixture track 2",
+        "parentTitle": "Fixture album 1",
+        "grandparentTitle": "Fixture artist 1",
+        "index": 2,
+        "duration": 1200000,
+        "Media": [{ "duration": 1200000, "container": "mp3", "Part": [{ "id": 3102, "key": "/library/parts/3102/1700000000/file.mp3", "duration": 1200000 }] }]
+      },
+      {
+        "ratingKey": "2103",
+        "key": "/library/metadata/2103",
+        "parentRatingKey": "2002",
+        "grandparentRatingKey": "1902",
+        "type": "track",
+        "title": "Fixture track 3",
+        "parentTitle": "Fixture album 2",
+        "grandparentTitle": "Fixture artist 2",
+        "index": 1,
+        "Media": [{ "duration": 600000, "container": "m4b", "Part": [{ "id": 3103, "key": "/library/parts/3103/1700000000/file.m4b" }] }]
+      },
+      {
+        "ratingKey": "2104",
+        "key": "/library/metadata/2104",
+        "parentRatingKey": "2003",
+        "grandparentRatingKey": "1903",
+        "type": "track",
+        "title": "Fixture track 4",
+        "parentTitle": "Fixture album 3",
+        "grandparentTitle": "Fixture artist 3",
+        "index": 1
+      }
+    ]
+  }
+}

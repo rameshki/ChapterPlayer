@@ -27,7 +27,12 @@ data class ServerSyncStatus(
     val connectionLabel: String,
     val connectionNote: String? = null,
     val probeFailures: List<ProbeFailureInfo> = emptyList(),
+    /** "Reading lengths… 40%" while the Plex album lengths are being read after a sync; null otherwise. */
+    val lengthsNote: String? = null,
 )
+
+/** The Servers page note while the album lengths are read: [percent] of the section's tracks walked. */
+fun lengthsNote(percent: Int): String = "Reading lengths… ${percent.coerceIn(0, 100)}%"
 
 const val ABS_CONNECTION_LABEL = "Audiobookshelf address"
 

@@ -81,6 +81,18 @@ class BookRepositoryImpl(
     // Book observation (reads from local cache)
     // -------------------------------------------------------------------------
 
+    override suspend fun fillUnknownDurations(durations: Map<String, Long>) {
+        val known = durations.filterValues { it > 0L }
+        if (known.isEmpty()) return
+        // Read and written in one transaction, so a length the details stored meanwhile is never replaced.
+        inTransaction {
+            for ((id, length) in known) {
+                val row = bookDao.getById(id) ?: continue
+                if (row.durationMs <= 0L) bookDao.updateDuration(id, length)
+            }
+        }
+    }
+
     override fun observeAllBooks(): Flow<List<AudioBook>> =
         bookDao.observeAll().map { entities -> entities.map { it.toAudioBook() } }
 

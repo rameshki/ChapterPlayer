@@ -110,9 +110,43 @@ class MergedSourcesTest {
     }
 
     @Test
-    fun `an unknown length never merges automatically`() {
-        assertEquals(2, merge(listOf(item("a", "abs1", durationMs = 0), item("p", "plex1", durationMs = 0))).size)
-        assertEquals(2, merge(listOf(item("a", "abs1"), item("p", "plex1", durationMs = 0))).size)
+    fun `an unknown length merges only when every author agrees`() {
+        // The Plex album list has no length until the book is opened: the real case, same title and same authors.
+        val abs = item("a", "abs1", title = "The Space Within Season 2", author = "Ann Writer, Bob Writer", durationMs = 17_931_321L)
+        val plex = item("p", "plex1", title = "The Space Within Season 2", author = "Ann Writer, Bob Writer", durationMs = 0)
+        assertEquals(1, merge(listOf(abs, plex)).size)
+        // The same names written another way still agree.
+        assertEquals(1, merge(listOf(abs, plex.copy(book = plex.book.copy(author = "ann writer & Bob Writer")))).size)
+        // Only the first author agrees, one author more, or none: apart.
+        assertEquals(2, merge(listOf(abs, plex.copy(book = plex.book.copy(author = "Ann Writer, Cy Writer")))).size)
+        assertEquals(2, merge(listOf(abs, plex.copy(book = plex.book.copy(author = "Ann Writer, Bob Writer, Cy Writer")))).size)
+        assertEquals(2, merge(listOf(abs, plex.copy(book = plex.book.copy(author = "Ann Writer")))).size)
+        // Both unknown: the same rule.
+        assertEquals(1, merge(listOf(abs.copy(book = abs.book.copy(durationMs = 0)), plex)).size)
+        assertEquals(2, merge(listOf(abs.copy(book = abs.book.copy(durationMs = 0, author = "Ann Writer")), plex)).size)
+        // Never two books of one server.
+        assertEquals(2, merge(listOf(abs, plex.copy(book = plex.book.copy(serverId = "abs1", source = ServerSource.ABS)))).size)
+    }
+
+    @Test
+    fun `abridged and unabridged copies with known lengths stay apart`() {
+        val unabridged = item("a", "abs1", title = "The Way of Kings (Unabridged)", durationMs = 45 * hour)
+        val abridged = item("p", "plex1", title = "The Way of Kings (Abridged)", durationMs = 12 * hour)
+        assertEquals(2, merge(listOf(unabridged, abridged)).size)
+    }
+
+    @Test
+    fun `a copy with a matching length is preferred over one with an unknown length`() {
+        val result = merge(listOf(item("a", "abs1"), item("p0", "plex1", durationMs = 0), item("p1", "plex1")))
+        assertEquals(setOf(setOf("a", "p1"), setOf("p0")), groups(result))
+    }
+
+    @Test
+    fun `a merged book shows the known length when its primary has none`() {
+        val entry = merge(listOf(item("a", "abs1"), item("p", "plex1", durationMs = 0)), preference = SourcePreference.PREFER_PLEX).single()
+        assertEquals("p", entry.book.id)
+        assertEquals(45 * hour, entry.book.durationMs)
+        assertEquals(0L, entry.sources.first().book.durationMs)
     }
 
     @Test

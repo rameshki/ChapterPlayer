@@ -101,4 +101,39 @@ class PlexPagingTest {
             fetchAllPlexItems(pageSize = 1, maxPages = 3) { _, _ -> page(next..next, total = null).also { next++ } }
         }
     }
+    // ---- the strict walk the album lengths need ----
+
+    @Test
+    fun `a complete walk reports its progress`() = runTest {
+        val seen = mutableListOf<Pair<Int, Int?>>()
+        val items = fetchAllPlexItems(pageSize = 2, requireComplete = true, onPage = { walked, total -> seen.add(Pair(walked, total)) }, fetchPage = library(5))
+        assertEquals(5, items.size)
+        assertEquals(listOf<Pair<Int, Int?>>(2 to 5, 4 to 5, 5 to 5), seen)
+    }
+
+    @Test
+    fun `a walk that stops before the total fails when it must be complete`() = runTest {
+        assertFailsWith<IllegalStateException> {
+            fetchAllPlexItems(pageSize = 2, requireComplete = true) { start, _ ->
+                if (start == 0) page(0..1, total = 10) else page(IntRange.EMPTY, total = 10)
+            }
+        }
+        // A server repeating the first page: nothing new, still short of the total.
+        assertFailsWith<IllegalStateException> {
+            fetchAllPlexItems(pageSize = 2, requireComplete = true) { _, _ -> page(0..1, total = 10) }
+        }
+    }
+
+    @Test
+    fun `a strict walk without a total ends at a short page`() = runTest {
+        val items = fetchAllPlexItems(pageSize = 2, requireComplete = true, fetchPage = library(3, sendTotal = false))
+        assertEquals(3, items.size)
+    }
+
+    @Test
+    fun `a strict walk gives up after the page limit`() = runTest {
+        assertFailsWith<IllegalStateException> {
+            fetchAllPlexItems(pageSize = 2, maxPages = 3, requireComplete = true, fetchPage = library(100))
+        }
+    }
 }

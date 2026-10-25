@@ -7,7 +7,8 @@ import kotlin.math.max
 
 /*
  * One entry for a book that several servers have. Matching is conservative: the same normalised title, the same
- * normalised first author and lengths within 2% or 5 minutes (an unknown length never matches). Two books of one
+ * normalised first author and lengths within 2% or 5 minutes; when a length is unknown (0, a Plex album not opened
+ * yet) every author must agree instead (same names, same count) and the entry shows the known length. Two books of one
  * server never join, and a group holds at most one book per server. The user's corrections ([MergeOverrides]) win:
  * a split keeps a pair apart (also through a third member), a manual merge joins a pair whatever the titles say.
  * Everything is sorted by book id before grouping, so the groups do not depend on the input order.
@@ -105,11 +106,28 @@ fun normalisedFirstAuthor(author: String): String {
     return first.replace(NOT_ALNUM, "")
 }
 
+/** Every author, normalised like [normalisedFirstAuthor], in order of name; empty when none is given. */
+fun normalisedAuthors(author: String): List<String> =
+    foldAccents(author).trim().split(AUTHOR_SEPARATORS).map { it.replace(NOT_ALNUM, "") }.filter { it.isNotEmpty() }.sorted()
+
 private fun lengthsAgree(a: Long, b: Long): Boolean {
     if (a <= 0L || b <= 0L) return false
     val diff = abs(a - b)
     return diff <= LENGTH_SLACK_MS || diff <= max(a, b) * LENGTH_TOLERANCE
 }
+
+/*
+ * Two books with the same title and first author are the same book when their lengths agree; when a length is
+ * unknown (0: a Plex album's length is only known once the book is opened) every author has to agree instead.
+ */
+private fun sameBook(a: com.chapterplayer.data.model.AudioBook, b: com.chapterplayer.data.model.AudioBook): Boolean {
+    if (a.durationMs > 0L && b.durationMs > 0L) return lengthsAgree(a.durationMs, b.durationMs)
+    val authors = normalisedAuthors(a.author)
+    return authors.isNotEmpty() && authors == normalisedAuthors(b.author)
+}
+
+// A pair with an unknown length is tried after every pair whose lengths matched.
+private fun lengthDiff(a: Long, b: Long): Long = if (a > 0L && b > 0L) abs(a - b) else Long.MAX_VALUE
 
 private fun pairKey(a: String, b: String): Pair<String, String> = if (a <= b) a to b else b to a
 
@@ -151,10 +169,10 @@ fun mergeDuplicates(
         for (i in bucket.indices) for (j in i + 1 until bucket.size) {
             val a = byId.getValue(bucket[i]).book
             val b = byId.getValue(bucket[j]).book
-            if (a.serverId == b.serverId || !lengthsAgree(a.durationMs, b.durationMs)) continue
+            if (a.serverId == b.serverId || !sameBook(a, b)) continue
             val key = pairKey(a.id, b.id)
             if (key in splits) continue
-            automatic += Candidate(key.first, key.second, abs(a.durationMs - b.durationMs))
+            automatic += Candidate(key.first, key.second, lengthDiff(a.durationMs, b.durationMs))
         }
     }
     automatic.sortWith(compareBy<Candidate>({ it.diff }, { it.a }, { it.b }))
@@ -234,6 +252,8 @@ private fun withPrimary(primary: BrowseItem, ordered: List<BrowseItem>): BrowseI
     val meta = metadataOrder(sources)
     val series = meta.firstOrNull { !it.book.seriesName.isNullOrBlank() }?.book
     val book = primary.book.copy(
+        // A copy whose length is not known yet shows a known one.
+        durationMs = primary.book.durationMs.takeIf { it > 0L } ?: sources.firstOrNull { it.book.durationMs > 0L }?.book?.durationMs ?: 0L,
         author = meta.firstOrNull { it.book.author.isNotBlank() }?.book?.author ?: primary.book.author,
         narrator = meta.firstOrNull { it.book.narrator.isNotBlank() }?.book?.narrator ?: primary.book.narrator,
         seriesName = series?.seriesName ?: primary.book.seriesName,
