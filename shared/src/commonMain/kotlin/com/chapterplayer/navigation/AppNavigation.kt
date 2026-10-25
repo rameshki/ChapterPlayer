@@ -36,6 +36,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.chapterplayer.ui.components.LocalShowSourceBadge
+import com.chapterplayer.domain.browse.showSourceBadges
+import com.chapterplayer.data.repository.ServerRepository
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.savedstate.read
 import kotlinx.coroutines.delay
@@ -82,6 +87,10 @@ fun AppNavigation() {
     // Starts the app-wide library sync once, so a new install fills in whichever tab is open.
     val syncCoordinator = koinInject<LibrarySyncCoordinator>()
     LaunchedEffect(syncCoordinator) { syncCoordinator.start() }
+    // Source badges only help once Audiobookshelf and Plex books can share a list.
+    val serverRepository = koinInject<ServerRepository>()
+    val servers by remember(serverRepository) { serverRepository.observeAll() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val showBadges = showSourceBadges(servers.map { it.source })
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
@@ -117,145 +126,147 @@ fun AppNavigation() {
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            Column {
-                AnimatedVisibility(visible = showMiniPlayer, enter = expandVertically(), exit = shrinkVertically()) {
-                    MiniPlayer(
-                        viewModel = playerViewModel,
-                        onOpenPlayer = openPlayer,
-                        // Without the tab bar below it, the mini player clears the system navigation bar itself.
-                        modifier = if (showBottomBar) Modifier else Modifier.windowInsetsPadding(WindowInsets.navigationBars)
-                    )
-                }
-            if (showBottomBar) {
-                NavigationBar(containerColor = NavBarSurface) {
-                    bottomNavItems.forEach { item ->
-                        NavigationBarItem(
-                            selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true,
-                            onClick = { navController.openTab(item.screen) },
-                            icon = { Icon(item.icon, contentDescription = null) },
-                            label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = AmberGold,
-                                selectedTextColor = AmberGold,
-                                unselectedIconColor = TextSecondary,
-                                unselectedTextColor = TextSecondary,
-                                indicatorColor = SurfaceElevated
+    CompositionLocalProvider(LocalShowSourceBadge provides showBadges) {
+        Scaffold(
+            bottomBar = {
+                Column {
+                    AnimatedVisibility(visible = showMiniPlayer, enter = expandVertically(), exit = shrinkVertically()) {
+                        MiniPlayer(
+                            viewModel = playerViewModel,
+                            onOpenPlayer = openPlayer,
+                            // Without the tab bar below it, the mini player clears the system navigation bar itself.
+                            modifier = if (showBottomBar) Modifier else Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                        )
+                    }
+                if (showBottomBar) {
+                    NavigationBar(containerColor = NavBarSurface) {
+                        bottomNavItems.forEach { item ->
+                            NavigationBarItem(
+                                selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true,
+                                onClick = { navController.openTab(item.screen) },
+                                icon = { Icon(item.icon, contentDescription = null) },
+                                label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = AmberGold,
+                                    selectedTextColor = AmberGold,
+                                    unselectedIconColor = TextSecondary,
+                                    unselectedTextColor = TextSecondary,
+                                    indicatorColor = SurfaceElevated
+                                )
                             )
-                        )
+                        }
                     }
                 }
+                }
             }
-            }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BackgroundDeep)
-                .padding(innerPadding)
-        ) {
-            NavHost(
-                navController = navController,
-                startDestination = Screen.Home.route
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(BackgroundDeep)
+                    .padding(innerPadding)
             ) {
-                composable(Screen.Home.route) {
-                    HomeScreen(onBookClick = openBook, onOpenSettings = { openSettings() }, onOpenPlayer = openPlayer)
-                }
-
-                composable(Screen.Library.route) {
-                    LibraryScreen(
-                        onBookClick = openBook,
-                        onGroupClick = openGroup,
-                        onOpenSettings = { openSettings() }
-                    )
-                }
-
-                composable(Screen.GroupDetail.route) { backStackEntry ->
-                    val args = backStackEntry.arguments
-                    val kind = args?.read { getStringOrNull(Screen.GroupDetail.ARG_KIND) }
-                        ?.let { name -> LibraryView.entries.firstOrNull { it.name == name && it.isGrouped } }
-                    val key = args?.read { getStringOrNull(Screen.GroupDetail.ARG_KEY) }?.let(::decodeGroupKey)
-                    if (kind != null && key != null) {
-                        GroupDetailScreen(
-                            kind = kind,
-                            groupKey = key,
-                            onBookClick = openBook,
-                            onBack = { navController.popBackStack() }
-                        )
-                    } else {
-                        // A damaged link: leave rather than show an empty page.
-                        LaunchedEffect(Unit) { navController.popBackStack() }
+                NavHost(
+                    navController = navController,
+                    startDestination = Screen.Home.route
+                ) {
+                    composable(Screen.Home.route) {
+                        HomeScreen(onBookClick = openBook, onOpenSettings = { openSettings() }, onOpenPlayer = openPlayer)
                     }
-                }
 
-                composable(Screen.BookDetails.route) { backStackEntry ->
-                    val id = backStackEntry.arguments?.read { getStringOrNull(Screen.BookDetails.ARG_ID) }
-                        ?.let(::decodeGroupKey)
-                    if (id != null) {
-                        BookDetailsScreen(
-                            bookId = id,
+                    composable(Screen.Library.route) {
+                        LibraryScreen(
+                            onBookClick = openBook,
+                            onGroupClick = openGroup,
+                            onOpenSettings = { openSettings() }
+                        )
+                    }
+
+                    composable(Screen.GroupDetail.route) { backStackEntry ->
+                        val args = backStackEntry.arguments
+                        val kind = args?.read { getStringOrNull(Screen.GroupDetail.ARG_KIND) }
+                            ?.let { name -> LibraryView.entries.firstOrNull { it.name == name && it.isGrouped } }
+                        val key = args?.read { getStringOrNull(Screen.GroupDetail.ARG_KEY) }?.let(::decodeGroupKey)
+                        if (kind != null && key != null) {
+                            GroupDetailScreen(
+                                kind = kind,
+                                groupKey = key,
+                                onBookClick = openBook,
+                                onBack = { navController.popBackStack() }
+                            )
+                        } else {
+                            // A damaged link: leave rather than show an empty page.
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        }
+                    }
+
+                    composable(Screen.BookDetails.route) { backStackEntry ->
+                        val id = backStackEntry.arguments?.read { getStringOrNull(Screen.BookDetails.ARG_ID) }
+                            ?.let(::decodeGroupKey)
+                        if (id != null) {
+                            BookDetailsScreen(
+                                bookId = id,
+                                onBack = { navController.popBackStack() },
+                                onOpenBook = openBook,
+                                onOpenGroup = openGroup,
+                                onOpenPlayer = openPlayer
+                            )
+                        } else {
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        }
+                    }
+
+                    composable(Screen.Downloads.route) {
+                        DownloadsScreen(onOpenSettings = { openSettings() }, onBookClick = openBook)
+                    }
+
+                    composable(Screen.Search.route) {
+                        SearchScreen(onBookClick = openBook, onOpenSettings = { openSettings() })
+                    }
+
+                    composable(Screen.Player.route) {
+                        PlayerScreen(
                             onBack = { navController.popBackStack() },
                             onOpenBook = openBook,
                             onOpenGroup = openGroup,
-                            onOpenPlayer = openPlayer
+                            onOpenSettings = { openSettings() },
+                            viewModel = playerViewModel
                         )
-                    } else {
-                        LaunchedEffect(Unit) { navController.popBackStack() }
+                    }
+
+                    composable(Screen.Settings.route) {
+                        SettingsScreen(
+                            onAddServer = {
+                                navController.navigate(Screen.ServerSetup.createRoute())
+                            },
+                            onEditServer = { serverId ->
+                                navController.navigate(Screen.ServerSetup.createRoute(serverId))
+                            },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable(Screen.ServerSetup.route) { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.read { getStringOrNull(Screen.ServerSetup.ARG_SERVER_ID) }
+                        com.chapterplayer.ui.settings.ServerSetupScreen(
+                            serverId = serverId?.takeIf { it != Screen.ServerSetup.NEW_SERVER },
+                            onDone = { navController.popBackStack() }
+                        )
                     }
                 }
 
-                composable(Screen.Downloads.route) {
-                    DownloadsScreen(onOpenSettings = { openSettings() }, onBookClick = openBook)
-                }
-
-                composable(Screen.Search.route) {
-                    SearchScreen(onBookClick = openBook, onOpenSettings = { openSettings() })
-                }
-
-                composable(Screen.Player.route) {
-                    PlayerScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenBook = openBook,
-                        onOpenGroup = openGroup,
-                        onOpenSettings = { openSettings() },
-                        viewModel = playerViewModel
-                    )
-                }
-
-                composable(Screen.Settings.route) {
-                    SettingsScreen(
-                        onAddServer = {
-                            navController.navigate(Screen.ServerSetup.createRoute())
-                        },
-                        onEditServer = { serverId ->
-                            navController.navigate(Screen.ServerSetup.createRoute(serverId))
-                        },
-                        onBack = { navController.popBackStack() }
-                    )
-                }
-
-                composable(Screen.ServerSetup.route) { backStackEntry ->
-                    val serverId = backStackEntry.arguments?.read { getStringOrNull(Screen.ServerSetup.ARG_SERVER_ID) }
-                    com.chapterplayer.ui.settings.ServerSetupScreen(
-                        serverId = serverId?.takeIf { it != Screen.ServerSetup.NEW_SERVER },
-                        onDone = { navController.popBackStack() }
-                    )
-                }
-            }
-
-            // A tapped notification asks for the player. Once the graph exists and a book is loaded the
-            // request is taken and the player opens; if nothing loads in time the request is forgotten.
-            val openRequest = koinInject<OpenPlayerRequest>()
-            val openPending by openRequest.pending.collectAsState()
-            LaunchedEffect(openPending, hasBook, currentDestination == null) {
-                if (!openPending || currentDestination == null) return@LaunchedEffect
-                if (openRequest.take(hasBook)) {
-                    openPlayer()
-                } else {
-                    delay(OPEN_REQUEST_WAIT_MS)
-                    openRequest.drop()
+                // A tapped notification asks for the player. Once the graph exists and a book is loaded the
+                // request is taken and the player opens; if nothing loads in time the request is forgotten.
+                val openRequest = koinInject<OpenPlayerRequest>()
+                val openPending by openRequest.pending.collectAsState()
+                LaunchedEffect(openPending, hasBook, currentDestination == null) {
+                    if (!openPending || currentDestination == null) return@LaunchedEffect
+                    if (openRequest.take(hasBook)) {
+                        openPlayer()
+                    } else {
+                        delay(OPEN_REQUEST_WAIT_MS)
+                        openRequest.drop()
+                    }
                 }
             }
         }

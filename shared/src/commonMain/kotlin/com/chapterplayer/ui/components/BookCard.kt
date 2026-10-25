@@ -86,7 +86,7 @@ fun BookCard(
                     DownloadBadge(downloadState, Modifier.align(Alignment.TopEnd).padding(6.dp))
                 }
                 if (overlay.finished) {
-                    FinishedCheck(Modifier.align(Alignment.BottomEnd).padding(6.dp))
+                    FinishedCheck(Modifier.align(Alignment.BottomStart).padding(6.dp))
                 }
                 overlay.progressFraction?.let {
                     ReadingProgressBar(it, Modifier.align(Alignment.BottomCenter))
