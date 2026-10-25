@@ -443,4 +443,31 @@ class HomeViewModelTest {
         assertFalse(state().serverFilterOn)
         assertEquals(listOf("a"), state().recentlyAdded.map { it.book.id })
     }
+    @Test
+    fun `a book on two servers resumes the copy played last and is not on the shelf twice`() = runTest {
+        val a = com.chapterplayer.testing.testBook("a", title = "Same Book").copy(serverId = "abs1", durationMs = 3_600_000L)
+        val p = a.copy(id = "p", serverId = "plex1", source = com.chapterplayer.data.model.ServerSource.PLEX)
+        val books = FakeBookRepository(listOf(a, p))
+        books.progress.value = listOf(
+            ReadingProgress("a", 1_000L, 3_600_000L, 100L),
+            ReadingProgress("p", 2_000L, 3_600_000L, 500L),
+        )
+        val servers = FakeServerList(listOf(testServer("abs1"), testServer("plex1")))
+        val monitor = FakeMonitor()
+        val settings = FakeAppSettings()
+        val controller = FakePlaybackController()
+        val vm = HomeViewModel(
+            books, servers, FakeDownloadStates(), BrowseQueryStore(), monitor, settings,
+            LibrarySyncCoordinator(books, servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher())),
+            PlaybackStarter(controller, books, settings, monitor, FakeLocalBookFiles()), Dispatchers.Main,
+            merging = com.chapterplayer.data.merge.FixedSourceMerging(
+                com.chapterplayer.domain.browse.MergeContext(onlineServerIds = setOf("abs1", "plex1"))
+            )
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        assertEquals("p", vm.uiState.value.resume?.item?.book?.id)
+        assertTrue(vm.uiState.value.inProgress.isEmpty())
+        vm.resume(vm.uiState.value.resume!!.item.book)
+        assertEquals("p", controller.loads.single().first)
+    }
 }

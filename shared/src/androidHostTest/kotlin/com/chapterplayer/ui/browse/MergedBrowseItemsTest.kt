@@ -51,7 +51,8 @@ class MergedBrowseItemsTest {
         val merges = object : BookMergeRepository {
             override val overrides: Flow<MergeOverrides> = overrides
             override suspend fun split(bookId: String, otherIds: Collection<String>) {}
-            override suspend fun merge(bookId: String, otherId: String) {}
+            override suspend fun merge(bookId: String, otherId: String, group: Collection<String>, otherGroup: Collection<String>) {}
+            override suspend fun forgetBooks(bookIds: Collection<String>) {}
         }
         val online = MutableStateFlow(true)
         val monitor = object : ConnectivityMonitor { override val isOnline: Flow<Boolean> = online }

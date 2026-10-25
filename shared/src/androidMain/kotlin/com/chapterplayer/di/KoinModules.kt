@@ -208,7 +208,7 @@ val repositoryModule = module {
             // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
             onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith }
         ) }
-    singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
+    single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get()) }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
     // The user's "Not the same book" and "Merge with" choices for books on several servers.
     single<BookMergeRepository> { RoomBookMergeRepository(get()) }

@@ -91,6 +91,7 @@ fun BookDetailsScreen(
             onRetry = viewModel::retry,
             onPlayClick = viewModel::onResumeClicked,
             onDismissPlayError = viewModel::dismissPlayError,
+            onDismissNotice = viewModel::onNoticeDismissed,
             onChapterClick = viewModel::onChapterClicked,
             onSelectTab = viewModel::selectTab,
             onOpenBook = onOpenBook,
@@ -140,7 +141,8 @@ fun BookDetailsContent(
     onOpenGroup: (kind: LibraryView, key: String) -> Unit,
     onOpenPlayer: () -> Unit,
     downloadActions: DownloadActions,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDismissNotice: () -> Unit = {}
 ) {
     val book = state.book
     when {
@@ -179,6 +181,7 @@ fun BookDetailsContent(
                 )
             }
             state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
+            state.notice?.let { ErrorBanner(it, onRetry = null, onDismiss = onDismissNotice) }
             detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
             LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions, Modifier.weight(1f))
         }
@@ -206,7 +209,8 @@ private fun LoadedList(
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
             DetailsTab.CHAPTERS -> {
-                val taps = chapterTapsEnabled(state.playback, state.canPlay)
+                // Another copy in the player: its position is not this page's, so the chapters do not seek.
+                val taps = chapterTapsEnabled(state.playback, state.canPlay) && state.playingFrom == null
                 chaptersTab(state.chapters, emptyChaptersText(state.detailsLoaded, state.loadingDetails), taps, onChapterClick)
             }
             DetailsTab.ABOUT -> aboutTab(state.about, state.links, onOpenGroup)
@@ -274,7 +278,7 @@ private fun DetailsHeader(
                 style = MaterialTheme.typography.titleMedium
             )
         }
-        playCaption(state.playback, state.canPlay, state.cannotPlayReason)?.let {
+        (state.playingFrom ?: playCaption(state.playback, state.canPlay, state.cannotPlayReason))?.let {
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
@@ -354,7 +358,7 @@ private fun DetailsTabs(selected: DetailsTab, hasSeries: Boolean, onSelect: (Det
 }
 
 @Composable
-private fun ErrorBanner(message: String, onRetry: () -> Unit, onDismiss: (() -> Unit)? = null) {
+private fun ErrorBanner(message: String, onRetry: (() -> Unit)?, onDismiss: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -370,8 +374,10 @@ private fun ErrorBanner(message: String, onRetry: () -> Unit, onDismiss: (() -> 
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(vertical = 8.dp)
         )
-        TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("Retry", color = AmberGold)
+        if (onRetry != null) {
+            TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Retry", color = AmberGold)
+            }
         }
         if (onDismiss != null) {
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {

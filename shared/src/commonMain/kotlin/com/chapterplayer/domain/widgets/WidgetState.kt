@@ -5,6 +5,7 @@ import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.isPlayable
 import com.chapterplayer.domain.browse.resumeCandidate
+import com.chapterplayer.domain.browse.resumeCopy
 
 /** The title shown while a book plays that this phone does not know (yet), as the player screen does. */
 const val NOW_PLAYING_FALLBACK_TITLE = "Now playing"
@@ -65,9 +66,11 @@ sealed interface ContinueWidgetState {
  * ([isPlayable]), so offline or with "Downloaded only" a book that is not on the phone is never offered.
  */
 fun continueWidgetState(items: List<BrowseItem>, online: Boolean, downloadedOnly: Boolean): ContinueWidgetState {
-    val playable = items.filter { isPlayable(it.downloadState, online, downloadedOnly) }
+    // A merged book is offered when any copy can play, and the widget resumes the copy played last if it can.
+    val canPlay = { member: BrowseItem -> isPlayable(member.downloadState, online, downloadedOnly) }
+    val playable = items.filter { entry -> entry.allSources.any(canPlay) }
     val resume = resumeCandidate(playable) ?: return ContinueWidgetState.Empty
-    val book = resume.item.book
+    val book = resumeCopy(resume.entry, canPlay).book
     return ContinueWidgetState.Book(
         bookId = book.id,
         title = book.title,

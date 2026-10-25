@@ -195,11 +195,31 @@ class MergedSourcesTest {
     // ---- primary choice ----
 
     @Test
-    fun `the downloaded copy is the primary whatever the preference`() {
-        for (preference in SourcePreference.entries) {
-            val result = merge(listOf(item("a", "abs1"), item("p", "plex1", download = DownloadState.DOWNLOADED)), preference = preference)
-            assertEquals("p", result.single().book.id, preference.name)
-            assertEquals(DownloadState.DOWNLOADED, result.single().downloadState)
+    fun `the primary is the copy the preference plays, the member order when nothing decides`() {
+        // Rows: which copy is downloaded, which servers answer; then the primary for ASK, DOWNLOADED, ABS, PLEX.
+        data class Row(val downloaded: String?, val online: Set<String>, val ask: String, val downloaded1: String, val abs: String, val plex: String)
+        val table = listOf(
+            Row("p", setOf("abs1", "plex1"), ask = "p", downloaded1 = "p", abs = "a", plex = "p"),
+            Row(null, setOf("abs1", "plex1"), ask = "a", downloaded1 = "a", abs = "a", plex = "p"),
+            Row("a", emptySet(), ask = "a", downloaded1 = "a", abs = "a", plex = "a"),
+            Row(null, setOf("plex1"), ask = "p", downloaded1 = "p", abs = "p", plex = "p"),
+            Row(null, emptySet(), ask = "a", downloaded1 = "a", abs = "a", plex = "p"),
+        )
+        for (row in table) {
+            val items = listOf(
+                item("a", "abs1", download = if (row.downloaded == "a") DownloadState.DOWNLOADED else DownloadState.NOT_DOWNLOADED),
+                item("p", "plex1", download = if (row.downloaded == "p") DownloadState.DOWNLOADED else DownloadState.NOT_DOWNLOADED),
+            )
+            val expected = mapOf(
+                SourcePreference.ASK to row.ask, SourcePreference.PREFER_DOWNLOADED to row.downloaded1,
+                SourcePreference.PREFER_ABS to row.abs, SourcePreference.PREFER_PLEX to row.plex,
+            )
+            for ((preference, id) in expected) {
+                val entry = merge(items, preference = preference, online = row.online).single()
+                assertEquals(id, entry.book.id, "$preference $row")
+                // The lists and the details page agree: when the preference decides, the primary is its choice.
+                chosenSource(entry, preference, row.online)?.let { assertEquals(it.book.id, entry.book.id, "$preference $row") }
+            }
         }
     }
 
@@ -219,11 +239,11 @@ class MergedSourcesTest {
     }
 
     @Test
-    fun `downloaded Audiobookshelf offline beats reachable Plex`() {
+    fun `downloaded Audiobookshelf offline beats Plex`() {
         val result = merge(
             listOf(item("p", "plex1"), item("a", "abs1", download = DownloadState.DOWNLOADED)),
             preference = SourcePreference.PREFER_PLEX,
-            online = setOf("plex1"),
+            online = emptySet(),
         )
         assertEquals("a", result.single().book.id)
     }
@@ -370,5 +390,48 @@ class MergedSourcesTest {
         val current = entryContaining(all, "a")!!
         assertEquals(listOf("z", "y"), mergeCandidates(all, current, "").map { it.book.id })
         assertEquals(listOf("y"), mergeCandidates(all, current, "storm").map { it.book.id })
+    }
+    // ---- resume copy and grouping metadata ----
+
+    @Test
+    fun `resume picks the copy played last, or one that can play`() {
+        val entry = merge(listOf(item("a", "abs1", lastPlayedAt = 1L), item("p", "plex1", lastPlayedAt = 9L))).single()
+        assertEquals("a", entry.book.id)
+        assertEquals("p", resumeCopy(entry).book.id)
+        assertEquals("a", resumeCopy(entry) { it.book.id == "a" }.book.id)
+        val info = resumeCandidate(listOf(entry))!!
+        assertEquals("p", info.item.book.id)
+        assertEquals("a", info.entry.book.id)
+    }
+
+    @Test
+    fun `a Plex primary keeps the series, author and narrator of the Audiobookshelf copy`() {
+        val absCopy = item("a", "abs1").let { it.copy(book = it.book.copy(seriesName = "Stormlight", seriesSequence = "1", narrator = "Kate Reading")) }
+        val plexCopy = item("p", "plex1")
+        val other = item("b", "abs1", title = "Words of Radiance").let { it.copy(book = it.book.copy(seriesName = "Stormlight", seriesSequence = "2")) }
+        val all = merge(listOf(absCopy, plexCopy, other), preference = SourcePreference.PREFER_PLEX)
+        val entry = all.first { it.isMerged }
+        assertEquals("p", entry.book.id)
+        assertEquals("Stormlight", entry.book.seriesName)
+        assertEquals("1", entry.book.seriesSequence)
+        assertEquals("Kate Reading", entry.book.narrator)
+        assertEquals("abs1", entry.seriesServerId)
+        assertEquals(listOf("p", "b"), groupBySeries(all).single().items.map { it.book.id })
+        assertEquals(listOf("p"), groupByNarrator(all).first { it.title == "Kate Reading" }.items.map { it.book.id })
+        // Continue series: the first book finished, so the second is next, on the same server as the series copy.
+        val finished = all.map { if (it.isMerged) it.copy(progress = com.chapterplayer.data.model.ReadingProgress("p", 1L, 1L, 5L, isFinished = true)) else it }
+        assertEquals(listOf("b"), continueSeries(finished).map { it.book.id })
+    }
+
+    @Test
+    fun `after the splits between two groups are gone they join, three servers`() {
+        // a (abs1) and p (plex1) are one book; q (plex2) was split from both, then "Merge with" forgot those splits.
+        val items = listOf(item("a", "abs1"), item("p", "plex1"), item("q", "plex2"))
+        val before = merge(items, MergeOverrides(splits = setOf("a" to "q", "p" to "q")))
+        assertEquals(setOf(setOf("a", "p"), setOf("q")), groups(before))
+        val current = entryContaining(before, "q")!!
+        assertEquals(listOf("a"), mergeCandidates(before, current, "").map { it.book.id })
+        val after = merge(items, MergeOverrides(merges = setOf("a" to "q")))
+        assertEquals(setOf(setOf("a", "p", "q")), groups(after))
     }
 }

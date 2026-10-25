@@ -1,6 +1,7 @@
 package com.chapterplayer.data.repository
 
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.local.dao.BookMergeDao
 import com.chapterplayer.data.local.dao.BookmarkDao
 import com.chapterplayer.data.local.dao.HistoryDao
 import com.chapterplayer.data.local.dao.CollectionDao
@@ -42,7 +43,9 @@ class ServerRepositoryImpl(
     private val bookmarkDao: BookmarkDao,
     private val historyDao: HistoryDao,
     /** Where the Plex connections plex.tv listed are kept: they become [ServerConfig.alternateBaseUrls]. */
-    private val statusStore: ServerStatusStore = NoServerStatusStore
+    private val statusStore: ServerStatusStore = NoServerStatusStore,
+    /** The merged-sources corrections; a removed server's books are forgotten there too. */
+    private val bookMergeDao: BookMergeDao? = null
 ) : ServerRepository {
 
     /**
@@ -120,6 +123,7 @@ class ServerRepositoryImpl(
         // The book ids are read before the books go: the history rows are found through them.
         val bookIds = bookDao.getByServer(id).map { it.id }
         for (chunk in bookIds.chunked(HISTORY_DELETE_CHUNK)) historyDao.deleteForBooks(chunk)
+        bookMergeDao?.let { dao -> for (chunk in bookIds.chunked(MERGE_DELETE_CHUNK)) dao.deleteForBooks(chunk) }
         bookmarkDao.deleteForServer(id)
         bookDao.deleteByServer(id)
         libraryDao.deleteForServer(id)
@@ -168,6 +172,7 @@ class ServerRepositoryImpl(
     private companion object {
         // Stays under SQLite's limit on bound variables.
         const val HISTORY_DELETE_CHUNK = 500
+        const val MERGE_DELETE_CHUNK = 400
     }
 
     private fun refreshKey(id: String) = "$id.refresh"

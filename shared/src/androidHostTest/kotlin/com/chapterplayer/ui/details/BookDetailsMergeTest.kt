@@ -1,7 +1,6 @@
 package com.chapterplayer.ui.details
 
 import com.chapterplayer.data.merge.BookMergeRepository
-import com.chapterplayer.data.merge.FixedSourceMerging
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ServerConfig
@@ -25,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -55,7 +55,13 @@ class BookDetailsMergeTest {
         val calls = mutableListOf<String>()
         override val overrides: Flow<MergeOverrides> = flow
         override suspend fun split(bookId: String, otherIds: Collection<String>) { calls += "split $bookId ${otherIds.sorted()}" }
-        override suspend fun merge(bookId: String, otherId: String) { calls += "merge $bookId $otherId" }
+        override suspend fun merge(bookId: String, otherId: String, group: Collection<String>, otherGroup: Collection<String>) {
+            calls += "merge $bookId $otherId ${group.sorted()} ${otherGroup.sorted()}"
+            if (joins) flow.value = flow.value.copy(merges = flow.value.merges + (bookId to otherId))
+        }
+        /** Whether a merge is stored (the join then shows); false acts as a join that cannot happen. */
+        var joins = true
+        override suspend fun forgetBooks(bookIds: Collection<String>) {}
     }
 
     private class Setup(
@@ -81,7 +87,10 @@ class BookDetailsMergeTest {
             id, repo, FakeDownloadStates(downloadStates), controller,
             PlaybackStarter(controller, repo, settings, connectivity, FakeLocalBookFiles()), connectivity, settings, Dispatchers.Main,
             FakeDownloadOverview(), downloads, FakeNotificationPermission(),
-            merging = FixedSourceMerging(MergeContext(preference = preference, onlineServerIds = online, deviceOnline = deviceOnline)),
+            // The corrections flow into the merging, as AppSourceMerging does.
+            merging = object : com.chapterplayer.data.merge.SourceMerging {
+                override val context = merges.flow.map { MergeContext(it, preference, online, deviceOnline) }
+            },
             merges = merges,
             servers = servers,
         )
@@ -211,7 +220,57 @@ class BookDetailsMergeTest {
         assertEquals(emptyList(), state().mergeSheet?.candidates)
         s.vm.onMergeQueryChanged("something")
         s.vm.onMergeCandidateChosen("q")
+        testScheduler.advanceUntilIdle()
         assertNull(state().mergeSheet)
-        assertEquals(listOf("merge a q"), s.merges.calls)
+        assertEquals(listOf("merge a q [a] [q]"), s.merges.calls)
+        assertEquals(listOf("a", "q"), state().sources.map { it.bookId })
+        assertNull(state().notice)
+    }
+
+    @Test
+    fun `a merge that cannot show as one says so`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("q").copy(title = "Something else")), "a")
+        s.merges.joins = false
+        val state = collect(s)
+        s.vm.onMergeWithClicked()
+        s.vm.onMergeCandidateChosen("q")
+        testScheduler.advanceUntilIdle()
+        assertEquals("These books could not be shown as one", state().notice)
+        s.vm.onNoticeDismissed()
+        assertNull(state().notice)
+    }
+
+    @Test
+    fun `with no copy able to play, Play says so instead of opening the sheet`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK, online = emptySet())
+        val state = collect(s)
+        s.vm.onResumeClicked()
+        assertNull(state().sourceSheet)
+        assertEquals("No copy of this book can play now (Server not reachable)", state().playError)
+        assertTrue(s.controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `another copy in the player shows where it plays from and keeps chapter taps off`() = runTest {
+        val s = Setup(listOf(abs("a").copy(chapters = listOf(com.chapterplayer.data.model.Chapter(0, "One", 0L, 1_000L))), plex("p")), "a")
+        val state = collect(s)
+        s.controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "p", positionMs = 999_000L, durationMs = 3_600_000L)
+        assertEquals(DetailsPlayback.PAUSED, state().playback)
+        assertEquals("Playing from Plex · Home Plex", state().playingFrom)
+        assertEquals(0L, state().currentPositionMs)
+        s.vm.onChapterClicked(0)
+        assertTrue(s.controller.seeks.isEmpty())
+    }
+
+    @Test
+    fun `a chapter tap with nothing playing starts the copy the preference picks`() = runTest {
+        val s = Setup(
+            listOf(abs("a").copy(chapters = listOf(com.chapterplayer.data.model.Chapter(0, "One", 0L, 1_000L), com.chapterplayer.data.model.Chapter(1, "Two", 1_000L, 2_000L))), plex("p")),
+            "a", preference = SourcePreference.PREFER_PLEX
+        )
+        val state = collect(s)
+        s.vm.onChapterClicked(1)
+        assertEquals("p" to 1_000L, s.controller.loads.single())
+        assertNull(state().sourceSheet)
     }
 }

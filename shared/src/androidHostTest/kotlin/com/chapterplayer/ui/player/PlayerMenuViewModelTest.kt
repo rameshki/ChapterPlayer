@@ -329,7 +329,8 @@ class PlayerMenuViewModelTest {
         val calls = mutableListOf<String>()
         override val overrides = kotlinx.coroutines.flow.MutableStateFlow(com.chapterplayer.domain.browse.MergeOverrides())
         override suspend fun split(bookId: String, otherIds: Collection<String>) { calls += "split $bookId $otherIds" }
-        override suspend fun merge(bookId: String, otherId: String) {}
+        override suspend fun merge(bookId: String, otherId: String, group: Collection<String>, otherGroup: Collection<String>) {}
+        override suspend fun forgetBooks(bookIds: Collection<String>) {}
     }
 
     @Test

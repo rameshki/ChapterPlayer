@@ -26,7 +26,15 @@ data class SourceSheetUi(val action: SourceAction, val rows: List<SourceRow>) {
 }
 
 /** One book "Merge with…" offers. */
-data class MergeCandidateRow(val bookId: String, val title: String, val author: String, val typeLabel: String, val serverName: String)
+data class MergeCandidateRow(
+    val bookId: String,
+    val title: String,
+    val author: String,
+    val typeLabel: String,
+    val serverName: String,
+    /** Every copy of the candidate (it may already be a merged book). */
+    val memberIds: List<String> = listOf(bookId),
+)
 
 data class MergeSheetUi(val query: String = "", val candidates: List<MergeCandidateRow> = emptyList())
 
@@ -45,6 +53,7 @@ internal fun candidateRow(entry: BrowseItem, serverNames: Map<String, String>): 
     author = entry.book.author,
     typeLabel = entry.allSources.map { it.book.source }.distinct().joinToString(" + ") { it.shortLabel() },
     serverName = entry.allSources.mapNotNull { serverNames[it.book.serverId] }.distinct().joinToString(", "),
+    memberIds = entry.allSources.map { it.book.id },
 )
 
 /** A download can only come from an Audiobookshelf copy. */

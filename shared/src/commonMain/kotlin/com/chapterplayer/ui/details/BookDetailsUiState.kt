@@ -56,6 +56,10 @@ data class BookDetailsUiState(
     val canMerge: Boolean = false,
     /** The open "Merge with" search; null when closed. */
     val mergeSheet: MergeSheetUi? = null,
+    /** "Playing from Plex · Home Plex" while another copy of this book is in the player; null otherwise. */
+    val playingFrom: String? = null,
+    /** A short notice ("These books could not be shown as one"); null when there is none. */
+    val notice: String? = null,
     /** The merged entry (null for a book on one server) and the merging inputs, for the actions. */
     val entry: com.chapterplayer.domain.browse.BrowseItem? = null,
     val mergeContext: com.chapterplayer.domain.browse.MergeContext? = null

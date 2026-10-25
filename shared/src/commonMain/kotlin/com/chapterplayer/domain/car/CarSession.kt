@@ -7,6 +7,9 @@ import com.chapterplayer.domain.browse.formatClock
 import com.chapterplayer.domain.browse.groupBySeries
 import com.chapterplayer.domain.browse.isPlayable
 import com.chapterplayer.domain.browse.resumeCandidate
+import com.chapterplayer.domain.browse.entryContaining
+import com.chapterplayer.domain.browse.member
+import com.chapterplayer.domain.browse.resumeCopy
 import com.chapterplayer.domain.playback.isFinishedAt
 
 /**
@@ -99,8 +102,9 @@ fun resolveCarRequest(request: CarRequest, items: List<BrowseItem>, online: Bool
     when (request) {
         CarRequest.Refused -> CarPlay.Fail(CarFailure.REFUSED)
         is CarRequest.Book -> {
-            val item = items.firstOrNull { it.book.id == request.id }
-            if (item == null) CarPlay.Fail(CarFailure.UNKNOWN_BOOK) else startOrFail(item, online, nowPlaying)
+            // Any copy's id finds its entry, so an id handed out before the primary changed still plays.
+            val entry = entryContaining(items, request.id)
+            if (entry == null) CarPlay.Fail(CarFailure.UNKNOWN_BOOK) else startOrFail(pickCopy(entry, request.id, online, nowPlaying), online, nowPlaying)
         }
         is CarRequest.Chapter ->
             if (nowPlaying != null && request.index in nowPlaying.chapters.indices) CarPlay.SeekChapter(request.index)
@@ -112,8 +116,23 @@ fun resolveCarRequest(request: CarRequest, items: List<BrowseItem>, online: Bool
 
 /** The last played unfinished book, for "play something" and for resuming after the app was gone. */
 fun resumeLast(items: List<BrowseItem>, online: Boolean, nowPlaying: CarNowPlaying?): CarPlay {
-    val item = resumeCandidate(items)?.item ?: return CarPlay.Fail(CarFailure.NOTHING_TO_RESUME)
-    return startOrFail(item, online, nowPlaying)
+    val resume = resumeCandidate(items) ?: return CarPlay.Fail(CarFailure.NOTHING_TO_RESUME)
+    return startOrFail(pickCopy(resume.entry, resume.item.book.id, online, nowPlaying), online, nowPlaying)
+}
+
+/**
+ * Which copy of [entry] the car starts: the copy already in the player (never replaced by another copy), else
+ * [requestedId] (the copy asked for, or the one played last) when it can play, else the entry's primary when it can,
+ * else the requested copy (so the failure names it).
+ */
+internal fun pickCopy(entry: BrowseItem, requestedId: String?, online: Boolean, nowPlaying: CarNowPlaying?): BrowseItem {
+    if (!entry.isMerged) return entry
+    nowPlaying?.bookId?.let { id -> entry.member(id)?.let { return it } }
+    val requested = requestedId?.let { entry.member(it) }
+    if (requested != null && failureOf(requested, online, nowPlaying) == null) return requested
+    val primary = entry.sources.first()
+    if (failureOf(primary, online, nowPlaying) == null) return primary
+    return requested ?: primary
 }
 
 private fun failureOf(item: BrowseItem, online: Boolean, nowPlaying: CarNowPlaying?): CarFailure? = when {
@@ -150,8 +169,9 @@ private fun searchAndPick(query: String, items: List<BrowseItem>, online: Boolea
         val unfinished = matches.filter(::isUnfinished)
         (listening + inSeries + unfinished + matches).distinctBy { it.book.id }
     }
-    val playable = candidates.firstOrNull { failureOf(it, online, nowPlaying) == null }
-    return playable?.let { CarPlay.Start(it.book) } ?: startOrFail(candidates.first(), online, nowPlaying)
+    val copies = candidates.map { pickCopy(it, resumeCopy(it).book.id, online, nowPlaying) }
+    val playable = copies.firstOrNull { failureOf(it, online, nowPlaying) == null }
+    return playable?.let { CarPlay.Start(it.book) } ?: startOrFail(copies.first(), online, nowPlaying)
 }
 
 /** A book paused this recently is left alone when the car connects: the listener just stopped it. */
@@ -196,10 +216,11 @@ fun carConnectResume(
 ): AudioBook? {
     if (!enabled || playerBusy) return null
     if (!packageVerified || callerPackage !in CAR_HEAD_UNIT_PACKAGES) return null
-    val item = resumeCandidate(items)?.item ?: return null
-    val last = item.progress?.lastPlayedAt ?: return null
+    val resume = resumeCandidate(items) ?: return null
+    // The guard and the start are about the same copy: the one played last.
+    val last = resume.item.progress?.lastPlayedAt ?: return null
     if (nowMs - last < CAR_RESUME_PAUSE_GUARD_MS) return null
-    return (startOrFail(item, online, nowPlaying = null) as? CarPlay.Start)?.book
+    return (startOrFail(pickCopy(resume.entry, resume.item.book.id, online, nowPlaying = null), online, nowPlaying = null) as? CarPlay.Start)?.book
 }
 
 /** One page of [list]; null when the page or its size makes no sense. */
@@ -254,8 +275,9 @@ fun carRootItem(): CarItem = CarItem(carNodeId("root"), "", "", null, browsable 
 fun carItemFor(id: String, data: CarData, online: Boolean, nowPlaying: CarNowPlaying?): CarItem? {
     val node = parseCarNodeId(id)
     if (node == null) {
-        val item = data.items.firstOrNull { it.book.id == id } ?: return null
-        return carBookItem(item, online)
+        // Any copy's id finds its entry; the item keeps the id it was asked for.
+        val item = entryContaining(data.items, id) ?: return null
+        return carBookItem(item, online).copy(id = id)
     }
     val parent = when (node.kind) {
         "root" -> return if (node.arg == null) carRootItem() else null
@@ -275,7 +297,7 @@ fun carItemFor(id: String, data: CarData, online: Boolean, nowPlaying: CarNowPla
 /** Search results for the car's search screen: matching books, best first; an empty query shows the book to resume. */
 fun carSearchResults(query: String, data: CarData, online: Boolean): List<CarItem> {
     val items = data.items
-    if (query.isBlank()) return listOfNotNull(resumeCandidate(items)?.item?.let { carBookItem(it, online) })
+    if (query.isBlank()) return listOfNotNull(resumeCandidate(items)?.entry?.let { carBookItem(it, online) })
     val byId = items.associateBy { it.book.id }
     val entries = items.map { BookSearchEntry(it.book.id, it.book.title, it.book.author, it.book.seriesName) }
     return matchBooksForQuery(query, entries).mapNotNull { byId[it] }.map { carBookItem(it, online) }

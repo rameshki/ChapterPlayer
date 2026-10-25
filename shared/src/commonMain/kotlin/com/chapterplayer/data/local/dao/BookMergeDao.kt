@@ -15,4 +15,10 @@ interface BookMergeDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(rows: List<BookMergeEntity>)
+
+    @Query("DELETE FROM book_merges WHERE bookIdA = :a AND bookIdB = :b AND kind = :kind")
+    suspend fun deleteKind(a: String, b: String, kind: String)
+
+    @Query("DELETE FROM book_merges WHERE bookIdA IN (:bookIds) OR bookIdB IN (:bookIds)")
+    suspend fun deleteForBooks(bookIds: List<String>)
 }

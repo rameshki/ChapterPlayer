@@ -13,8 +13,14 @@ interface BookMergeRepository {
     /** "Not the same book": [bookId] leaves the group it is in with [otherIds] and stays apart from each of them. */
     suspend fun split(bookId: String, otherIds: Collection<String>)
 
-    /** "Merge with…": [bookId] and [otherId] are the same book from now on. */
-    suspend fun merge(bookId: String, otherId: String)
+    /**
+     * "Merge with…": [bookId] and [otherId] are the same book from now on. [group] and [otherGroup] are the copies
+     * each is already shown with: every "Not the same book" between the two groups is forgotten, so the join can happen.
+     */
+    suspend fun merge(bookId: String, otherId: String, group: Collection<String> = listOf(bookId), otherGroup: Collection<String> = listOf(otherId))
+
+    /** Forgets every correction about [bookIds] (their server was removed). */
+    suspend fun forgetBooks(bookIds: Collection<String>)
 }
 
 internal const val KIND_SPLIT = "SPLIT"
@@ -34,8 +40,9 @@ internal fun overridesOf(rows: List<BookMergeEntity>): MergeOverrides = MergeOve
 )
 
 /**
- * In the `book_merges` table (Room) beside the books, so the corrections are backed up and wiped with the rest of
- * the library data. A row for a book that has gone is harmless: the grouping ignores ids it does not see.
+ * In the `book_merges` table (Room) beside the books. Removing a server forgets its books' rows (see [forgetBooks]);
+ * a row for a book that is only gone for now (a library turned off, a sync that missed it) stays, and the grouping
+ * ignores ids it does not see.
  */
 class RoomBookMergeRepository(private val dao: BookMergeDao) : BookMergeRepository {
 
@@ -46,7 +53,21 @@ class RoomBookMergeRepository(private val dao: BookMergeDao) : BookMergeReposito
         if (rows.isNotEmpty()) dao.upsertAll(rows)
     }
 
-    override suspend fun merge(bookId: String, otherId: String) {
-        mergeRow(bookId, otherId, KIND_MERGE)?.let { dao.upsertAll(listOf(it)) }
+    override suspend fun merge(bookId: String, otherId: String, group: Collection<String>, otherGroup: Collection<String>) {
+        val row = mergeRow(bookId, otherId, KIND_MERGE) ?: return
+        for (a in (group + bookId).distinct()) for (b in (otherGroup + otherId).distinct()) {
+            val split = mergeRow(a, b, KIND_SPLIT) ?: continue
+            dao.deleteKind(split.bookIdA, split.bookIdB, KIND_SPLIT)
+        }
+        dao.upsertAll(listOf(row))
+    }
+
+    override suspend fun forgetBooks(bookIds: Collection<String>) {
+        for (chunk in bookIds.distinct().chunked(FORGET_CHUNK)) dao.deleteForBooks(chunk)
+    }
+
+    private companion object {
+        // SQLite allows at most 999 bound arguments; each id is bound twice.
+        const val FORGET_CHUNK = 400
     }
 }

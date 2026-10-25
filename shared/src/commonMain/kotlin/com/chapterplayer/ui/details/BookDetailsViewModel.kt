@@ -51,6 +51,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.withTimeoutOrNull
+import com.chapterplayer.domain.browse.hasCopy
+import com.chapterplayer.domain.browse.member
+import com.chapterplayer.domain.browse.shortLabel
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOn
@@ -89,12 +93,13 @@ class BookDetailsViewModel(
         val all: List<BrowseItem> = emptyList()
     )
 
-    /** The merging inputs, the server names, the open source sheet and the "Merge with" search (null: closed). */
+    /** The merging inputs, the server names, the open source sheet, the "Merge with" sheet (null: closed) and a notice. */
     private class Extras(
         val context: MergeContext?,
         val serverNames: Map<String, String>,
         val sheet: SourceAction?,
-        val mergeQuery: String?
+        val mergeSheet: MergeSheetUi?,
+        val notice: String?
     )
 
     /**
@@ -131,13 +136,19 @@ class BookDetailsViewModel(
 
     private val sourceSheet = MutableStateFlow<SourceAction?>(null)
     private val mergeQuery = MutableStateFlow<String?>(null)
+    private val notice = MutableStateFlow<String?>(null)
+    private val serverNames = servers?.observeAll()?.map { list -> list.associate { it.id to it.name } } ?: flowOf(emptyMap())
 
-    private val extras = combine(
-        merging.context,
-        servers?.observeAll()?.map { list -> list.associate { it.id to it.name } } ?: flowOf(emptyMap()),
-        sourceSheet,
-        mergeQuery
-    ) { context, names, sheet, query -> Extras(context, names, sheet, query) }
+    // The "Merge with" list is worked out off the main thread, only when the search or the library changes.
+    private val mergeSheet = combine(whole, mergeQuery, serverNames, merging.context) { w, query, names, context ->
+        val entry = w.entry
+        if (query == null || context == null || entry == null) null
+        else MergeSheetUi(query, mergeCandidates(w.all, entry, query).map { candidateRow(it, names) })
+    }.distinctUntilChanged().flowOn(dispatcher)
+
+    private val extras = combine(merging.context, serverNames, sourceSheet, mergeSheet, notice) { context, names, sheet, merge, text ->
+        Extras(context, names, sheet, merge, text)
+    }
 
     /*
      * The copy the download control is about: one that already has a download (of any member), otherwise this page's
@@ -181,9 +192,11 @@ class BookDetailsViewModel(
             val entry = whole.entry
             val context = extras.context
             val merged = entry != null && entry.isMerged && context != null
-            val memberIds = entry?.allSources?.map { it.book.id }.orEmpty()
-            // Another copy of this book playing counts as this book playing (Pause, Open player).
-            val loaded = env.player.bookId == bookId || (merged && env.player.bookId in memberIds)
+            val thisLoaded = env.player.bookId == bookId
+            // Another copy of this book in the player counts as this book playing (Pause, Open player), but its
+            // position belongs to that copy: the chapters keep the saved position and chapter taps are off.
+            val otherCopy = env.player.bookId?.takeIf { merged && !thisLoaded }?.let { id -> entry!!.member(id) }
+            val loaded = thisLoaded || otherCopy != null
             val playback = when {
                 env.local.starting -> DetailsPlayback.STARTING
                 // Buffering before the first sound still counts as playing: Pause is offered at once.
@@ -199,7 +212,7 @@ class BookDetailsViewModel(
             val rows = options.map { sourceRow(it, extras.serverNames) }
             val downloadSource = entry?.allSources?.firstOrNull { it.book.id == env.downloadBookId }?.book?.source ?: book.source
             // While this book is loaded in the player the highlight follows the live position.
-            val shown = if (loaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
+            val shown = if (thisLoaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
             // No local progress: let the server say where; a book finished here starts over.
             val savedStart = startPositionFor(progress, book.durationMs)
             BookDetailsUiState(
@@ -223,7 +236,7 @@ class BookDetailsViewModel(
                 },
                 playError = env.local.error
                     ?: env.player.error?.takeIf { loaded && it != env.local.dismissedPlayerError },
-                currentPositionMs = if (loaded) env.player.positionMs else progress?.positionMs ?: 0L,
+                currentPositionMs = if (thisLoaded) env.player.positionMs else progress?.positionMs ?: 0L,
                 resumePositionMs = savedStart,
                 download = detailsDownload(
                     downloadSource, env.download, env.online,
@@ -238,9 +251,12 @@ class BookDetailsViewModel(
                 },
                 canSplit = merged && merges != null,
                 canMerge = context != null && entry != null && merges != null,
-                mergeSheet = extras.mergeQuery?.takeIf { context != null && entry != null }?.let { query ->
-                    MergeSheetUi(query, mergeCandidates(whole.all, entry!!, query).map { candidateRow(it, extras.serverNames) })
+                mergeSheet = extras.mergeSheet,
+                playingFrom = otherCopy?.let { copy ->
+                    val name = extras.serverNames[copy.book.serverId]
+                    "Playing from ${copy.book.source.shortLabel()}" + (if (name.isNullOrBlank()) "" else " · $name")
                 },
+                notice = extras.notice,
                 entry = if (merged) entry else null,
                 mergeContext = context
             )
@@ -269,8 +285,9 @@ class BookDetailsViewModel(
             DetailsPlayback.PAUSED -> {
                 if (!state.canPlay) return
                 local.value = Local()
-                // A book that played to its end starts again from the beginning of the whole book.
-                if (isFinishedAt(state.currentPositionMs, book.durationMs)) controller.seekTo(0L)
+                // A book that played to its end starts again from the beginning of the whole book (only this
+                // page's copy: another copy's position is not measured against this book's length).
+                if (state.playingFrom == null && isFinishedAt(state.currentPositionMs, book.durationMs)) controller.seekTo(0L)
                 controller.play()
             }
             DetailsPlayback.NOT_PLAYING -> if (state.canPlay) playChosenCopy(state, book)
@@ -283,7 +300,32 @@ class BookDetailsViewModel(
         val context = state.mergeContext
         if (entry == null || context == null) return start(book, state.resumePositionMs)
         val chosen = chosenSource(entry, context.preference, context.onlineServerIds)
-        if (chosen == null) sourceSheet.value = SourceAction.PLAY else playCopy(state, chosen.book.id)
+        when {
+            chosen != null -> playCopy(state, chosen.book.id)
+            // No copy can play: say why instead of a sheet of greyed rows.
+            state.sources.none { it.enabled } -> local.value = Local(error = noCopyText(state))
+            else -> sourceSheet.value = SourceAction.PLAY
+        }
+    }
+
+    private fun noCopyText(state: BookDetailsUiState): String {
+        val reason = state.sources.firstNotNullOfOrNull { it.reason }
+        return if (reason == null) NO_COPY_TEXT else "$NO_COPY_TEXT ($reason)"
+    }
+
+    /*
+     * A chapter tap with nothing playing: this page's chapters, started in the copy the Settings choice picks, else
+     * this page's copy, else any copy that can play (the copies' lengths agree within 2%).
+     */
+    private fun startAtChapter(state: BookDetailsUiState, book: AudioBook, startMs: Long) {
+        val entry = state.entry
+        val context = state.mergeContext
+        if (entry == null || context == null) return start(book, startMs)
+        val usable = state.sources.filter { it.enabled }.map { it.bookId }
+        val target = chosenSource(entry, context.preference, context.onlineServerIds)
+            ?: entry.member(bookId)?.takeIf { it.book.id in usable }
+            ?: entry.sources.firstOrNull { it.book.id in usable }
+        if (target == null) local.value = Local(error = noCopyText(state)) else start(target.book, startMs)
     }
 
     private fun playCopy(state: BookDetailsUiState, copyId: String) {
@@ -333,13 +375,25 @@ class BookDetailsViewModel(
         mergeQuery.value = null
     }
 
-    /** The chosen book is the same book as this one from now on. */
+    /**
+     * The chosen book is the same book as this one from now on: both groups join (their earlier "Not the same book"
+     * choices between each other are forgotten). When the join still cannot happen, a notice says so.
+     */
     fun onMergeCandidateChosen(otherId: String) {
         val repo = merges ?: return
-        val sheet = uiState.value.mergeSheet ?: return
-        if (sheet.candidates.none { it.bookId == otherId }) return
+        val state = uiState.value
+        val candidate = state.mergeSheet?.candidates?.firstOrNull { it.bookId == otherId } ?: return
+        val ownIds = state.entry?.allSources?.map { it.book.id } ?: listOf(bookId)
         mergeQuery.value = null
-        mergeAction { repo.merge(bookId, otherId) }
+        mergeAction {
+            repo.merge(bookId, otherId, ownIds, candidate.memberIds)
+            val joined = withTimeoutOrNull(MERGE_WAIT_MS) { whole.first { it.entry?.hasCopy(otherId) == true } }
+            if (joined == null) notice.value = MERGE_FAILED_TEXT
+        }
+    }
+
+    fun onNoticeDismissed() {
+        notice.value = null
     }
 
     private fun mergeAction(block: suspend () -> Unit) {
@@ -360,10 +414,10 @@ class BookDetailsViewModel(
         val state = uiState.value
         val book = state.book ?: return
         val row = state.chapters.getOrNull(index) ?: return
-        if (!chapterTapsEnabled(state.playback, state.canPlay)) return
+        if (!chapterTapsEnabled(state.playback, state.canPlay) || state.playingFrom != null) return
         when (state.playback) {
             DetailsPlayback.PLAYING, DetailsPlayback.PAUSED -> controller.seekTo(row.startMs)
-            DetailsPlayback.NOT_PLAYING -> start(book, row.startMs)
+            DetailsPlayback.NOT_PLAYING -> startAtChapter(state, book, row.startMs)
             DetailsPlayback.STARTING -> Unit
         }
     }
@@ -510,4 +564,10 @@ class BookDetailsViewModel(
     private fun errorText(error: Throwable) =
         if (error is SignInRequiredException) "Could not load details. Sign in again in Settings."
         else "Could not load details. Showing what is saved."
+
+    private companion object {
+        const val MERGE_WAIT_MS = 2_000L
+        const val NO_COPY_TEXT = "No copy of this book can play now"
+        const val MERGE_FAILED_TEXT = "These books could not be shown as one"
+    }
 }

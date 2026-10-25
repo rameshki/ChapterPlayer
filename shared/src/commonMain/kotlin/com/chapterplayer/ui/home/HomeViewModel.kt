@@ -96,7 +96,8 @@ class HomeViewModel(
         val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
         // The card and the series shelf come from every book, so a saved filter never hides them.
         val resume = resumeCandidate(items)
-        val resumeId = resume?.item?.book?.id
+        // The entry's id: the card resumes one copy, but the shelves list the entry.
+        val resumeId = resume?.entry?.book?.id
         HomeUiState(
             resume = resume,
             continueSeries = continueSeries(items, excludeBookId = resumeId),

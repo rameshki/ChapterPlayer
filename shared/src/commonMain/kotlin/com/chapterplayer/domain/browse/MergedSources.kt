@@ -211,16 +211,61 @@ private fun memberOrder(preference: SourcePreference, onlineServerIds: Set<Strin
 }
 
 /** The entry for [members] (each as it is on its own server): the first by the member order, newest progress. */
+/*
+ * The primary is the copy [chosenSource] picks when the preference decides, so the lists and the details page agree;
+ * with "Always ask" (or when nothing decides) it is the first in member order.
+ */
 private fun entryOf(members: List<BrowseItem>, preference: SourcePreference, onlineServerIds: Set<String>): BrowseItem {
     val ordered = members.map { it.copy(sources = emptyList()) }.sortedWith(memberOrder(preference, onlineServerIds))
-    return withPrimary(ordered.first(), ordered)
+    val ranked = withPrimary(ordered.first(), ordered)
+    val chosen = chosenSource(ranked, preference, onlineServerIds) ?: return ranked
+    return withPrimary(chosen, ordered)
 }
+
+/** The members in grouping-metadata order: Audiobookshelf copies first (they carry series and narrators best). */
+private fun metadataOrder(members: List<BrowseItem>): List<BrowseItem> =
+    members.sortedBy { if (it.book.source == ServerSource.ABS) 0 else 1 }
 
 private fun withPrimary(primary: BrowseItem, ordered: List<BrowseItem>): BrowseItem {
     val newest = ordered.mapNotNull { it.progress }.sortedWith(compareByDescending<com.chapterplayer.data.model.ReadingProgress> { it.lastPlayedAt }.thenBy { it.bookId }).firstOrNull()
     val sources = listOf(primary) + ordered.filter { it.book.id != primary.book.id }
-    return primary.copy(progress = newest, sources = sources)
+    // Series, author and narrator for the groupings come from any copy that has them, an Audiobookshelf one first,
+    // so a book never drops out of its series because the primary is a Plex copy without one.
+    val meta = metadataOrder(sources)
+    val series = meta.firstOrNull { !it.book.seriesName.isNullOrBlank() }?.book
+    val book = primary.book.copy(
+        author = meta.firstOrNull { it.book.author.isNotBlank() }?.book?.author ?: primary.book.author,
+        narrator = meta.firstOrNull { it.book.narrator.isNotBlank() }?.book?.narrator ?: primary.book.narrator,
+        seriesName = series?.seriesName ?: primary.book.seriesName,
+        seriesSequence = if (series != null) series.seriesSequence else primary.book.seriesSequence,
+    )
+    return primary.copy(book = book, progress = newest, sources = sources)
 }
+
+/** The server whose series this entry is listed in: the copy that gave the series name (see [withPrimary]). */
+val BrowseItem.seriesServerId: String
+    get() {
+        if (!isMerged) return book.serverId
+        return metadataOrder(sources).firstOrNull { !it.book.seriesName.isNullOrBlank() }?.book?.serverId ?: book.serverId
+    }
+
+/**
+ * The copy to resume: the copy played last (the one the entry's progress belongs to) when [canPlay] allows it,
+ * otherwise the first member that can play, otherwise the copy played last. A book on one server is itself.
+ * Home's Resume, the widget and the car resume this copy; with "Always ask" too, since only the details page asks.
+ */
+fun resumeCopy(entry: BrowseItem, canPlay: (BrowseItem) -> Boolean = { true }): BrowseItem {
+    if (!entry.isMerged) return entry
+    val played = entry.sources.firstOrNull { it.book.id == entry.progress?.bookId } ?: entry.sources.first()
+    if (canPlay(played)) return played
+    return entry.sources.firstOrNull(canPlay) ?: played
+}
+
+/** The member of [entry] with [bookId]; null when it has none. */
+fun BrowseItem.member(bookId: String): BrowseItem? = allSources.firstOrNull { it.book.id == bookId }
+
+/** Whether [bookId] is one of this entry's copies. */
+fun BrowseItem.hasCopy(bookId: String?): Boolean = bookId != null && allSources.any { it.book.id == bookId }
 
 /**
  * [item] if it has a member on one of [serverIds], with that member as the primary (the first such in member order);
