@@ -4,6 +4,7 @@ import android.app.Application
 import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
+import com.chapterplayer.data.stats.ListeningRecorder
 import com.chapterplayer.data.downloads.DownloadLengthFiller
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.images.PlexImageServers
@@ -44,6 +45,8 @@ class ChapterPlayerApp : Application() {
         // Bookmarks sync with the servers, and jumps in the playing book are remembered.
         GlobalContext.get().get<BookmarkSyncer>().start()
         GlobalContext.get().get<HistoryRecorder>().start()
+        // Listening time is logged for the statistics page.
+        GlobalContext.get().get<ListeningRecorder>().start()
         // Downloads that were waiting or running before a reboot or process death carry on.
         GlobalContext.get().get<DownloadQueueRestorer>().start()
         // Older downloads learn their file lengths from the server, so they can play offline.

@@ -13,6 +13,7 @@ import com.chapterplayer.data.local.dao.DownloadDao
 import com.chapterplayer.data.local.dao.ExcludedLibraryDao
 import com.chapterplayer.data.local.dao.HistoryDao
 import com.chapterplayer.data.local.dao.LibraryDao
+import com.chapterplayer.data.local.dao.ListeningDao
 import com.chapterplayer.data.local.dao.PendingProgressDao
 import com.chapterplayer.data.local.dao.ProgressDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
@@ -25,7 +26,11 @@ import com.chapterplayer.data.local.entity.DownloadEntity
 import com.chapterplayer.data.local.entity.DownloadFileEntity
 import com.chapterplayer.data.local.entity.ExcludedLibraryEntity
 import com.chapterplayer.data.local.entity.HistoryEntity
+import com.chapterplayer.data.local.entity.ImportedListeningDayEntity
+import com.chapterplayer.data.local.entity.ImportedListeningItemEntity
 import com.chapterplayer.data.local.entity.LibraryEntity
+import com.chapterplayer.data.local.entity.ListeningImportEntity
+import com.chapterplayer.data.local.entity.ListeningLogEntity
 import com.chapterplayer.data.local.entity.PendingProgressEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
 import com.chapterplayer.data.local.entity.ServerConfigEntity
@@ -44,15 +49,20 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
         HistoryEntity::class,
         DownloadEntity::class,
         DownloadFileEntity::class,
-        BookMergeEntity::class
+        BookMergeEntity::class,
+        ListeningLogEntity::class,
+        ImportedListeningDayEntity::class,
+        ImportedListeningItemEntity::class,
+        ListeningImportEntity::class
     ],
     // Version 9 changes no table: its migration (Migration8To9, Android) drops the Plex rows stored before albums were read.
     // Version 10 adds book_merges (the user's corrections of merged sources).
-    version = 10,
+    // Version 11 adds the listening log and the imported listening history (statistics).
+    version = 11,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8),
-        AutoMigration(from = 9, to = 10),
+        AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11),
     ],
     exportSchema = true
 )
@@ -69,6 +79,7 @@ abstract class ChapterPlayerDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
     abstract fun downloadDao(): DownloadDao
     abstract fun bookMergeDao(): BookMergeDao
+    abstract fun listeningDao(): ListeningDao
 
     companion object {
         const val DATABASE_NAME = "chapter_player.db"

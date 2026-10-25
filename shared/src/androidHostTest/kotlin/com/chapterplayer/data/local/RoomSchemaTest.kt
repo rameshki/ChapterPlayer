@@ -312,4 +312,38 @@ class RoomSchemaTest {
         }
         assertEquals(database8.getValue("identityHash"), database9.getValue("identityHash"))
     }
+
+    private val database10: JsonObject by lazy { load(10) }
+    private val database11: JsonObject by lazy { load(11) }
+
+    @Test
+    fun `version 11 adds the listening log and the imported listening history`() {
+        assertEquals(11, database11.getValue("version").jsonPrimitive.int)
+        assertEquals(
+            tables(database10) + setOf("listening_log", "imported_listening_days", "imported_listening_items", "listening_imports"),
+            tables(database11)
+        )
+        assertEquals(
+            mapOf(
+                "day" to "INTEGER", "bookId" to "TEXT", "serverId" to "TEXT", "source" to "TEXT",
+                "wallSeconds" to "INTEGER", "bookSeconds" to "INTEGER",
+            ),
+            columns("listening_log", database11)
+        )
+        assertEquals(listOf("day", "bookId"), primaryKey("listening_log", database11))
+        assertEquals(mapOf("serverId" to "TEXT", "day" to "INTEGER", "seconds" to "INTEGER"), columns("imported_listening_days", database11))
+        assertEquals(listOf("serverId", "day"), primaryKey("imported_listening_days", database11))
+        assertEquals(mapOf("serverId" to "TEXT", "bookId" to "TEXT", "seconds" to "INTEGER"), columns("imported_listening_items", database11))
+        assertEquals(listOf("serverId", "bookId"), primaryKey("imported_listening_items", database11))
+        assertEquals(mapOf("serverId" to "TEXT", "importedAt" to "INTEGER"), columns("listening_imports", database11))
+        assertEquals(listOf("serverId"), primaryKey("listening_imports", database11))
+    }
+
+    @Test
+    fun `version 11 leaves the older tables as they were`() {
+        for (table in tables(database10)) {
+            assertEquals(columns(table, database10), columns(table, database11), "$table columns")
+            assertEquals(primaryKey(table, database10), primaryKey(table, database11), "$table primary key")
+        }
+    }
 }
