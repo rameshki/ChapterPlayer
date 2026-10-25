@@ -16,6 +16,9 @@ import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
 import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.data.downloads.LocalBookFiles
+import com.chapterplayer.data.downloads.RoomLocalBookFiles
+import java.io.File
 import com.chapterplayer.data.downloads.LiveDownloadProgress
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
@@ -158,6 +161,10 @@ val repositoryModule = module {
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
     single<DownloadStates> { RoomDownloadStates(get()) }
+    // A downloaded book's files, for playing it from the phone (playback and the downloads share it).
+    single<LocalBookFiles> {
+        RoomLocalBookFiles(get(), fileLength = { path -> File(path).takeIf { it.isFile }?.length() }, nowMs = System::currentTimeMillis)
+    }
     single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
@@ -174,7 +181,7 @@ val browseModule = module {
 
 val playbackModule = module {
     // One controller for the app; the service itself finds its parts through Koin too.
-    single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier)) }
+    single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier), get()) }
     // Saves listening progress whichever screen is open; the application starts it.
     single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
     // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.

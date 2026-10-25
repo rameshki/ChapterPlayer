@@ -1,6 +1,8 @@
 package com.chapterplayer.data.playback
 
+import com.chapterplayer.data.downloads.LocalFile
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.testing.FakeLocalBookFiles
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
@@ -23,7 +25,9 @@ class PlaybackStarterTest {
     private val repo = FakeBookRepository(listOf(book))
     private val settings = FakeAppSettings()
     private val connectivity = FakeConnectivity()
-    private val starter = PlaybackStarter(controller, repo, settings, connectivity)
+    private val local = FakeLocalBookFiles()
+    private val starter = PlaybackStarter(controller, repo, settings, connectivity, local)
+    private val downloaded = listOf(LocalFile("11", "/d/a/11.m4b", 100_000L, "audio/mp4"))
 
     @Test
     fun `an explicit position is used as given, even when progress exists`() = runTest {
@@ -260,6 +264,7 @@ class PlaybackStarterTest {
     @Test
     fun `offline the server is not asked`() = runTest {
         connectivity.online.value = false
+        local.files["a"] = downloaded
         repo.progress.value = listOf(local(10_000L, at = 100L))
         repo.onFetchServerProgress = { Result.success(remote(60_000L, at = 200L)) }
 
@@ -332,5 +337,103 @@ class PlaybackStarterTest {
 
         assertFailsWith<CancellationException> { starter.start(book) }
         assertEquals(0, controller.plays)
+    }
+
+    // -- Where the audio comes from ------------------------------------------------------------
+
+    @Test
+    fun `a book that is not downloaded streams while online`() = runTest {
+        assertTrue(starter.start(book, 0L).isSuccess)
+        assertEquals(listOf<AudioOrigin>(AudioOrigin.Server), controller.origins)
+    }
+
+    @Test
+    fun `a downloaded book online plays its files and still opens a session for live sync`() = runTest {
+        local.files["a"] = downloaded
+
+        assertTrue(starter.start(book, 0L).isSuccess)
+
+        assertEquals(listOf<AudioOrigin>(AudioOrigin.Phone(downloaded, openSession = true)), controller.origins)
+        assertEquals(1, controller.plays)
+    }
+
+    @Test
+    fun `a downloaded book offline plays its files without a session`() = runTest {
+        connectivity.online.value = false
+        local.files["a"] = downloaded
+
+        assertTrue(starter.start(book, 0L).isSuccess)
+
+        assertEquals(listOf<AudioOrigin>(AudioOrigin.Phone(downloaded, openSession = false)), controller.origins)
+        assertEquals(1, controller.plays)
+    }
+
+    @Test
+    fun `offline a book that is not downloaded needs a connection and is not loaded`() = runTest {
+        connectivity.online.value = false
+
+        val result = starter.start(book, 0L)
+
+        assertEquals("Needs a connection to play", result.exceptionOrNull()?.message)
+        assertIs<PlaybackStartException>(result.exceptionOrNull())
+        assertTrue(controller.loads.isEmpty())
+        assertEquals(0, controller.plays)
+    }
+
+    @Test
+    fun `with downloaded only on, a book that is not downloaded does not stream`() = runTest {
+        settings.downloadedOnlyFlow.value = true
+
+        val result = starter.start(book, 0L)
+
+        assertEquals("This book is not downloaded", result.exceptionOrNull()?.message)
+        assertTrue(controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `the car may stream whatever the downloaded only setting says`() = runTest {
+        settings.downloadedOnlyFlow.value = true
+
+        assertTrue(starter.start(book, null, ignoreDownloadedOnly = true).isSuccess)
+
+        assertEquals(listOf<AudioOrigin>(AudioOrigin.Server), controller.origins)
+    }
+
+    @Test
+    fun `with downloaded only on, a downloaded book still plays`() = runTest {
+        settings.downloadedOnlyFlow.value = true
+        local.files["a"] = downloaded
+
+        assertTrue(starter.start(book, 0L).isSuccess)
+        assertEquals(listOf<AudioOrigin>(AudioOrigin.Phone(downloaded, openSession = true)), controller.origins)
+    }
+
+    @Test
+    fun `a failing look at the downloads counts as not downloaded`() = runTest {
+        local.failWith = IllegalStateException("disk")
+
+        assertTrue(starter.start(book, 0L).isSuccess)
+        assertEquals(listOf<AudioOrigin>(AudioOrigin.Server), controller.origins)
+    }
+
+    @Test
+    fun `a plex book cannot play and is not loaded`() = runTest {
+        val plex = book.copy(source = com.chapterplayer.data.model.ServerSource.PLEX)
+
+        val result = starter.start(plex, 0L)
+
+        assertEquals("This server cannot play books yet", result.exceptionOrNull()?.message)
+        assertTrue(controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `a loaded book plays on even offline and not downloaded`() = runTest {
+        connectivity.online.value = false
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState(bookId = "a")
+
+        assertTrue(starter.start(book, null).isSuccess)
+
+        assertTrue(controller.loads.isEmpty())
+        assertEquals(1, controller.plays)
     }
 }

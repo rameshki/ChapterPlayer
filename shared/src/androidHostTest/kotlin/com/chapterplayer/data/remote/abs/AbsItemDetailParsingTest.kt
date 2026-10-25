@@ -99,13 +99,13 @@ class AbsItemDetailParsingTest {
     }
 
     @Test
-    fun `audio files come through with ino, name, size, index and the exclude flag`() {
+    fun `audio files come through with ino, name, size, index, the exclude flag, length and type`() {
         val entries = parse("abs/item-detail-files.json").toAudioFileEntries()
         assertEquals(
             listOf(
-                AudioFileEntry("100000000000000012", "Fixture Multi - 02.mp3", 2_048_000, 2, excluded = false),
-                AudioFileEntry("100000000000000011", "Fixture Multi - 01.mp3", 1_024_000, 1, excluded = false),
-                AudioFileEntry("100000000000000013", "Fixture Multi - bonus.mp3", 512_000, 3, excluded = true),
+                AudioFileEntry("100000000000000012", "Fixture Multi - 02.mp3", 2_048_000, 2, excluded = false, durationMs = 128_000, mimeType = "audio/mpeg"),
+                AudioFileEntry("100000000000000011", "Fixture Multi - 01.mp3", 1_024_000, 1, excluded = false, durationMs = 64_000, mimeType = "audio/mpeg"),
+                AudioFileEntry("100000000000000013", "Fixture Multi - bonus.mp3", 512_000, 3, excluded = true, durationMs = 32_000, mimeType = "audio/mpeg"),
             ),
             entries
         )
@@ -116,8 +116,8 @@ class AbsItemDetailParsingTest {
         val planned = planFiles(parse("abs/item-detail-files.json").toAudioFileEntries())
         assertEquals(
             listOf(
-                PlannedFile("100000000000000011", "Fixture Multi - 01.mp3", 1_024_000, 0),
-                PlannedFile("100000000000000012", "Fixture Multi - 02.mp3", 2_048_000, 1),
+                PlannedFile("100000000000000011", "Fixture Multi - 01.mp3", 1_024_000, 0, durationMs = 64_000, mimeType = "audio/mpeg"),
+                PlannedFile("100000000000000012", "Fixture Multi - 02.mp3", 2_048_000, 1, durationMs = 128_000, mimeType = "audio/mpeg"),
             ),
             planned
         )

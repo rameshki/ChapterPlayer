@@ -20,10 +20,13 @@ data class TrackItemSpec(
 )
 
 /** The player's items for [session], one per audio file, in file order. */
-fun trackItemSpecs(book: AudioBook, session: PlaybackSession): List<TrackItemSpec> =
-    session.tracks.sortedBy { it.index }.map { track ->
+fun trackItemSpecs(book: AudioBook, session: PlaybackSession): List<TrackItemSpec> = trackItemSpecs(book, streamed(session))
+
+/** The player's items for [playable], one per audio file, in file order. */
+fun trackItemSpecs(book: AudioBook, playable: PlayableBook): List<TrackItemSpec> =
+    playable.tracks.sortedBy { it.index }.map { track ->
         TrackItemSpec(
-            mediaId = "${session.bookId}/${track.index}",
+            mediaId = "${playable.bookId}/${track.index}",
             url = track.url,
             mimeType = track.mimeType,
             title = book.title,
@@ -34,8 +37,11 @@ fun trackItemSpecs(book: AudioBook, session: PlaybackSession): List<TrackItemSpe
     }
 
 /** The files of [session] as timeline spans; the span's list position is the player's item index. */
-fun trackSpans(session: PlaybackSession): List<TrackSpan> =
-    session.tracks.sortedBy { it.index }.mapIndexed { position, track ->
+fun trackSpans(session: PlaybackSession): List<TrackSpan> = trackSpans(streamed(session))
+
+/** The files of [playable] as timeline spans; the span's list position is the player's item index. */
+fun trackSpans(playable: PlayableBook): List<TrackSpan> =
+    playable.tracks.sortedBy { it.index }.mapIndexed { position, track ->
         TrackSpan(position, track.startMs, track.durationMs)
     }
 

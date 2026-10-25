@@ -14,8 +14,27 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CurrentBookTest {
-    private val session = PlaybackSession("sess", "srv", "abs_a", 1_000, 0, emptyList(), emptyList())
+    private val session = streamed(PlaybackSession("sess", "srv", "abs_a", 1_000, 0, emptyList(), emptyList()))
     private val spans = listOf(TrackSpan(0, 0, 1_000))
+
+    @Test
+    fun `a downloaded book playing offline is loaded without a server session`() {
+        val b = CurrentBook()
+        val offline = session.copy(session = null)
+        b.begin(offline, spans)
+        assertTrue(b.isLoaded)
+        assertNull(b.session)
+        assertEquals(offline, b.book)
+        b.seen(300)
+        assertEquals(offline to 300L, b.end())
+    }
+
+    @Test
+    fun `the server session of the loaded book is exposed`() {
+        val b = CurrentBook()
+        b.begin(session, spans)
+        assertEquals(session.session, b.session)
+    }
 
     @Test
     fun `nothing is loaded until a book begins`() {

@@ -264,7 +264,8 @@ class BookDownloader(
                 DownloadFileEntity(
                     bookId = bookId, ino = p.ino, fileName = p.fileName,
                     path = targetsFor(dir, p.ino, p.fileName).final.path,
-                    totalBytes = p.totalBytes, doneBytes = 0L, sortOrder = p.sortOrder
+                    totalBytes = p.totalBytes, doneBytes = 0L, sortOrder = p.sortOrder,
+                    durationMs = p.durationMs, mimeType = p.mimeType
                 )
             }
             dao.upsertFiles(rows)

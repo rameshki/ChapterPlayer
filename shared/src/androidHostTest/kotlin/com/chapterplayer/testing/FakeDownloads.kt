@@ -4,6 +4,8 @@ import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.downloads.DownloadRow
 import com.chapterplayer.data.downloads.DownloadStorage
+import com.chapterplayer.data.downloads.LocalBookFiles
+import com.chapterplayer.data.downloads.LocalFile
 import com.chapterplayer.domain.downloads.DownloadVolume
 import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
 import com.chapterplayer.data.permissions.NotificationPermission
@@ -19,6 +21,17 @@ class FakeDownloadOverview(rows: List<DownloadRow> = emptyList()) : DownloadOver
     override fun observe(): Flow<List<DownloadRow>> = rows
     override fun observeBook(bookId: String): Flow<DownloadRow?> = rows.map { list -> list.firstOrNull { it.bookId == bookId } }
     override fun storageUsedBytes(): Flow<Long> = used
+}
+
+/** Downloaded files by book id; [failWith] makes every lookup throw. Saved lengths go to [saved]. */
+class FakeLocalBookFiles(val files: MutableMap<String, List<LocalFile>> = mutableMapOf()) : LocalBookFiles {
+    var failWith: Exception? = null
+    val saved = mutableListOf<Pair<String, Map<String, Long>>>()
+    override suspend fun complete(bookId: String): List<LocalFile>? {
+        failWith?.let { throw it }
+        return files[bookId]
+    }
+    override suspend fun saveDurations(bookId: String, durationsMs: Map<String, Long>) { saved += bookId to durationsMs }
 }
 
 /** Records every call as "enqueue a", "pause a" and so on. */
