@@ -160,7 +160,14 @@ val securityModule = module {
 
 val sourceModule = module {
     singleOf(::AbsLibrarySource) { bind<LibrarySource>() }
-    singleOf(::PlexLibrarySource) { bind<LibrarySource>() }
+    // A refused Plex token cannot be refreshed: it is blanked (if it is still the one that was refused), so Settings says "Sign in again".
+    single {
+        val servers = get<ServerRepository>()
+        PlexLibrarySource(get()) { refused ->
+            val current = servers.getById(refused.id)
+            if (current != null && current.token.isNotBlank() && current.token == refused.token) servers.save(current.copy(token = ""))
+        }
+    } bind LibrarySource::class
 }
 
 val repositoryModule = module {

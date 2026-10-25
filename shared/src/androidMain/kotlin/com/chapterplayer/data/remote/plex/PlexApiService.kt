@@ -20,7 +20,7 @@ import io.ktor.http.encodeURLPathPart
  */
 class PlexApiService(
     private val client: HttpClient,
-    private val clientIdentifier: PlexClientIdentifier? = null,
+    private val clientIdentifier: PlexClientIdentifier,
 ) {
 
     /**
@@ -134,7 +134,7 @@ class PlexApiService(
         header(HttpHeaders.Accept, "application/json")
         header("X-Plex-Product", PRODUCT)
         header("X-Plex-Platform", "Android")
-        clientIdentifier?.value?.takeIf { it.isNotBlank() }?.let { header("X-Plex-Client-Identifier", it) }
+        header("X-Plex-Client-Identifier", clientIdentifier.value)
     }
 
     private fun endpoint(baseUrl: String, path: String) = baseUrl.trimEnd('/') + "/" + path

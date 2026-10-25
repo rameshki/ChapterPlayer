@@ -133,7 +133,10 @@ class ProgressSyncer(
         } catch (e: Exception) {
             false
         }
-        if (sent) return
+        if (sent) {
+            dropReplacedPending(book.id, now)
+            return
+        }
         try {
             books.queueProgress(
                 PendingProgress(book.id, book.serverId, at.positionMs, at.durationMs, listenedMs, updatedAtMs = now)
@@ -143,6 +146,22 @@ class ProgressSyncer(
             throw e
         } catch (e: Exception) {
             // The local progress is saved separately; losing one queued report only delays the server.
+        }
+    }
+
+    /**
+     * The server just took a live position for [bookId]: an older queued position of the book is out of date and must
+     * never be delivered after it (it would rewind the book, and for Plex unscrobble tracks). A queued Mark as finished /
+     * not finished is a user action and stays.
+     */
+    private suspend fun dropReplacedPending(bookId: String, nowMs: Long) {
+        try {
+            val queued = books.pendingProgress().firstOrNull { it.bookId == bookId } ?: return
+            if (queued.markedFinished == null && queued.updatedAtMs <= nowMs) books.deletePending(bookId, queued.updatedAtMs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The flusher's own newest-wins check is still there.
         }
     }
 

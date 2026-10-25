@@ -4,6 +4,7 @@ import com.chapterplayer.data.playback.PlaybackTrack
 import com.chapterplayer.domain.playback.ServerProgress
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -25,7 +26,7 @@ class PlexPlaybackTest {
 
     @Test
     fun `one item per track on one timeline, addresses under the server and without a token`() {
-        val items = plexPlaybackTracks("http://plex.test:32400/", three)!!
+        val items = plexPlaybackTracks("http://plex.test:32400/", three)
 
         assertEquals(
             listOf(
@@ -40,7 +41,18 @@ class PlexPlaybackTest {
 
     @Test
     fun `a track without a file means the book cannot be played`() {
-        assertNull(plexPlaybackTracks("http://plex.test", listOf(track("1", 1_000), track("2", 1_000, part = null))))
+        val e = assertFailsWith<IllegalStateException> {
+            plexPlaybackTracks("http://plex.test", listOf(track("1", 1_000), track("2", 1_000, part = null)))
+        }
+        assertEquals(PLEX_AUDIO_MISSING_TEXT, e.message)
+    }
+
+    @Test
+    fun `a track of unknown length means the book cannot be played`() {
+        val e = assertFailsWith<IllegalStateException> {
+            plexPlaybackTracks("http://plex.test", listOf(track("1", 1_000), track("2", 0L)))
+        }
+        assertEquals(PLEX_LENGTH_UNKNOWN_TEXT, e.message)
     }
 
     @Test
@@ -82,6 +94,16 @@ class PlexPlaybackTest {
     }
 
     @Test
+    fun `every track viewed with one offset left on a scrobbled track is still finished`() {
+        // Mark as finished while playing: a timeline after the scrobbles leaves an offset on a played track.
+        val tracks = three.mapIndexed { i, t -> t.copy(viewCount = 1, lastViewedAtSec = 1_700_000_000L + i) }
+            .let { it.take(1).map { t -> t.copy(viewOffsetMs = 30_000) } + it.drop(1) }
+
+        assertEquals(true, plexServerProgress(tracks)!!.isFinished)
+        assertEquals(1_800_000L, plexServerProgress(tracks)!!.positionMs)
+    }
+
+    @Test
     fun `finished tracks without one in progress resume at the first track not yet heard`() {
         val tracks = listOf(three[0].copy(viewCount = 1, lastViewedAtSec = 1_700_000_000), three[1], three[2])
 
@@ -118,24 +140,31 @@ class PlexPlaybackTest {
     }
 
     @Test
-    fun `a track is done when playing passed into a later one or is within its last 5 seconds`() {
-        // Moved on from track 1 to track 2: track 1 is done.
-        assertEquals(listOf(0), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 610_000L)!!))
-        // A jump over track 2: both are done.
-        assertEquals(listOf(0, 1), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 1_510_000L)!!))
+    fun `a track is done when playing went through its end or is within its last 5 seconds`() {
+        // Ten seconds of listening carried playing from track 1 into track 2: track 1 is done.
+        assertEquals(listOf(0), plexCompletedTracks(three, previousPositionMs = 595_000L, positionMs = 605_000L, listenedMs = 10_000L))
         // Near the end of track 1.
-        assertEquals(listOf(0), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 596_000L)!!))
+        assertEquals(listOf(0), plexCompletedTracks(three, previousPositionMs = 586_000L, positionMs = 596_000L, listenedMs = 10_000L))
+        // At 3x, ten seconds cover thirty.
+        assertEquals(listOf(0), plexCompletedTracks(three, previousPositionMs = 580_000L, positionMs = 610_000L, listenedMs = 10_000L))
         // Still in the middle, or back in an earlier track: nothing.
-        assertEquals(emptyList(), plexCompletedTracks(three, previousIndex = 0, point = plexTimelinePoint(three, 300_000L)!!))
-        assertEquals(emptyList(), plexCompletedTracks(three, previousIndex = 2, point = plexTimelinePoint(three, 300_000L)!!))
-        // The first report of a session does not finish the tracks before it (they were heard before, or skipped).
-        assertEquals(emptyList(), plexCompletedTracks(three, previousIndex = null, point = plexTimelinePoint(three, 1_510_000L)!!))
+        assertEquals(emptyList(), plexCompletedTracks(three, previousPositionMs = 290_000L, positionMs = 300_000L, listenedMs = 10_000L))
+        assertEquals(emptyList(), plexCompletedTracks(three, previousPositionMs = 1_510_000L, positionMs = 300_000L, listenedMs = 10_000L))
+        // The first report of a session does not finish the tracks before it.
+        assertEquals(emptyList(), plexCompletedTracks(three, previousPositionMs = null, positionMs = 1_510_000L, listenedMs = 10_000L))
     }
 
     @Test
-    fun `a track of unknown length is never done by its position`() {
-        val tracks = listOf(track("1", 0L), track("2", 1_000L))
-        assertEquals(emptyList(), plexCompletedTracks(tracks, previousIndex = 0, point = PlexTimelinePoint(0, "1", 0L, 0L)))
+    fun `a seek forward over a track end finishes nothing it skipped`() {
+        // From the middle of track 1 into track 3 in ten seconds: a seek, track 1's rest and track 2 were not heard.
+        assertEquals(emptyList(), plexCompletedTracks(three, previousPositionMs = 300_000L, positionMs = 1_510_000L, listenedMs = 10_000L))
+        // A chapter jump to the start of track 2.
+        assertEquals(emptyList(), plexCompletedTracks(three, previousPositionMs = 100_000L, positionMs = 600_000L, listenedMs = 10_000L))
+    }
+
+    @Test
+    fun `without tracks nothing is done`() {
+        assertEquals(emptyList(), plexCompletedTracks(emptyList(), previousPositionMs = 0L, positionMs = 10L, listenedMs = 10L))
     }
 
     // -- A position sent without a session (the queue, marks) -----------------------------------

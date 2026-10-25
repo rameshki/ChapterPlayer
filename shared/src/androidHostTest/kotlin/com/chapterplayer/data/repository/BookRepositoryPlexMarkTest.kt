@@ -1,5 +1,6 @@
 package com.chapterplayer.data.repository
 
+import com.chapterplayer.testing.TestPlexClientId
 import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
@@ -111,7 +112,7 @@ class BookRepositoryPlexMarkTest {
 
     private fun fixture(local: List<ProgressEntity> = emptyList()): Fixture {
         val plex = MockPlex()
-        val api = PlexApiService(HttpClient(plex.engine) { installApiDefaults(isDebuggable = false) })
+        val api = PlexApiService(HttpClient(plex.engine) { installApiDefaults(isDebuggable = false) }, TestPlexClientId)
         val progressDao = InMemoryProgressDao(local)
         val pendingDao = InMemoryPendingProgressDao()
         val repo = BookRepositoryImpl(

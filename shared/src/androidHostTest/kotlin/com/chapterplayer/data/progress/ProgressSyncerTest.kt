@@ -168,6 +168,30 @@ class ProgressSyncerTest {
     }
 
     @Test
+    fun `a live sync the server took drops the older queued position of the book, but never a queued mark`() = runTest {
+        val r = rig()
+        r.repo.queueProgress(PendingProgress("a", "s1", 50_000, 100_000, 0, updatedAtMs = 0))
+        r.repo.queueProgress(PendingProgress("b", "s1", 9_000, 100_000, 0, updatedAtMs = 0, markedFinished = true))
+        r.play("a", pos = 7_000)
+        advanceTimeBy(10_500)
+        assertEquals(listOf("b"), r.repo.queued.map { it.bookId })
+
+        r.play("b", pos = 1_000)
+        advanceTimeBy(10_500)
+        assertEquals(listOf("b"), r.repo.queued.map { it.bookId })
+        assertEquals(true, r.repo.queued.single().markedFinished)
+    }
+
+    @Test
+    fun `a failed live sync keeps the queue`() = runTest {
+        val r = rig()
+        r.repo.onSyncPlayback = { Result.failure(IllegalStateException("down")) }
+        r.play("a", pos = 7_000)
+        advanceTimeBy(10_500)
+        assertEquals(7_000L, r.repo.queued.single().positionMs)
+    }
+
+    @Test
     fun `a Plex position the server did not get is queued`() = runTest {
         val r = rig()
         r.play("plex", pos = 7_000, session = false)

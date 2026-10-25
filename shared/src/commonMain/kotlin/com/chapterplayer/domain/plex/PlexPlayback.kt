@@ -1,12 +1,16 @@
 package com.chapterplayer.domain.plex
 
 import com.chapterplayer.data.playback.PlaybackTrack
+import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.TrackSpan
 import com.chapterplayer.domain.playback.locate
 
 /** Shown when a Plex book has a track without an audio file: it cannot be put on one timeline. */
 const val PLEX_AUDIO_MISSING_TEXT = "The server has no audio file for part of this book"
+
+/** Shown when the server does not know a track's length: the track cannot be placed on the book's timeline. */
+const val PLEX_LENGTH_UNKNOWN_TEXT = "The server does not know the length of part of this book"
 
 /** The media type for a Plex part's [container]; empty when unknown, so the player works it out from the file. */
 fun plexMimeType(container: String?): String = when (container?.trim()?.lowercase()) {
@@ -20,10 +24,14 @@ fun plexMimeType(container: String?): String = when (container?.trim()?.lowercas
 /**
  * The player's items for a Plex book: one per track, in play order, on one timeline (each starts where the tracks
  * before it end). The address is the part's path under the server's [baseUrl] and carries no token: the data source
- * adds the `X-Plex-Token` header to each request. Null when a track has no file (see [PLEX_AUDIO_MISSING_TEXT]).
+ * adds the `X-Plex-Token` header to each request.
+ *
+ * @throws IllegalStateException with [PLEX_AUDIO_MISSING_TEXT] when a track has no file, or [PLEX_LENGTH_UNKNOWN_TEXT]
+ * when a track's length is unknown (positions after it could not be placed). Both texts are safe to show.
  */
-fun plexPlaybackTracks(baseUrl: String, tracks: List<PlexTrack>): List<PlaybackTrack>? {
-    if (tracks.any { it.partKey == null }) return null
+fun plexPlaybackTracks(baseUrl: String, tracks: List<PlexTrack>): List<PlaybackTrack> {
+    check(tracks.none { it.partKey == null }) { PLEX_AUDIO_MISSING_TEXT }
+    check(tracks.none { it.durationMs <= 0L }) { PLEX_LENGTH_UNKNOWN_TEXT }
     var start = 0L
     return tracks.mapIndexed { index, track ->
         PlaybackTrack(
@@ -40,6 +48,8 @@ fun plexPlaybackTracks(baseUrl: String, tracks: List<PlexTrack>): List<PlaybackT
  * The book's progress as the Plex server holds it, from each track's listening state. Plex keeps progress per track:
  * a track played to the end is scrobbled (`viewCount` > 0, no offset) and a track in progress has a `viewOffset`.
  *
+ * - Every track finished and at most one offset left (a timeline that reached a finished track after its scrobble): the
+ *   book is finished.
  * - A track in progress (an offset; of several the one with the newest `lastViewedAt`, then the later one): its start on
  *   the book's timeline (the finished tracks before it, in order) plus its offset.
  * - No track in progress and every track finished: the book is finished.
@@ -57,7 +67,10 @@ fun plexServerProgress(tracks: List<PlexTrack>): ServerProgress? {
     val inProgress = tracks.indices
         .filter { (tracks[it].viewOffsetMs ?: 0L) > 0L }
         .maxWithOrNull(compareBy<Int> { tracks[it].lastViewedAtSec ?: 0L }.thenBy { it })
+    val offsets = tracks.count { (it.viewOffsetMs ?: 0L) > 0L }
     return when {
+        tracks.all { it.viewCount > 0 } && offsets <= 1 ->
+            ServerProgress(duration, duration, isFinished = true, updatedAtMs = updatedAtMs)
         inProgress != null -> {
             val track = tracks[inProgress]
             val offset = track.viewOffsetMs!!.let { if (track.durationMs > 0L) it.coerceAtMost(track.durationMs) else it }
@@ -91,15 +104,25 @@ private fun nearEnd(point: PlexTimelinePoint): Boolean =
     point.durationMs > 0L && point.durationMs - point.offsetMs <= PLEX_TRACK_DONE_WITHIN_MS
 
 /**
- * The tracks (indexes in play order) that a report at [point] finishes, after the session's last report was in track
- * [previousIndex] (null for its first report): every track from [previousIndex] up to the one before [point]'s when
- * listening moved on to a later track, and [point]'s own track when it is within [PLEX_TRACK_DONE_WITHIN_MS] of its end.
- * The first report of a session finishes nothing before it: the listener may have skipped those tracks.
+ * The tracks (indexes in play order) that a report at book position [positionMs] finishes, after the session's last
+ * report was at [previousPositionMs] (null for its first report) and [listenedMs] of wall-clock listening since.
+ *
+ * A track counts as played through when its end lies between the two positions and the move forward is no longer than
+ * playing could have covered ([listenedMs] at the fastest speed, plus [PLEX_TRACK_DONE_WITHIN_MS]); a longer jump is a
+ * seek, and the tracks it went over (or the rest of the one it left) were not heard. The track of [positionMs] also
+ * counts when listening is within [PLEX_TRACK_DONE_WITHIN_MS] of its end. The first report finishes nothing before it.
  */
-fun plexCompletedTracks(tracks: List<PlexTrack>, previousIndex: Int?, point: PlexTimelinePoint): List<Int> {
-    val passed = if (previousIndex != null && point.trackIndex > previousIndex) (previousIndex until point.trackIndex).toList() else emptyList()
+fun plexCompletedTracks(tracks: List<PlexTrack>, previousPositionMs: Long?, positionMs: Long, listenedMs: Long): List<Int> {
+    val point = plexTimelinePoint(tracks, positionMs) ?: return emptyList()
+    val ends = tracks.runningFold(0L) { at, track -> at + track.durationMs }.drop(1)
+    val playable = (listenedMs.coerceAtLeast(0L) * MAX_PLAYBACK_SPEED).toLong() + PLEX_TRACK_DONE_WITHIN_MS
+    val passed = if (previousPositionMs != null && positionMs > previousPositionMs && positionMs - previousPositionMs <= playable) {
+        tracks.indices.filter { ends[it] > previousPositionMs && ends[it] <= positionMs }
+    } else {
+        emptyList()
+    }
     val own = if (nearEnd(point)) listOf(point.trackIndex) else emptyList()
-    return (passed + own).filter { it in tracks.indices }
+    return (passed + own).distinct()
 }
 
 /**

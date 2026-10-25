@@ -9,6 +9,8 @@ import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT
+import com.chapterplayer.domain.plex.PLEX_LENGTH_UNKNOWN_TEXT
+import com.chapterplayer.data.auth.SignInRequiredException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -36,9 +38,16 @@ class PlexLibraryPlaybackTest {
 
     private val noChapters = """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"1102","type":"track","title":"Fixture title 13"}]}}"""
 
+    /** The recorded three-track book, with the length its third track lacks in the recording (600 + 900 + 300 s). */
+    private val playable = fixture("plex/album-tracks-multi.json")
+        .replace("\"ratingKey\": \"1104\",", "\"ratingKey\": \"1104\", \"duration\": 300000,")
+
+    /** The servers whose token a refused call blanked. */
+    private val signedOut = mutableListOf<String>()
+
     /** Answers the track list with [tracks], a track's detail without chapters, and every report with an empty 200. */
     private fun source(
-        tracks: String = fixture("plex/album-tracks-multi.json"),
+        tracks: String = playable,
         failReports: HttpStatusCode? = null,
     ) = PlexLibrarySource(
         PlexApiService(
@@ -58,7 +67,8 @@ class PlexLibraryPlaybackTest {
             object : PlexClientIdentifier {
                 override val value = "client-1"
             },
-        )
+        ),
+        markSignedOut = { signedOut += it.id },
     )
 
     private fun reports() = requests.filter { it.url.encodedPath.startsWith("/:/") }
@@ -82,7 +92,8 @@ class PlexLibraryPlaybackTest {
         assertEquals(listOf(0L, 600_000L, 1_500_000L), session.tracks.map { it.startMs })
         assertEquals(listOf("audio/mpeg", "audio/mpeg", "audio/mpeg"), session.tracks.map { it.mimeType })
         assertEquals(listOf("Fixture title 13", "Fixture title 14", "Fixture title 15"), session.chapters.map { it.title })
-        assertEquals(1_500_000L, session.durationMs)
+        assertEquals(1_800_000L, session.durationMs)
+        assertEquals(listOf(600_000L, 900_000L, 300_000L), session.tracks.map { it.durationMs })
         assertEquals(0L, session.startPositionMs)
         assertTrue(session.tracks.none { "tok" in it.url })
         assertTrue(requests.all { it.headers["X-Plex-Token"] == "tok" && it.url.parameters["X-Plex-Token"] == null })
@@ -96,10 +107,37 @@ class PlexLibraryPlaybackTest {
 
     @Test
     fun `a track without a file fails the start with a safe message`() = runTest {
-        val tracks = fixture("plex/album-tracks-multi.json").replace("\"Part\"", "\"NoPart\"")
+        // The second track's file is missing.
+        val second = playable.indexOf("\"Part\"", playable.indexOf("\"Part\"") + 1)
+        val tracks = playable.replaceRange(second, second + "\"Part\"".length, "\"NoPart\"")
 
         val e = assertFailsWith<IllegalStateException> { source(tracks).startPlayback(server, "plex_1101") }
         assertEquals(PLEX_AUDIO_MISSING_TEXT, e.message)
+    }
+
+    @Test
+    fun `a track of unknown length fails the start with a safe message`() = runTest {
+        // As recorded: the third track has no length.
+        val e = assertFailsWith<IllegalStateException> { source(fixture("plex/album-tracks-multi.json")).startPlayback(server, "plex_1101") }
+        assertEquals(PLEX_LENGTH_UNKNOWN_TEXT, e.message)
+    }
+
+    @Test
+    fun `a refused token blanks the sign-in and asks to sign in again`() = runTest {
+        val refused = PlexLibrarySource(
+            PlexApiService(
+                HttpClient(MockEngine { respond("", HttpStatusCode.Unauthorized) }) { installApiDefaults(isDebuggable = false) },
+                object : PlexClientIdentifier {
+                    override val value = "client-1"
+                },
+            ),
+            markSignedOut = { signedOut += it.id },
+        )
+
+        assertFailsWith<SignInRequiredException> { refused.startPlayback(server, "plex_1101") }
+        assertFailsWith<SignInRequiredException> { refused.fetchProgress(server, "plex_1101") }
+        assertFailsWith<SignInRequiredException> { refused.pushProgress(server, "plex_1101", 1L, 1L, isFinished = false) }
+        assertEquals(listOf("srv1", "srv1", "srv1"), signedOut)
     }
 
     // -- The server's position ----------------------------------------------------------------
@@ -152,23 +190,39 @@ class PlexLibraryPlaybackTest {
     }
 
     @Test
-    fun `a pause says stopped, and moving on to the next track scrobbles the one before once`() = runTest {
+    fun `a pause says paused, and playing on into the next track scrobbles the one before once`() = runTest {
         val source = source()
         val session = source.startPlayback(server, "plex_1101")
         requests.clear()
 
         source.syncPlayback(server, session.sessionId, 590_000L, 10_000L, session.durationMs, isPlaying = true)
-        source.syncPlayback(server, session.sessionId, 610_000L, 10_000L, session.durationMs, isPlaying = true)
-        source.syncPlayback(server, session.sessionId, 620_000L, 10_000L, session.durationMs, isPlaying = false)
-        // Back into track 1 and on again: it was scrobbled in this session already.
-        source.syncPlayback(server, session.sessionId, 100_000L, 10_000L, session.durationMs, isPlaying = true)
-        source.syncPlayback(server, session.sessionId, 700_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 600_500L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 602_000L, 1_500L, session.durationMs, isPlaying = false)
+        // Back into track 1 and played on again: it was scrobbled in this session already.
+        source.syncPlayback(server, session.sessionId, 595_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 605_000L, 10_000L, session.durationMs, isPlaying = true)
 
         assertEquals(
             listOf("timeline 1102", "timeline 1103", "scrobble 1102", "timeline 1103", "timeline 1102", "timeline 1103"),
             names(),
         )
-        assertEquals(listOf("playing", "playing", "stopped", "playing", "playing"), reports().filter { it.url.encodedPath == "/:/timeline" }.map { it.url.parameters["state"] })
+        assertEquals(
+            listOf("playing", "playing", "paused", "playing", "playing"),
+            reports().filter { it.url.encodedPath == "/:/timeline" }.map { it.url.parameters["state"] },
+        )
+    }
+
+    @Test
+    fun `a seek forward over tracks scrobbles none of them`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        source.syncPlayback(server, session.sessionId, 100_000L, 10_000L, session.durationMs, isPlaying = true)
+        // A chapter jump to the third track within the next ten seconds.
+        source.syncPlayback(server, session.sessionId, 1_510_000L, 10_000L, session.durationMs, isPlaying = true)
+
+        assertEquals(listOf("timeline 1102", "timeline 1104"), names())
     }
 
     @Test
@@ -177,16 +231,18 @@ class PlexLibraryPlaybackTest {
         val session = source.startPlayback(server, "plex_1101")
         requests.clear()
 
+        source.syncPlayback(server, session.sessionId, 586_000L, 10_000L, session.durationMs, isPlaying = true)
         source.syncPlayback(server, session.sessionId, 596_000L, 10_000L, session.durationMs, isPlaying = true)
-        source.syncPlayback(server, session.sessionId, 601_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 601_000L, 5_000L, session.durationMs, isPlaying = true)
 
-        assertEquals(listOf("timeline 1102", "scrobble 1102", "timeline 1103"), names())
+        assertEquals(listOf("timeline 1102", "timeline 1102", "scrobble 1102", "timeline 1103"), names())
     }
 
     @Test
     fun `closing sends a stopped timeline and ends the session`() = runTest {
         val source = source()
         val session = source.startPlayback(server, "plex_1101")
+        source.syncPlayback(server, session.sessionId, 690_000L, 10_000L, session.durationMs, isPlaying = false)
         requests.clear()
 
         source.closePlayback(server, session.sessionId, 700_000L, 0L)
@@ -200,10 +256,52 @@ class PlexLibraryPlaybackTest {
     }
 
     @Test
-    fun `a refused report fails the sync`() = runTest {
+    fun `a session that never reported closes without a word to the server`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        // The start was rolled back: the controller closes the new session at 0.
+        source.closePlayback(server, session.sessionId, 0L, 0L)
+
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `marked finished while loaded, the session reports nothing more until marked not finished`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        source.syncPlayback(server, session.sessionId, 700_000L, 10_000L, session.durationMs, isPlaying = true)
+        requests.clear()
+
+        source.pushProgress(server, "plex_1101", 700_000L, session.durationMs, isFinished = true)
+        val afterMark = reports().size
+        source.syncPlayback(server, session.sessionId, 710_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.closePlayback(server, "unknown", 1L, 1L)
+        assertEquals(afterMark, reports().size)
+        assertEquals(listOf("scrobble 1102", "scrobble 1103", "scrobble 1104"), names())
+
+        source.pushProgress(server, "plex_1101", 0L, session.durationMs, isFinished = false)
+        requests.clear()
+        source.syncPlayback(server, session.sessionId, 20_000L, 10_000L, session.durationMs, isPlaying = true)
+        assertEquals(listOf("timeline 1102"), names())
+    }
+
+    @Test
+    fun `a refused report asks to sign in again`() = runTest {
         val source = source(failReports = HttpStatusCode.Unauthorized)
         val session = source.startPlayback(server, "plex_1101")
 
+        assertFailsWith<SignInRequiredException> { source.syncPlayback(server, session.sessionId, 1_000L, 1L, 1L, isPlaying = true) }
+        assertEquals(listOf("srv1"), signedOut)
+    }
+
+    @Test
+    fun `another failed report is an error, not a sign-in`() = runTest {
+        val source = source(failReports = HttpStatusCode.InternalServerError)
+        val session = source.startPlayback(server, "plex_1101")
+
         assertFailsWith<HttpStatusException> { source.syncPlayback(server, session.sessionId, 1_000L, 1L, 1L, isPlaying = true) }
+        assertTrue(signedOut.isEmpty())
     }
 }

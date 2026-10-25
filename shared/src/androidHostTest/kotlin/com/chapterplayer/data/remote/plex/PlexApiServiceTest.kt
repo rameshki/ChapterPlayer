@@ -1,5 +1,6 @@
 package com.chapterplayer.data.remote.plex
 
+import com.chapterplayer.testing.TestPlexClientId
 import com.chapterplayer.data.remote.abs.fixture
 import com.chapterplayer.data.remote.installApiDefaults
 import io.ktor.client.HttpClient
@@ -27,7 +28,7 @@ class PlexApiServiceTest {
 
     @Test
     fun `lists library sections asking for json`() = runTest {
-        val sections = PlexApiService(client(fixture("plex/sections.json")))
+        val sections = PlexApiService(client(fixture("plex/sections.json")), TestPlexClientId)
             .getLibrarySections("https://plex.test:32400", token = "tok")
 
         val request = requests.single()
@@ -40,7 +41,7 @@ class PlexApiServiceTest {
 
     @Test
     fun `lists one page of a section's albums`() = runTest {
-        val items = PlexApiService(client(fixture("plex/library-albums.json")))
+        val items = PlexApiService(client(fixture("plex/library-albums.json")), TestPlexClientId)
             .getSectionAlbums("https://plex.test:32400/", token = "tok", sectionId = "4", start = 200, size = 200)
 
         val request = requests.single()
@@ -58,7 +59,7 @@ class PlexApiServiceTest {
 
     @Test
     fun `lists an album's tracks`() = runTest {
-        val tracks = PlexApiService(client(fixture("plex/album-tracks.json")))
+        val tracks = PlexApiService(client(fixture("plex/album-tracks.json")), TestPlexClientId)
             .getChildren("https://plex.test:32400", token = "tok", ratingKey = "1019")
 
         val request = requests.single()
@@ -69,7 +70,7 @@ class PlexApiServiceTest {
 
     @Test
     fun `reads one track with its chapters`() = runTest {
-        val track = PlexApiService(client(fixture("plex/track-with-chapters.json")))
+        val track = PlexApiService(client(fixture("plex/track-with-chapters.json")), TestPlexClientId)
             .getMetadata("https://plex.test:32400", token = "tok", ratingKey = "1024", includeChapters = true)
 
         val request = requests.single()
@@ -81,7 +82,7 @@ class PlexApiServiceTest {
 
     @Test
     fun `reads one item without chapters unless asked`() = runTest {
-        PlexApiService(client(fixture("plex/library-albums.json"))).getMetadata("https://plex.test:32400", token = "tok", ratingKey = "1013")
+        PlexApiService(client(fixture("plex/library-albums.json")), TestPlexClientId).getMetadata("https://plex.test:32400", token = "tok", ratingKey = "1013")
 
         assertEquals(null, requests.single().url.parameters["includeChapters"])
     }

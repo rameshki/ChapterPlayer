@@ -1,5 +1,6 @@
 package com.chapterplayer.data.source
 
+import com.chapterplayer.testing.TestPlexClientId
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
@@ -57,7 +58,7 @@ class PlexLibrarySourceTest {
                     }
                     respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
-            ) { installApiDefaults(isDebuggable = false) }
+            ) { installApiDefaults(isDebuggable = false) }, TestPlexClientId
         )
     )
 
@@ -239,7 +240,7 @@ class PlexLibrarySourceTest {
                         )
                     }
                 }
-            ) { installApiDefaults(isDebuggable = false) }
+            ) { installApiDefaults(isDebuggable = false) }, TestPlexClientId
         )
     )
 
@@ -271,7 +272,7 @@ class PlexLibrarySourceTest {
     @Test
     fun `a failing section list fails the sync when no section is configured`() = runTest {
         val source = PlexLibrarySource(
-            PlexApiService(HttpClient(MockEngine { respond("", HttpStatusCode.Unauthorized) }) { installApiDefaults(isDebuggable = false) })
+            PlexApiService(HttpClient(MockEngine { respond("", HttpStatusCode.Unauthorized) }) { installApiDefaults(isDebuggable = false) }, TestPlexClientId)
         )
 
         assertFailsWith<HttpStatusException> { source.fetchSnapshot(server) }
@@ -286,7 +287,7 @@ class PlexLibrarySourceTest {
                         if (request.url.encodedPath == "/library/sections") respond("", HttpStatusCode.InternalServerError)
                         else respond(fixture("plex/library-albums.json"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                     }
-                ) { installApiDefaults(isDebuggable = false) }
+                ) { installApiDefaults(isDebuggable = false) }, TestPlexClientId
             )
         )
 
@@ -326,7 +327,7 @@ class PlexLibrarySourceTest {
                     }
                     respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
-            ) { installApiDefaults(isDebuggable = false) }
+            ) { installApiDefaults(isDebuggable = false) }, TestPlexClientId
         )
     )
 
@@ -408,7 +409,7 @@ class PlexLibrarySourceTest {
                             respond(fixture("plex/album-tracks.json"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                         } else respond("", HttpStatusCode.NotFound)
                     }
-                ) { installApiDefaults(isDebuggable = false) }
+                ) { installApiDefaults(isDebuggable = false) }, TestPlexClientId
             )
         )
 
@@ -439,7 +440,7 @@ class PlexLibrarySourceTest {
                         )
                     }
                 }
-            ) { installApiDefaults(isDebuggable = false) }
+            ) { installApiDefaults(isDebuggable = false) }, TestPlexClientId
         )
     )
 

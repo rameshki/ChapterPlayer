@@ -136,9 +136,12 @@ class OpenAuthorizedTest {
 
     @Test
     fun `a plex token goes only to its own server`() {
-        val attempts = mutableListOf<String?>()
-        run(FakeServers(listOf(server("p", "http://plex.test:32400", ServerSource.PLEX, token = "plextok"))), setOf(null), attempts)
-        assertNull(attempts.single())
+        // Same host as the request but another port, and a host that only starts like the request's: neither gets it.
+        for (base in listOf("http://abs.test:32400", "http://abs.tes", "https://abs.test")) {
+            val attempts = mutableListOf<String?>()
+            run(FakeServers(listOf(server("p", base, ServerSource.PLEX, token = "plextok"))), setOf(null), attempts)
+            assertNull(attempts.single(), base)
+        }
     }
 
     @Test
