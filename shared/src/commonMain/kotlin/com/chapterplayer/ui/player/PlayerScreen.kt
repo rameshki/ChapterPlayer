@@ -45,6 +45,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,6 +80,7 @@ import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.ui.components.BookCoverPlaceholder
+import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -90,8 +93,23 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun PlayerScreen(
     onBack: () -> Unit,
-    viewModel: PlayerViewModel = koinViewModel<PlayerViewModel>()
+    onOpenBook: (String) -> Unit,
+    onOpenGroup: (LibraryView, String) -> Unit,
+    onOpenSettings: () -> Unit,
+    viewModel: PlayerViewModel = koinViewModel<PlayerViewModel>(),
+    menuViewModel: PlayerMenuViewModel = koinViewModel<PlayerMenuViewModel>()
 ) {
+    val menu by menuViewModel.state.collectAsStateWithLifecycle()
+    val menuActions = PlayerMenuActions(
+        onOpenDetails = onOpenBook,
+        onOpenGroup = onOpenGroup,
+        onOpenSettings = onOpenSettings,
+        onDownload = menuViewModel::onDownloadClicked,
+        onMark = menuViewModel::onMarkClicked,
+        onRemoveConfirmed = menuViewModel::onRemoveConfirmed,
+        onRemoveDismissed = menuViewModel::onRemoveDismissed,
+        onMessageShown = menuViewModel::onMessageShown,
+    )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
@@ -99,6 +117,8 @@ fun PlayerScreen(
         state = state,
         bookmarks = bookmarks,
         history = history,
+        menu = menu,
+        menuActions = menuActions,
         onBack = onBack,
         onPlayPause = viewModel::playPause,
         onSkipBack = viewModel::skipBack,
@@ -131,6 +151,8 @@ fun PlayerContent(
     state: PlayerUiState,
     bookmarks: List<Bookmark>,
     history: List<HistoryEntry>,
+    menu: PlayerMenuState,
+    menuActions: PlayerMenuActions,
     onBack: () -> Unit,
     onPlayPause: () -> Unit,
     onSkipBack: () -> Unit,
@@ -154,6 +176,14 @@ fun PlayerContent(
     if (state.nothingPlaying) {
         NothingPlaying(onBack, modifier)
         return
+    }
+
+    // A short result of a menu action ("Marked as finished") shows at the bottom and goes by itself.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(menu.message) {
+        val text = menu.message ?: return@LaunchedEffect
+        menuActions.onMessageShown()
+        snackbarHostState.showSnackbar(text)
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(BackgroundDeep)) {
@@ -219,7 +249,7 @@ fun PlayerContent(
             when {
                 landscape -> Row(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
                     Column(modifier = Modifier.weight(0.42f).fillMaxHeight()) {
-                        PlayerTopBar(state.title, onBack)
+                        PlayerTopBar(state.title, onBack, menu, menuActions)
                         BoxWithConstraints(
                             modifier = Modifier.weight(1f).fillMaxWidth().padding(bottom = 16.dp),
                             contentAlignment = Alignment.Center
@@ -240,7 +270,7 @@ fun PlayerContent(
                         .padding(horizontal = 16.dp).padding(bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    PlayerTopBar(state.title, onBack)
+                    PlayerTopBar(state.title, onBack, menu, menuActions)
                     Spacer(Modifier.height(8.dp))
                     Cover(state, Modifier.size(minOf(availWidth, 160.dp)))
                     Spacer(Modifier.height(16.dp))
@@ -250,7 +280,7 @@ fun PlayerContent(
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    PlayerTopBar(state.title, onBack)
+                    PlayerTopBar(state.title, onBack, menu, menuActions)
                     Spacer(Modifier.height(8.dp))
                     // The cover takes what the controls leave, so the whole player fits without scrolling.
                     BoxWithConstraints(
@@ -264,7 +294,10 @@ fun PlayerContent(
                 }
             }
         }
+        SnackbarHost(snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
+
+    PlayerMenuDialogs(menu, menuActions)
 
     when (sheet) {
         SHEET_SPEED -> SpeedSheet(state.speed, onSetSpeed) { sheet = SHEET_NONE }
@@ -325,7 +358,7 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun PlayerTopBar(title: String, onBack: () -> Unit) {
+private fun PlayerTopBar(title: String, onBack: () -> Unit, menu: PlayerMenuState, menuActions: PlayerMenuActions) {
     Row(modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
@@ -338,8 +371,7 @@ private fun PlayerTopBar(title: String, onBack: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
         )
-        // Keeps the title centred against the back arrow.
-        Spacer(Modifier.size(48.dp))
+        PlayerMenuButton(menu, menuActions)
     }
 }
 

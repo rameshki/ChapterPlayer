@@ -75,6 +75,7 @@ import com.chapterplayer.ui.library.GroupDetailViewModel
 import com.chapterplayer.ui.library.LibrariesViewModel
 import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.library.LibraryViewModel
+import com.chapterplayer.ui.player.PlayerMenuViewModel
 import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.search.SearchViewModel
@@ -242,6 +243,7 @@ val viewModelModule = module {
     // Built with parametersOf(bookId) by the book details screen.
     viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get()) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier)) }
     viewModelOf(::ServerSetupViewModel)
     viewModelOf(::OfflineStateViewModel)

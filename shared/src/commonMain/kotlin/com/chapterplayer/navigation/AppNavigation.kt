@@ -215,7 +215,13 @@ fun AppNavigation() {
                 }
 
                 composable(Screen.Player.route) {
-                    PlayerScreen(onBack = { navController.popBackStack() }, viewModel = playerViewModel)
+                    PlayerScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenBook = openBook,
+                        onOpenGroup = openGroup,
+                        onOpenSettings = { openSettings() },
+                        viewModel = playerViewModel
+                    )
                 }
 
                 composable(Screen.Settings.route) {
