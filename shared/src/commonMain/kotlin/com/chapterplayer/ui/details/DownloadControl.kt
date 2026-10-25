@@ -51,7 +51,7 @@ internal fun DownloadControl(download: DetailsDownload, actions: DownloadActions
         when (download.phase) {
             DetailsDownloadPhase.IDLE -> {
                 StartButton(download, actions.onDownload)
-                DisabledReason(download.disabledReason)
+                DisabledReason(download.disabledReason ?: download.note)
             }
             DetailsDownloadPhase.QUEUED, DetailsDownloadPhase.DOWNLOADING, DetailsDownloadPhase.PAUSED -> {
                 Progress(download)
