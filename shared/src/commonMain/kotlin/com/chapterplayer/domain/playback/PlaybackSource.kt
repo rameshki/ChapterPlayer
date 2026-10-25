@@ -1,0 +1,57 @@
+package com.chapterplayer.domain.playback
+
+import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.domain.downloads.DownloadStatus
+
+/** What this phone holds of a book. */
+enum class LocalCopy {
+    /** Not downloaded, or the download has not finished. */
+    NONE,
+
+    /** Downloaded, and every file is on disk at its full size. */
+    COMPLETE,
+
+    /** The download finished but a file is gone or has the wrong size: it plays like a book that is not downloaded. */
+    MISSING_FILES,
+}
+
+/** One downloaded file: the size the download wrote and what is on disk now (null when the file is gone). */
+data class StoredFile(val expectedBytes: Long, val bytesOnDisk: Long?)
+
+/** What the phone holds, from the download's [status] and its [files]. */
+fun localCopyOf(status: DownloadStatus?, files: List<StoredFile>): LocalCopy = when {
+    status != DownloadStatus.DONE -> LocalCopy.NONE
+    files.isNotEmpty() && files.all { it.bytesOnDisk != null && it.bytesOnDisk == it.expectedBytes } -> LocalCopy.COMPLETE
+    else -> LocalCopy.MISSING_FILES
+}
+
+/** A finished download whose files are not all there is marked failed, so the screens offer "Try again". */
+fun shouldMarkFailed(copy: LocalCopy): Boolean = copy == LocalCopy.MISSING_FILES
+
+/** Where a book's audio comes from when it starts. */
+sealed interface PlaybackSource {
+    /** From the server. */
+    data object Stream : PlaybackSource
+
+    /** From the downloaded files. Online, a server session is still opened so listening syncs live. */
+    data object Local : PlaybackSource
+
+    /** It cannot play now; [reason] is safe to show. */
+    data class Unavailable(val reason: String) : PlaybackSource
+}
+
+const val NEEDS_CONNECTION_TO_PLAY_TEXT = "Needs a connection to play"
+const val NOT_DOWNLOADED_TEXT = "This book is not downloaded"
+const val SERVER_CANNOT_PLAY_TEXT = "This server cannot play books yet"
+
+/**
+ * Where [source]'s book plays from: a complete download always plays from the phone; anything else streams,
+ * but only while [online] and not limited to downloaded books ([downloadedOnly]). Plex books cannot play yet.
+ */
+fun choosePlaybackSource(source: ServerSource, copy: LocalCopy, online: Boolean, downloadedOnly: Boolean): PlaybackSource = when {
+    source != ServerSource.ABS -> PlaybackSource.Unavailable(SERVER_CANNOT_PLAY_TEXT)
+    copy == LocalCopy.COMPLETE -> PlaybackSource.Local
+    !online -> PlaybackSource.Unavailable(NEEDS_CONNECTION_TO_PLAY_TEXT)
+    downloadedOnly -> PlaybackSource.Unavailable(NOT_DOWNLOADED_TEXT)
+    else -> PlaybackSource.Stream
+}

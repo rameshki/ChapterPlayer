@@ -273,4 +273,29 @@ class RoomSchemaTest {
             assertEquals(primaryKey(table, database5), primaryKey(table, database6), "$table primary key")
         }
     }
+
+    private val database7: JsonObject by lazy { load(7) }
+
+    @Test
+    fun `version 7 adds each downloaded file's length and type with defaults for old rows`() {
+        assertEquals(7, database7.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database6), tables(database7))
+        assertEquals(
+            columns("download_files", database6) + mapOf("durationMs" to "INTEGER", "mimeType" to "TEXT"),
+            columns("download_files", database7)
+        )
+        val defaults = entity("download_files", database7).getValue("fields").jsonArray.map { it.jsonObject }
+            .associate { it.getValue("columnName").jsonPrimitive.content to it["defaultValue"]?.jsonPrimitive?.content }
+        assertEquals("0", defaults["durationMs"])
+        assertEquals("''", defaults["mimeType"])
+        assertEquals(listOf("bookId", "ino"), primaryKey("download_files", database7))
+    }
+
+    @Test
+    fun `version 7 leaves the other tables as they were`() {
+        for (table in tables(database6) - "download_files") {
+            assertEquals(columns(table, database6), columns(table, database7), "$table columns")
+            assertEquals(primaryKey(table, database6), primaryKey(table, database7), "$table primary key")
+        }
+    }
 }

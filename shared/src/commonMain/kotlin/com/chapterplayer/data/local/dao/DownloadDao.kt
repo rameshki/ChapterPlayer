@@ -40,6 +40,10 @@ interface DownloadDao {
     @Query("UPDATE download_files SET doneBytes = :doneBytes WHERE bookId = :bookId AND ino = :ino")
     suspend fun updateFileProgress(bookId: String, ino: String, doneBytes: Long)
 
+    /** Fills in a file's length only while it has none. */
+    @Query("UPDATE download_files SET durationMs = :durationMs WHERE bookId = :bookId AND ino = :ino AND durationMs <= 0")
+    suspend fun fillFileDuration(bookId: String, ino: String, durationMs: Long)
+
     @Query("DELETE FROM downloads WHERE bookId = :bookId")
     suspend fun delete(bookId: String)
 
