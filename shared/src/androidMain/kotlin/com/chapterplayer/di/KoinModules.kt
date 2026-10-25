@@ -86,6 +86,7 @@ import com.chapterplayer.data.widgets.WidgetActions
 import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.data.widgets.WidgetHost
+import com.chapterplayer.data.widgets.WidgetResumer
 import com.chapterplayer.ui.widgets.GlanceWidgetHost
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -255,6 +256,8 @@ val widgetModule = module {
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
     single<WidgetHost> { GlanceWidgetHost(androidContext()) }
     single { WidgetRefresher(get(), get(), get(AppScopeQualifier)) }
+    // The Continue widget's Resume: the main activity hands it the book (the one load path, offline rules apply).
+    single { WidgetResumer(get(), get(), get(), get()) }
 }
 
 /** Everything the shared module declares. The app adds what only it knows. */
