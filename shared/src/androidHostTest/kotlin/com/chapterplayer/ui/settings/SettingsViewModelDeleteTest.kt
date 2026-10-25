@@ -4,6 +4,7 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeDownloadController
+import com.chapterplayer.testing.FakeDownloadOverview
 import com.chapterplayer.testing.FakeDownloadStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +42,7 @@ class SettingsViewModelDeleteTest {
     @Test
     fun `a failed delete does not crash and the view model stays usable`() {
         val repo = ThrowingDeleteRepository()
-        val viewModel = SettingsViewModel(repo, FakeAppSettings(), FakeDownloadController(), FakeDownloadStorage(), appScope)
+        val viewModel = SettingsViewModel(repo, FakeAppSettings(), FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
 
         viewModel.deleteServer("a")
         viewModel.deleteServer("a")

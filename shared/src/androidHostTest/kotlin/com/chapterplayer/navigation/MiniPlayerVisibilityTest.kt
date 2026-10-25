@@ -27,7 +27,9 @@ class MiniPlayerVisibilityTest {
     fun `hides on the player, settings and add server`() {
         listOf(
             Screen.Player.route, Screen.Settings.route, Screen.ServerSetup.route,
-            Screen.ServerSetup.createRoute(), Screen.ServerSetup.createRoute("srv-1")
+            Screen.ServerSetup.createRoute(), Screen.ServerSetup.createRoute("srv-1"),
+            Screen.SettingsServers.route, Screen.SettingsAppearance.route, Screen.SettingsDownloads.route,
+            Screen.SettingsCar.route, Screen.SettingsAbout.route
         ).forEach { assertFalse(miniPlayerVisible(it, true), it) }
     }
 

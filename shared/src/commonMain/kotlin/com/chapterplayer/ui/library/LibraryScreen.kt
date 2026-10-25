@@ -44,6 +44,8 @@ fun LibraryScreen(
     onBookClick: (bookId: String) -> Unit,
     onGroupClick: (view: LibraryView, key: String) -> Unit,
     onOpenSettings: () -> Unit,
+    /** The "Add a server" button of the empty state: the Servers page of Settings. */
+    onOpenServers: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -102,7 +104,7 @@ fun LibraryScreen(
                 onRefresh = viewModel::onRefreshRequested,
                 modifier = Modifier.fillMaxSize()
             ) {
-                LibraryBody(state, viewModel, onBookClick, onGroupClick, onOpenSettings, onOpenLibraries = { librariesOpen = true })
+                LibraryBody(state, viewModel, onBookClick, onGroupClick, onOpenServers, onOpenLibraries = { librariesOpen = true })
             }
         }
 
@@ -141,7 +143,7 @@ private fun LibraryBody(
     viewModel: LibraryViewModel,
     onBookClick: (String) -> Unit,
     onGroupClick: (LibraryView, String) -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenServers: () -> Unit,
     onOpenLibraries: () -> Unit
 ) {
     when {
@@ -149,7 +151,7 @@ private fun LibraryBody(
             CircularProgressIndicator(color = AmberGold)
         }
 
-        !state.hasServers -> NoServersState(onOpenSettings)
+        !state.hasServers -> NoServersState(onOpenServers)
         state.allServersNeedSignIn && !state.hasBooks -> SignInNeededState(state.signInRequiredNames)
         !state.hasBooks && state.allLibrariesHidden -> AllLibrariesHiddenState(onOpenLibraries)
         !state.hasBooks && state.isSyncing -> SyncingState()

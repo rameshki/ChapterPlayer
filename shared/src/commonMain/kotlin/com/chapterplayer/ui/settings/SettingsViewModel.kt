@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.auth.normalizeServerAddress
 import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.downloads.DownloadStorage
 import com.chapterplayer.domain.downloads.DownloadVolume
 import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
@@ -46,7 +47,9 @@ data class LocationOption(val id: String, val label: String, val detail: String)
 /** The download locations available now and the one new downloads go to. */
 data class DownloadLocationsUi(
     val options: List<LocationOption> = emptyList(),
-    val selectedId: String = INTERNAL_VOLUME_ID
+    val selectedId: String = INTERNAL_VOLUME_ID,
+    /** The saved choice, whether or not its volume has been read yet (null is internal storage). */
+    val chosenId: String? = null
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +111,8 @@ class SettingsViewModel(
     private val downloads: DownloadController,
     private val storage: DownloadStorage,
     /** Lives as long as the app: a setting change finishes even when Settings is closed at once. */
-    private val appScope: CoroutineScope
+    private val appScope: CoroutineScope,
+    overview: DownloadOverview
 ) : ViewModel() {
 
     val settingsUiState: StateFlow<SettingsUiState> =
@@ -224,6 +228,10 @@ class SettingsViewModel(
         }
     }
 
+    /** Bytes the downloads hold on the device now (Downloads and offline page). */
+    val downloadStorageUsed: StateFlow<Long> =
+        overview.storageUsedBytes().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+
     private val volumes = MutableStateFlow<List<DownloadVolume>>(emptyList())
 
     /** Where new downloads go; downloads already on the phone stay where they are. */
@@ -231,7 +239,8 @@ class SettingsViewModel(
         combine(volumes, appSettings.downloadLocationId) { available, chosen ->
             DownloadLocationsUi(
                 options = available.map { LocationOption(it.id, it.label, "${formatBytes(it.freeBytes)} free") },
-                selectedId = chooseVolume(chosen, available)?.id ?: INTERNAL_VOLUME_ID
+                selectedId = chooseVolume(chosen, available)?.id ?: INTERNAL_VOLUME_ID,
+                chosenId = chosen
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadLocationsUi())
 
