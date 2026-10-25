@@ -24,6 +24,7 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -113,15 +114,18 @@ class BookRepositoryMarkFinishedTest {
         val kicks: IntArray,
     )
 
-    private fun fixture(local: List<ProgressEntity> = emptyList()): Fixture {
+    private fun fixture(
+        local: List<ProgressEntity> = emptyList(),
+        progressDao: InMemoryProgressDao = InMemoryProgressDao(local),
+        progressView: (InMemoryProgressDao) -> com.chapterplayer.data.local.dao.ProgressDao = { it },
+    ): Fixture {
         val abs = MockAbs()
         val api = AbsApiService(HttpClient(abs.engine) { installApiDefaults(isDebuggable = false) })
-        val progressDao = InMemoryProgressDao(local)
         val pendingDao = InMemoryPendingProgressDao()
         val now = longArrayOf(1_000L)
         val kicks = intArrayOf(0)
         val repo = BookRepositoryImpl(
-            FakeBookDao(listOf(book())), progressDao, InMemoryLibraryDao(), InMemoryCollectionDao(),
+            FakeBookDao(listOf(book())), progressView(progressDao), InMemoryLibraryDao(), InMemoryCollectionDao(),
             FakeServerList(listOf(server)), listOf(AbsLibrarySource(api, PassThroughAuthorizer)),
             pendingDao = pendingDao, bookmarkDao = InMemoryBookmarkDao(), historyDao = InMemoryHistoryDao(),
             clock = { now[0] }, onQueued = { kicks[0]++ }
@@ -228,6 +232,63 @@ class BookRepositoryMarkFinishedTest {
         f.repo.markFinished("abs_li_1", true).getOrThrow()
 
         assertTrue(f.pendingDao.rows.value.isEmpty())
+    }
+
+    private fun live(pos: Long, at: Long) = com.chapterplayer.data.model.ReadingProgress("abs_li_1", pos, 9_000_000L, at, false)
+
+    @Test
+    fun `the player's save keeps a mark made while the book was loaded, and a later not finished mark clears it`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)))
+        f.now[0] = 1_000L
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+
+        f.repo.savePlaybackProgress(live(4_100_000L, 1_500L), loadedSinceMs = 900L)
+        assertEquals(true, f.progressDao.get("abs_li_1")!!.isFinished)
+        f.repo.savePlaybackProgress(live(4_200_000L, 1_600L), loadedSinceMs = 900L)
+        assertEquals(true, f.progressDao.get("abs_li_1")!!.isFinished)
+
+        f.now[0] = 2_000L
+        f.repo.markFinished("abs_li_1", false).getOrThrow()
+        f.repo.savePlaybackProgress(live(10_000L, 2_500L), loadedSinceMs = 900L)
+        val row = f.progressDao.get("abs_li_1")!!
+        assertEquals(false, row.isFinished)
+        assertEquals(10_000L, row.positionMs)
+        f.repo.savePlaybackProgress(live(20_000L, 2_600L), loadedSinceMs = 900L)
+        assertEquals(false, f.progressDao.get("abs_li_1")!!.isFinished)
+    }
+
+    @Test
+    fun `a finished row that came from the server is not pinned by the player's save`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 9_000_000L, 9_000_000L, 1_200L, true)))
+        f.repo.savePlaybackProgress(live(1_000L, 1_500L), loadedSinceMs = 900L)
+        assertEquals(false, f.progressDao.get("abs_li_1")!!.isFinished)
+    }
+
+    @Test
+    fun `a mark made between the save's read and its write is not lost`() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var reads = 0
+        val inner = InMemoryProgressDao(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)))
+        val slow = object : com.chapterplayer.data.local.dao.ProgressDao by inner {
+            override suspend fun get(bookId: String): ProgressEntity? {
+                val row = inner.get(bookId)
+                // the first read (the player's save) is held up after it has read
+                if (reads++ == 0) gate.await()
+                return row
+            }
+        }
+        val f = fixture(progressDao = inner, progressView = { slow })
+        f.now[0] = 1_000L
+
+        val save = launch { f.repo.savePlaybackProgress(live(4_100_000L, 1_000L), loadedSinceMs = 900L) }
+        testScheduler.runCurrent()
+        val mark = launch { f.repo.markFinished("abs_li_1", true).getOrThrow() }
+        testScheduler.runCurrent()
+        gate.complete(Unit)
+        save.join()
+        mark.join()
+
+        assertTrue(inner.get("abs_li_1")!!.isFinished)
     }
 
     @Test

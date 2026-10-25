@@ -222,6 +222,7 @@ class LibraryVisibilityTest {
         override fun observeAllProgress() = error("unused")
         override suspend fun saveProgress(progress: ReadingProgress) = error("unused")
         override suspend fun markFinished(bookId: String, finished: Boolean) = error("unused")
+        override suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long) = error("unused")
         override fun observeBookmarks(bookId: String) = error("unused")
         override suspend fun addBookmark(bookId: String, positionMs: Long, title: String?) = error("unused")
         override suspend fun renameBookmark(bookId: String, timeSec: Long, title: String) = error("unused")

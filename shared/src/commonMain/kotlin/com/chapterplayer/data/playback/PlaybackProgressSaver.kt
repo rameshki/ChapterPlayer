@@ -3,7 +3,6 @@ package com.chapterplayer.data.playback
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.isFinishedAt
-import com.chapterplayer.domain.playback.keepsFinishedMark
 import com.chapterplayer.domain.playback.shouldSaveNow
 import com.chapterplayer.domain.playback.shouldSaveProgress
 import kotlinx.coroutines.CancellationException
@@ -11,7 +10,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
@@ -34,15 +32,11 @@ class PlaybackProgressSaver(
     // The loaded book and since when, for the finished mark rule: a book the user marks as finished while it is loaded stays finished.
     private var trackedBook: String? = null
     private var trackedSince = 0L
-    private var lastOwnWrite: Long? = null
-    private var keepFinished = false
 
     private fun track(bookId: String?) {
         if (bookId == trackedBook) return
         trackedBook = bookId
         trackedSince = nowMs()
-        lastOwnWrite = null
-        keepFinished = false
     }
 
     fun start() {
@@ -84,13 +78,10 @@ class PlaybackProgressSaver(
         if (!shouldSaveProgress(bookId, at.positionMs, at.durationMs)) return
         try {
             track(bookId) // normally already tracked from the state; this covers a save that comes first
-            val existing = repository.observeProgress(bookId!!).first()
-            keepFinished = keepsFinishedMark(existing, trackedSince, lastOwnWrite, keepFinished)
-            val now = nowMs()
-            repository.saveProgress(
-                ReadingProgress(bookId, at.positionMs, at.durationMs, now, keepFinished || isFinishedAt(at.positionMs, at.durationMs))
+            // Read and write happen in the repository in one step, so a mark made meanwhile is not overwritten.
+            repository.savePlaybackProgress(
+                ReadingProgress(bookId!!, at.positionMs, at.durationMs, nowMs(), isFinishedAt(at.positionMs, at.durationMs)), trackedSince
             )
-            lastOwnWrite = now
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

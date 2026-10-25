@@ -28,10 +28,10 @@ fun progressAfterMark(current: ReadingProgress?, bookId: String, finished: Boole
 }
 
 /**
- * Whether the periodic save of the loaded book must keep a finished flag it did not set itself. The user can mark the
- * loaded book as finished while it plays; the next save would otherwise write `isFinished = false` over it (the position
- * is not near the end). The mark is recognised by being newer than [trackedSinceMs] (when this book became the loaded
- * one) and not written by the saver ([lastOwnWriteMs]); once seen it is kept ([alreadyKept]) until another book loads.
+ * Whether the periodic save of the loaded book must keep the finished flag. Only a mark the user made in this session counts:
+ * [userMarkAt] is the time of that mark (or of the last save that kept it), [loadedSinceMs] is when the book became the loaded
+ * one. The flag is kept only while the stored row is still finished with exactly that time, so "Mark as not finished" (or
+ * anything else that rewrote the row) clears it, and a finished row merged from the server never pins it. Evaluated on every save.
  */
-fun keepsFinishedMark(existing: ReadingProgress?, trackedSinceMs: Long, lastOwnWriteMs: Long?, alreadyKept: Boolean): Boolean =
-    alreadyKept || (existing != null && existing.isFinished && existing.lastPlayedAt >= trackedSinceMs && existing.lastPlayedAt != lastOwnWriteMs)
+fun keepsFinishedMark(existing: ReadingProgress?, userMarkAt: Long?, loadedSinceMs: Long): Boolean =
+    existing != null && existing.isFinished && userMarkAt != null && existing.lastPlayedAt == userMarkAt && userMarkAt >= loadedSinceMs

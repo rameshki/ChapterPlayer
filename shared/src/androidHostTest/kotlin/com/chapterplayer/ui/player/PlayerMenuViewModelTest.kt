@@ -209,6 +209,28 @@ class PlayerMenuViewModelTest {
     }
 
     @Test
+    fun `a pending remove confirmation is dropped when the book or the download changes`() = runTest {
+        val r = rig(book, sibling)
+        val state = collect(r)
+        load(r)
+        r.overview.rows.value = listOf(downloadRow("a", DownloadStatus.DONE, fraction = 1f), downloadRow("b", DownloadStatus.DONE, fraction = 1f))
+        r.vm.onDownloadClicked()
+        assertTrue(state().confirmingRemove)
+
+        // another book loads: the question was about the first one
+        load(r, "b")
+        load(r, "a")
+        assertFalse(state().confirmingRemove)
+
+        // the download disappears and comes back: no stale question
+        r.vm.onDownloadClicked()
+        assertTrue(state().confirmingRemove)
+        r.overview.rows.value = emptyList()
+        r.overview.rows.value = listOf(downloadRow("a", DownloadStatus.DONE, fraction = 1f))
+        assertFalse(state().confirmingRemove)
+    }
+
+    @Test
     fun `a failed download call shows an error message`() = runTest {
         val r = rig(book)
         val state = collect(r)

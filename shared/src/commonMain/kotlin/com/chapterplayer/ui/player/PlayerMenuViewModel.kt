@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
@@ -107,6 +108,13 @@ class PlayerMenuViewModel(
             message = text,
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerMenuState())
+
+    init {
+        // A pending "Remove download?" belongs to one book's finished download: any change of book or of the item's kind cancels it.
+        viewModelScope.launch {
+            state.map { it.bookId to it.download.kind }.distinctUntilChanged().drop(1).collect { confirmingRemove.value = false }
+        }
+    }
 
     private fun menuDownload(source: ServerSource, facts: Facts): MenuDownload {
         val control = detailsDownload(source, facts.download, facts.online, knownSizeBytes = null, confirmingRemove = false)

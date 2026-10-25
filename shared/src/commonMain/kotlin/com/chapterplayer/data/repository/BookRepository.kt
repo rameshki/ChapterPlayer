@@ -146,6 +146,13 @@ interface BookRepository {
     suspend fun saveProgress(progress: ReadingProgress)
 
     /**
+     * The player's own save of the loaded book ([loadedSinceMs]: when it became the loaded one). Reads the stored row and writes in
+     * one step that cannot interleave with [markFinished]; a finished mark the user made while the book was loaded is kept
+     * (see `keepsFinishedMark`), anything else is written as given.
+     */
+    suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long)
+
+    /**
      * Marks the book as finished (position kept) or not finished (starts over at 0). The local progress changes first, so
      * the UI follows at once and it works offline; then an Audiobookshelf server is told and its answer is adopted. A server
      * that cannot be reached gets the mark through the pending queue later ([MarkOutcome.QUEUED]); a book without server

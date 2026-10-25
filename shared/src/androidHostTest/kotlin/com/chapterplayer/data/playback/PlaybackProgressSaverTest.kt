@@ -20,7 +20,8 @@ class PlaybackProgressSaverTest {
     private class Rig(scope: CoroutineScope) {
         val controller = FakePlaybackController()
         val repo = FakeBookRepository(listOf(testBook("a")))
-        val saver = PlaybackProgressSaver(controller, repo, scope, nowMs = { 777L }).also { it.start() }
+        var now = 777L
+        val saver = PlaybackProgressSaver(controller, repo, scope, nowMs = { now }).also { it.start() }
     }
 
     private fun state(book: String? = "a", playing: Boolean, pos: Long, duration: Long = 100_000L) =
@@ -174,7 +175,7 @@ class PlaybackProgressSaverTest {
     fun `a finished mark made while the book plays is not undone by the next save`() = runTest {
         val r = rig()
         r.controller.playback.value = state(playing = true, pos = 30_000)
-        r.repo.progress.value = listOf(ReadingProgress("a", 30_000L, 100_000L, 800L, isFinished = true))
+        r.repo.markFinished("a", true)
         r.controller.playback.value = state(playing = false, pos = 31_000)
         val saved = r.repo.saved.single()
         assertTrue(saved.isFinished)
@@ -183,6 +184,34 @@ class PlaybackProgressSaverTest {
         r.controller.playback.value = state(playing = true, pos = 32_000)
         r.controller.playback.value = state(playing = false, pos = 33_000)
         assertTrue(r.repo.saved.all { it.isFinished })
+    }
+
+    @Test
+    fun `mark not finished on the loaded book stays unfinished through the next saves`() = runTest {
+        val r = rig()
+        r.controller.playback.value = state(playing = true, pos = 30_000)
+        r.repo.markFinished("a", true)
+        r.controller.playback.value = state(playing = false, pos = 31_000)
+        assertTrue(r.repo.saved.last().isFinished)
+
+        r.repo.markFinished("a", false)
+        assertEquals(0L, r.repo.progress.value.single().positionMs)
+        r.controller.playback.value = state(playing = true, pos = 32_000)
+        r.controller.playback.value = state(playing = false, pos = 33_000)
+        assertEquals(false, r.repo.saved.last().isFinished)
+        r.controller.playback.value = state(playing = true, pos = 34_000)
+        r.controller.playback.value = state(playing = false, pos = 35_000)
+        assertEquals(false, r.repo.saved.last().isFinished)
+    }
+
+    @Test
+    fun `a finished row from the server does not pin the flag`() = runTest {
+        val r = rig()
+        r.controller.playback.value = state(playing = true, pos = 30_000)
+        // merged from the server after the book was loaded: no user mark
+        r.repo.progress.value = listOf(ReadingProgress("a", 30_000L, 100_000L, 800L, isFinished = true))
+        r.controller.playback.value = state(playing = false, pos = 31_000)
+        assertEquals(false, r.repo.saved.single().isFinished)
     }
 
     @Test
@@ -195,13 +224,16 @@ class PlaybackProgressSaverTest {
     }
 
     @Test
-    fun `the finished mark is forgotten when another book loads`() = runTest {
+    fun `the finished mark is forgotten when the book is loaded again later`() = runTest {
         val r = rig()
         r.controller.playback.value = state(playing = true, pos = 30_000)
-        r.repo.progress.value = listOf(ReadingProgress("a", 30_000L, 100_000L, 800L, isFinished = true))
+        r.repo.markFinished("a", true)
         r.controller.playback.value = state(playing = false, pos = 31_000)
         r.controller.playback.value = state(book = "b", playing = true, pos = 1_000)
         r.controller.playback.value = state(book = "b", playing = false, pos = 2_000)
-        assertEquals(false, r.repo.saved.last { it.bookId == "b" }.isFinished)
+        r.now = 900L
+        r.controller.playback.value = state(book = "a", playing = true, pos = 1_000)
+        r.controller.playback.value = state(book = "a", playing = false, pos = 2_000)
+        assertEquals(false, r.repo.saved.last { it.bookId == "a" }.isFinished)
     }
 }

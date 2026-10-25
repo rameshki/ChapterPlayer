@@ -46,25 +46,20 @@ class MarkFinishedTest {
     // ---- the player's own save must not undo a mark ----
 
     @Test
-    fun `a finished mark made after the book was loaded is kept by the saver`() {
-        assertTrue(keepsFinishedMark(progress(10_000, at = 800, finished = true), trackedSinceMs = 700, lastOwnWriteMs = null, alreadyKept = false))
-        assertTrue(keepsFinishedMark(progress(10_000, at = 800, finished = true), 700, lastOwnWriteMs = 750, alreadyKept = false))
+    fun `a user mark made after the book was loaded is kept`() {
+        assertTrue(keepsFinishedMark(progress(10_000, at = 800, finished = true), userMarkAt = 800, loadedSinceMs = 700))
     }
 
     @Test
-    fun `once kept it stays kept`() {
-        assertTrue(keepsFinishedMark(progress(10_000, at = 900, finished = true), 700, lastOwnWriteMs = 900, alreadyKept = true))
-    }
-
-    @Test
-    fun `an old finished flag or the saver's own write is not kept`() {
-        // finished long ago, the user restarted the book: the saver may clear the flag
-        assertFalse(keepsFinishedMark(progress(10_000, at = 100, finished = true), 700, null, false))
-        // written by the saver itself (reached the end)
-        assertFalse(keepsFinishedMark(progress(99_000, at = 800, finished = true), 700, lastOwnWriteMs = 800, alreadyKept = false))
-        // not finished, or no row
-        assertFalse(keepsFinishedMark(progress(10_000, at = 800), 700, null, false))
-        assertFalse(keepsFinishedMark(null, 700, null, false))
+    fun `nothing else is kept`() {
+        // a finished row merged from the server: no user mark
+        assertFalse(keepsFinishedMark(progress(10_000, at = 800, finished = true), userMarkAt = null, loadedSinceMs = 700))
+        // the row was rewritten after the mark (not finished, or another time)
+        assertFalse(keepsFinishedMark(progress(0, at = 900), userMarkAt = 800, loadedSinceMs = 700))
+        assertFalse(keepsFinishedMark(progress(10_000, at = 900, finished = true), userMarkAt = 800, loadedSinceMs = 700))
+        // the mark was made before this load
+        assertFalse(keepsFinishedMark(progress(10_000, at = 600, finished = true), userMarkAt = 600, loadedSinceMs = 700))
+        assertFalse(keepsFinishedMark(null, userMarkAt = 800, loadedSinceMs = 700))
     }
 
     // ---- queue: a mark is not lost under later position rows ----
