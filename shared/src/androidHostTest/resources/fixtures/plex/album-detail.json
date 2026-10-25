@@ -1,0 +1,48 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "allowSync": true,
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "Metadata": [
+      {
+        "ratingKey": "1019",
+        "key": "/library/metadata/1019/children",
+        "parentRatingKey": "1003",
+        "guid": "local://fixture1014",
+        "parentGuid": "local://fixture1004",
+        "type": "album",
+        "title": "Fixture title 9",
+        "parentKey": "/library/metadata/1003",
+        "parentTitle": "Fixture parentTitle 1",
+        "summary": "Fixture summary line 1.\n\n  Fixture summary line 2, with spacing kept.  ",
+        "index": 1,
+        "year": 2025,
+        "thumb": "/library/metadata/1013/thumb/1700000000",
+        "originallyAvailableAt": "2026-01-01",
+        "addedAt": 1700000000,
+        "updatedAt": 1700000000,
+        "loudnessAnalysisVersion": "1015",
+        "Image": [
+          {
+            "alt": "Fixture alt 2",
+            "type": "coverPoster",
+            "url": "/library/metadata/1013/thumb/1700000000"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "Fixture topLeft 2",
+          "topRight": "Fixture topRight 2",
+          "bottomRight": "Fixture bottomRight 2",
+          "bottomLeft": "1016"
+        },
+        "Genre": [
+          {
+            "tag": "Fixture tag 3"
+          }
+        ]
+      }
+    ]
+  }
+}

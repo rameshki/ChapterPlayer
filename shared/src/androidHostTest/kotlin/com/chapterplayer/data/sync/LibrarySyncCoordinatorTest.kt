@@ -136,14 +136,14 @@ class LibrarySyncCoordinatorTest {
         val c = coordinator(books, FakeServerList(listOf(server("a"))))
         c.start()
 
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.refreshAll() }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.syncNowAll() }
 
         assertEquals(listOf("a"), books.synced)
 
         gate.complete(Unit)
         // the refresh that found it busy is not dropped: it runs once after the first sync
         assertEquals(listOf("a", "a"), books.synced)
-        c.refreshAll()
+        c.syncNowAll()
         assertEquals(listOf("a", "a", "a"), books.synced)
     }
 
@@ -153,7 +153,7 @@ class LibrarySyncCoordinatorTest {
         books.books.value = listOf(testBook("x"))
         val c = coordinator(books, FakeServerList(listOf(server("s1"), server("s2"))))
 
-        c.refreshAll()
+        c.syncNowAll()
 
         assertEquals(listOf("s1", "s2"), books.synced)
     }
@@ -178,7 +178,7 @@ class LibrarySyncCoordinatorTest {
         books.books.value = listOf(testBook("x").copy(serverId = "a")) // a is cached, so only b syncs in the second run
         val servers = FakeServerList(listOf(server("a")))
         val c = coordinator(books, servers)
-        c.refreshAll()
+        c.syncNowAll()
         assertEquals("Name a: boom a", c.state.value.syncError)
 
         servers.flow.value = listOf(server("a"), server("b"))
@@ -229,8 +229,8 @@ class LibrarySyncCoordinatorTest {
         c.start()
         assertEquals(listOf("a"), books.synced)
 
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.refreshAll() }
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.refreshAll() }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.syncNowAll() }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.syncNowAll() }
         assertEquals(listOf("a"), books.synced) // not in parallel
 
         books.gate = null
@@ -248,7 +248,7 @@ class LibrarySyncCoordinatorTest {
         assertEquals("Name a: boom", c.state.value.syncError)
 
         books.outcome = { Result.success(Unit) }
-        c.refreshAll()
+        c.syncNowAll()
 
         assertEquals(null, c.state.value.syncError)
     }
@@ -272,7 +272,7 @@ class LibrarySyncCoordinatorTest {
         val books = RecordingBooks(outcome = { throw IllegalStateException("kaboom") })
         val c = coordinator(books, FakeServerList(listOf(server("a"))))
 
-        c.refreshAll()
+        c.syncNowAll()
 
         assertEquals("Name a: kaboom", c.state.value.syncError)
     }
@@ -431,7 +431,7 @@ class LibrarySyncCoordinatorTest {
         val gate = CompletableDeferred<Unit>()
         val books = RecordingBooks(gate = gate)
         val c = coordinator(books, FakeServerList(listOf(server("a"))))
-        val refresh = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.refreshAll() }
+        val refresh = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.syncNowAll() }
         assertEquals(listOf("a"), books.synced)
         c.requestSync("a") // queued behind the running refresh
         books.gate = null
@@ -486,7 +486,7 @@ class LibrarySyncCoordinatorTest {
             }
         }
         val c = LibrarySyncCoordinator(books, slow, CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)))
-        val refresh = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.refreshAll() }
+        val refresh = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.syncNowAll() }
         c.requestSync("a") // queued behind the refresh
         books.gate = null
         gate.complete(Unit) // the run ends; the follow-up lookup is now blocked
@@ -561,7 +561,7 @@ class LibrarySyncCoordinatorTest {
 
         var finished = false
         val job = launch {
-            c.refreshAll()
+            c.syncNowAll()
             finished = true
         }
         job.join()
@@ -607,12 +607,12 @@ class LibrarySyncCoordinatorTest {
         books.onPullBookmarks = { error("pull broke") }
         val c = coordinator(books, FakeServerList(listOf(server("a"), server("b"))))
 
-        c.refreshAll()
+        c.syncNowAll()
 
         assertEquals(listOf("a", "b"), books.pulledBookmarks)
         assertEquals(null, c.state.value.syncError)
         books.onPullBookmarks = { Result.failure(IllegalStateException("down")) }
-        c.refreshAll()
+        c.syncNowAll()
         assertEquals(null, c.state.value.syncError)
     }
 
@@ -624,7 +624,7 @@ class LibrarySyncCoordinatorTest {
 
         var finished = false
         val job = launch {
-            c.refreshAll()
+            c.syncNowAll()
             finished = true
         }
         job.join()

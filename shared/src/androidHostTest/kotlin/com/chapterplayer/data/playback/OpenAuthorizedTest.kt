@@ -145,6 +145,23 @@ class OpenAuthorizedTest {
     }
 
     @Test
+    fun `a plex token goes to the other connections plex tv listed for that server`() {
+        val attempts = mutableListOf<String?>()
+        val switched = server("p", "http://192.0.2.11:32400", ServerSource.PLEX, token = "plextok")
+            .copy(alternateBaseUrls = listOf("http://abs.test"))
+        run(FakeServers(listOf(switched)), setOf("plextok"), attempts)
+        assertEquals(listOf<String?>("plextok"), attempts)
+    }
+
+    @Test
+    fun `listed addresses of an audiobookshelf server get nothing`() {
+        val attempts = mutableListOf<String?>()
+        val abs = server("a", "http://elsewhere.test").copy(alternateBaseUrls = listOf("http://abs.test"))
+        run(FakeServers(listOf(abs)), setOf(null), attempts)
+        assertNull(attempts.single())
+    }
+
+    @Test
     fun `the header goes only to the server the address belongs to, with that server's token`() {
         val attempts = mutableListOf<String?>()
         val two = FakeServers(

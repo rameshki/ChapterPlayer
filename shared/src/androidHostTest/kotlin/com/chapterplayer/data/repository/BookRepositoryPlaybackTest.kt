@@ -83,6 +83,41 @@ class BookRepositoryPlaybackTest {
 
     private fun server(id: String = "srv1") = ServerConfig(id, ServerSource.ABS, "S", "http://s.test", "tok-secret")
 
+    @Test
+    fun `a start that cannot reach the server retries once on the address the connection check switched to`() = runTest {
+        val plex = server().copy(source = ServerSource.PLEX, baseUrl = "https://a.plex.direct:32400")
+        val switched = plex.copy(baseUrl = "http://192.0.2.11:32400")
+        var calls = 0
+        val source = PlaySource(ServerSource.PLEX, { if (calls++ == 0) throw java.net.UnknownHostException("a.plex.direct") else session })
+        val failures = mutableListOf<Throwable>()
+        val repo = BookRepositoryImpl(
+            FakeBookDao(listOf(entity("abs_a"))), NoProgressDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
+            FakeServerList(listOf(plex)), listOf(source), pendingDao = InMemoryPendingProgressDao(), bookmarkDao = InMemoryBookmarkDao(),
+            historyDao = InMemoryHistoryDao(),
+            onConnectionFailure = { _, e -> failures += e; switched }
+        )
+
+        val result = repo.startPlayback("abs_a")
+
+        assertSame(session, result.getOrThrow())
+        assertEquals(listOf(plex.baseUrl, switched.baseUrl), source.started.map { it.first.baseUrl })
+        assertIs<java.net.UnknownHostException>(failures.single())
+    }
+
+    @Test
+    fun `with no other address the start fails as before`() = runTest {
+        val source = PlaySource(ServerSource.ABS, { throw IOException("down") })
+        val repo = BookRepositoryImpl(
+            FakeBookDao(listOf(entity("abs_a"))), NoProgressDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
+            FakeServerList(listOf(server())), listOf(source), pendingDao = InMemoryPendingProgressDao(), bookmarkDao = InMemoryBookmarkDao(),
+            historyDao = InMemoryHistoryDao(),
+            onConnectionFailure = { _, _ -> null }
+        )
+
+        assertIs<IOException>(repo.startPlayback("abs_a").exceptionOrNull())
+        assertEquals(1, source.started.size)
+    }
+
     private fun repo(source: LibrarySource, servers: List<ServerConfig> = listOf(server()), books: List<BookEntity> = listOf(entity("abs_a"))) =
         BookRepositoryImpl(
             FakeBookDao(books), NoProgressDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),

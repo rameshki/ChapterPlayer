@@ -40,6 +40,21 @@ class PlexImageAuthTest {
     }
 
     @Test
+    fun `a cover under another connection of the same server gets its token, nothing else does`() {
+        val switched = plex.copy(
+            baseUrl = "http://192.0.2.11:32400",
+            alternateBaseUrls = listOf("https://plex.test:32400", "https://relay.test:8443")
+        )
+
+        assertEquals("plex-tok", plexTokenFor("https://plex.test:32400/library/metadata/1/thumb/2", listOf(switched)))
+        assertEquals("plex-tok", plexTokenFor("http://192.0.2.11:32400/library/metadata/1/thumb/2", listOf(switched)))
+        assertNull(plexTokenFor("https://plex.test:3240/library", listOf(switched)))
+        assertNull(plexTokenFor("https://evil.test/library", listOf(switched)))
+        // An Audiobookshelf server never sends its token to a listed address.
+        assertNull(plexTokenFor("https://plex.test:32400/x", listOf(abs.copy(alternateBaseUrls = listOf("https://plex.test:32400")))))
+    }
+
+    @Test
     fun `an Audiobookshelf cover gets no Plex token`() {
         assertNull(plexTokenFor("https://abs.test/api/items/1/cover", listOf(abs, plex)))
     }

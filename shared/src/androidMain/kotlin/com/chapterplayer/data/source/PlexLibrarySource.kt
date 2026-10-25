@@ -13,6 +13,7 @@ import com.chapterplayer.data.remote.plex.dto.PlexMetadataDto
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.plex.PlexBookContent
+import com.chapterplayer.domain.plex.PLEX_NO_MUSIC_LIBRARY_TEXT
 import com.chapterplayer.domain.plex.PlexTrack
 import com.chapterplayer.domain.plex.plexPlaybackTracks
 import com.chapterplayer.domain.plex.plexCompletedTracks
@@ -131,6 +132,8 @@ class PlexLibrarySource(
     override suspend fun fetchSnapshot(server: ServerConfig): SourceSnapshot {
         // A configured section needs no list for its books; the list only names it, so its failure is not fatal then.
         val sections = if (server.libraryId.isNullOrBlank()) musicSections(server) else fetchOrNull { musicSections(server) }
+        // Audiobooks live in Plex music libraries: with none, say so rather than show an empty library.
+        if (server.libraryId.isNullOrBlank() && sections.isNullOrEmpty()) error(PLEX_NO_MUSIC_LIBRARY_TEXT)
         val ids = sectionIds(server, sections)
         val books = mutableListOf<AudioBook>()
         val failed = LinkedHashMap<String, String>()

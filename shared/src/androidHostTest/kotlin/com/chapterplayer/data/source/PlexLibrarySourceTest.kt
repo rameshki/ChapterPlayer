@@ -91,6 +91,15 @@ class PlexLibrarySourceTest {
     }
 
     @Test
+    fun `a server with no music library fails the sync with words, never an empty library`() = runTest {
+        val noMusic = """{"MediaContainer":{"size":1,"Directory":[{"key":"1","type":"movie","title":"Films"}]}}"""
+
+        val error = kotlin.test.assertFailsWith<IllegalStateException> { source(sections = noMusic).fetchSnapshot(server) }
+
+        assertEquals(com.chapterplayer.domain.plex.PLEX_NO_MUSIC_LIBRARY_TEXT, error.message)
+    }
+
+    @Test
     fun `reads no section when every music section is turned off`() = runTest {
         source().fetchBooks(server.copy(excludedLibraryIds = setOf("4")))
 
@@ -333,6 +342,16 @@ class PlexLibrarySourceTest {
 
     private val albumDetail = """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"1019","type":"album","title":"T",
         "summary":"About the book","year":2024,"Genre":[{"tag":"Fantasy"},{"tag":""}]}]}}"""
+
+    @Test
+    fun `the recorded album's summary is the book's description, exactly as Plex sends it`() = runTest {
+        val details = detailsSource(fixture("plex/album-detail.json"), fixture("plex/album-tracks.json"), mapOf("1024" to fixture("plex/track-with-chapters.json")))
+            .fetchBookDetails(server, "plex_1019")
+
+        assertEquals("Fixture summary line 1.\n\n  Fixture summary line 2, with spacing kept.  ", details.description)
+        assertEquals(listOf("Fixture tag 3"), details.genres)
+        assertEquals("2025", details.publishedYear)
+    }
 
     @Test
     fun `details of a one-file book read the album, its track and the track's chapters`() = runTest {

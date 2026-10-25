@@ -17,11 +17,24 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
+import com.chapterplayer.data.remote.plex.PLEX_PRODUCT
+import com.chapterplayer.data.remote.plex.PLEX_VERSION
+import com.chapterplayer.data.remote.plex.dto.connectionCandidates
+import com.chapterplayer.data.sync.PlexConnectionManager
+import com.chapterplayer.data.sync.PlexConnectionProbe
+import com.chapterplayer.domain.plex.ConnectionPick
+import com.chapterplayer.domain.plex.PlexCandidate
+import com.chapterplayer.domain.plex.PlexConnectionKind
+import com.chapterplayer.domain.plex.ProbeFailure
+import com.chapterplayer.domain.plex.connectionNote
+import com.chapterplayer.domain.plex.pickConnection
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.ThemeMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +44,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,7 +74,11 @@ data class DownloadLocationsUi(
 data class PlexServerOption(
     val name: String,
     val url: String,
-    val accessToken: String
+    val accessToken: String,
+    /** Every way to reach the server, in the order to try them; [url] is the first. */
+    val candidates: List<PlexCandidate> = emptyList(),
+    /** The server's `machineIdentifier` from plex.tv: a probe's answer must name it. */
+    val machineId: String? = null
 ) {
     /** Left out so the access token can never reach a log. */
     override fun toString() = "PlexServerOption(name=$name)"
@@ -93,6 +111,15 @@ data class ServerSetupUiState(
     val plexClientId: String = "",
     val availablePlexServers: List<PlexServerOption> = emptyList(),
     val plexOAuthError: String? = null,
+    /** The picked server's connections are being tried; [baseUrl] is set when that ends. */
+    val plexCheckingConnection: Boolean = false,
+    val plexCandidates: List<PlexCandidate> = emptyList(),
+    val plexMachineId: String? = null,
+    /** The connection that answered (null when none did, and [baseUrl] is the first one). */
+    val plexChosen: PlexCandidate? = null,
+    val plexProbeFailures: List<ProbeFailure> = emptyList(),
+    /** What to say about the connection, e.g. that the network blocks plex.direct names. */
+    val plexConnectionNote: String? = null,
 
     // ABS add flow (sign in, then choose libraries)
     val abs: AbsSetupState = AbsSetupState()
@@ -274,8 +301,6 @@ class SettingsViewModel(
 // Server Setup ViewModel (add / edit, including Plex OAuth)
 // ─────────────────────────────────────────────────────────────────────────────
 
-private const val PLEX_PRODUCT = "ChapterPlayer"
-private const val PLEX_VERSION = "0.1.0"
 private const val POLL_INTERVAL_MS = 2_000L
 private const val POLL_MAX_ATTEMPTS = 150   // ~5 minutes
 
@@ -283,7 +308,13 @@ class ServerSetupViewModel(
     private val serverRepository: ServerRepository,
     private val plexTvApiService: PlexTvApiService,
     private val plexClientIdentifier: PlexClientIdentifier,
-    absSignIn: AbsSignInPort
+    absSignIn: AbsSignInPort,
+    /** Keeps the connections of a Plex server once it is saved; null keeps nothing. */
+    private val plexConnections: PlexConnectionManager? = null,
+    /** Tries the picked Plex server's connections; null takes the first one untried. */
+    private val plexProbe: PlexConnectionProbe? = null,
+    /** Where plex.tv's server list is read and the connections are tried (off the main thread). */
+    private val work: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ServerSetupUiState(plexClientId = plexClientIdentifier.value))
@@ -428,25 +459,27 @@ class ServerSetupViewModel(
      */
     private suspend fun fetchPlexServers(token: String, clientId: String) {
         try {
-            val resources = plexTvApiService.getResources(
-                token = token,
-                product = PLEX_PRODUCT,
-                version = PLEX_VERSION,
-                clientId = clientId
-            )
+            val resources = withContext(work) {
+                plexTvApiService.getResources(
+                    token = token,
+                    product = PLEX_PRODUCT,
+                    version = PLEX_VERSION,
+                    clientId = clientId
+                )
+            }
             val servers = resources
                 .filter { it.provides.contains("server") }
                 .mapNotNull { resource ->
-                    // Prefer a local connection; fall back to relay/remote
-                    val bestUrl = resource.connections
-                        .firstOrNull { it.local }?.uri
-                        ?: resource.connections.firstOrNull()?.uri
-                        ?: return@mapNotNull null
+                    // Local first, then remote, then relay (see rankPlexConnections); tried when the server is picked.
+                    val candidates = resource.connectionCandidates()
+                    val first = candidates.firstOrNull() ?: return@mapNotNull null
                     PlexServerOption(
                         name = resource.name,
-                        url = bestUrl,
+                        url = first.uri,
                         // Shared servers reject the account token; use the server's own token
-                        accessToken = resource.accessToken ?: token
+                        accessToken = resource.accessToken ?: token,
+                        candidates = candidates,
+                        machineId = resource.clientIdentifier
                     )
                 }
 
@@ -476,19 +509,48 @@ class ServerSetupViewModel(
      * (if the user hasn't typed one yet) and the server URL.
      */
     fun onPlexServerSelected(server: PlexServerOption) {
+        val candidates = server.candidates.ifEmpty { listOf(PlexCandidate(server.url, PlexConnectionKind.SAVED)) }
         _uiState.value = _uiState.value.copy(
             name = if (_uiState.value.name.isBlank()) server.name else _uiState.value.name,
-            baseUrl = server.url,
+            baseUrl = "",
             token = server.accessToken,
             plexOAuthStep = PlexOAuthStep.IDLE,
-            availablePlexServers = emptyList()
+            availablePlexServers = emptyList(),
+            plexCheckingConnection = true,
+            plexCandidates = candidates,
+            plexMachineId = server.machineId,
+            plexChosen = null,
+            plexProbeFailures = emptyList(),
+            plexConnectionNote = null
         )
+        connectionJob?.cancel()
+        connectionJob = viewModelScope.launch {
+            val probe = plexProbe
+            val pick = if (probe == null) {
+                ConnectionPick(candidates.first(), emptyList())
+            } else {
+                // The probe sends no token; the answer must name this server.
+                withContext(work) { pickConnection(candidates) { uri -> probe.probe(uri, server.machineId) } }
+            }
+            _uiState.value = _uiState.value.copy(
+                // With no answer the first connection is kept: the server may just be off; the app tries again later.
+                baseUrl = (pick.winner ?: candidates.first()).uri,
+                plexCheckingConnection = false,
+                plexChosen = pick.winner,
+                plexProbeFailures = pick.failures,
+                plexConnectionNote = connectionNote(pick)
+            )
+        }
     }
+
+    private var connectionJob: Job? = null
 
     /** Cancel an in-flight OAuth flow (e.g. user navigated back or switched to ABS). */
     fun cancelPlexOAuth() {
         pollingJob?.cancel()
+        connectionJob?.cancel()
         _uiState.value = _uiState.value.copy(
+            plexCheckingConnection = false,
             plexOAuthStep = PlexOAuthStep.IDLE,
             plexPinCode = null,
             plexPinId = null,
@@ -503,6 +565,10 @@ class ServerSetupViewModel(
 
         if (state.name.isBlank()) {
             _uiState.value = state.copy(saveError = "Display name is required.")
+            return
+        }
+        if (state.plexCheckingConnection) {
+            _uiState.value = state.copy(saveError = "Still checking how to reach the server. Try again in a moment.")
             return
         }
         if (existingId == null && (state.baseUrl.isBlank() || state.token.isBlank())) {
@@ -566,6 +632,7 @@ class ServerSetupViewModel(
                     }
                 }
                 serverRepository.save(config)
+                rememberPlexConnections(config, stored, state)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 fail(SAVE_FAILED_MESSAGE)
@@ -575,8 +642,29 @@ class ServerSetupViewModel(
         }
     }
 
+    /**
+     * A Plex server saved from a fresh sign-in keeps the connections it was chosen from. One whose address or token was
+     * changed by hand (or whose address is not among the listed connections) forgets the old list, so nothing verified
+     * for the old address applies to the new one; the next sync asks plex.tv again. Best effort.
+     */
+    private suspend fun rememberPlexConnections(config: ServerConfig, stored: ServerConfig?, state: ServerSetupUiState) {
+        if (config.source != ServerSource.PLEX) return
+        val manager = plexConnections ?: return
+        try {
+            if (state.plexCandidates.any { it.uri == config.baseUrl }) {
+                manager.remember(config.id, state.plexMachineId, state.plexCandidates, state.plexChosen, state.plexProbeFailures)
+            } else if (stored == null || stored.baseUrl.trimEnd('/') != config.baseUrl.trimEnd('/') || stored.token != config.token) {
+                manager.forget(config.id)
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            // The first sync asks plex.tv for the connections again.
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         pollingJob?.cancel()
+        connectionJob?.cancel()
     }
 }
