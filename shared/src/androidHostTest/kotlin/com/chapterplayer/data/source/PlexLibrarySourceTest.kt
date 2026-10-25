@@ -16,13 +16,11 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * What the Plex source turns server responses into, using the recorded fixtures. Some of
- * this pins today's behaviour even where it is a known limitation (see the roadmap).
- */
+/** What the Plex source turns server responses into, using the recorded fixtures. */
 class PlexLibrarySourceTest {
 
     private val requests = mutableListOf<HttpRequestData>()
@@ -31,12 +29,22 @@ class PlexLibrarySourceTest {
         id = "srv1", source = ServerSource.PLEX, name = "Test", baseUrl = "http://plex.test", token = "tok", libraryId = null
     )
 
-    private fun source(items: String = fixture("plex/library-all-artists.json"), sections: String = fixture("plex/sections.json")) = PlexLibrarySource(
+    /** Answers by path: the section list, a section listing, or an item's children. */
+    private fun source(
+        items: String = fixture("plex/library-albums.json"),
+        sections: String = fixture("plex/sections.json"),
+        children: (String) -> String = { """{"MediaContainer":{"size":0}}""" },
+    ) = PlexLibrarySource(
         PlexApiService(
             HttpClient(
                 MockEngine { request ->
                     requests += request
-                    val body = if (request.url.encodedPath == "/library/sections") sections else items
+                    val path = request.url.encodedPath
+                    val body = when {
+                        path == "/library/sections" -> sections
+                        path.endsWith("/children") -> children(path.removePrefix("/library/metadata/").removeSuffix("/children"))
+                        else -> items
+                    }
                     respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
             ) { installApiDefaults(isDebuggable = false) }
@@ -94,57 +102,92 @@ class PlexLibrarySourceTest {
     }
 
     @Test
-    fun `sends the token and asks for json and chapters`() = runTest {
+    fun `asks the section for its albums with the token in a header`() = runTest {
         source().fetchBooks(server.copy(libraryId = "7"))
 
         val request = requests.single()
         assertEquals("tok", request.headers["X-Plex-Token"])
         assertEquals("application/json", request.headers[HttpHeaders.Accept])
-        assertEquals("1", request.url.parameters["includeChapters"])
+        assertEquals("9", request.url.parameters["type"])
+        assertNull(request.url.parameters["X-Plex-Token"])
     }
 
     @Test
-    fun `maps an artist entry the way the app does today`() = runTest {
-        // The section call returns artists: no author, duration or media, so the book has none either.
+    fun `maps each album to a book`() = runTest {
         val books = source().fetchBooks(server.copy(libraryId = "4"))
 
-        assertEquals(5, books.size)
+        assertEquals(listOf("plex_1013", "plex_1017", "plex_1019", "plex_1022"), books.map { it.id })
         val book = books.first()
-        assertEquals("plex_1003", book.id)
-        assertEquals("Fixture title 4", book.title)
-        assertEquals("Unknown Author", book.author)
+        assertEquals("Fixture title 9", book.title)
+        assertEquals("Fixture parentTitle 1", book.author)
         assertEquals("", book.narrator)
-        assertEquals(0L, book.durationMs)
-        assertEquals("http://plex.test?X-Plex-Token=tok", book.streamUrl) // no media part, so no stream path
-        assertNull(book.coverUrl)
+        assertEquals(0L, book.durationMs) // a section listing carries no album length; details fill it in
+        assertEquals(emptyList(), book.chapters)
+        assertEquals("http://plex.test/library/metadata/1013/thumb/1700000000", book.coverUrl)
+        assertEquals("http://plex.test/library/metadata/1013/children", book.streamUrl)
         assertEquals(ServerSource.PLEX, book.source)
         assertEquals("srv1", book.serverId)
+        assertEquals("4", book.libraryId)
+        assertEquals(1_700_000_000_000L, book.addedAt)
+        assertNull(book.seriesName)
     }
 
     @Test
-    fun `builds the cover address from the thumbnail path and the token`() = runTest {
-        val covers = source().fetchBooks(server.copy(libraryId = "4")).map { it.coverUrl }
-
-        assertEquals(listOf(false, false, true, false, false), covers.map { it != null })
-        val cover = covers.filterNotNull().single()
-        assertTrue(cover.startsWith("http://plex.test/library/metadata/") && cover.endsWith("?X-Plex-Token=tok"))
-    }
-
-    @Test
-    fun `converts the added date from seconds to milliseconds and records the section`() = runTest {
+    fun `no stored address carries the token`() = runTest {
         val books = source().fetchBooks(server.copy(libraryId = "4"))
 
-        assertTrue(books.all { it.addedAt == 1_700_000_000_000L })
-        assertTrue(books.all { it.libraryId == "4" })
-        assertNull(books.first().seriesName)
-        assertNull(books.first().seriesSequence)
+        assertTrue(books.isNotEmpty())
+        assertFalse(books.any { "tok" in it.streamUrl || "tok" in it.coverUrl.orEmpty() || "Token" in it.coverUrl.orEmpty() })
     }
 
     @Test
-    fun `a missing added date is zero`() = runTest {
+    fun `an album length is used when the server sends one`() = runTest {
+        val page = """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"9","type":"album","title":"T","parentTitle":"A","duration":3600000}]}}"""
+
+        assertEquals(3_600_000L, source(page).fetchBooks(server.copy(libraryId = "4")).single().durationMs)
+    }
+
+    @Test
+    fun `a missing added date, author or cover reads as unknown`() = runTest {
         val page = """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"9","title":"T"}]}}"""
 
-        assertEquals(0L, source(page).fetchBooks(server.copy(libraryId = "4")).single().addedAt)
+        val book = source(page).fetchBooks(server.copy(libraryId = "4")).single()
+        assertEquals(0L, book.addedAt)
+        assertEquals("Unknown Author", book.author)
+        assertNull(book.coverUrl)
+    }
+
+    @Test
+    fun `a section that lists artists is opened for their albums`() = runTest {
+        // A server that ignores the album filter answers with the artists at the top level.
+        val albumsOf = mapOf(
+            "1003" to """{"MediaContainer":{"size":2,"Metadata":[
+                {"ratingKey":"2001","type":"album","title":"Book one","parentTitle":"Writer"},
+                {"ratingKey":"2002","type":"album","title":"Book two"}]}}""",
+        )
+
+        val books = source(fixture("plex/library-all-artists.json"), children = { albumsOf[it] ?: """{"MediaContainer":{"size":0}}""" })
+            .fetchBooks(server.copy(libraryId = "4"))
+
+        assertEquals(listOf("plex_2001", "plex_2002"), books.map { it.id })
+        assertEquals("Writer", books[0].author)
+        assertEquals("Fixture title 4", books[1].author) // no artist name on the album: the artist it was listed under
+        assertEquals(6, requests.size) // the listing, then each of the five artists
+        assertTrue(requests.drop(1).all { it.url.encodedPath.endsWith("/children") && it.headers["X-Plex-Token"] == "tok" })
+    }
+
+    @Test
+    fun `entries that are not albums are not books`() = runTest {
+        val page = """{"MediaContainer":{"size":2,"Metadata":[{"ratingKey":"1","type":"track","title":"T"},{"ratingKey":"2","type":"album","title":"A"}]}}"""
+
+        assertEquals(listOf("plex_2"), source(page).fetchBooks(server.copy(libraryId = "4")).map { it.id })
+    }
+
+    @Test
+    fun `an album listed twice is one book`() = runTest {
+        val page = """{"MediaContainer":{"size":2,"Metadata":[{"ratingKey":"2","type":"album","title":"A"},{"ratingKey":"2","type":"album","title":"A"}]}}"""
+
+        assertEquals(listOf("plex_2"), source(page).fetchBooks(server.copy(libraryId = "4")).map { it.id })
     }
 
     @Test
@@ -162,22 +205,5 @@ class PlexLibrarySourceTest {
     fun `has no collections`() = runTest {
         assertEquals(emptyList(), source().fetchCollections(server))
         assertTrue(requests.isEmpty())
-    }
-
-    @Test
-    fun `maps a track with chapters`() = runTest {
-        val book = source(fixture("plex/track-with-chapters.json")).fetchBooks(server.copy(libraryId = "4")).single()
-
-        assertEquals("plex_1024", book.id)
-        assertEquals("Fixture parentTitle 3", book.author)
-        assertEquals(47_198_808L, book.durationMs)
-        assertEquals("http://plex.test/library/parts/1027/1700000000/file.m4b?X-Plex-Token=tok", book.streamUrl)
-        assertEquals(24, book.chapters.size)
-        val first = book.chapters.first()
-        assertEquals(1029, first.id)
-        assertEquals("Fixture tag 6", first.title)
-        assertEquals(0L, first.startMs)
-        assertEquals(0L, first.endMs) // Plex chapters carry no end time in the app today
-        assertEquals(47_121_400L, book.chapters.last().startMs)
     }
 }
