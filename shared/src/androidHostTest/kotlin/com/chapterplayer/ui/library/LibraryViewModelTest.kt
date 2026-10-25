@@ -629,4 +629,29 @@ class LibraryViewModelTest {
 
         assertEquals(emptyList(), state().fastScroll)
     }
+    @Test
+    fun `a book on two servers is one tile, counted on both servers and shown as the filtered server's copy`() = runTest {
+        val a = testBook("a", title = "Same Book").copy(serverId = "abs1", durationMs = 3_600_000L)
+        val p = a.copy(id = "p", serverId = "plex1", source = ServerSource.PLEX)
+        val books = FakeBookRepository(listOf(a, p))
+        val servers = FakeServerList(listOf(
+            ServerConfig("abs1", ServerSource.ABS, "Home ABS", "http://a", "t"),
+            ServerConfig("plex1", ServerSource.PLEX, "Home Plex", "http://p", "t"),
+        ))
+        val store = BrowseQueryStore()
+        val vm = LibraryViewModel(
+            books, servers, FakeDownloadStates(), store, FakeMonitor(), FakeAppSettings(),
+            LibrarySyncCoordinator(books, servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher())), Dispatchers.Main,
+            merging = com.chapterplayer.data.merge.FixedSourceMerging(
+                com.chapterplayer.domain.browse.MergeContext(onlineServerIds = setOf("abs1", "plex1"))
+            )
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+
+        assertEquals(listOf("a"), vm.uiState.value.items.map { it.book.id })
+        assertEquals(listOf(1, 1), vm.uiState.value.serverOptions.map { it.count })
+        vm.onServerToggled("abs1")
+        assertEquals(listOf("p"), vm.uiState.value.items.map { it.book.id })
+        assertTrue(vm.uiState.value.items.single().isMerged)
+    }
 }

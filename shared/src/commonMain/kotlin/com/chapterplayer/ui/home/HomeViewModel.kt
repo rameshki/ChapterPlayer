@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.data.playback.PlaybackStarter
@@ -75,7 +76,8 @@ class HomeViewModel(
     settings: AppSettings,
     syncCoordinator: LibrarySyncCoordinator,
     private val starter: PlaybackStarter,
-    dispatcher: CoroutineDispatcher
+    dispatcher: CoroutineDispatcher,
+    merging: SourceMerging = SourceMerging.None
 ) : ViewModel() {
 
     private class Local(val starting: Boolean = false, val error: String? = null)
@@ -83,7 +85,7 @@ class HomeViewModel(
     private val local = MutableStateFlow(Local())
 
     val uiState: StateFlow<HomeUiState> = combine(
-        observeBrowseItems(books, downloads),
+        observeBrowseItems(books, downloads, merging),
         servers.observeAll(),
         queryStore.query,
         combine(connectivity.isOnline, settings.downloadedOnly, syncCoordinator.state) { online, downloadedOnly, sync ->

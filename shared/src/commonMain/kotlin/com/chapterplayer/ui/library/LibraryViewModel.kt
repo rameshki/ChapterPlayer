@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -46,7 +47,8 @@ class LibraryViewModel(
     private val settings: AppSettings,
     private val syncCoordinator: LibrarySyncCoordinator,
     dispatcher: CoroutineDispatcher,
-    private val savedState: SavedStateHandle = SavedStateHandle()
+    private val savedState: SavedStateHandle = SavedStateHandle(),
+    merging: SourceMerging = SourceMerging.None
 ) : ViewModel() {
 
     // Kept in the saved state so the chosen view comes back after the process was killed.
@@ -73,7 +75,7 @@ class LibraryViewModel(
     )
 
     private val content = combine(
-        observeBrowseItems(books, downloads),
+        observeBrowseItems(books, downloads, merging),
         books.observeCollections(),
         queryStore.query,
         _view,

@@ -2,6 +2,7 @@ package com.chapterplayer.data.widgets
 
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -26,6 +27,7 @@ class WidgetStates(
     private val downloads: DownloadStates,
     private val connectivity: ConnectivityMonitor,
     private val settings: AppSettings,
+    private val merging: SourceMerging = SourceMerging.None,
 ) {
 
     val nowPlaying: Flow<NowPlayingWidgetState>
@@ -34,11 +36,11 @@ class WidgetStates(
         }.distinctUntilChanged()
 
     val continueListening: Flow<ContinueWidgetState>
-        get() = combine(observeBrowseItems(books, downloads), connectivity.isOnline, settings.downloadedOnly) { items, online, downloadedOnly ->
+        get() = combine(observeBrowseItems(books, downloads, merging), connectivity.isOnline, settings.downloadedOnly) { items, online, downloadedOnly ->
             continueWidgetState(items, online, downloadedOnly)
         }.distinctUntilChanged()
 
     /** Whether a Resume tap may start [bookId] now (see [widgetMayResume]). */
     suspend fun mayResume(bookId: String): Boolean =
-        widgetMayResume(observeBrowseItems(books, downloads).first(), connectivity.isOnline.first(), settings.downloadedOnly.first(), bookId)
+        widgetMayResume(observeBrowseItems(books, downloads, merging).first(), connectivity.isOnline.first(), settings.downloadedOnly.first(), bookId)
 }

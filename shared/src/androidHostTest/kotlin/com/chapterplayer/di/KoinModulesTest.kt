@@ -79,7 +79,7 @@ class KoinModulesTest {
     @Test
     fun `the widget module resolves`() {
         // The widgets read the player, the books, the downloads, the network and the settings.
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule, downloadModule, widgetModule) }
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule, downloadModule, browseModule, widgetModule) }
             .verify(extraTypes = providedByApp)
     }
 

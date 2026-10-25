@@ -340,4 +340,27 @@ class MergedSourcesTest {
         assertEquals("", normalisedTitle("  "))
         assertEquals(normalisedFirstAuthor("Tolkien, J.R.R."), normalisedFirstAuthor("tolkien"))
     }
+    // ---- details helpers ----
+
+    @Test
+    fun `the entry of any member is found`() {
+        val all = merge(listOf(item("a", "abs1"), item("p", "plex1"), item("x", "abs1", title = "Other")))
+        assertEquals("a", entryContaining(all, "p")?.book?.id)
+        assertEquals("x", entryContaining(all, "x")?.book?.id)
+        assertNull(entryContaining(all, "nope"))
+    }
+
+    @Test
+    fun `merge candidates leave out the book itself and books on its servers`() {
+        val all = merge(listOf(
+            item("a", "abs1"),
+            item("p", "plex1"),
+            item("x", "abs1", title = "Other"),
+            item("y", "plex2", title = "Stormlight One"),
+            item("z", "abs2", title = "Another"),
+        ))
+        val current = entryContaining(all, "a")!!
+        assertEquals(listOf("z", "y"), mergeCandidates(all, current, "").map { it.book.id })
+        assertEquals(listOf("y"), mergeCandidates(all, current, "storm").map { it.book.id })
+    }
 }

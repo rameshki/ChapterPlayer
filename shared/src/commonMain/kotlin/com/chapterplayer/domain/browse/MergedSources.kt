@@ -39,6 +39,40 @@ fun sourcePreferenceDetail(preference: SourcePreference): String = when (prefere
     SourcePreference.PREFER_DOWNLOADED -> "The copy on the phone, otherwise Audiobookshelf; asks otherwise."
 }
 
+/**
+ * Everything the merging needs besides the books: the user's corrections, the Settings choice, the servers that can
+ * stream now ([onlineServerIds]) and whether the phone has a network at all (for the reason a source cannot play).
+ */
+data class MergeContext(
+    val overrides: MergeOverrides = MergeOverrides(),
+    val preference: SourcePreference = DEFAULT_SOURCE_PREFERENCE,
+    val onlineServerIds: Set<String> = emptySet(),
+    val deviceOnline: Boolean = true,
+)
+
+/**
+ * The servers that can stream now: none without a network or with Downloaded only on; otherwise every server whose
+ * last sync did not fail (an error newer than the last success counts as unreachable until a sync works again).
+ */
+fun reachableServerIds(
+    serverIds: Collection<String>,
+    records: Map<String, com.chapterplayer.data.sync.ServerStatusRecord>,
+    online: Boolean,
+    downloadedOnly: Boolean,
+): Set<String> {
+    if (!online || downloadedOnly) return emptySet()
+    return serverIds.filterTo(LinkedHashSet()) { id ->
+        val record = records[id] ?: return@filterTo true
+        val errorAt = record.lastErrorAtMs ?: return@filterTo true
+        val success = record.lastSuccessAtMs
+        success != null && success > errorAt
+    }
+}
+
+/** [mergeDuplicates] with everything from [context]. */
+fun mergeDuplicates(items: List<BrowseItem>, context: MergeContext): List<BrowseItem> =
+    mergeDuplicates(items, context.overrides, context.preference, context.onlineServerIds)
+
 /** The user's corrections, as pairs of book ids (either order). */
 data class MergeOverrides(
     val splits: Set<Pair<String, String>> = emptySet(),
@@ -256,4 +290,20 @@ fun sourcesDescription(item: BrowseItem): String? {
     val types = item.sources.map { it.book.source }.distinct().sortedBy { it.ordinal }
     if (types.size == 1) return "available from ${item.sources.size} ${types.single().longLabel()} servers"
     return "available from " + types.joinToString(" and ") { it.longLabel() }
+}
+
+/** The entry [bookId] belongs to in the merged list [all] (as the primary or another member); null when it is not listed. */
+fun entryContaining(all: List<BrowseItem>, bookId: String): BrowseItem? =
+    all.firstOrNull { it.book.id == bookId } ?: all.firstOrNull { entry -> entry.sources.any { it.book.id == bookId } }
+
+/**
+ * The books "Merge with…" offers for [current]: entries of [all] with no member on a server [current] is already on
+ * (a group holds one book per server), matching [query] like Search does (every entry for a blank query), by title.
+ */
+fun mergeCandidates(all: List<BrowseItem>, current: BrowseItem, query: String): List<BrowseItem> {
+    val taken = current.serverIds
+    val ownIds = current.allSources.mapTo(HashSet()) { it.book.id }
+    val open = all.filter { entry -> entry.allSources.none { it.book.id in ownIds } && entry.serverIds.none { it in taken } }
+    val matching = if (query.isBlank()) open else searchItems(open, query)
+    return matching.sortedWith(compareBy({ titleSortKey(it.book.title) }, { it.book.id }))
 }

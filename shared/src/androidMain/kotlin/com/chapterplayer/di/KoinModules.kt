@@ -62,6 +62,8 @@ import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.RoomBookMergeRepository
+import com.chapterplayer.data.merge.AppSourceMerging
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.BookRepositoryImpl
 import com.chapterplayer.data.repository.LibraryCatalog
@@ -239,6 +241,8 @@ val browseModule = module {
             store.followServers(serverIds, get(AppScopeQualifier))
         }
     }
+    // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).
+    single<SourceMerging> { AppSourceMerging(get(), get(), get(), get(), get()) }
     // Where the browse view models do their list work; tests pass their own.
     single<CoroutineDispatcher>(IoDispatcherQualifier) { Dispatchers.Default }
 }
@@ -288,12 +292,12 @@ val deviceModule = module {
 }
 
 val viewModelModule = module {
-    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get()) }
+    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get()) }
     viewModelOf(::LibrariesViewModel)
     // Built with parametersOf(kind, groupKey) by the group detail screen.
     viewModel { params ->
         GroupDetailViewModel(
-            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)
+            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
@@ -306,13 +310,13 @@ val viewModelModule = module {
     viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
     viewModelOf(::OfflineStateViewModel)
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
+    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
 }
 
 val widgetModule = module {
     // What the home screen widgets show, and the Now Playing buttons (they act on the loaded book only).
-    single { WidgetStates(get(), get(), get(), get(), get()) }
+    single { WidgetStates(get(), get(), get(), get(), get(), merging = get()) }
     single { WidgetActions(get()) }
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
     single<WidgetHost> { GlanceWidgetHost(androidContext()) }

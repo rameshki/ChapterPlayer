@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.browse.BrowseItem
@@ -45,7 +46,8 @@ class SearchViewModel(
     private val queryStore: BrowseQueryStore,
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
-    dispatcher: CoroutineDispatcher
+    dispatcher: CoroutineDispatcher,
+    merging: SourceMerging = SourceMerging.None
 ) : ViewModel() {
 
     private val _queryText = MutableStateFlow("")
@@ -62,7 +64,7 @@ class SearchViewModel(
 
     val uiState: StateFlow<SearchUiState> = combine(
         settledQuery,
-        observeBrowseItems(books, downloads),
+        observeBrowseItems(books, downloads, merging),
         queryStore.query,
         connectivity.isOnline,
         settings.downloadedOnly

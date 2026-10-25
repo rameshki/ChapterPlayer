@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -57,7 +58,8 @@ class GroupDetailViewModel(
     private val queryStore: BrowseQueryStore,
     connectivity: ConnectivityMonitor,
     private val settings: AppSettings,
-    dispatcher: CoroutineDispatcher
+    dispatcher: CoroutineDispatcher,
+    merging: SourceMerging = SourceMerging.None
 ) : ViewModel() {
 
     /** The Downloaded chip is on and none of the group's books is on the phone (the Library list shows the same text). */
@@ -71,7 +73,7 @@ class GroupDetailViewModel(
 
     // The title and existence come from the unfiltered groups, so a filter never makes the group "vanish".
     // They do not depend on the filters, so they are built when the books change, not on every filter change.
-    private val whole = combine(observeBrowseItems(books, downloads), books.observeCollections()) { all, collections ->
+    private val whole = combine(observeBrowseItems(books, downloads, merging), books.observeCollections()) { all, collections ->
         Whole(all, collections, groupsFor(kind, applyQuery(all, BrowseQuery()), collections).firstOrNull { it.key == key })
     }
 
