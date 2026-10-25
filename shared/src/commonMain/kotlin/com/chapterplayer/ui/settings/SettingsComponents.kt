@@ -15,8 +15,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -171,63 +168,6 @@ internal fun SwitchCard(
             }
             // The row is the single touch target; the Switch itself is not clickable.
             Switch(checked = checked, onCheckedChange = null)
-        }
-    }
-}
-
-@Composable
-internal fun ServerRow(
-    server: ServerConfig,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = server.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "${server.source.name} · ${server.baseUrl}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-                if (server.needsSignIn) {
-                    Text(
-                        text = "Sign in again",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                if (server.libraryId != null) {
-                    Text(
-                        text = "Library: ${server.libraryId}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                }
-            }
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AmberGold)
-            }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
         }
     }
 }

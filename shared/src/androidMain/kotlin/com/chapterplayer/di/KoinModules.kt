@@ -92,6 +92,7 @@ import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.offline.OfflineStateViewModel
 import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
+import com.chapterplayer.ui.settings.ServersViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
 import com.chapterplayer.data.widgets.WidgetActions
 import com.chapterplayer.data.widgets.WidgetRefresher
@@ -280,6 +281,8 @@ val viewModelModule = module {
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
+    // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
+    viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
     viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get()) }
     viewModelOf(::OfflineStateViewModel)
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
