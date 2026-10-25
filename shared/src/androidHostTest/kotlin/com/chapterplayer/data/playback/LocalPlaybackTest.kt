@@ -27,8 +27,16 @@ class LocalPlaybackTest {
         startPositionMs = 2_500, tracks = tracks.toList(), chapters = chapters,
     )
 
-    private fun track(index: Int, start: Long, duration: Long, mime: String = "audio/mpeg") =
-        PlaybackTrack(index, start, duration, mime, "http://server.test/api/items/x/file/$index")
+    /** A session track for the server file [ino]. */
+    private fun track(index: Int, ino: String, start: Long, duration: Long, mime: String = "audio/mpeg") =
+        PlaybackTrack(index, start, duration, mime, "http://server.test/api/items/li_x/file/$ino")
+
+    @Test
+    fun `the file id is read from a track address`() {
+        assertEquals("ino_7", trackIno("http://server.test/api/items/li_x/file/ino_7"))
+        assertEquals("12", trackIno("/api/items/li_x/file/12?x=1"))
+        assertNull(trackIno("http://server.test/hls/stream.m3u8"))
+    }
 
     @Test
     fun `offline the stored lengths make the timeline, with the book's chapters and no session`() {
@@ -66,9 +74,9 @@ class LocalPlaybackTest {
     }
 
     @Test
-    fun `online the session's timeline and chapters are used, but the audio is the files on the phone`() {
+    fun `online a session listing the same files gives its timeline and chapters, the audio is the files on the phone`() {
         val chapters = listOf(Chapter(0, "Server", 0, 6_100))
-        val s = session(track(2, 4_050, 2_050, "audio/mp4"), track(1, 0, 4_050), chapters = chapters)
+        val s = session(track(2, "12", 4_050, 2_050, "audio/mp4"), track(1, "11", 0, 4_050), chapters = chapters)
 
         val playable = playableFromPhone(book, listOf(file("11"), file("12")), session = s, toUri = uri)!!
 
@@ -86,44 +94,82 @@ class LocalPlaybackTest {
     }
 
     @Test
+    fun `session tracks are matched by file id, not by position`() {
+        // Same count, but the server lists the files the other way round: each file keeps its own length.
+        val s = session(track(0, "12", 0, 2_050), track(1, "11", 2_050, 4_050))
+
+        val playable = playableFromPhone(book, listOf(file("11"), file("12")), session = s, toUri = uri)!!
+
+        assertEquals(
+            listOf(
+                PlaybackTrack(0, 0, 4_050, "audio/mpeg", "file:///d/11.mp3"),
+                PlaybackTrack(1, 4_050, 2_050, "audio/mpeg", "file:///d/12.mp3"),
+            ),
+            playable.tracks,
+        )
+    }
+
+    @Test
+    fun `a session that lists other files falls back to the stored lengths for the files it does not know`() {
+        val s = session(track(0, "11", 0, 4_100), track(1, "99", 4_100, 1_000))
+
+        val playable = playableFromPhone(book, listOf(file("11", 4_000), file("12", 2_000)), session = s, toUri = uri)!!
+
+        assertEquals(
+            listOf(
+                PlaybackTrack(0, 0, 4_100, "audio/mpeg", "file:///d/11.mp3"),
+                PlaybackTrack(1, 4_100, 2_000, "", "file:///d/12.mp3"),
+            ),
+            playable.tracks,
+        )
+        assertSame(s, playable.session)
+    }
+
+    @Test
+    fun `a session with the same number of other files is not taken by position`() {
+        val s = session(track(0, "98", 0, 3_000), track(1, "99", 3_000, 3_000))
+        assertNull(playableFromPhone(book, listOf(file("11"), file("12")), session = s, toUri = uri))
+    }
+
+    @Test
     fun `a stored type wins over the session's`() {
-        val s = session(track(0, 0, 6_000, "audio/mpeg"))
+        val s = session(track(0, "11", 0, 6_000, "audio/mpeg"))
         val playable = playableFromPhone(book, listOf(file("11", mime = "audio/x-m4b")), session = s, toUri = uri)!!
         assertEquals("audio/x-m4b", playable.tracks.single().mimeType)
     }
 
     @Test
-    fun `a session that lists other files than the phone holds falls back to the stored lengths`() {
-        val s = session(track(0, 0, 6_000))
-        val playable = playableFromPhone(book, listOf(file("11", 4_000), file("12", 2_000)), session = s, toUri = uri)!!
-        assertEquals(listOf(0L, 4_000L), playable.tracks.map { it.startMs })
-        assertSame(s, playable.session)
-    }
-
-    @Test
     fun `the session's chapters fall back to the book's when it has none`() {
-        val s = session(track(0, 0, 6_000))
+        val s = session(track(0, "11", 0, 6_000))
         assertEquals(bookChapters, playableFromPhone(book, listOf(file("11")), session = s, toUri = uri)!!.chapters)
     }
 
     @Test
-    fun `lengths to remember are the session's for files that have none`() {
-        val s = session(track(0, 0, 4_050), track(1, 4_050, 2_050))
+    fun `lengths to remember are the session's, by file id, for files that have none`() {
+        val s = session(track(0, "12", 0, 2_050), track(1, "11", 2_050, 4_050))
         assertEquals(mapOf("12" to 2_050L), durationsToRemember(listOf(file("11", 4_000), file("12")), s))
-        assertEquals(emptyMap(), durationsToRemember(listOf(file("11")), s), "the files do not match the session")
+        assertEquals(emptyMap(), durationsToRemember(listOf(file("13")), s), "a file the session does not list")
         assertEquals(emptyMap(), durationsToRemember(listOf(file("11"), file("12")), null))
     }
 
     @Test
     fun `a streamed session is played as it is`() {
-        val s = session(track(1, 0, 4_000), track(0, 0, 1))
+        val s = session(track(1, "12", 1_000, 5_100), track(0, "11", 0, 1_000))
+
         val playable = streamed(s)
+
         assertSame(s, playable.session)
         assertEquals(s.tracks, playable.tracks)
-        assertEquals(s.durationMs, playable.durationMs)
-        assertEquals(s.startPositionMs, playable.startPositionMs)
-        assertEquals(trackSpans(s), trackSpans(playable))
-        assertEquals(trackItemSpecs(book, s), trackItemSpecs(book, playable))
+        assertEquals(6_100L, playable.durationMs)
+        assertEquals(2_500L, playable.startPositionMs)
+        assertEquals(listOf(TrackSpan(0, 0, 1_000), TrackSpan(1, 1_000, 5_100)), trackSpans(playable))
+        assertEquals(
+            listOf(
+                TrackItemSpec("abs_book1/0", "http://server.test/api/items/li_x/file/11", "audio/mpeg", "Sample Book", "Sample Author", 0, 1_000),
+                TrackItemSpec("abs_book1/1", "http://server.test/api/items/li_x/file/12", "audio/mpeg", "Sample Book", "Sample Author", 1_000, 5_100),
+            ),
+            trackItemSpecs(book, playable),
+        )
     }
 
     @Test
@@ -133,5 +179,12 @@ class LocalPlaybackTest {
             listOf("abs_book1/0" to "file:///d/11.mp3", "abs_book1/1" to "file:///d/12.mp3"),
             trackItemSpecs(book, playable).map { it.mediaId to it.url },
         )
+    }
+
+    @Test
+    fun `only a book whose audio is files on the phone reads them`() {
+        val local = playableFromPhone(book, listOf(file("11")), session = null, toUri = uri)!!
+        assertEquals(true, playsFromPhone(local))
+        assertEquals(false, playsFromPhone(streamed(session(track(0, "11", 0, 6_000)))))
     }
 }

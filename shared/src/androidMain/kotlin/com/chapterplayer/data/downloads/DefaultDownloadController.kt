@@ -28,6 +28,11 @@ interface DownloadScheduler {
     suspend fun cancel(bookId: String)
 }
 
+/** Told a book's downloaded files are about to be deleted, so a player reading them stops first. */
+fun interface DownloadRemovalListener {
+    fun beforeFilesDeleted(bookId: String)
+}
+
 /**
  * The download rules over Room and a [DownloadScheduler]: the status is written first (only from the status
  * it was read in), then the job is scheduled or stopped. A stopping job changes only a DOWNLOADING status, so
@@ -40,6 +45,7 @@ class DefaultDownloadController(
     private val location: DownloadLocation,
     private val scheduler: DownloadScheduler,
     private val jobs: DownloadJobs,
+    private val removal: DownloadRemovalListener,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) : DownloadController {
 
@@ -108,6 +114,8 @@ class DefaultDownloadController(
 
     private suspend fun delete(bookId: String) {
         val serverId = dao.get(bookId)?.serverId ?: bookDao.getById(bookId)?.serverId
+        // A book playing from these files stops (and is forgotten); the next Play streams it or says it needs a connection.
+        removal.beforeFilesDeleted(bookId)
         scheduler.cancel(bookId)
         // Waits until a stopping job has saved and let go, and keeps a new one out until the files are gone.
         jobs.whileIdle(bookId) {

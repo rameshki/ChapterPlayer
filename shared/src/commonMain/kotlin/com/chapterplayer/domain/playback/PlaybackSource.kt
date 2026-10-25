@@ -13,14 +13,24 @@ enum class LocalCopy {
 
     /** The download finished but a file is gone or has the wrong size: it plays like a book that is not downloaded. */
     MISSING_FILES,
+
+    /**
+     * The download finished but its folder cannot be seen (an SD card taken out or not mounted yet): it cannot play
+     * now, but nothing is wrong with the download, so it is left as it is.
+     */
+    UNREACHABLE,
 }
 
 /** One downloaded file: the size the download wrote and what is on disk now (null when the file is gone). */
 data class StoredFile(val expectedBytes: Long, val bytesOnDisk: Long?)
 
-/** What the phone holds, from the download's [status] and its [files]. */
-fun localCopyOf(status: DownloadStatus?, files: List<StoredFile>): LocalCopy = when {
+/**
+ * What the phone holds, from the download's [status], its [files] and whether the book's folder is there
+ * ([folderPresent]; false when its volume is not mounted).
+ */
+fun localCopyOf(status: DownloadStatus?, files: List<StoredFile>, folderPresent: Boolean = true): LocalCopy = when {
     status != DownloadStatus.DONE -> LocalCopy.NONE
+    !folderPresent -> LocalCopy.UNREACHABLE
     files.isNotEmpty() && files.all { it.bytesOnDisk != null && it.bytesOnDisk == it.expectedBytes } -> LocalCopy.COMPLETE
     else -> LocalCopy.MISSING_FILES
 }

@@ -54,6 +54,12 @@ interface PlaybackController {
     /** Jumps to the start of the chapter at [index] in [PlaybackState.chapters]; an unknown index does nothing. */
     fun seekToChapter(index: Int)
 
+    /**
+     * The downloaded files of [bookId] are about to be deleted: when the player is reading them, it stops and forgets
+     * the book (as when the service stops), so the next Play loads it again. Anything else is left alone.
+     */
+    fun releaseLocalFiles(bookId: String)
+
     /** Frees the player. The controller cannot be used afterwards. */
     fun release()
 }

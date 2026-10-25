@@ -116,7 +116,7 @@ class DownloadRaceTest {
         val scheduler = RunningScheduler(downloader) { controller }
 
         init {
-            controller = DefaultDownloadController(dao, books, FakeAppSettings(), location, scheduler, downloader)
+            controller = DefaultDownloadController(dao, books, FakeAppSettings(), location, scheduler, downloader, removal = {})
         }
 
         suspend fun awaitFirstBytes() = withTimeout(10_000) {

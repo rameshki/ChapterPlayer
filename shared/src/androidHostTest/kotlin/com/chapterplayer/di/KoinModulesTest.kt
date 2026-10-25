@@ -65,7 +65,8 @@ class KoinModulesTest {
 
     @Test
     fun `the download module resolves`() {
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, downloadModule) }
+        // The length filler watches the network (deviceModule).
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, downloadModule) }
             .verify(extraTypes = providedByApp)
     }
 

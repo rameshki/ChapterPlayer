@@ -8,6 +8,8 @@ import com.chapterplayer.domain.playback.StoredFile
 import com.chapterplayer.domain.playback.localCopyOf
 import com.chapterplayer.domain.playback.shouldMarkFailed
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 
 /**
  * One downloaded audio file of a book. [ino] is the server's file id; [durationMs] is 0 and [mimeType] is ""
@@ -27,21 +29,26 @@ interface LocalBookFiles {
     suspend fun saveDurations(bookId: String, durationsMs: Map<String, Long>)
 }
 
-/** Nothing is ever on the phone. */
-object NoLocalBookFiles : LocalBookFiles {
-    override suspend fun complete(bookId: String): List<LocalFile>? = null
-    override suspend fun saveDurations(bookId: String, durationsMs: Map<String, Long>) {}
-}
-
 const val MISSING_FILES_TEXT = "Some downloaded files are missing"
 
+/** What [RoomLocalBookFiles] asks of the disk. Blocking; it is called on the I/O dispatcher. */
+interface LocalDisk {
+    /** The size of the file at [path], or null when there is no such file. */
+    fun fileLength(path: String): Long?
+
+    /** Whether the folder that holds [path] is there (false while its volume, such as an SD card, is not mounted). */
+    fun folderExists(path: String): Boolean
+}
+
 /**
- * [LocalBookFiles] over the download tables. [fileLength] is the size of the file at a path, or null when there
- * is no such file; a failure reading the disk means "not playable now" and changes nothing.
+ * [LocalBookFiles] over the download tables. A failure reading the disk, or a book folder that cannot be seen
+ * (an unmounted SD card), means "not playable now" and changes nothing; only a folder that is there with a file
+ * gone or of the wrong size marks the download failed. The disk is read on [io].
  */
 class RoomLocalBookFiles(
     private val dao: DownloadDao,
-    private val fileLength: (String) -> Long?,
+    private val disk: LocalDisk,
+    private val io: CoroutineDispatcher,
     private val nowMs: () -> Long,
 ) : LocalBookFiles {
 
@@ -50,14 +57,18 @@ class RoomLocalBookFiles(
         val status = downloadStatusOf(row.status)
         if (status != DownloadStatus.DONE) return null
         val files = dao.getFiles(bookId).sortedBy { it.sortOrder }
-        val onDisk = try {
-            files.map { fileLength(it.path) }
+        val (folderPresent, onDisk) = try {
+            withContext(io) {
+                // All files of a book share one folder.
+                val folder = files.firstOrNull()?.let { disk.folderExists(it.path) } ?: true
+                folder to files.map { disk.fileLength(it.path) }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             return null
         }
-        val copy = localCopyOf(status, files.zip(onDisk) { f, len -> StoredFile(f.totalBytes, len) })
+        val copy = localCopyOf(status, files.zip(onDisk) { f, len -> StoredFile(f.totalBytes, len) }, folderPresent)
         if (shouldMarkFailed(copy)) {
             // Only a row that is still DONE: a removal or a new download meanwhile wins.
             if (dao.updateStatusIf(bookId, listOf(DownloadStatus.DONE.name), DownloadStatus.FAILED.name, MISSING_FILES_TEXT, nowMs()) > 0) {
@@ -70,6 +81,8 @@ class RoomLocalBookFiles(
     }
 
     override suspend fun saveDurations(bookId: String, durationsMs: Map<String, Long>) {
-        for ((ino, ms) in durationsMs) if (ms > 0L) dao.fillFileDuration(bookId, ino, ms)
+        // Only files of this download that have no length yet; the query checks again, in case one was filled meanwhile.
+        val missing = dao.getFiles(bookId).filter { it.durationMs <= 0L }.map { it.ino }.toSet()
+        for ((ino, ms) in durationsMs) if (ms > 0L && ino in missing) dao.fillFileDuration(bookId, ino, ms)
     }
 }

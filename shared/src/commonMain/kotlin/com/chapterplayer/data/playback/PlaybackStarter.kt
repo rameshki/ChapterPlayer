@@ -3,7 +3,6 @@ package com.chapterplayer.data.playback
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.downloads.LocalBookFiles
 import com.chapterplayer.data.downloads.LocalFile
-import com.chapterplayer.data.downloads.NoLocalBookFiles
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -26,7 +25,7 @@ class PlaybackStarter(
     private val books: BookRepository,
     private val settings: AppSettings,
     private val connectivity: ConnectivityMonitor,
-    private val localFiles: LocalBookFiles = NoLocalBookFiles,
+    private val localFiles: LocalBookFiles,
 ) {
 
     /**

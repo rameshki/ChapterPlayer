@@ -24,6 +24,22 @@ class PlaybackSourceTest {
     }
 
     @Test
+    fun `a finished download whose folder cannot be seen is unreachable, not missing files`() {
+        assertEquals(LocalCopy.UNREACHABLE, localCopyOf(DownloadStatus.DONE, listOf(StoredFile(100, null)), folderPresent = false))
+        assertEquals(LocalCopy.NONE, localCopyOf(DownloadStatus.PAUSED, listOf(whole), folderPresent = false))
+        assertEquals(false, shouldMarkFailed(LocalCopy.UNREACHABLE))
+    }
+
+    @Test
+    fun `an unreachable download plays like one that is not on the phone`() {
+        assertEquals(PlaybackSource.Stream, choosePlaybackSource(ServerSource.ABS, LocalCopy.UNREACHABLE, online = true, downloadedOnly = false))
+        assertEquals(
+            PlaybackSource.Unavailable(NEEDS_CONNECTION_TO_PLAY_TEXT),
+            choosePlaybackSource(ServerSource.ABS, LocalCopy.UNREACHABLE, online = false, downloadedOnly = false),
+        )
+    }
+
+    @Test
     fun `a finished download without file rows is missing files`() {
         assertEquals(LocalCopy.MISSING_FILES, localCopyOf(DownloadStatus.DONE, emptyList()))
     }

@@ -68,6 +68,8 @@ class FakePlaybackController : PlaybackController {
     override fun skipBack() { skipBacks++ }
     override fun skipForward() { skipForwards++ }
     override fun seekToChapter(index: Int) { chapterSeeks += index }
+    val releasedFiles = mutableListOf<String>()
+    override fun releaseLocalFiles(bookId: String) { releasedFiles += bookId }
     override fun release() {}
 }
 

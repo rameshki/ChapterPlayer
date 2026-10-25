@@ -118,7 +118,7 @@ class PlaybackStarterTest {
             override val playbackSpeed: kotlinx.coroutines.flow.Flow<Float> = kotlinx.coroutines.flow.flow { error("storage unavailable") }
         }
 
-        val result = PlaybackStarter(controller, repo, failing, connectivity).start(book, 0L)
+        val result = PlaybackStarter(controller, repo, failing, connectivity, local).start(book, 0L)
 
         assertTrue(result.isSuccess)
         assertEquals(listOf(1.0f), controller.speeds)
@@ -131,7 +131,7 @@ class PlaybackStarterTest {
             override fun setSpeed(speed: Float) { error("player busy") }
         }
 
-        val result = PlaybackStarter(refusing, repo, settings, connectivity).start(book, 0L)
+        val result = PlaybackStarter(refusing, repo, settings, connectivity, local).start(book, 0L)
 
         assertTrue(result.isSuccess)
         assertEquals(1, controller.plays)
@@ -143,7 +143,7 @@ class PlaybackStarterTest {
             override val playbackSpeed: kotlinx.coroutines.flow.Flow<Float> = kotlinx.coroutines.flow.flow { throw CancellationException("stop") }
         }
 
-        assertFailsWith<CancellationException> { PlaybackStarter(controller, repo, cancelling, connectivity).start(book, 0L) }
+        assertFailsWith<CancellationException> { PlaybackStarter(controller, repo, cancelling, connectivity, local).start(book, 0L) }
         assertEquals(0, controller.plays)
     }
 

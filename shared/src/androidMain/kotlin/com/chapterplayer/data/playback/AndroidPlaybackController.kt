@@ -194,17 +194,21 @@ class AndroidPlaybackController(
      * syncs live; when that fails the book plays without one and the progress queue reports it later.
      */
     private suspend fun fromPhone(book: AudioBook, origin: AudioOrigin.Phone): PlayableBook {
+        var sessionFailure: Throwable? = null
         val session = if (origin.openSession) {
             repository.startPlayback(book.id).getOrElse { failure ->
                 if (failure is CancellationException) throw failure
+                sessionFailure = failure
                 null
             }
         } else {
             null
         }
         val playable = playableFromPhone(book, origin.files, session, ::fileUri)
-            // The files' lengths are not known (a download from before they were recorded): stream it this time.
-            ?: return session?.let(::streamed) ?: throw PlaybackStartException(NEEDS_ONE_ONLINE_PLAY_TEXT)
+            // The files' lengths are not known (a download from before they were recorded): stream it this time,
+            // or say why not. Online the server's own failure is the reason; offline the lengths are.
+            ?: return session?.let(::streamed)
+                ?: throw PlaybackStartException(sessionFailure?.let(::safeStartMessage) ?: NEEDS_ONE_ONLINE_PLAY_TEXT)
         val learnt = durationsToRemember(origin.files, session)
         if (learnt.isNotEmpty()) {
             appScope.launch {
@@ -433,6 +437,13 @@ class AndroidPlaybackController(
             it.clearMediaItems()
         }
         _state.value = PlaybackState()
+    }
+
+    override fun releaseLocalFiles(bookId: String) {
+        scope.launch {
+            val book = loaded.book ?: return@launch
+            if (book.bookId == bookId && playsFromPhone(book)) endSession()
+        }
     }
 
     override fun release() {

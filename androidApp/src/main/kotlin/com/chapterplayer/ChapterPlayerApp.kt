@@ -4,6 +4,7 @@ import android.app.Application
 import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
+import com.chapterplayer.data.downloads.DownloadLengthFiller
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
@@ -37,5 +38,7 @@ class ChapterPlayerApp : Application() {
         GlobalContext.get().get<HistoryRecorder>().start()
         // Downloads that were waiting or running before a reboot or process death carry on.
         GlobalContext.get().get<DownloadQueueRestorer>().start()
+        // Older downloads learn their file lengths from the server, so they can play offline.
+        GlobalContext.get().get<DownloadLengthFiller>().start()
     }
 }

@@ -62,7 +62,12 @@ class DefaultDownloadControllerTest {
             override suspend fun rootDir() = currentRoot
             override suspend fun freeBytes() = Long.MAX_VALUE
         }
-        val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, scheduler, FakeJobs(scheduler.log), nowMs = { 42 })
+        /** Books the player was told to let go of, with the files still on disk at that moment. */
+        val released = mutableListOf<Pair<String, Boolean>>()
+        val controller = DefaultDownloadController(
+            dao, FakeBookDao(book()), settings, location, scheduler, FakeJobs(scheduler.log),
+            removal = { id -> released += id to bookDirectory(currentRoot, "srv1", id).exists() }, nowMs = { 42 }
+        )
         fun status() = dao.downloads.value.singleOrNull { it.bookId == bookId }?.status
     }
 
@@ -181,6 +186,7 @@ class DefaultDownloadControllerTest {
         assertFalse(dir.exists())
         assertTrue(rig.dao.downloads.value.isEmpty())
         assertTrue(rig.dao.files.value.isEmpty())
+        assertEquals(listOf(bookId to true), rig.released, "the player lets go before the files are deleted")
     }
 
     @Test
@@ -247,7 +253,7 @@ class DefaultDownloadControllerTest {
             override suspend fun rootDir() = root
             override suspend fun freeBytes() = Long.MAX_VALUE
         }
-        val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, slow, FakeJobs(mutableListOf()))
+        val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, slow, FakeJobs(mutableListOf()), removal = {})
 
         settings.wifiOnly.value = false
         val first = launch { controller.reapplyWifiSetting() }
