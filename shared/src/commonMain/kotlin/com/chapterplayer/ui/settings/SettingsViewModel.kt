@@ -2,6 +2,8 @@
 
 package com.chapterplayer.ui.settings
 
+import com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE
+import com.chapterplayer.domain.browse.SourcePreference
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.auth.AbsSignInPort
@@ -191,6 +193,25 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 appSettings.setDownloadedOnly(enabled)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
+    }
+
+    /** Which copy plays when a book is on several servers. */
+    val sourcePreference: StateFlow<SourcePreference> =
+        appSettings.sourcePreference.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = DEFAULT_SOURCE_PREFERENCE
+        )
+
+    fun setSourcePreference(preference: SourcePreference) {
+        viewModelScope.launch {
+            try {
+                appSettings.setSourcePreference(preference)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // The choice is not saved; the screen keeps showing the saved one.

@@ -60,6 +60,8 @@ import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexTvApiService
+import com.chapterplayer.data.merge.BookMergeRepository
+import com.chapterplayer.data.merge.RoomBookMergeRepository
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.BookRepositoryImpl
 import com.chapterplayer.data.repository.LibraryCatalog
@@ -153,6 +155,7 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().bookmarkDao() }
     single { get<ChapterPlayerDatabase>().historyDao() }
     single { get<ChapterPlayerDatabase>().downloadDao() }
+    single { get<ChapterPlayerDatabase>().bookMergeDao() }
 }
 
 val networkModule = module {
@@ -205,6 +208,8 @@ val repositoryModule = module {
         ) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
+    // The user's "Not the same book" and "Merge with" choices for books on several servers.
+    single<BookMergeRepository> { RoomBookMergeRepository(get()) }
     single<DownloadStates> { RoomDownloadStates(get()) }
     // A downloaded book's files, for playing it from the phone (playback and the downloads share it).
     single<LocalBookFiles> { RoomLocalBookFiles(get(), AndroidLocalDisk, Dispatchers.IO, nowMs = System::currentTimeMillis) }

@@ -144,4 +144,14 @@ class AppSettingsTest {
         settings.setPlaybackSpeed(Float.NaN)
         assertEquals(1.1f, settings.playbackSpeed.first())
     }
+    @Test
+    fun `the source preference defaults to the downloaded copy and is saved`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_DOWNLOADED, settings.sourcePreference.first())
+        settings.setSourcePreference(com.chapterplayer.domain.browse.SourcePreference.ASK)
+        assertEquals(com.chapterplayer.domain.browse.SourcePreference.ASK, DataStoreAppSettings(store).sourcePreference.first())
+        store.edit { it[stringPreferencesKey("source_preference")] = "SOMETHING_ELSE" }
+        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_DOWNLOADED, settings.sourcePreference.first())
+    }
 }

@@ -15,7 +15,7 @@ import com.chapterplayer.domain.downloads.formatBytes
 import com.chapterplayer.ui.theme.TextSecondary
 import org.koin.compose.viewmodel.koinViewModel
 
-/** Settings, Downloads and offline: network, location, storage and the Downloaded only switch. */
+/** Settings, Downloads and offline: network, location, storage, the Downloaded only switch and the several-servers choice. */
 @Composable
 fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = koinViewModel()) {
     val downloadedOnly by viewModel.downloadedOnly.collectAsStateWithLifecycle()
@@ -23,6 +23,7 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
     val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
     val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
     val storageUsed by viewModel.downloadStorageUsed.collectAsStateWithLifecycle()
+    val sourcePreference by viewModel.sourcePreference.collectAsStateWithLifecycle()
     // A card may have been put in or taken out since the screen was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
 
@@ -57,5 +58,9 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
             checked = downloadedOnly,
             onChange = viewModel::setDownloadedOnly
         )
+        Spacer(Modifier.height(16.dp))
+
+        SectionTitle("Books on several servers")
+        SourcePreferenceCard(sourcePreference, viewModel::setSourcePreference)
     }
 }

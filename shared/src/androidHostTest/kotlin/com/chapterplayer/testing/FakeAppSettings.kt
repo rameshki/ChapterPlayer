@@ -47,4 +47,7 @@ class FakeAppSettings(
     val speed = MutableStateFlow(1.0f)
     override val playbackSpeed: Flow<Float> = speed
     override suspend fun setPlaybackSpeed(speed: Float) { this.speed.value = speed }
+    val sourcePreferenceFlow = MutableStateFlow(com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE)
+    override val sourcePreference: Flow<com.chapterplayer.domain.browse.SourcePreference> = sourcePreferenceFlow
+    override suspend fun setSourcePreference(preference: com.chapterplayer.domain.browse.SourcePreference) { sourcePreferenceFlow.value = preference }
 }

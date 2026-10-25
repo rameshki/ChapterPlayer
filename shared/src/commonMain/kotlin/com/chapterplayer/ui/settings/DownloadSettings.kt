@@ -25,6 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.chapterplayer.domain.browse.SourcePreference
+import com.chapterplayer.domain.browse.sourcePreferenceDetail
+import com.chapterplayer.domain.browse.sourcePreferenceLabel
 import com.chapterplayer.domain.downloads.STORAGE_LIMIT_OPTIONS
 import com.chapterplayer.domain.downloads.storageLimitLabel
 import com.chapterplayer.ui.theme.AmberGold
@@ -100,6 +103,49 @@ internal fun StorageLimitCard(limitBytes: Long?, onSelect: (Long?) -> Unit) {
                             label = storageLimitLabel(option),
                             detail = null,
                             selected = option == limitBytes,
+                            onClick = {
+                                onSelect(option)
+                                choosing = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { choosing = false }) { Text("Close", color = TextSecondary) }
+            }
+        )
+    }
+}
+
+/** Settings, Downloads and offline: which copy plays when a book is on several servers, chosen in a dialog. */
+@Composable
+internal fun SourcePreferenceCard(preference: SourcePreference, onSelect: (SourcePreference) -> Unit) {
+    var choosing by remember { mutableStateOf(false) }
+    Card(colors = CardDefaults.cardColors(containerColor = SurfaceElevated), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .clickable(role = Role.Button, onClickLabel = "Change which copy plays") { choosing = true }
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Text("When a book is on several servers", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = sourcePreferenceLabel(preference), style = MaterialTheme.typography.bodySmall, color = AmberGold)
+        }
+    }
+    if (choosing) {
+        AlertDialog(
+            onDismissRequest = { choosing = false },
+            containerColor = SurfaceElevated,
+            title = { Text("When a book is on several servers") },
+            text = {
+                Column(modifier = Modifier.selectableGroup()) {
+                    SourcePreference.entries.forEach { option ->
+                        RadioLine(
+                            label = sourcePreferenceLabel(option),
+                            detail = sourcePreferenceDetail(option),
+                            selected = option == preference,
                             onClick = {
                                 onSelect(option)
                                 choosing = false

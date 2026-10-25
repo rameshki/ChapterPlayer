@@ -23,6 +23,22 @@ enum class SourcePreference { ASK, PREFER_ABS, PREFER_PLEX, PREFER_DOWNLOADED }
 
 val DEFAULT_SOURCE_PREFERENCE = SourcePreference.PREFER_DOWNLOADED
 
+/** The Settings name of [preference]. */
+fun sourcePreferenceLabel(preference: SourcePreference): String = when (preference) {
+    SourcePreference.ASK -> "Always ask"
+    SourcePreference.PREFER_ABS -> "Prefer Audiobookshelf"
+    SourcePreference.PREFER_PLEX -> "Prefer Plex"
+    SourcePreference.PREFER_DOWNLOADED -> "Prefer the downloaded copy"
+}
+
+/** The line under each choice in Settings. */
+fun sourcePreferenceDetail(preference: SourcePreference): String = when (preference) {
+    SourcePreference.ASK -> "Play and Download always ask which copy to use."
+    SourcePreference.PREFER_ABS -> "Uses Audiobookshelf when it can play; asks otherwise."
+    SourcePreference.PREFER_PLEX -> "Uses Plex when it can play; asks otherwise."
+    SourcePreference.PREFER_DOWNLOADED -> "The copy on the phone, otherwise Audiobookshelf; asks otherwise."
+}
+
 /** The user's corrections, as pairs of book ids (either order). */
 data class MergeOverrides(
     val splits: Set<Pair<String, String>> = emptySet(),
