@@ -76,7 +76,7 @@ class SearchViewModel(
                 else -> SearchStatus.RESULTS
             },
             results = shown,
-            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED,
+            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED && query.serverIds.isEmpty(),
             online = online,
             downloadedOnly = downloadedOnly
         )

@@ -95,7 +95,9 @@ fun LibraryScreen(
                 FilterChipRow(
                     selected = state.chip,
                     onSelected = viewModel::onChipSelected,
-                    onOpenSheet = { sheetOpen = true }
+                    onOpenSheet = { sheetOpen = true },
+                    serverChip = state.serverChip,
+                    onClearServers = viewModel::onServerFilterCleared
                 )
             }
 
@@ -132,7 +134,9 @@ fun LibraryScreen(
             onProgressSelected = viewModel::onProgressFilterSelected,
             onSortSelected = viewModel::onSortSelected,
             onReset = viewModel::onClearFilters,
-            onDismiss = { sheetOpen = false }
+            onDismiss = { sheetOpen = false },
+            serverOptions = state.serverOptions,
+            onServerToggled = viewModel::onServerToggled
         )
     }
 }

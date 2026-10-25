@@ -21,6 +21,7 @@ import com.chapterplayer.domain.browse.resumeCandidate
 import com.chapterplayer.domain.browse.FilterChip
 import com.chapterplayer.domain.browse.chipFor
 import com.chapterplayer.domain.browse.applyQuery
+import com.chapterplayer.domain.browse.pruneServerFilter
 import com.chapterplayer.domain.browse.isDimmed
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CancellationException
@@ -87,7 +88,8 @@ class HomeViewModel(
             Triple(online, downloadedOnly, sync.isSyncing)
         },
         local
-    ) { items, serverList, query, (online, downloadedOnly, syncing), local ->
+    ) { items, serverList, rawQuery, (online, downloadedOnly, syncing), local ->
+        val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
         // The card and the series shelf come from every book, so a saved filter never hides them.
         val resume = resumeCandidate(items)
         val resumeId = resume?.item?.book?.id
@@ -101,7 +103,7 @@ class HomeViewModel(
             hasServers = serverList.isNotEmpty(),
             isLoading = false,
             hasBooks = items.isNotEmpty(),
-            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED,
+            downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED && query.serverIds.isEmpty(),
             online = online,
             downloadedOnly = downloadedOnly,
             isSyncing = syncing

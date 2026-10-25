@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -21,11 +24,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.domain.browse.BrowseQuery
 import com.chapterplayer.domain.browse.BrowseSort
 import com.chapterplayer.domain.browse.DownloadFilter
 import com.chapterplayer.domain.browse.ProgressFilter
+import com.chapterplayer.domain.browse.ServerFilterOption
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
@@ -51,7 +56,10 @@ internal fun BrowseSort.label(): String = when (this) {
     BrowseSort.LENGTH -> "Length"
 }
 
-/** Download, Progress and Sort as radio groups. Every change applies at once; Reset clears them. */
+/**
+ * Server (check boxes, only with two or more servers), then Download, Progress and Sort as radio groups.
+ * Every change applies at once; Reset clears them.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilterSheet(
@@ -60,7 +68,9 @@ fun FilterSheet(
     onProgressSelected: (ProgressFilter) -> Unit,
     onSortSelected: (BrowseSort) -> Unit,
     onReset: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    serverOptions: List<ServerFilterOption> = emptyList(),
+    onServerToggled: (String) -> Unit = {}
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceElevated) {
         Column(
@@ -82,6 +92,7 @@ fun FilterSheet(
                 )
                 TextButton(onClick = onReset) { Text("Reset", color = AmberGold) }
             }
+            if (serverOptions.isNotEmpty()) ServerGroup(serverOptions, onServerToggled)
             OptionGroup("Download", DownloadFilter.entries, query.download, DownloadFilter::label, onDownloadSelected)
             OptionGroup("Progress", ProgressFilter.entries, query.progress, ProgressFilter::label, onProgressSelected)
             OptionGroup("Sort", BrowseSort.entries, query.sort, BrowseSort::label, onSortSelected)
@@ -132,5 +143,52 @@ private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(start = 12.dp)
         )
+    }
+}
+
+/** The Server section: one check box row per server with its type and its number of books. */
+@Composable
+private fun ServerGroup(options: List<ServerFilterOption>, onToggled: (String) -> Unit) {
+    Text(
+        text = "Server",
+        style = MaterialTheme.typography.titleSmall,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+    )
+    options.forEach { option ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .toggleable(value = option.selected, role = Role.Checkbox, onValueChange = { onToggled(option.id) }),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // The row is the single touch target; the box itself is not clickable.
+            Checkbox(
+                checked = option.selected,
+                onCheckedChange = null,
+                colors = CheckboxDefaults.colors(checkedColor = AmberGold, uncheckedColor = TextSecondary)
+            )
+            Text(
+                text = option.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 12.dp).weight(1f)
+            )
+            Text(
+                text = option.typeLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+            Text(
+                text = booksLabel(option.count),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
     }
 }

@@ -62,7 +62,8 @@ class GroupDetailViewModel(
 
     /** The Downloaded chip is on and none of the group's books is on the phone (the Library list shows the same text). */
     private fun nothingDownloaded(query: BrowseQuery, shown: BookGroup?) =
-        shown?.items.orEmpty().isEmpty() && query.download == DownloadFilter.DOWNLOADED && query.progress == ProgressFilter.ALL
+        shown?.items.orEmpty().isEmpty() && query.download == DownloadFilter.DOWNLOADED && query.progress == ProgressFilter.ALL &&
+            query.serverIds.isEmpty()
 
     private class Found(val title: String?, val exists: Boolean, val items: List<BrowseItem>, val filtering: Boolean, val nothingDownloaded: Boolean)
 
