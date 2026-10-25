@@ -7,15 +7,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -38,17 +42,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.settings.LibraryLayout
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.DownloadBadgeKind
+import com.chapterplayer.domain.browse.LetterIndex
 import com.chapterplayer.domain.browse.coverOverlay
 import com.chapterplayer.ui.components.BookCard
 import com.chapterplayer.ui.components.BookCoverPlaceholder
 import com.chapterplayer.ui.components.DimmedCoverOverlay
 import com.chapterplayer.ui.components.DownloadBadge
+import com.chapterplayer.ui.components.FastScroller
 import com.chapterplayer.ui.components.FinishedCheck
 import com.chapterplayer.ui.components.ReadingProgressBar
 import com.chapterplayer.ui.components.SourceBadge
@@ -107,33 +114,79 @@ fun BookLayout(
     layout: LibraryLayout,
     isDimmed: (BrowseItem) -> Boolean,
     onBookClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The A to Z scroller's index over [items]; empty shows no scroller. */
+    fastScroll: List<LetterIndex> = emptyList()
 ) {
+    // The strip sits over the right edge, so the items leave it room when it is offered.
+    val scrollerRoom = if (fastScroll.isEmpty()) 0.dp else 8.dp
     when (layout) {
-        LibraryLayout.LIST -> LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = 16.dp)) {
-            item(key = "count") { CountHeader(items.size) }
-            items(items, key = { it.book.id }) { item ->
-                BookRow(item, dimmed = isDimmed(item), onClick = { onBookClick(item.book.id) })
+        LibraryLayout.LIST -> Box(modifier = modifier) {
+            val listState = rememberLazyListState()
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(end = scrollerRoom, bottom = BottomPadding)
+            ) {
+                item(key = "count") { CountHeader(items.size) }
+                items(items, key = { it.book.id }) { item ->
+                    BookRow(item, dimmed = isDimmed(item), onClick = { onBookClick(item.book.id) })
+                }
             }
+            // Item 0 is the count header.
+            FastScroller(
+                letters = fastScroll,
+                isListScrolling = listState.isScrollInProgress,
+                onScrollTo = { listState.scrollToItem(it) },
+                modifier = Modifier.fillMaxSize(),
+                indexOffset = 1,
+                bottomPadding = BottomPadding
+            )
         }
 
-        LibraryLayout.LARGE_GRID, LibraryLayout.SMALL_GRID -> LazyVerticalGrid(
-            columns = GridCells.Fixed(if (layout == LibraryLayout.LARGE_GRID) 2 else 3),
-            modifier = modifier,
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item(key = "count", span = { GridItemSpan(maxLineSpan) }) { CountHeader(items.size, horizontalPadding = 0) }
-            items(items, key = { it.book.id }) { item ->
-                BookCard(
-                    book = item.book,
-                    progress = item.progress,
-                    downloadState = item.downloadState,
-                    dimmed = isDimmed(item),
-                    onClick = { onBookClick(item.book.id) }
-                )
-            }
+        LibraryLayout.LARGE_GRID, LibraryLayout.SMALL_GRID -> Box(modifier = modifier) {
+            val gridState = rememberLazyGridState()
+            BookGrid(items, layout, gridState, scrollerRoom, isDimmed, onBookClick)
+            FastScroller(
+                letters = fastScroll,
+                isListScrolling = gridState.isScrollInProgress,
+                onScrollTo = { gridState.scrollToItem(it) },
+                modifier = Modifier.fillMaxSize(),
+                indexOffset = 1,
+                bottomPadding = BottomPadding
+            )
+        }
+    }
+}
+
+private val BottomPadding = 16.dp
+
+@Composable
+private fun BookGrid(
+    items: List<BrowseItem>,
+    layout: LibraryLayout,
+    gridState: LazyGridState,
+    scrollerRoom: Dp,
+    isDimmed: (BrowseItem) -> Boolean,
+    onBookClick: (String) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(if (layout == LibraryLayout.LARGE_GRID) 2 else 3),
+        state = gridState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp + scrollerRoom, bottom = BottomPadding),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item(key = "count", span = { GridItemSpan(maxLineSpan) }) { CountHeader(items.size, horizontalPadding = 0) }
+        items(items, key = { it.book.id }) { item ->
+            BookCard(
+                book = item.book,
+                progress = item.progress,
+                downloadState = item.downloadState,
+                dimmed = isDimmed(item),
+                onClick = { onBookClick(item.book.id) }
+            )
         }
     }
 }

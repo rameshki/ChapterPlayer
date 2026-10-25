@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,6 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.domain.browse.BookGroup
+import com.chapterplayer.domain.browse.LetterIndex
+import com.chapterplayer.ui.components.FastScroller
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.TextSecondary
 
@@ -38,12 +42,28 @@ private const val MAX_COVERS = 3
 fun GroupList(
     groups: List<BookGroup>,
     onGroupClick: (BookGroup) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The A to Z scroller's index over [groups]; empty shows no scroller. */
+    fastScroll: List<LetterIndex> = emptyList()
 ) {
-    LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = 16.dp)) {
-        items(groups, key = { it.key }) { group ->
-            GroupRow(group, onClick = { onGroupClick(group) })
+    Box(modifier = modifier) {
+        val listState = rememberLazyListState()
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            // The strip sits over the right edge, so the rows leave it room when it is offered.
+            contentPadding = PaddingValues(end = if (fastScroll.isEmpty()) 0.dp else 8.dp, bottom = 16.dp)
+        ) {
+            items(groups, key = { it.key }) { group ->
+                GroupRow(group, onClick = { onGroupClick(group) })
+            }
         }
+        FastScroller(
+            letters = fastScroll,
+            isListScrolling = listState.isScrollInProgress,
+            onScrollTo = { listState.scrollToItem(it) },
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 

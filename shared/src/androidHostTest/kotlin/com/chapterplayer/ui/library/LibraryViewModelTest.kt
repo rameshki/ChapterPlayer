@@ -14,6 +14,7 @@ import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.browse.BrowseSort
 import com.chapterplayer.domain.browse.DownloadFilter
 import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.domain.browse.LetterIndex
 import com.chapterplayer.domain.browse.ProgressFilter
 import com.chapterplayer.domain.browse.ServerFilterOption
 import com.chapterplayer.data.model.ServerSource
@@ -559,5 +560,73 @@ class LibraryViewModelTest {
 
         assertTrue(state().items.isEmpty())
         assertTrue(state().emptyBecauseOfFilter)
+    }
+
+    // ---- A to Z scroller ----
+
+    private fun manyBooks(count: Int = 20) = Setup(
+        FakeBookRepository(List(count) { i -> testBook("b$i", title = "${'A' + (i % 26)}x title $i", author = "${'Z' - (i % 26)} author") })
+    )
+
+    @Test
+    fun `the scroller follows the title sort and the author sort`() = runTest {
+        val s = manyBooks()
+        val state = collect(s)
+
+        s.vm.onSortSelected(BrowseSort.TITLE)
+        assertEquals(LetterIndex('A', 0), state().fastScroll.first())
+        assertEquals(20, state().fastScroll.size)
+
+        s.vm.onSortSelected(BrowseSort.AUTHOR)
+        // The author sort starts with the 'G' author (Z minus 19) and ends with 'Z'.
+        assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+        assertEquals(LetterIndex('Z', 19), state().fastScroll.last())
+    }
+
+    @Test
+    fun `sorts that are not alphabetical have no scroller`() = runTest {
+        val s = manyBooks()
+        val state = collect(s)
+
+        for (sort in listOf(BrowseSort.RECENTLY_ADDED, BrowseSort.RECENTLY_PLAYED, BrowseSort.LENGTH)) {
+            s.vm.onSortSelected(sort)
+            assertEquals(emptyList(), state().fastScroll, "sort $sort")
+        }
+    }
+
+    @Test
+    fun `a short list has no scroller`() = runTest {
+        val s = manyBooks(19)
+        val state = collect(s)
+
+        s.vm.onSortSelected(BrowseSort.TITLE)
+
+        assertEquals(emptyList(), state().fastScroll)
+    }
+
+    @Test
+    fun `the alphabetical group lists have a scroller whatever the sort, and Collections has none`() = runTest {
+        val s = manyBooks()
+        s.books.collections.value = List(20) { i -> BookCollection("s1", "c$i", "Collection $i", listOf("b$i")) }
+        val state = collect(s)
+
+        s.vm.onViewSelected(LibraryView.AUTHORS)
+        assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+
+        s.vm.onViewSelected(LibraryView.COLLECTIONS)
+        assertEquals(emptyList(), state().fastScroll)
+    }
+
+    @Test
+    fun `the scroller is built from the filtered list`() = runTest {
+        val s = manyBooks(21)
+        val state = collect(s)
+        s.vm.onSortSelected(BrowseSort.TITLE)
+        assertTrue(state().fastScroll.isNotEmpty())
+
+        s.downloads.states.value = mapOf("b0" to DownloadState.DOWNLOADED)
+        s.vm.onChipSelected(FilterChip.DOWNLOADED)
+
+        assertEquals(emptyList(), state().fastScroll)
     }
 }

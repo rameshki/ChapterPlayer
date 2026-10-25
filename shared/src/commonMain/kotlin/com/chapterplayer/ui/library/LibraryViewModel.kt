@@ -17,6 +17,8 @@ import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.browse.BrowseSort
 import com.chapterplayer.domain.browse.DownloadFilter
 import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.domain.browse.LetterIndex
+import com.chapterplayer.domain.browse.fastScrollIndex
 import com.chapterplayer.domain.browse.ProgressFilter
 import com.chapterplayer.domain.browse.applyQuery
 import com.chapterplayer.domain.browse.pruneServerFilter
@@ -60,7 +62,8 @@ class LibraryViewModel(
         val groups: List<BookGroup>,
         val hasBooks: Boolean,
         val serverOptions: List<ServerFilterOption>,
-        val serverChip: String?
+        val serverChip: String?,
+        val fastScroll: List<LetterIndex>
     )
 
     private class Device(
@@ -79,15 +82,18 @@ class LibraryViewModel(
         // A deleted server's id never hides books, even before the store drops it.
         val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
         val shown = applyQuery(all, query)
+        val items = if (view.isGrouped) emptyList() else shown
+        val groups = groupsFor(view, shown, collections)
         Content(
             view = view,
             query = query,
-            items = if (view.isGrouped) emptyList() else shown,
-            groups = groupsFor(view, shown, collections),
+            items = items,
+            groups = groups,
             hasBooks = all.isNotEmpty(),
             // Counted from every book, so the numbers do not change with the filters.
             serverOptions = serverFilterOptions(serverList, all, query.serverIds),
-            serverChip = serverChipLabel(query.serverIds, serverList)
+            serverChip = serverChipLabel(query.serverIds, serverList),
+            fastScroll = fastScrollIndex(fastScrollKeys(view, query.sort, items, groups))
         )
     }.flowOn(dispatcher)
 
@@ -119,7 +125,8 @@ class LibraryViewModel(
             online = device.online,
             downloadedOnly = device.downloadedOnly,
             serverOptions = content.serverOptions,
-            serverChip = content.serverChip
+            serverChip = content.serverChip,
+            fastScroll = content.fastScroll
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 

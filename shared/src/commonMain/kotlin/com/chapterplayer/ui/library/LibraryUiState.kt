@@ -8,6 +8,7 @@ import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.BrowseQuery
 import com.chapterplayer.domain.browse.DownloadFilter
 import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.domain.browse.LetterIndex
 import com.chapterplayer.domain.browse.ProgressFilter
 import com.chapterplayer.domain.browse.ServerFilterOption
 import com.chapterplayer.domain.browse.chipFor
@@ -42,7 +43,9 @@ data class LibraryUiState(
     /** The Server section of the Filter sheet; empty (and hidden) with fewer than two servers. */
     val serverOptions: List<ServerFilterOption> = emptyList(),
     /** The label of the active server filter chip, or null when every server shows. */
-    val serverChip: String? = null
+    val serverChip: String? = null,
+    /** The A to Z scroller's letters for the list shown (positions within [items] or [groups]); empty hides it. */
+    val fastScroll: List<LetterIndex> = emptyList()
 ) {
     /** The highlighted chip, or null when the Filter sheet made a combination no chip stands for. */
     val chip: FilterChip? get() = chipFor(query)

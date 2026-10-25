@@ -48,6 +48,8 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.player.MiniPlayer
+import com.chapterplayer.ui.components.LocalHaptics
+import com.chapterplayer.ui.components.rememberComposeHaptics
 import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.ui.details.BookDetailsScreen
@@ -135,7 +137,7 @@ fun AppNavigation() {
         }
     }
 
-    CompositionLocalProvider(LocalShowSourceBadge provides showBadges) {
+    CompositionLocalProvider(LocalShowSourceBadge provides showBadges, LocalHaptics provides rememberComposeHaptics()) {
         Scaffold(
             bottomBar = {
                 Column {

@@ -166,7 +166,8 @@ private fun LibraryBody(
         state.view.isGrouped -> GroupList(
             groups = state.groups,
             onGroupClick = { group -> onGroupClick(state.view, group.key) },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            fastScroll = state.fastScroll
         )
 
         else -> BookLayout(
@@ -174,7 +175,8 @@ private fun LibraryBody(
             layout = state.layout,
             isDimmed = state::dimmed,
             onBookClick = onBookClick,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            fastScroll = state.fastScroll
         )
     }
 }
