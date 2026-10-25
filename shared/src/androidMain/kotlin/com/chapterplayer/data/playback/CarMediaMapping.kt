@@ -58,7 +58,6 @@ fun CarMediaSpec.toMediaItem(): MediaItem =
 fun carErrorCode(reason: CarFailure): Int = when (reason) {
     CarFailure.REFUSED -> SessionError.ERROR_PERMISSION_DENIED
     CarFailure.UNKNOWN_BOOK, CarFailure.NO_MATCH, CarFailure.NO_CHAPTER -> SessionError.ERROR_BAD_VALUE
-    CarFailure.PLEX -> SessionError.ERROR_NOT_SUPPORTED
     CarFailure.OFFLINE -> SessionError.ERROR_IO
     CarFailure.NOTHING_TO_RESUME -> SessionError.ERROR_INVALID_STATE
 }

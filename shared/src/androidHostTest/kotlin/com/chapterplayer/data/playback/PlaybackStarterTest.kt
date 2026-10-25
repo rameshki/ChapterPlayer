@@ -417,12 +417,21 @@ class PlaybackStarterTest {
     }
 
     @Test
-    fun `a plex book cannot play and is not loaded`() = runTest {
-        val plex = book.copy(source = com.chapterplayer.data.model.ServerSource.PLEX)
+    fun `a plex book streams from its server`() = runTest {
+        val plex = book.copy(id = "plex_1", source = com.chapterplayer.data.model.ServerSource.PLEX)
+
+        assertTrue(starter.start(plex, 0L).isSuccess)
+        assertEquals(listOf<AudioOrigin>(AudioOrigin.Server), controller.origins)
+    }
+
+    @Test
+    fun `offline a plex book needs a connection and is not loaded`() = runTest {
+        connectivity.online.value = false
+        val plex = book.copy(id = "plex_1", source = com.chapterplayer.data.model.ServerSource.PLEX)
 
         val result = starter.start(plex, 0L)
 
-        assertEquals("This server cannot play books yet", result.exceptionOrNull()?.message)
+        assertEquals("Needs a connection to play", result.exceptionOrNull()?.message)
         assertTrue(controller.loads.isEmpty())
     }
 

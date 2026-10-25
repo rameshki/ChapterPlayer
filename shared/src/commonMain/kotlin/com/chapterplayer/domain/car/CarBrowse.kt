@@ -2,7 +2,6 @@ package com.chapterplayer.domain.car
 
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.DownloadState
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.BookGroup
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.BrowseSort
@@ -30,7 +29,6 @@ data class CarData(val items: List<BrowseItem>, val collections: List<BookCollec
 
 const val CAR_MAX_SHORT_LIST = 50
 const val CAR_NO_DOWNLOADS_NOTE = "No downloaded books yet"
-const val CAR_PLEX_NOTE = "Plex books cannot play yet"
 
 private fun folder(id: String, title: String, subtitle: String = "") =
     CarItem(id, title, subtitle, null, browsable = true, playable = false, dimmed = false)
@@ -43,26 +41,22 @@ fun carRoot(): List<CarItem> = listOf(
     folder(carNodeId("downloaded"), "Downloaded"),
 )
 
-/** The row of one book: playable only for an Audiobookshelf book that can be reached; dimmed otherwise. */
+/** The row of one book (Audiobookshelf or Plex): playable when it can be reached; dimmed otherwise. */
 fun carBookItem(item: BrowseItem, online: Boolean): CarItem {
     val book = item.book
-    val absPlayable = book.source == ServerSource.ABS && isPlayable(item.downloadState, online, downloadedOnly = false)
+    val playable = isPlayable(item.downloadState, online, downloadedOnly = false)
     val percent = item.progress?.let { p ->
         if (p.isFinished || isFinishedAt(p.positionMs, book.durationMs)) 100 else (p.fraction * 100).toInt()
     }
-    val subtitle = if (book.source == ServerSource.PLEX) {
-        CAR_PLEX_NOTE
-    } else {
-        carSubtitle(book.author, percent, offline = isDimmed(item.downloadState, online, downloadedOnly = false))
-    }
+    val subtitle = carSubtitle(book.author, percent, offline = isDimmed(item.downloadState, online, downloadedOnly = false))
     return CarItem(
         id = book.id,
         title = book.title,
         subtitle = subtitle,
         coverUrl = book.coverUrl,
         browsable = false,
-        playable = absPlayable,
-        dimmed = !absPlayable,
+        playable = playable,
+        dimmed = !playable,
     )
 }
 

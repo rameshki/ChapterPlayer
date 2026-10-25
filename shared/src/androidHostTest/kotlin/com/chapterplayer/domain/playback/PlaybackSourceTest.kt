@@ -96,13 +96,23 @@ class PlaybackSourceTest {
     }
 
     @Test
-    fun `plex books stay unavailable`() {
-        for (copy in LocalCopy.entries) for (online in listOf(true, false)) {
+    fun `plex books stream online and need a connection offline`() {
+        for (copy in LocalCopy.entries) {
+            assertEquals(PlaybackSource.Stream, choosePlaybackSource(ServerSource.PLEX, copy, online = true, downloadedOnly = false))
             assertEquals(
-                PlaybackSource.Unavailable(SERVER_CANNOT_PLAY_TEXT),
-                choosePlaybackSource(ServerSource.PLEX, copy, online, downloadedOnly = false),
+                PlaybackSource.Unavailable(NEEDS_CONNECTION_TO_PLAY_TEXT),
+                choosePlaybackSource(ServerSource.PLEX, copy, online = false, downloadedOnly = false),
             )
         }
+    }
+
+    @Test
+    fun `plex books follow downloaded only like a book that is not downloaded`() {
+        // Plex books cannot be downloaded (yet), so "Downloaded only" keeps them from streaming.
+        assertEquals(
+            PlaybackSource.Unavailable(NOT_DOWNLOADED_TEXT),
+            choosePlaybackSource(ServerSource.PLEX, LocalCopy.NONE, online = true, downloadedOnly = true),
+        )
     }
 
     @Test

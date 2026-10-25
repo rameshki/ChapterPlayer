@@ -179,9 +179,11 @@ class CarBrowseTest {
     }
 
     @Test
-    fun `a plex book is shown but cannot play`() {
+    fun `a plex book plays like an audiobookshelf one`() {
         val row = carBookItem(book("p", "P", source = ServerSource.PLEX), online = true)
-        assertEquals(CAR_PLEX_NOTE, row.subtitle)
-        assertTrue(!row.playable && row.dimmed)
+        assertTrue(row.playable && !row.dimmed)
+        assertTrue("Plex" !in row.subtitle, row.subtitle)
+        val offline = carBookItem(book("p", "P", source = ServerSource.PLEX), online = false)
+        assertTrue(!offline.playable && offline.dimmed)
     }
 }

@@ -51,7 +51,6 @@ class CarMediaMappingTest {
         assertEquals(SessionError.ERROR_PERMISSION_DENIED, carErrorCode(CarFailure.REFUSED))
         assertEquals(SessionError.ERROR_BAD_VALUE, carErrorCode(CarFailure.UNKNOWN_BOOK))
         assertEquals(SessionError.ERROR_BAD_VALUE, carErrorCode(CarFailure.NO_MATCH))
-        assertEquals(SessionError.ERROR_NOT_SUPPORTED, carErrorCode(CarFailure.PLEX))
         assertEquals(SessionError.ERROR_IO, carErrorCode(CarFailure.OFFLINE))
         assertEquals(SessionError.ERROR_INVALID_STATE, carErrorCode(CarFailure.NOTHING_TO_RESUME))
     }
