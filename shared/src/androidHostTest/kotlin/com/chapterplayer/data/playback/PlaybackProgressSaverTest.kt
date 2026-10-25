@@ -169,4 +169,39 @@ class PlaybackProgressSaverTest {
         advanceTimeBy(60_000)
         assertEquals(listOf("a" to 20_000L, "other" to 10L), t.repo.saved.map { it.bookId to it.positionMs })
     }
+
+    @Test
+    fun `a finished mark made while the book plays is not undone by the next save`() = runTest {
+        val r = rig()
+        r.controller.playback.value = state(playing = true, pos = 30_000)
+        r.repo.progress.value = listOf(ReadingProgress("a", 30_000L, 100_000L, 800L, isFinished = true))
+        r.controller.playback.value = state(playing = false, pos = 31_000)
+        val saved = r.repo.saved.single()
+        assertTrue(saved.isFinished)
+        assertEquals(31_000L, saved.positionMs)
+        // it stays finished for later saves of the same loaded book
+        r.controller.playback.value = state(playing = true, pos = 32_000)
+        r.controller.playback.value = state(playing = false, pos = 33_000)
+        assertTrue(r.repo.saved.all { it.isFinished })
+    }
+
+    @Test
+    fun `an old finished flag does not stick when the book is played again`() = runTest {
+        val r = rig()
+        r.repo.progress.value = listOf(ReadingProgress("a", 99_000L, 100_000L, 100L, isFinished = true))
+        r.controller.playback.value = state(playing = true, pos = 1_000)
+        r.controller.playback.value = state(playing = false, pos = 2_000)
+        assertEquals(false, r.repo.saved.single().isFinished)
+    }
+
+    @Test
+    fun `the finished mark is forgotten when another book loads`() = runTest {
+        val r = rig()
+        r.controller.playback.value = state(playing = true, pos = 30_000)
+        r.repo.progress.value = listOf(ReadingProgress("a", 30_000L, 100_000L, 800L, isFinished = true))
+        r.controller.playback.value = state(playing = false, pos = 31_000)
+        r.controller.playback.value = state(book = "b", playing = true, pos = 1_000)
+        r.controller.playback.value = state(book = "b", playing = false, pos = 2_000)
+        assertEquals(false, r.repo.saved.last { it.bookId == "b" }.isFinished)
+    }
 }
