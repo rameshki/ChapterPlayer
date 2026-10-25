@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The opener behind the player's data source, with a fake HTTP source underneath. */
@@ -38,19 +39,28 @@ class OpenStreamTest {
 
     private class Unauthorized : IOException("401")
 
+    /** A 3xx answer pointing at [location]. */
+    private class Redirect(val location: String) : IOException("302")
+
     private class FakeUpstream(
         private val answers: MutableList<() -> Long>,
         var answeredFrom: String? = null,
     ) : Upstream {
         val authorizations = mutableListOf<String?>()
+        val headerNames = mutableListOf<String?>()
+        val urls = mutableListOf<String>()
         var closes = 0
-        override fun open(authorization: String?): Long {
-            authorizations += authorization
+        override fun open(url: String, header: AuthHeader?): Long {
+            urls += url
+            authorizations += header?.value
+            headerNames += header?.name
             return answers.removeAt(0)()
         }
         override fun close() { closes++ }
-        override fun resolvedUrl() = answeredFrom
+        // Without a fixed answer, the address that was opened answered (no redirect is followed underneath).
+        override fun resolvedUrl() = answeredFrom ?: urls.lastOrNull()
         override fun isUnauthorized(e: Exception) = e is Unauthorized
+        override fun redirectLocation(e: Exception) = (e as? Redirect)?.location
     }
 
     private val servers = Servers(
@@ -63,7 +73,27 @@ class OpenStreamTest {
         val up = FakeUpstream(mutableListOf({ 42L }), answeredFrom = url)
         assertEquals(42L, openStream(url, servers, RetryOnce, up))
         assertEquals(listOf<String?>("Bearer first"), up.authorizations)
+        assertEquals(listOf<String?>("Authorization"), up.headerNames)
         assertEquals(0, up.closes)
+    }
+
+    @Test
+    fun `a plex stream gets the token header and is refused when answered from another host`() {
+        val plex = Servers(listOf(ServerConfig("p", ServerSource.PLEX, "P", "http://plex.test:32400", "plextok")))
+        val part = "http://plex.test:32400/library/parts/1/1700000000/file.mp3"
+        val up = FakeUpstream(mutableListOf({ 3L }), answeredFrom = part)
+        assertEquals(3L, openStream(part, plex, RetryOnce, up))
+        assertEquals(listOf<String?>("X-Plex-Token"), up.headerNames)
+        assertEquals(listOf<String?>("plextok"), up.authorizations)
+
+        val moved = FakeUpstream(mutableListOf({ 3L }), answeredFrom = "http://evil.test/file.mp3")
+        assertFailsWith<UnsafeRedirectException> { openStream(part, plex, RetryOnce, moved) }
+        assertEquals(1, moved.closes)
+    }
+
+    @Test
+    fun `the auth header never shows its value`() {
+        assertFalse("plextok" in AuthHeader("X-Plex-Token", "plextok").toString())
     }
 
     @Test
@@ -132,5 +162,59 @@ class OpenStreamTest {
     @Test
     fun `the marker is the real exception message`() {
         assertEquals(SIGN_IN_AGAIN_TEXT, com.chapterplayer.data.auth.SignInRequiredException("x").message)
+    }
+
+    // -- Redirects ------------------------------------------------------------------------------
+
+    private val plex = Servers(listOf(ServerConfig("p", ServerSource.PLEX, "P", "http://plex.test:32400", "plextok")))
+    private val part = "http://plex.test:32400/library/parts/1/1700000000/file.mp3"
+
+    @Test
+    fun `a redirect within the server is followed by hand with the token`() {
+        val up = FakeUpstream(mutableListOf({ throw Redirect("/library/parts/1/moved.mp3") }, { 9L }))
+        assertEquals(9L, openStream(part, plex, RetryOnce, up))
+        assertEquals(listOf(part, "http://plex.test:32400/library/parts/1/moved.mp3"), up.urls)
+        assertEquals(listOf<String?>("plextok", "plextok"), up.authorizations)
+    }
+
+    @Test
+    fun `a redirect to another host is never sent the token`() {
+        val up = FakeUpstream(mutableListOf({ throw Redirect("http://evil.test/file.mp3") }, { 9L }))
+        assertFailsWith<UnsafeRedirectException> { openStream(part, plex, RetryOnce, up) }
+        assertEquals(listOf(part), up.urls)
+        val bearer = FakeUpstream(mutableListOf({ throw Redirect("http://evil.test/file.mp3") }, { 9L }))
+        assertFailsWith<UnsafeRedirectException> { openStream(url, servers, RetryOnce, bearer) }
+        assertEquals(listOf(url), bearer.urls)
+    }
+
+    @Test
+    fun `an address of no server may be redirected elsewhere, without a header`() {
+        val up = FakeUpstream(mutableListOf({ throw Redirect("http://cdn.test/a.mp3") }, { 4L }))
+        assertEquals(4L, openStream("http://free.test/a.mp3", servers, RetryOnce, up))
+        assertEquals(listOf<String?>(null, null), up.authorizations)
+    }
+
+    @Test
+    fun `at most five redirects are followed`() {
+        val loops = MutableList<() -> Long>(6) { { throw Redirect("/again") } }
+        val up = FakeUpstream(loops)
+        assertFailsWith<UnsafeRedirectException> { openStream(part, plex, RetryOnce, up) }
+        assertEquals(6, up.urls.size)
+    }
+
+    @Test
+    fun `the redirect decision`() {
+        assertEquals("http://h.test/b", redirectTarget("http://h.test/a", "/b", hop = 1, withToken = true))
+        assertEquals("http://h.test/dir/c", redirectTarget("http://h.test/dir/a", "c", hop = 1, withToken = true))
+        assertEquals("https://h.test/b", redirectTarget("http://h.test/a", "https://h.test/b", hop = 1, withToken = false))
+        // Another origin with a token: refused; without one: followed.
+        assertNull(redirectTarget("http://h.test/a", "http://o.test/b", hop = 1, withToken = true))
+        assertNull(redirectTarget("http://h.test:1/a", "http://h.test:2/b", hop = 1, withToken = true))
+        assertEquals("http://o.test/b", redirectTarget("http://h.test/a", "http://o.test/b", hop = 1, withToken = false))
+        // Never from https to http, never another scheme, never past five.
+        assertNull(redirectTarget("https://h.test/a", "http://h.test/b", hop = 1, withToken = false))
+        assertNull(redirectTarget("http://h.test/a", "ftp://h.test/b", hop = 1, withToken = false))
+        assertNull(redirectTarget("http://h.test/a", "/b", hop = 6, withToken = false))
+        assertEquals("http://h.test/b", redirectTarget("http://h.test/a", "/b", hop = 5, withToken = false))
     }
 }

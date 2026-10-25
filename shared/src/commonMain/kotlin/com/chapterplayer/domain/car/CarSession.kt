@@ -2,7 +2,6 @@ package com.chapterplayer.domain.car
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.Chapter
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.formatClock
 import com.chapterplayer.domain.browse.groupBySeries
@@ -80,7 +79,7 @@ fun parseCarRequest(mediaId: String, searchQuery: String?, hasUri: Boolean): Car
 }
 
 /** Why a car request cannot be played; the service turns it into a short spoken or shown error. */
-enum class CarFailure { REFUSED, UNKNOWN_BOOK, PLEX, OFFLINE, NO_MATCH, NOTHING_TO_RESUME, NO_CHAPTER }
+enum class CarFailure { REFUSED, UNKNOWN_BOOK, OFFLINE, NO_MATCH, NOTHING_TO_RESUME, NO_CHAPTER }
 
 /** What to do for a car request. */
 sealed interface CarPlay {
@@ -93,8 +92,8 @@ sealed interface CarPlay {
 data class CarNowPlaying(val bookId: String, val title: String, val chapters: List<Chapter>)
 
 /**
- * Resolves [request] against the visible books [items]. A book plays when it is an Audiobookshelf book
- * that can be reached [online] (or is downloaded, or is the one already in the player).
+ * Resolves [request] against the visible books [items]. A book (Audiobookshelf or Plex) plays when it
+ * can be reached [online] (or is downloaded, or is the one already in the player).
  */
 fun resolveCarRequest(request: CarRequest, items: List<BrowseItem>, online: Boolean, nowPlaying: CarNowPlaying?): CarPlay =
     when (request) {
@@ -118,7 +117,6 @@ fun resumeLast(items: List<BrowseItem>, online: Boolean, nowPlaying: CarNowPlayi
 }
 
 private fun failureOf(item: BrowseItem, online: Boolean, nowPlaying: CarNowPlaying?): CarFailure? = when {
-    item.book.source != ServerSource.ABS -> CarFailure.PLEX
     item.book.id == nowPlaying?.bookId -> null
     !isPlayable(item.downloadState, online, downloadedOnly = false) -> CarFailure.OFFLINE
     else -> null
@@ -287,7 +285,6 @@ fun carSearchResults(query: String, data: CarData, online: Boolean): List<CarIte
 fun carFailureMessage(reason: CarFailure): String = when (reason) {
     CarFailure.REFUSED -> "Not allowed"
     CarFailure.UNKNOWN_BOOK -> "This book is no longer in your library"
-    CarFailure.PLEX -> CAR_PLEX_NOTE
     CarFailure.OFFLINE -> "This book needs a connection"
     CarFailure.NO_MATCH -> "No book matches that"
     CarFailure.NOTHING_TO_RESUME -> "Nothing to resume yet"

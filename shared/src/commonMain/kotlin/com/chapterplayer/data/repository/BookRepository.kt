@@ -62,8 +62,11 @@ interface BookRepository {
     /** Ends [session] on its server with the stop position and the time listened. Best effort: a failure is returned, never thrown; cancellation propagates. */
     suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit>
 
-    /** Tells the server where [session] is (position, and the time listened since the last sync, in milliseconds). A failure is returned, never thrown; cancellation propagates. */
-    suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit>
+    /**
+     * Tells the server where [session] is (position, and the time listened since the last sync, in milliseconds); [isPlaying]
+     * is false for the report made when playback paused or stopped. A failure is returned, never thrown; cancellation propagates.
+     */
+    suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long, isPlaying: Boolean = true): Result<Unit>
 
     /** The server's progress for [bookId]: success with null when it has none. A failure (including an unknown book or server) is returned; cancellation propagates. */
     suspend fun fetchServerProgress(bookId: String): Result<ServerProgress?>

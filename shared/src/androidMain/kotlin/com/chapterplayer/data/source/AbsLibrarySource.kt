@@ -106,7 +106,14 @@ class AbsLibrarySource(
         }
     }
 
-    override suspend fun syncPlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long, durationMs: Long) {
+    override suspend fun syncPlayback(
+        server: ServerConfig,
+        sessionId: String,
+        positionMs: Long,
+        listenedMs: Long,
+        durationMs: Long,
+        isPlaying: Boolean,
+    ) {
         authorizer.authorized(server) { bearerToken ->
             api.syncSession(server.baseUrl, bearerToken, sessionId, positionMs / 1000.0, listenedMs / 1000.0, durationMs / 1000.0)
         }

@@ -201,12 +201,12 @@ class BookRepositoryImpl(
             Result.failure(e)
         }
 
-    override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> =
+    override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long, isPlaying: Boolean): Result<Unit> =
         try {
             val (server, source) = serverAndSource(session.serverId)
             Result.success(
                 source.syncPlayback(
-                    server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L), session.durationMs
+                    server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L), session.durationMs, isPlaying
                 )
             )
         } catch (e: CancellationException) {
@@ -535,7 +535,8 @@ class BookRepositoryImpl(
                 }
             }
             val target = try {
-                serverAndSource(book.serverId).takeIf { (server, _) -> server.source == ServerSource.ABS }
+                // Audiobookshelf takes the mark as progress; Plex as a scrobble (or unscrobble) of every track.
+                serverAndSource(book.serverId).takeIf { (server, _) -> server.source == ServerSource.ABS || server.source == ServerSource.PLEX }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -71,6 +71,8 @@ class ProgressSyncerTest {
         advanceTimeBy(10_500)
         r.play(pos = 14_000, playing = false)
         assertEquals(listOf(1_000L to 10_000L, 14_000L to 500L), r.repo.syncCalls.map { it.positionMs to it.listenedMs })
+        // The periodic report is made while playing, the last one says playback stopped.
+        assertEquals(listOf(true, false), r.repo.syncCalls.map { it.isPlaying })
         advanceTimeBy(120_000)
         assertEquals(2, r.repo.syncCalls.size)
     }
@@ -156,13 +158,45 @@ class ProgressSyncerTest {
     }
 
     @Test
-    fun `a book of a Plex server is never reported or queued`() = runTest {
+    fun `a book of a Plex server is reported like any other`() = runTest {
         val r = rig()
         r.play("plex", pos = 7_000)
-        advanceTimeBy(30_000)
+        advanceTimeBy(10_500)
         r.play("plex", pos = 9_000, playing = false)
-        assertTrue(r.repo.syncCalls.isEmpty())
+        assertEquals(listOf(7_000L to true, 9_000L to false), r.repo.syncCalls.map { it.positionMs to it.isPlaying })
         assertTrue(r.repo.queued.isEmpty())
+    }
+
+    @Test
+    fun `a live sync the server took drops the older queued position of the book, but never a queued mark`() = runTest {
+        val r = rig()
+        r.repo.queueProgress(PendingProgress("a", "s1", 50_000, 100_000, 0, updatedAtMs = 0))
+        r.repo.queueProgress(PendingProgress("b", "s1", 9_000, 100_000, 0, updatedAtMs = 0, markedFinished = true))
+        r.play("a", pos = 7_000)
+        advanceTimeBy(10_500)
+        assertEquals(listOf("b"), r.repo.queued.map { it.bookId })
+
+        r.play("b", pos = 1_000)
+        advanceTimeBy(10_500)
+        assertEquals(listOf("b"), r.repo.queued.map { it.bookId })
+        assertEquals(true, r.repo.queued.single().markedFinished)
+    }
+
+    @Test
+    fun `a failed live sync keeps the queue`() = runTest {
+        val r = rig()
+        r.repo.onSyncPlayback = { Result.failure(IllegalStateException("down")) }
+        r.play("a", pos = 7_000)
+        advanceTimeBy(10_500)
+        assertEquals(7_000L, r.repo.queued.single().positionMs)
+    }
+
+    @Test
+    fun `a Plex position the server did not get is queued`() = runTest {
+        val r = rig()
+        r.play("plex", pos = 7_000, session = false)
+        advanceTimeBy(10_500)
+        assertEquals("plex", r.repo.queued.single().bookId)
     }
 
     @Test

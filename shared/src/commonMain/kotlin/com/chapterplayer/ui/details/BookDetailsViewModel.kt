@@ -13,7 +13,6 @@ import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.data.playback.PlaybackStarter
@@ -29,7 +28,6 @@ import com.chapterplayer.domain.browse.formatLength
 import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.browse.isPlayable
 import com.chapterplayer.domain.browse.seriesNeighbours
-import com.chapterplayer.domain.playback.SERVER_CANNOT_PLAY_TEXT
 import com.chapterplayer.domain.playback.isFinishedAt
 import com.chapterplayer.domain.playback.startPositionFor
 import com.chapterplayer.ui.browse.observeBrowseItems
@@ -130,9 +128,7 @@ class BookDetailsViewModel(
                 loaded -> DetailsPlayback.PAUSED
                 else -> DetailsPlayback.NOT_PLAYING
             }
-            // Plex books cannot play yet (Stage 4 step 2): no play control and no chapter taps.
-            val serverCanPlay = book.source == ServerSource.ABS
-            val canPlay = serverCanPlay && book.serverId.isNotBlank() &&
+            val canPlay = book.serverId.isNotBlank() &&
                 isPlayable(whole.downloadState, env.online, env.downloadedOnly)
             // While this book is loaded in the player the highlight follows the live position.
             val shown = if (loaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
@@ -155,7 +151,6 @@ class BookDetailsViewModel(
                 canPlay = canPlay,
                 cannotPlayReason = when {
                     canPlay -> null
-                    !serverCanPlay -> SERVER_CANNOT_PLAY_TEXT
                     else -> NEEDS_CONNECTION_TEXT
                 },
                 playError = env.local.error

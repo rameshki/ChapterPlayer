@@ -16,6 +16,8 @@ class StartMessageTest {
         assertEquals("The server could not start playback", safeStartMessage(HttpStatusException(HttpStatusCode.InternalServerError)))
         assertEquals("Cannot reach the server", safeStartMessage(IOException("timeout for http://secret.example/x")))
         assertEquals("This server cannot play books yet", safeStartMessage(IllegalStateException("This server cannot play books yet")))
+        val missing = com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT
+        assertEquals(missing, safeStartMessage(IllegalStateException(missing)))
         assertEquals("Could not start playback", safeStartMessage(IllegalStateException("token=abc http://x")))
         assertEquals("Could not start playback", safeStartMessage(RuntimeException()))
     }

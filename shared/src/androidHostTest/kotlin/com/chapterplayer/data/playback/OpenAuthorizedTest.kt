@@ -62,7 +62,10 @@ class OpenAuthorizedTest {
         attempts: MutableList<String?>,
         refreshes: IntArray = IntArray(1),
         failWith: Exception? = null,
-    ) = openAuthorized(url, servers, manager(servers, refreshes), { it is Unauthorized }) { authorization ->
+        headers: MutableList<String?> = mutableListOf(),
+    ) = openAuthorized(url, servers, manager(servers, refreshes), { it is Unauthorized }) { header ->
+        headers += header?.name
+        val authorization = header?.value
         attempts += authorization
         failWith?.let { throw it }
         if (authorization !in accepted) throw Unauthorized()
@@ -110,10 +113,35 @@ class OpenAuthorizedTest {
     }
 
     @Test
-    fun `a plex server never gets a bearer header`() {
+    fun `a plex server gets its token in the X-Plex-Token header, never a bearer, and no refresh`() {
         val attempts = mutableListOf<String?>()
-        run(FakeServers(listOf(server("p", "http://abs.test", ServerSource.PLEX))), setOf(null), attempts)
-        assertNull(attempts.single())
+        val headers = mutableListOf<String?>()
+        val refreshes = IntArray(1)
+        run(FakeServers(listOf(server("p", "http://abs.test", ServerSource.PLEX, token = "plextok"))), setOf("plextok"), attempts, refreshes, headers = headers)
+        assertEquals(listOf<String?>("plextok"), attempts)
+        assertEquals(listOf<String?>("X-Plex-Token"), headers)
+        assertEquals(0, refreshes[0])
+    }
+
+    @Test
+    fun `a 401 from a plex server means sign in again, without a retry`() {
+        val attempts = mutableListOf<String?>()
+        val refreshes = IntArray(1)
+        assertFailsWith<SignInRequiredException> {
+            run(FakeServers(listOf(server("p", "http://abs.test", ServerSource.PLEX, token = "plextok"))), emptySet(), attempts, refreshes)
+        }
+        assertEquals(1, attempts.size)
+        assertEquals(0, refreshes[0])
+    }
+
+    @Test
+    fun `a plex token goes only to its own server`() {
+        // Same host as the request but another port, and a host that only starts like the request's: neither gets it.
+        for (base in listOf("http://abs.test:32400", "http://abs.tes", "https://abs.test")) {
+            val attempts = mutableListOf<String?>()
+            run(FakeServers(listOf(server("p", base, ServerSource.PLEX, token = "plextok"))), setOf(null), attempts)
+            assertNull(attempts.single(), base)
+        }
     }
 
     @Test

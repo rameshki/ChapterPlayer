@@ -107,6 +107,8 @@ kotlin {
             implementation(libs.media3.session)
             implementation(libs.media3.common)
             implementation(libs.media3.datasource)
+            // Audio over OkHttp with redirects followed by hand, so a token header never goes to another host
+            implementation(libs.media3.datasource.okhttp)
 
             // WorkManager: the download worker
             implementation(libs.work.runtime.ktx)

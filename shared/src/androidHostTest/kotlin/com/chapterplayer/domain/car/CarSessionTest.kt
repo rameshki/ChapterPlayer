@@ -113,7 +113,8 @@ class CarSessionTest {
         )
         assertEquals("abs_1", started(resolveCarRequest(CarRequest.Book("abs_1"), items, online = true, nowPlaying = null)))
         assertEquals(CarPlay.Fail(CarFailure.UNKNOWN_BOOK), resolveCarRequest(CarRequest.Book("abs_gone"), items, true, null))
-        assertEquals(CarPlay.Fail(CarFailure.PLEX), resolveCarRequest(CarRequest.Book("plex_1"), items, true, null))
+        assertEquals("plex_1", started(resolveCarRequest(CarRequest.Book("plex_1"), items, online = true, nowPlaying = null)))
+        assertEquals(CarPlay.Fail(CarFailure.OFFLINE), resolveCarRequest(CarRequest.Book("plex_1"), items, false, null))
         assertEquals(CarPlay.Fail(CarFailure.OFFLINE), resolveCarRequest(CarRequest.Book("abs_1"), items, false, null))
         assertEquals(CarPlay.Fail(CarFailure.REFUSED), resolveCarRequest(CarRequest.Refused, items, true, null))
     }
@@ -167,16 +168,13 @@ class CarSessionTest {
     }
 
     @Test
-    fun `an author name prefers a playable book over a Plex one`() {
+    fun `an author name plays a Plex book like any other`() {
         val items = listOf(
             book("p", "Alpha", author = "Ann Writer", source = ServerSource.PLEX),
             book("a", "Beta", author = "Ann Writer"),
         )
-        assertEquals("a", started(resolveCarRequest(CarRequest.Search("ann writer"), items, true, null)))
-        assertEquals(
-            CarPlay.Fail(CarFailure.PLEX),
-            resolveCarRequest(CarRequest.Search("ann writer"), items.take(1), true, null),
-        )
+        assertEquals("p", started(resolveCarRequest(CarRequest.Search("ann writer"), items, true, null)))
+        assertEquals("p", started(resolveCarRequest(CarRequest.Search("ann writer"), items.take(1), true, null)))
     }
 
     @Test
@@ -261,7 +259,7 @@ class CarSessionTest {
         assertNull(resume(items = listOf(book("a", "A", progress = progress("a", 1_000, last = now - 30_000)))))
         assertEquals("a", resume(items = listOf(book("a", "A", progress = progress("a", 1_000, last = now - 61_000)))))
         assertNull(resume(online = false))
-        assertNull(resume(items = listOf(book("p", "P", source = ServerSource.PLEX, progress = progress("p", 1_000, now - 3_600_000)))))
+        assertEquals("p", resume(items = listOf(book("p", "P", source = ServerSource.PLEX, progress = progress("p", 1_000, now - 3_600_000)))))
     }
 
     // -- Lists -------------------------------------------------------------------------------
@@ -342,7 +340,6 @@ class CarSessionTest {
             val text = carFailureMessage(reason)
             assertTrue(text.isNotBlank() && text.none { it == '/' || it == ':' }, text)
         }
-        assertEquals(CAR_PLEX_NOTE, carFailureMessage(CarFailure.PLEX))
     }
 
     @Test

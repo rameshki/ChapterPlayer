@@ -626,18 +626,26 @@ class BookDetailsViewModelTest {
     }
 
     @Test
-    fun `a Plex book cannot play yet, says so and ignores chapter taps`() = runTest {
+    fun `a Plex book plays online and takes chapter taps like any other`() = runTest {
         val s = fresh(longBook().copy(id = "plex_a", source = ServerSource.PLEX))
-        s.downloads.states.value = mapOf("plex_a" to DownloadState.DOWNLOADED)
+        val state = collect(s)
+
+        assertTrue(state().canPlay)
+        assertNull(state().cannotPlayReason)
+        assertTrue(chapterTapsEnabled(state().playback, state().canPlay))
+        s.vm.onChapterClicked(1)
+        assertEquals(listOf("plex_a" to 1_000L), s.controller.loads)
+        assertEquals(1, s.controller.plays)
+    }
+
+    @Test
+    fun `offline a Plex book needs a connection`() = runTest {
+        val s = fresh(longBook().copy(id = "plex_a", source = ServerSource.PLEX))
+        s.connectivity.online.value = false
         val state = collect(s)
 
         assertFalse(state().canPlay)
-        assertEquals("This server cannot play books yet", state().cannotPlayReason)
-        assertFalse(chapterTapsEnabled(state().playback, state().canPlay))
-        s.vm.onResumeClicked()
-        s.vm.onChapterClicked(1)
-        assertTrue(s.controller.loads.isEmpty())
-        assertEquals(0, s.controller.plays)
+        assertEquals("Needs a connection to play", state().cannotPlayReason)
     }
 
     @Test

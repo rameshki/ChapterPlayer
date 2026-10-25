@@ -1,7 +1,6 @@
 package com.chapterplayer.data.progress
 
 import com.chapterplayer.data.model.AudioBook
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.playback.PlaybackState
@@ -85,7 +84,7 @@ class ProgressSyncer(
                 // Paused, stopped, released or another book took over: the last position seen is the best there is.
                 val last = if (sameBook) current else before
                 val oldSession = (if (sameBook) session else null) ?: previousSession?.takeIf { it.bookId == before.bookId }
-                syncNow(before.bookId, last, oldSession)
+                syncNow(before.bookId, last, oldSession, isPlaying = false)
             }
         }
         val continuing = before != null && before.isPlaying && before.bookId == current.bookId
@@ -100,7 +99,7 @@ class ProgressSyncer(
         if (!shouldSyncNow(lastSyncedAt, now, isPlaying = true, intervalMs = SYNC_INTERVAL_MS)) return
         val session = controller.activeSession?.takeIf { it.bookId == current.bookId }
         if (session != null) previousSession = session
-        syncNow(current.bookId, current, session ?: previousSession?.takeIf { it.bookId == current.bookId })
+        syncNow(current.bookId, current, session ?: previousSession?.takeIf { it.bookId == current.bookId }, isPlaying = true)
     }
 
     /** The book's server and type, read from the library once; null when the book is not in it. */
@@ -117,22 +116,27 @@ class ProgressSyncer(
         return found
     }
 
-    /** One report of [at] for [bookId] against [session]; a failure of any kind queues it instead. */
-    private suspend fun syncNow(bookId: String?, at: PlaybackState, session: PlaybackSession?) {
+    /**
+     * One report of [at] for [bookId] against [session] ([isPlaying] false for the last one, when playback paused or
+     * stopped); a failure of any kind queues it instead.
+     */
+    private suspend fun syncNow(bookId: String?, at: PlaybackState, session: PlaybackSession?, isPlaying: Boolean) {
         val now = nowMs()
         val listenedMs = (now - lastSyncedAt).coerceIn(0L, MAX_LISTENED_MS)
         lastSyncedAt = now
         if (!shouldSaveProgress(bookId, at.positionMs, at.durationMs)) return
         val book = findBook(bookId!!) ?: return
-        if (book.source != ServerSource.ABS) return
         val sent = session != null && try {
-            books.syncPlayback(session, at.positionMs, listenedMs).isSuccess
+            books.syncPlayback(session, at.positionMs, listenedMs, isPlaying).isSuccess
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             false
         }
-        if (sent) return
+        if (sent) {
+            dropReplacedPending(book.id, now)
+            return
+        }
         try {
             books.queueProgress(
                 PendingProgress(book.id, book.serverId, at.positionMs, at.durationMs, listenedMs, updatedAtMs = now)
@@ -142,6 +146,22 @@ class ProgressSyncer(
             throw e
         } catch (e: Exception) {
             // The local progress is saved separately; losing one queued report only delays the server.
+        }
+    }
+
+    /**
+     * The server just took a live position for [bookId]: an older queued position of the book is out of date and must
+     * never be delivered after it (it would rewind the book, and for Plex unscrobble tracks). A queued Mark as finished /
+     * not finished is a user action and stays.
+     */
+    private suspend fun dropReplacedPending(bookId: String, nowMs: Long) {
+        try {
+            val queued = books.pendingProgress().firstOrNull { it.bookId == bookId } ?: return
+            if (queued.markedFinished == null && queued.updatedAtMs <= nowMs) books.deletePending(bookId, queued.updatedAtMs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The flusher's own newest-wins check is still there.
         }
     }
 

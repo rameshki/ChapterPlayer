@@ -126,4 +126,11 @@ class WidgetStateTest {
         val shown = assertIs<ContinueWidgetState.Book>(continueWidgetState(items, online = true, downloadedOnly = false))
         assertEquals(98, shown.percent)
     }
+
+    @Test
+    fun aPlexBookInProgressIsOfferedOnlineLikeAnyOther() {
+        val plex = item("plex_1", positionMs = 600_000, lastPlayedAt = 10).let { it.copy(book = it.book.copy(source = ServerSource.PLEX)) }
+        assertEquals("plex_1", assertIs<ContinueWidgetState.Book>(continueWidgetState(listOf(plex), online = true, downloadedOnly = false)).bookId)
+        assertEquals(ContinueWidgetState.Empty, continueWidgetState(listOf(plex), online = false, downloadedOnly = false))
+    }
 }

@@ -43,12 +43,12 @@ open class FakeBookRepository(books: List<AudioBook> = emptyList()) : BookReposi
     override suspend fun loadDetails(bookId: String): Result<BookDetails?> = Result.success(null)
     override suspend fun startPlayback(bookId: String): Result<PlaybackSession> = Result.failure(IllegalStateException("unused"))
     override suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> = Result.success(Unit)
-    /** Every [syncPlayback] call: session, position, listened time. */
-    data class SyncCall(val session: PlaybackSession, val positionMs: Long, val listenedMs: Long)
+    /** Every [syncPlayback] call: session, position, listened time, and whether it was playing. */
+    data class SyncCall(val session: PlaybackSession, val positionMs: Long, val listenedMs: Long, val isPlaying: Boolean = true)
     val syncCalls = mutableListOf<SyncCall>()
     var onSyncPlayback: suspend (SyncCall) -> Result<Unit> = { Result.success(Unit) }
-    override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> {
-        val call = SyncCall(session, positionMs, listenedMs)
+    override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long, isPlaying: Boolean): Result<Unit> {
+        val call = SyncCall(session, positionMs, listenedMs, isPlaying)
         syncCalls += call
         return onSyncPlayback(call)
     }

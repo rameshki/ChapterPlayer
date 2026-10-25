@@ -57,6 +57,12 @@ data class PlexMetadataDto(
     @SerialName("duration") val durationMs: Long? = null,        // Plex provides duration in ms
     @SerialName("thumb") val thumb: String? = null,              // Relative path; prepend server URL
     @SerialName("addedAt") val addedAt: Long? = null,            // Plex gives epoch seconds
+    /** Where listening stopped inside this item, in ms; absent when it was never started or was finished. */
+    @SerialName("viewOffset") val viewOffsetMs: Long? = null,
+    /** How often this item was played to the end (scrobbled); absent means never. */
+    @SerialName("viewCount") val viewCount: Int? = null,
+    /** When this item was last played, in epoch seconds. */
+    @SerialName("lastViewedAt") val lastViewedAt: Long? = null,
     @SerialName("Genre") val genres: List<PlexTagDto>? = null,
     @SerialName("Media") val media: List<PlexMediaDto>? = null,
     @SerialName("Chapter") val chapters: List<PlexChapterDto>? = null

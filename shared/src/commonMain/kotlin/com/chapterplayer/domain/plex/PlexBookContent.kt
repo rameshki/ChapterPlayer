@@ -4,8 +4,10 @@ import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.remote.plex.dto.PlexMetadataDto
 
 /**
- * One audio file of a Plex book, in play order: what playback streams (step 2 of Stage 4). [partKey] is the file's
- * server path (`/library/parts/...`, no token), null when the track has no file; [durationMs] is 0 when unknown.
+ * One audio file of a Plex book, in play order: what playback streams. [partKey] is the file's server path
+ * (`/library/parts/...`, no token), null when the track has no file; [durationMs] is 0 when unknown.
+ * [viewOffsetMs], [viewCount] and [lastViewedAtSec] are the server's listening state of this track
+ * (see [plexServerProgress]).
  */
 data class PlexTrack(
     val ratingKey: String,
@@ -14,6 +16,9 @@ data class PlexTrack(
     val durationMs: Long,
     val container: String?,
     val sizeBytes: Long?,
+    val viewOffsetMs: Long? = null,
+    val viewCount: Int = 0,
+    val lastViewedAtSec: Long? = null,
 )
 
 /** A Plex book's audio and chapters, across all its tracks. */
@@ -54,6 +59,10 @@ fun plexBookContent(children: List<PlexMetadataDto>, details: Map<String, PlexMe
             durationMs = durationMs,
             container = part?.container ?: media?.container,
             sizeBytes = part?.sizeBytes,
+            // The track list carries the listening state; a detail read with chapters carries it too.
+            viewOffsetMs = (track.viewOffsetMs ?: listed.viewOffsetMs)?.takeIf { it > 0L },
+            viewCount = (track.viewCount ?: listed.viewCount ?: 0).coerceAtLeast(0),
+            lastViewedAtSec = track.lastViewedAt ?: listed.lastViewedAt,
         )
         if (own.isEmpty()) {
             chapters += Chapter(id = chapters.size, title = title, startMs = offset, endMs = offset + durationMs)
