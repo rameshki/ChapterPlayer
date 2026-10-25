@@ -82,6 +82,11 @@ import com.chapterplayer.ui.offline.OfflineStateViewModel
 import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
+import com.chapterplayer.data.widgets.WidgetActions
+import com.chapterplayer.data.widgets.WidgetRefresher
+import com.chapterplayer.data.widgets.WidgetStates
+import com.chapterplayer.data.widgets.WidgetHost
+import com.chapterplayer.ui.widgets.GlanceWidgetHost
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -243,5 +248,14 @@ val viewModelModule = module {
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
 }
 
+val widgetModule = module {
+    // What the home screen widgets show, and the Now Playing buttons (they act on the loaded book only).
+    single { WidgetStates(get(), get(), get(), get(), get()) }
+    single { WidgetActions(get()) }
+    // The application starts it: redraws the widgets when what they show changes (not on every position tick).
+    single<WidgetHost> { GlanceWidgetHost(androidContext()) }
+    single { WidgetRefresher(get(), get(), get(AppScopeQualifier)) }
+}
+
 /** Everything the shared module declares. The app adds what only it knows. */
-val sharedModules = listOf(databaseModule, networkModule, securityModule, sourceModule, repositoryModule, deviceModule, playbackModule, downloadModule, browseModule, viewModelModule)
+val sharedModules = listOf(databaseModule, networkModule, securityModule, sourceModule, repositoryModule, deviceModule, playbackModule, downloadModule, browseModule, viewModelModule, widgetModule)

@@ -9,6 +9,7 @@ import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
 import com.chapterplayer.data.progress.ServerProgressRefresher
+import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.di.appModule
 import com.chapterplayer.di.sharedModules
 import org.koin.android.ext.koin.androidContext
@@ -40,5 +41,7 @@ class ChapterPlayerApp : Application() {
         GlobalContext.get().get<DownloadQueueRestorer>().start()
         // Older downloads learn their file lengths from the server, so they can play offline.
         GlobalContext.get().get<DownloadLengthFiller>().start()
+        // The home screen widgets follow the player, progress and downloads.
+        GlobalContext.get().get<WidgetRefresher>().start()
     }
 }

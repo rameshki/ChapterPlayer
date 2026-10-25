@@ -40,8 +40,8 @@ fun nowPlayingWidgetState(state: PlaybackState, book: AudioBook?): NowPlayingWid
         title = known?.title ?: NOW_PLAYING_FALLBACK_TITLE,
         author = known?.author.orEmpty(),
         chapterTitle = chapter?.title,
-        isPlaying = state.isPlaying || (state.isBuffering && state.playWhenReady),
-        canSkip = state.durationMs > 0,
+        isPlaying = playPauseCommand(state) == WidgetCommand.PAUSE,
+        canSkip = canSkip(state),
     )
 }
 

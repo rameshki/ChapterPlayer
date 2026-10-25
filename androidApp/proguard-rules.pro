@@ -17,3 +17,7 @@
 # Kotlin
 -keep class kotlin.** { *; }
 -keep class kotlinx.** { *; }
+
+# Glance builds the widget buttons' ActionCallbacks by name with their no-argument constructor;
+# its own rule keeps the classes, this keeps the constructor under R8 full mode.
+-keep public class * implements androidx.glance.appwidget.action.ActionCallback { public <init>(); }
