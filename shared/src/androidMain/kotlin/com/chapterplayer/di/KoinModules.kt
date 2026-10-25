@@ -109,6 +109,7 @@ import com.chapterplayer.ui.player.PlayerMenuViewModel
 import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.search.SearchViewModel
+import com.chapterplayer.ui.stats.StatsViewModel
 import com.chapterplayer.ui.offline.OfflineStateViewModel
 import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
@@ -346,6 +347,8 @@ val viewModelModule = module {
     viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
     viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
     viewModelOf(::OfflineStateViewModel)
+    // The statistics page; its figures are worked out off the main thread.
+    viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }

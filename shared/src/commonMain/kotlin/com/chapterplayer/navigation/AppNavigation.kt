@@ -67,6 +67,7 @@ import com.chapterplayer.ui.settings.CarSettingsScreen
 import com.chapterplayer.ui.settings.DownloadsSettingsScreen
 import com.chapterplayer.ui.settings.ServersSettingsScreen
 import com.chapterplayer.ui.settings.SettingsHubScreen
+import com.chapterplayer.ui.stats.StatsScreen
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.NavBarSurface
@@ -123,6 +124,9 @@ fun AppNavigation() {
     }
     val openGroup = { kind: LibraryView, key: String ->
         navController.navigate(Screen.GroupDetail.createRoute(kind, key))
+    }
+    val openStats = {
+        navController.navigate(Screen.Stats.route) { launchSingleTop = true }
     }
 
     // The mini player and the open-player request share the full player's view model: one playback state source.
@@ -195,7 +199,8 @@ fun AppNavigation() {
                             onBookClick = openBook,
                             onGroupClick = openGroup,
                             onOpenSettings = { openSettings() },
-                            onOpenServers = { openServers() }
+                            onOpenServers = { openServers() },
+                            onOpenStats = { openStats() }
                         )
                     }
 
@@ -255,6 +260,7 @@ fun AppNavigation() {
                         SettingsHubScreen(
                             onOpenServers = { navController.navigate(Screen.SettingsServers.route) { launchSingleTop = true } },
                             onOpenAppearance = { navController.navigate(Screen.SettingsAppearance.route) { launchSingleTop = true } },
+                            onOpenStats = { openStats() },
                             onOpenDownloads = { navController.navigate(Screen.SettingsDownloads.route) { launchSingleTop = true } },
                             onOpenCar = { navController.navigate(Screen.SettingsCar.route) { launchSingleTop = true } },
                             onOpenAbout = { navController.navigate(Screen.SettingsAbout.route) { launchSingleTop = true } },
@@ -272,6 +278,10 @@ fun AppNavigation() {
                             },
                             onBack = { navController.popBackStack() }
                         )
+                    }
+
+                    composable(Screen.Stats.route) {
+                        StatsScreen(onBack = { navController.popBackStack() }, onOpenGroup = openGroup)
                     }
 
                     composable(Screen.SettingsAppearance.route) {

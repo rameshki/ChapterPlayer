@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Dns
@@ -40,6 +41,7 @@ import com.chapterplayer.domain.settings.downloadLocationLabel
 import com.chapterplayer.domain.settings.downloadsSummary
 import com.chapterplayer.domain.settings.rowDescription
 import com.chapterplayer.domain.settings.serversSummary
+import com.chapterplayer.domain.stats.STATS_SUMMARY
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
@@ -51,6 +53,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun SettingsHubScreen(
     onOpenServers: () -> Unit,
     onOpenAppearance: () -> Unit,
+    onOpenStats: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenCar: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -75,6 +78,7 @@ fun SettingsHubScreen(
         }
         HubGroup("Listening") {
             HubRow(Icons.Default.Palette, "Appearance", appearanceSummary(themeMode), onOpenAppearance)
+            HubRow(Icons.Default.BarChart, "Statistics", STATS_SUMMARY, onOpenStats)
         }
         HubGroup("Offline") {
             HubRow(

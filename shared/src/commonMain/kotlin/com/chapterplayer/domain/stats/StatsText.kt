@@ -147,6 +147,9 @@ fun sourcesDescription(shares: List<Pair<ServerSource, Int>>): String =
     if (shares.isEmpty()) "Where you listened: nothing yet"
     else "Where you listened: " + shares.joinToString(", ") { "${sourceName(it.first)} ${it.second}%" }
 
+/** The line under Statistics in the Settings hub. */
+const val STATS_SUMMARY = "Listening time, streaks and series"
+
 const val EMPTY_STATS_TEXT = "Start listening and your stats will appear here"
 
 const val IMPORTED_ONLY_NOTE =
