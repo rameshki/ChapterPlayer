@@ -37,6 +37,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.domain.browse.isDimmed
+import com.chapterplayer.domain.browse.sourcesDescription
+import com.chapterplayer.domain.browse.sourcesMark
 import com.chapterplayer.ui.components.BookCard
 import com.chapterplayer.ui.components.EmptyState
 import com.chapterplayer.ui.components.OfflineHeader
@@ -128,7 +130,9 @@ fun SearchScreen(
                         progress = item.progress,
                         downloadState = item.downloadState,
                         dimmed = isDimmed(item.downloadState, state.online, state.downloadedOnly),
-                        onClick = { onBookClick(item.book.id) }
+                        onClick = { onBookClick(item.book.id) },
+                        sourcesMark = sourcesMark(item),
+                        sourcesDescription = sourcesDescription(item)
                     )
                 }
             }

@@ -19,6 +19,16 @@ import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.data.repository.ServerRepository
+import com.chapterplayer.data.merge.BookMergeRepository
+import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.domain.browse.BrowseItem
+import com.chapterplayer.domain.browse.MergeContext
+import com.chapterplayer.domain.browse.chosenSource
+import com.chapterplayer.domain.browse.entryContaining
+import com.chapterplayer.domain.browse.mergeCandidates
+import com.chapterplayer.domain.browse.sourceOptions
+import com.chapterplayer.domain.browse.sourcesDescription
 import com.chapterplayer.domain.browse.BookLinks
 import com.chapterplayer.domain.browse.SeriesEntry
 import com.chapterplayer.domain.browse.aboutInfo
@@ -40,12 +50,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** One book's details: the cached chapters at once, the live chapters and description when the server answers. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class BookDetailsViewModel(
     private val bookId: String,
     private val books: BookRepository,
@@ -57,7 +71,10 @@ class BookDetailsViewModel(
     dispatcher: CoroutineDispatcher,
     overview: DownloadOverview,
     private val downloadController: DownloadController,
-    private val notifications: NotificationPermission
+    private val notifications: NotificationPermission,
+    merging: SourceMerging = SourceMerging.None,
+    private val merges: BookMergeRepository? = null,
+    servers: ServerRepository? = null,
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -66,7 +83,18 @@ class BookDetailsViewModel(
         val book: AudioBook?,
         val series: List<SeriesEntry>,
         val links: BookLinks,
-        val downloadState: DownloadState = DownloadState.NOT_DOWNLOADED
+        val downloadState: DownloadState = DownloadState.NOT_DOWNLOADED,
+        /** The list entry this book belongs to (several copies when other servers have it too), and the whole list. */
+        val entry: BrowseItem? = null,
+        val all: List<BrowseItem> = emptyList()
+    )
+
+    /** The merging inputs, the server names, the open source sheet and the "Merge with" search (null: closed). */
+    private class Extras(
+        val context: MergeContext?,
+        val serverNames: Map<String, String>,
+        val sheet: SourceAction?,
+        val mergeQuery: String?
     )
 
     /**
@@ -81,6 +109,7 @@ class BookDetailsViewModel(
         val online: Boolean,
         val downloadedOnly: Boolean,
         val download: DownloadRow?,
+        val downloadBookId: String,
         val confirmingRemove: Boolean
     )
 
@@ -91,24 +120,53 @@ class BookDetailsViewModel(
     private var loadJob: Job? = null
 
     // Series and links come from every book of the library, never from the filtered lists.
-    private val whole = observeBrowseItems(books, downloads).map { all ->
-        val item = all.firstOrNull { it.book.id == bookId }
+    private val whole = observeBrowseItems(books, downloads, merging).map { all ->
+        // This page shows its own copy, also when the list shows a merged book as another server's copy.
+        val entry = entryContaining(all, bookId)
+        val item = entry?.allSources?.firstOrNull { it.book.id == bookId }
         val book = item?.book
         if (book == null) Whole(null, emptyList(), BookLinks(null, emptyList(), emptyList()))
-        else Whole(book, seriesNeighbours(all, book), bookLinks(all, book), item.downloadState)
+        else Whole(book, seriesNeighbours(all, book), bookLinks(all, book), item.downloadState, entry, all)
     }.flowOn(dispatcher)
 
-    private val downloadRow = combine(overview.observeBook(bookId), confirmingRemove) { row, confirming -> row to confirming }
+    private val sourceSheet = MutableStateFlow<SourceAction?>(null)
+    private val mergeQuery = MutableStateFlow<String?>(null)
+
+    private val extras = combine(
+        merging.context,
+        servers?.observeAll()?.map { list -> list.associate { it.id to it.name } } ?: flowOf(emptyMap()),
+        sourceSheet,
+        mergeQuery
+    ) { context, names, sheet, query -> Extras(context, names, sheet, query) }
+
+    /*
+     * The copy the download control is about: one that already has a download (of any member), otherwise this page's
+     * book when it is an Audiobookshelf book, otherwise the first Audiobookshelf copy of a merged book.
+     */
+    private val downloadTarget = whole
+        .map { w -> w.entry?.let(::downloadableMembers)?.map { it.book.id }.orEmpty() }
+        .distinctUntilChanged()
+        .flatMapLatest { absIds ->
+            val ids = (listOf(bookId) + absIds).distinct()
+            combine(ids.map { id -> overview.observeBook(id).map { row -> id to row } }) { rows ->
+                rows.firstOrNull { it.second != null }
+                    ?: ((if (bookId in absIds || absIds.isEmpty()) bookId else absIds.first()) to null)
+            }
+        }
+
+    private val downloadRow = combine(downloadTarget, confirmingRemove) { target, confirming -> target to confirming }
 
     private val env = combine(
         controller.state, local, connectivity.isOnline, settings.downloadedOnly, downloadRow
     ) { player, local, online, downloadedOnly, download ->
-        Env(player, local, online, downloadedOnly, download.first, download.second)
+        Env(player, local, online, downloadedOnly, download.first.second, download.first.first, download.second)
     }
 
+    private val wholeAndExtras = combine(whole, extras) { w, x -> w to x }
+
     val uiState: StateFlow<BookDetailsUiState> = combine(
-        whole, books.observeProgress(bookId), live, selectedTab, env
-    ) { whole, progress, live, tab, env ->
+        wholeAndExtras, books.observeProgress(bookId), live, selectedTab, env
+    ) { (whole, extras), progress, live, tab, env ->
         val book = whole.book
         if (book == null) {
             BookDetailsUiState(phase = DetailsPhase.NOT_FOUND, selectedTab = tab)
@@ -120,7 +178,12 @@ class BookDetailsViewModel(
                 progress.positionMs > 0 -> formatTimeLeft(book.durationMs, progress.positionMs)
                 else -> null
             }
-            val loaded = env.player.bookId == bookId
+            val entry = whole.entry
+            val context = extras.context
+            val merged = entry != null && entry.isMerged && context != null
+            val memberIds = entry?.allSources?.map { it.book.id }.orEmpty()
+            // Another copy of this book playing counts as this book playing (Pause, Open player).
+            val loaded = env.player.bookId == bookId || (merged && env.player.bookId in memberIds)
             val playback = when {
                 env.local.starting -> DetailsPlayback.STARTING
                 // Buffering before the first sound still counts as playing: Pause is offered at once.
@@ -128,8 +191,13 @@ class BookDetailsViewModel(
                 loaded -> DetailsPlayback.PAUSED
                 else -> DetailsPlayback.NOT_PLAYING
             }
-            val canPlay = book.serverId.isNotBlank() &&
-                isPlayable(whole.downloadState, env.online, env.downloadedOnly)
+            val canPlay = book.serverId.isNotBlank() && (
+                isPlayable(whole.downloadState, env.online, env.downloadedOnly) ||
+                    (merged && entry!!.sources.any { isPlayable(it.downloadState, env.online, env.downloadedOnly) })
+                )
+            val options = if (merged) sourceOptions(entry!!, context!!.onlineServerIds, context.deviceOnline) else emptyList()
+            val rows = options.map { sourceRow(it, extras.serverNames) }
+            val downloadSource = entry?.allSources?.firstOrNull { it.book.id == env.downloadBookId }?.book?.source ?: book.source
             // While this book is loaded in the player the highlight follows the live position.
             val shown = if (loaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
             // No local progress: let the server say where; a book finished here starts over.
@@ -158,10 +226,23 @@ class BookDetailsViewModel(
                 currentPositionMs = if (loaded) env.player.positionMs else progress?.positionMs ?: 0L,
                 resumePositionMs = savedStart,
                 download = detailsDownload(
-                    book.source, env.download, env.online,
+                    downloadSource, env.download, env.online,
                     knownSizeBytes = live.details?.downloadSizeBytes ?: env.download?.totalBytes,
                     confirmingRemove = env.confirmingRemove
-                )
+                ),
+                downloadBookId = env.downloadBookId,
+                sources = rows,
+                sourcesDescription = if (merged) sourcesDescription(entry!!) else null,
+                sourceSheet = extras.sheet?.takeIf { merged }?.let { action ->
+                    SourceSheetUi(action, if (action == SourceAction.PLAY) rows else downloadRows(entry!!, rows, context!!))
+                },
+                canSplit = merged && merges != null,
+                canMerge = context != null && entry != null && merges != null,
+                mergeSheet = extras.mergeQuery?.takeIf { context != null && entry != null }?.let { query ->
+                    MergeSheetUi(query, mergeCandidates(whole.all, entry!!, query).map { candidateRow(it, extras.serverNames) })
+                },
+                entry = if (merged) entry else null,
+                mergeContext = context
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookDetailsUiState())
@@ -192,7 +273,84 @@ class BookDetailsViewModel(
                 if (isFinishedAt(state.currentPositionMs, book.durationMs)) controller.seekTo(0L)
                 controller.play()
             }
-            DetailsPlayback.NOT_PLAYING -> if (state.canPlay) start(book, state.resumePositionMs)
+            DetailsPlayback.NOT_PLAYING -> if (state.canPlay) playChosenCopy(state, book)
+        }
+    }
+
+    // A merged book plays the copy the Settings choice picks, or asks with the source sheet.
+    private fun playChosenCopy(state: BookDetailsUiState, book: AudioBook) {
+        val entry = state.entry
+        val context = state.mergeContext
+        if (entry == null || context == null) return start(book, state.resumePositionMs)
+        val chosen = chosenSource(entry, context.preference, context.onlineServerIds)
+        if (chosen == null) sourceSheet.value = SourceAction.PLAY else playCopy(state, chosen.book.id)
+    }
+
+    private fun playCopy(state: BookDetailsUiState, copyId: String) {
+        val book = state.book ?: return
+        if (copyId == bookId) return start(book, state.resumePositionMs)
+        val copy = state.entry?.allSources?.firstOrNull { it.book.id == copyId } ?: return
+        // Another copy starts where this phone left off in that copy (progress is not mirrored between copies yet).
+        start(copy.book, null)
+    }
+
+    /** A row of the source sheet was chosen. */
+    fun onSourceChosen(copyId: String) {
+        val state = uiState.value
+        val sheet = state.sourceSheet ?: return
+        val row = sheet.rows.firstOrNull { it.bookId == copyId } ?: return
+        if (!row.enabled) return
+        sourceSheet.value = null
+        when (sheet.action) {
+            SourceAction.PLAY -> if (!local.value.starting) playCopy(state, copyId)
+            SourceAction.DOWNLOAD -> downloadAction(askNotifications = true) { downloadController.enqueue(copyId) }
+        }
+    }
+
+    fun onSourceSheetDismissed() {
+        sourceSheet.value = null
+    }
+
+    /** "Not the same book": this copy leaves the merged book, for good. */
+    fun onNotSameBookClicked() {
+        val state = uiState.value
+        val repo = merges ?: return
+        if (!state.canSplit) return
+        val others = state.entry?.allSources?.map { it.book.id }.orEmpty() - bookId
+        mergeAction { repo.split(bookId, others) }
+    }
+
+    /** "Merge with": opens the search list of the other books. */
+    fun onMergeWithClicked() {
+        if (uiState.value.canMerge) mergeQuery.value = ""
+    }
+
+    fun onMergeQueryChanged(text: String) {
+        if (mergeQuery.value != null) mergeQuery.value = text
+    }
+
+    fun onMergeSheetDismissed() {
+        mergeQuery.value = null
+    }
+
+    /** The chosen book is the same book as this one from now on. */
+    fun onMergeCandidateChosen(otherId: String) {
+        val repo = merges ?: return
+        val sheet = uiState.value.mergeSheet ?: return
+        if (sheet.candidates.none { it.bookId == otherId }) return
+        mergeQuery.value = null
+        mergeAction { repo.merge(bookId, otherId) }
+    }
+
+    private fun mergeAction(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Nothing changes; the person can try again.
+            }
         }
     }
 
@@ -218,7 +376,7 @@ class BookDetailsViewModel(
     }
 
     // `starting` is set before the coroutine runs, so a second tap cannot start a second load.
-    private fun start(book: AudioBook, startMs: Long) {
+    private fun start(book: AudioBook, startMs: Long?) {
         local.value = Local(starting = true)
         viewModelScope.launch {
             local.value = try {
@@ -238,28 +396,46 @@ class BookDetailsViewModel(
         val download = uiState.value.download
         if (!download.canStart) return
         when (download.phase) {
-            DetailsDownloadPhase.IDLE -> downloadAction(askNotifications = true) { downloadController.enqueue(bookId) }
-            DetailsDownloadPhase.FAILED -> downloadAction(askNotifications = true) { downloadController.resume(bookId) }
+            DetailsDownloadPhase.IDLE -> startDownload()
+            DetailsDownloadPhase.FAILED -> downloadAction(askNotifications = true) { downloadController.resume(downloadBookId()) }
             else -> Unit
         }
     }
 
+    // A merged book with several Audiobookshelf copies downloads the one the Settings choice picks, or asks.
+    private fun startDownload() {
+        val state = uiState.value
+        val entry = state.entry
+        val context = state.mergeContext
+        val copies = entry?.let(::downloadableMembers).orEmpty()
+        if (entry == null || context == null || copies.size < 2) {
+            downloadAction(askNotifications = true) { downloadController.enqueue(downloadBookId()) }
+            return
+        }
+        val chosen = chosenSource(entry.copy(sources = copies), context.preference, context.onlineServerIds)
+        if (chosen == null) sourceSheet.value = SourceAction.DOWNLOAD
+        else downloadAction(askNotifications = true) { downloadController.enqueue(chosen.book.id) }
+    }
+
+    // The copy the download control shows (see downloadTarget); this page's book until the state is known.
+    private fun downloadBookId(): String = uiState.value.downloadBookId.ifEmpty { bookId }
+
     fun onPauseDownloadClicked() {
         val phase = uiState.value.download.phase
         if (phase == DetailsDownloadPhase.QUEUED || phase == DetailsDownloadPhase.DOWNLOADING) {
-            downloadAction { downloadController.pause(bookId) }
+            downloadAction { downloadController.pause(downloadBookId()) }
         }
     }
 
     fun onResumeDownloadClicked() {
-        if (uiState.value.download.phase == DetailsDownloadPhase.PAUSED) downloadAction { downloadController.resume(bookId) }
+        if (uiState.value.download.phase == DetailsDownloadPhase.PAUSED) downloadAction { downloadController.resume(downloadBookId()) }
     }
 
     /** Stops a download that has not finished and deletes what it fetched. */
     fun onCancelDownloadClicked() {
         when (uiState.value.download.phase) {
             DetailsDownloadPhase.QUEUED, DetailsDownloadPhase.DOWNLOADING, DetailsDownloadPhase.PAUSED, DetailsDownloadPhase.FAILED ->
-                downloadAction { downloadController.cancel(bookId) }
+                downloadAction { downloadController.cancel(downloadBookId()) }
             else -> Unit
         }
     }
@@ -272,7 +448,7 @@ class BookDetailsViewModel(
     fun onRemoveDownloadConfirmed() {
         if (!confirmingRemove.value) return
         confirmingRemove.value = false
-        downloadAction { downloadController.remove(bookId) }
+        downloadAction { downloadController.remove(downloadBookId()) }
     }
 
     fun onRemoveDownloadDismissed() {

@@ -41,5 +41,22 @@ data class BookDetailsUiState(
     /** Where Resume starts: the saved position, 0 for a finished book, -1 (the server decides) with no progress. */
     val resumePositionMs: Long = 0L,
     /** The download control; hidden for books that cannot be downloaded. */
-    val download: DetailsDownload = DetailsDownload()
+    val download: DetailsDownload = DetailsDownload(),
+    /** The copy the download control is about (another server's copy of a merged book can be the one). */
+    val downloadBookId: String = "",
+    /** The copies of a book several servers have, downloaded first; empty for a book on one server. */
+    val sources: List<SourceRow> = emptyList(),
+    /** "available from Audiobookshelf and Plex"; null for one server. */
+    val sourcesDescription: String? = null,
+    /** The open "Play from" / "Download from" sheet; null when closed. */
+    val sourceSheet: SourceSheetUi? = null,
+    /** "Not the same book" is offered (a merged book). */
+    val canSplit: Boolean = false,
+    /** "Merge with" is offered. */
+    val canMerge: Boolean = false,
+    /** The open "Merge with" search; null when closed. */
+    val mergeSheet: MergeSheetUi? = null,
+    /** The merged entry (null for a book on one server) and the merging inputs, for the actions. */
+    val entry: com.chapterplayer.domain.browse.BrowseItem? = null,
+    val mergeContext: com.chapterplayer.domain.browse.MergeContext? = null
 )

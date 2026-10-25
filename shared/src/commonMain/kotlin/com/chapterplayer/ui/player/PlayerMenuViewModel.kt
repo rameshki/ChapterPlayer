@@ -10,6 +10,11 @@ import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.data.NoDownloadStates
+import com.chapterplayer.data.merge.BookMergeRepository
+import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.domain.browse.entryContaining
+import com.chapterplayer.ui.browse.observeBrowseItems
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.PersonLink
 import com.chapterplayer.domain.browse.SeriesLink
@@ -60,10 +65,13 @@ data class PlayerMenuState(
     val mark: MarkAction? = null,
     /** "Remove download" was tapped and waits for the confirmation. */
     val confirmingRemove: Boolean = false,
+    /** The loaded book's other copies (it is on several servers): "Not the same book" splits it from them. Empty otherwise. */
+    val otherCopyIds: List<String> = emptyList(),
     /** A short result text for a snackbar; the screen calls [PlayerMenuViewModel.onMessageShown] once it has shown it. */
     val message: String? = null,
 ) {
     val moreByLabel: String? get() = moreBy?.let { "More by ${it.title}" }
+    val canSplit: Boolean get() = otherCopyIds.isNotEmpty()
 }
 
 /** The ⋮ menu of the full player: what it offers for the loaded book, and its actions (download, mark as finished). */
@@ -75,6 +83,8 @@ class PlayerMenuViewModel(
     private val downloadController: DownloadController,
     connectivity: ConnectivityMonitor,
     dispatcher: CoroutineDispatcher,
+    merging: SourceMerging = SourceMerging.None,
+    private val merges: BookMergeRepository? = null,
 ) : ViewModel() {
 
     private val confirmingRemove = MutableStateFlow(false)
@@ -94,7 +104,15 @@ class PlayerMenuViewModel(
         }
     }
 
-    val state: StateFlow<PlayerMenuState> = combine(facts, confirmingRemove, message) { facts, confirming, text ->
+    // The loaded book's other copies; download states do not change who is in a group, so none are read here.
+    private val otherCopies = controller.state.map { it.bookId }.distinctUntilChanged().flatMapLatest { id ->
+        if (id == null || merges == null) flowOf(emptyList())
+        else observeBrowseItems(books, NoDownloadStates(), merging).map { all ->
+            entryContaining(all, id)?.takeIf { it.isMerged }?.allSources?.map { it.book.id }?.minus(id).orEmpty()
+        }
+    }
+
+    val state: StateFlow<PlayerMenuState> = combine(facts, confirmingRemove, message, otherCopies) { facts, confirming, text, others ->
         val book = facts.book ?: return@combine PlayerMenuState(message = text)
         val links = bookLinks(facts.all.map { BrowseItem(it, null, DownloadState.NOT_DOWNLOADED) }, book)
         val download = menuDownload(book.source, facts)
@@ -105,6 +123,7 @@ class PlayerMenuViewModel(
             download = download,
             mark = facts.mark,
             confirmingRemove = confirming && download.kind == MenuDownloadKind.REMOVE,
+            otherCopyIds = others,
             message = text,
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerMenuState())
@@ -126,6 +145,24 @@ class PlayerMenuViewModel(
             DetailsDownloadPhase.QUEUED, DetailsDownloadPhase.DOWNLOADING -> MenuDownload(MenuDownloadKind.PAUSE, "Pause download", true, subtitle)
             DetailsDownloadPhase.PAUSED -> MenuDownload(MenuDownloadKind.RESUME, "Resume download", true, subtitle)
             DetailsDownloadPhase.DONE -> MenuDownload(MenuDownloadKind.REMOVE, "Remove download", true, subtitle)
+        }
+    }
+
+    /** "Not the same book": the loaded book leaves the merged book it is in, for good. */
+    fun onNotSameBookClicked() {
+        val current = state.value
+        val bookId = current.bookId ?: return
+        val repo = merges ?: return
+        if (!current.canSplit) return
+        viewModelScope.launch {
+            try {
+                repo.split(bookId, current.otherCopyIds)
+                message.value = "Shown as separate books"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                message.value = "Could not separate the books"
+            }
         }
     }
 

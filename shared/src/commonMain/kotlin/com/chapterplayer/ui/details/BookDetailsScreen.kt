@@ -35,6 +35,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,8 +71,19 @@ fun BookDetailsScreen(
     viewModel: BookDetailsViewModel = koinViewModel(parameters = { parametersOf(bookId) })
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val sourceActions = remember(viewModel) {
+        SourceActions(
+            onSourceChosen = viewModel::onSourceChosen,
+            onSourceSheetDismissed = viewModel::onSourceSheetDismissed,
+            onNotSameBook = viewModel::onNotSameBookClicked,
+            onMergeWith = viewModel::onMergeWithClicked,
+            onMergeQueryChanged = viewModel::onMergeQueryChanged,
+            onMergeCandidateChosen = viewModel::onMergeCandidateChosen,
+            onMergeSheetDismissed = viewModel::onMergeSheetDismissed,
+        )
+    }
     Column(modifier = Modifier.fillMaxSize()) {
-        DetailsTopBar(onBack)
+        DetailsTopBar(onBack) { DetailsOverflowMenu(state.canSplit, state.canMerge, sourceActions) }
         OfflineHeader()
         BookDetailsContent(
             state = state,
@@ -95,13 +107,16 @@ fun BookDetailsScreen(
             )
         )
     }
+    state.sourceSheet?.let { SourceSheet(it, sourceActions) }
+    state.mergeSheet?.let { MergeWithSheet(it, sourceActions) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailsTopBar(onBack: () -> Unit) {
+private fun DetailsTopBar(onBack: () -> Unit, actions: @Composable () -> Unit = {}) {
     TopAppBar(
         title = {},
+        actions = { actions() },
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
@@ -275,6 +290,7 @@ private fun DetailsHeader(
             ) { Text("Open player", color = AmberGold, style = MaterialTheme.typography.titleSmall) }
         }
         DownloadControl(state.download, downloadActions)
+        SourcesSection(state.sources, state.sourcesDescription)
         Spacer(Modifier.height(8.dp))
     }
 }

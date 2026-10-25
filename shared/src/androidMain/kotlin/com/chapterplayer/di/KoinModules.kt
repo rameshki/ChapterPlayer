@@ -301,9 +301,12 @@ val viewModelModule = module {
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
-    viewModel { params -> BookDetailsViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get()) }
+    viewModel { params -> BookDetailsViewModel(
+            params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
+            merging = get(), merges = get(), servers = get()
+        ) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
     // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
     viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }

@@ -41,7 +41,10 @@ fun BookCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     downloadState: DownloadState = DownloadState.NOT_DOWNLOADED,
-    dimmed: Boolean = false
+    dimmed: Boolean = false,
+    /** "2 sources" for a book several servers have (see `sourcesMark`); null for one server. */
+    sourcesMark: String? = null,
+    sourcesDescription: String? = null
 ) {
     val overlay = coverOverlay(progress, downloadState, dimmed)
     Card(
@@ -87,6 +90,10 @@ fun BookCard(
                 }
                 if (overlay.finished) {
                     FinishedCheck(Modifier.align(Alignment.BottomStart).padding(6.dp))
+                }
+                if (sourcesMark != null) {
+                    // Bottom right, clear of the progress bar.
+                    SourcesPill(sourcesMark, sourcesDescription, Modifier.align(Alignment.BottomEnd).padding(start = 6.dp, end = 6.dp, bottom = 10.dp))
                 }
                 overlay.progressFraction?.let {
                     ReadingProgressBar(it, Modifier.align(Alignment.BottomCenter))
