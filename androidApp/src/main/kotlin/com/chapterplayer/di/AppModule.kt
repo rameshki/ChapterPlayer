@@ -1,6 +1,7 @@
 package com.chapterplayer.di
 
 import com.chapterplayer.BuildConfig
+import com.chapterplayer.data.AppInfo
 import org.koin.dsl.module
 
 /**
@@ -9,4 +10,10 @@ import org.koin.dsl.module
  */
 val appModule = module {
     single(DebuggableQualifier) { BuildConfig.DEBUG }
+    // The About page shows the installed version.
+    single<AppInfo> {
+        object : AppInfo {
+            override val versionName: String = BuildConfig.VERSION_NAME
+        }
+    }
 }

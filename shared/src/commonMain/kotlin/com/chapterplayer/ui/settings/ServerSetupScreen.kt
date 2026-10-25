@@ -1,31 +1,23 @@
 package com.chapterplayer.ui.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,7 +25,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,7 +35,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,296 +58,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.koin.compose.viewmodel.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
-import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.FieldBorder
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.theme.TextSecondary
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Settings Screen — server list
-// ─────────────────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsScreen(
-    onAddServer: () -> Unit,
-    onEditServer: (String) -> Unit,
-    onBack: (() -> Unit)? = null,
-    viewModel: SettingsViewModel = koinViewModel()
-) {
-    val uiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
-    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
-    val downloadedOnly by viewModel.downloadedOnly.collectAsStateWithLifecycle()
-    val resumeOnCarConnect by viewModel.resumeOnCarConnect.collectAsStateWithLifecycle()
-    val downloadWifiOnly by viewModel.downloadWifiOnly.collectAsStateWithLifecycle()
-    val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
-    val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
-    // A card may have been put in or taken out since the screen was last open.
-    LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
-
-    Scaffold(
-        containerColor = BackgroundDeep,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text("Settings", style = MaterialTheme.typography.headlineSmall)
-                },
-                navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDeep)
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddServer,
-                containerColor = AmberGold,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add server")
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 88.dp)
-        ) {
-            Text(
-                text = "Appearance",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            AppearanceCard(selected = themeMode, onSelect = viewModel::setThemeMode)
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = "Offline",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            SwitchCard(
-                title = "Downloaded only",
-                description = "Only downloaded books can play, even when online.",
-                checked = downloadedOnly,
-                onChange = viewModel::setDownloadedOnly
-            )
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = "Downloads",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            SwitchCard(
-                title = "Download on Wi-Fi only",
-                description = "Downloads wait for Wi-Fi. Turn off to use mobile data too.",
-                checked = downloadWifiOnly,
-                onChange = viewModel::setDownloadWifiOnly
-            )
-            Spacer(Modifier.height(8.dp))
-            DownloadLocationCard(downloadLocations, viewModel::setDownloadLocation)
-            Spacer(Modifier.height(8.dp))
-            StorageLimitCard(downloadStorageLimit, viewModel::setDownloadStorageLimit)
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = "Android Auto",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            SwitchCard(
-                title = "Resume when connected to the car",
-                description = "Plays your last book when the phone connects to Android Auto and nothing is playing.",
-                checked = resumeOnCarConnect,
-                onChange = viewModel::setResumeOnCarConnect
-            )
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = "Connected Servers",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-
-            if (uiState.servers.isEmpty()) {
-                Text(
-                    text = "No servers added yet. Tap + to connect to Audiobookshelf or Plex.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            } else {
-                uiState.servers.forEach { server ->
-                    Spacer(Modifier.height(8.dp))
-                    ServerRow(
-                        server = server,
-                        onEdit = { onEditServer(server.id) },
-                        onDelete = { viewModel.deleteServer(server.id) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppearanceCard(
-    selected: ThemeMode,
-    onSelect: (ThemeMode) -> Unit
-) {
-    val options = listOf(
-        ThemeMode.DARK to "Dark",
-        ThemeMode.LIGHT to "Light",
-        ThemeMode.SYSTEM to "Follow system"
-    )
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.selectableGroup()) {
-            options.forEach { (mode, label) ->
-                val isSelected = selected == mode
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = isSelected,
-                            role = Role.RadioButton,
-                            onClick = { onSelect(mode) }
-                        )
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = null,
-                        colors = RadioButtonDefaults.colors(selectedColor = AmberGold)
-                    )
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else TextSecondary,
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// A setting that is on or off: the whole row toggles it and reads as one switch.
-@Composable
-private fun SwitchCard(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onChange: (Boolean) -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = 48.dp)
-                .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-            }
-            // The row is the single touch target; the Switch itself is not clickable.
-            Switch(checked = checked, onCheckedChange = null)
-        }
-    }
-}
-
-@Composable
-private fun ServerRow(
-    server: ServerConfig,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = server.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "${server.source.name} · ${server.baseUrl}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-                if (server.needsSignIn) {
-                    Text(
-                        text = "Sign in again",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                if (server.libraryId != null) {
-                    Text(
-                        text = "Library: ${server.libraryId}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                }
-            }
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AmberGold)
-            }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Server Setup Screen — add / edit

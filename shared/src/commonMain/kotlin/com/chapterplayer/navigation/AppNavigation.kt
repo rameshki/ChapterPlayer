@@ -59,7 +59,12 @@ import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.library.decodeGroupKey
 import com.chapterplayer.ui.player.PlayerScreen
 import com.chapterplayer.ui.search.SearchScreen
-import com.chapterplayer.ui.settings.SettingsScreen
+import com.chapterplayer.ui.settings.AboutSettingsScreen
+import com.chapterplayer.ui.settings.AppearanceSettingsScreen
+import com.chapterplayer.ui.settings.CarSettingsScreen
+import com.chapterplayer.ui.settings.DownloadsSettingsScreen
+import com.chapterplayer.ui.settings.ServersSettingsScreen
+import com.chapterplayer.ui.settings.SettingsHubScreen
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.NavBarSurface
@@ -100,6 +105,10 @@ fun AppNavigation() {
 
     val openSettings = {
         navController.navigate(Screen.Settings.route) { launchSingleTop = true }
+    }
+    // The "Add a server" buttons of the empty states go straight to the Servers page.
+    val openServers = {
+        navController.navigate(Screen.SettingsServers.route) { launchSingleTop = true }
     }
     // A book tap opens its details; the player is reached from there once playback exists.
     val openBook = { bookId: String ->
@@ -171,14 +180,20 @@ fun AppNavigation() {
                     startDestination = Screen.Home.route
                 ) {
                     composable(Screen.Home.route) {
-                        HomeScreen(onBookClick = openBook, onOpenSettings = { openSettings() }, onOpenPlayer = openPlayer)
+                        HomeScreen(
+                            onBookClick = openBook,
+                            onOpenSettings = { openSettings() },
+                            onOpenServers = { openServers() },
+                            onOpenPlayer = openPlayer
+                        )
                     }
 
                     composable(Screen.Library.route) {
                         LibraryScreen(
                             onBookClick = openBook,
                             onGroupClick = openGroup,
-                            onOpenSettings = { openSettings() }
+                            onOpenSettings = { openSettings() },
+                            onOpenServers = { openServers() }
                         )
                     }
 
@@ -235,7 +250,18 @@ fun AppNavigation() {
                     }
 
                     composable(Screen.Settings.route) {
-                        SettingsScreen(
+                        SettingsHubScreen(
+                            onOpenServers = { navController.navigate(Screen.SettingsServers.route) },
+                            onOpenAppearance = { navController.navigate(Screen.SettingsAppearance.route) },
+                            onOpenDownloads = { navController.navigate(Screen.SettingsDownloads.route) },
+                            onOpenCar = { navController.navigate(Screen.SettingsCar.route) },
+                            onOpenAbout = { navController.navigate(Screen.SettingsAbout.route) },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable(Screen.SettingsServers.route) {
+                        ServersSettingsScreen(
                             onAddServer = {
                                 navController.navigate(Screen.ServerSetup.createRoute())
                             },
@@ -244,6 +270,22 @@ fun AppNavigation() {
                             },
                             onBack = { navController.popBackStack() }
                         )
+                    }
+
+                    composable(Screen.SettingsAppearance.route) {
+                        AppearanceSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    composable(Screen.SettingsDownloads.route) {
+                        DownloadsSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    composable(Screen.SettingsCar.route) {
+                        CarSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    composable(Screen.SettingsAbout.route) {
+                        AboutSettingsScreen(onBack = { navController.popBackStack() })
                     }
 
                     composable(Screen.ServerSetup.route) { backStackEntry ->

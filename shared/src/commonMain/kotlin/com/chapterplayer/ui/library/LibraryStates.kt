@@ -47,9 +47,9 @@ fun AmberButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun NoServersState(onOpenSettings: () -> Unit) = ScrollingEmpty {
+fun NoServersState(onOpenServers: () -> Unit) = ScrollingEmpty {
     EmptyState(Icons.Default.LibraryBooks, "Add a server to see your audiobooks here.") {
-        AmberButton("Add a server", onOpenSettings)
+        AmberButton("Add a server", onOpenServers)
     }
 }
 

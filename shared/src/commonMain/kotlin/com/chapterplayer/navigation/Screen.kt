@@ -33,7 +33,13 @@ sealed class Screen(val route: String) {
         /** [key] travels hex-encoded, because names hold characters that routes decode differently. */
         fun createRoute(kind: LibraryView, key: String) = "group/${kind.name}/${encodeGroupKey(key)}"
     }
+    /** The Settings home; every page below is its own route, so Back returns here. */
     object Settings : Screen("settings")
+    object SettingsServers : Screen("settings/servers")
+    object SettingsAppearance : Screen("settings/appearance")
+    object SettingsDownloads : Screen("settings/downloads")
+    object SettingsCar : Screen("settings/car")
+    object SettingsAbout : Screen("settings/about")
     object ServerSetup : Screen("server_setup/{serverId}") {
         const val ARG_SERVER_ID = "serverId"
         const val NEW_SERVER = "new"

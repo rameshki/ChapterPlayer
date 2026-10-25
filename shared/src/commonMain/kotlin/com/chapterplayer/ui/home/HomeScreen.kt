@@ -73,6 +73,8 @@ import org.koin.compose.viewmodel.koinViewModel
 fun HomeScreen(
     onBookClick: (bookId: String) -> Unit,
     onOpenSettings: () -> Unit,
+    /** The "Add a server" button of the empty state: the Servers page of Settings. */
+    onOpenServers: () -> Unit,
     onOpenPlayer: () -> Unit,
     viewModel: HomeViewModel = koinViewModel()
 ) {
@@ -116,7 +118,7 @@ fun HomeScreen(
                     message = "Add a server to see your audiobooks here."
                 ) {
                     Button(
-                        onClick = onOpenSettings,
+                        onClick = onOpenServers,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = AmberGold,
                             contentColor = MaterialTheme.colorScheme.onPrimary
