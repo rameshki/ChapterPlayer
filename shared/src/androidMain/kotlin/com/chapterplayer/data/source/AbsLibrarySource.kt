@@ -20,6 +20,7 @@ import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.domain.browse.parseSeriesName
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.ServerProgress
+import com.chapterplayer.domain.stats.ServerListeningStats
 
 /** The app's book ids for Audiobookshelf items start with this; the server only knows the part after it. */
 internal const val ABS_ID_PREFIX = "abs_"
@@ -141,6 +142,9 @@ class AbsLibrarySource(
         authorizer.authorized(server) { bearerToken -> api.getMeBookmarks(server.baseUrl, bearerToken) }
             .filter { it.libraryItemId.isNotEmpty() }
             .map { it.toBookmark() }
+
+    override suspend fun fetchListeningStats(server: ServerConfig): ServerListeningStats =
+        authorizer.authorized(server) { bearerToken -> api.getListeningStats(server.baseUrl, bearerToken) }.toServerListeningStats()
 
     override suspend fun createBookmark(server: ServerConfig, bookId: String, timeSec: Long, title: String) {
         authorizer.authorized(server) { bearerToken ->

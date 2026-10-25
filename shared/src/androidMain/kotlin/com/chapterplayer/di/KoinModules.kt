@@ -40,7 +40,9 @@ import com.chapterplayer.data.stats.AndroidListeningClock
 import com.chapterplayer.data.stats.BookOwner
 import com.chapterplayer.data.stats.BookOwners
 import com.chapterplayer.data.stats.ListeningClock
+import com.chapterplayer.data.stats.ListeningImport
 import com.chapterplayer.data.stats.ListeningLog
+import com.chapterplayer.data.stats.ListeningStatsImporter
 import com.chapterplayer.data.stats.ListeningRecorder
 import com.chapterplayer.data.stats.RoomListeningLog
 import com.chapterplayer.data.stats.SystemDayZone
@@ -288,6 +290,8 @@ val playbackModule = module {
     }
     single<ListeningClock> { AndroidListeningClock }
     single { ListeningRecorder(get(), get(), get(), get(AppScopeQualifier), get(), get()) }
+    // Audiobookshelf's own listening history, imported once per server (and again from the stats page).
+    single<ListeningImport> { ListeningStatsImporter(get(), getAll<LibrarySource>(), get(), get(AppScopeQualifier), get()) }
     // Starts a book (position, saved speed, play) for details, Home and the player.
     singleOf(::PlaybackStarter)
     // A tapped notification asks the navigation host to open the player once.

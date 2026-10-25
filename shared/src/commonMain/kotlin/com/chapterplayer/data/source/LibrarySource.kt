@@ -4,6 +4,7 @@ import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.ServerProgress
+import com.chapterplayer.domain.stats.ServerListeningStats
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.LibraryInfo
@@ -87,6 +88,9 @@ interface LibrarySource {
 
     /** Renames the server's bookmark at [timeSec]. A source without bookmarks does nothing. Throws when the call fails. */
     suspend fun renameBookmark(server: ServerConfig, bookId: String, timeSec: Long, title: String) {}
+
+    /** The user's own listening history on [server] (days and per-book totals); null for a source without one. Throws when the call fails. */
+    suspend fun fetchListeningStats(server: ServerConfig): ServerListeningStats? = null
 
     /**
      * Everything one sync stores, read in one go. A source that can share work between the three reads

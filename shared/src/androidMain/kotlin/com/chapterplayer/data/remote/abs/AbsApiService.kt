@@ -9,6 +9,7 @@ import com.chapterplayer.data.remote.abs.dto.AbsCollectionsResponse
 import com.chapterplayer.data.remote.abs.dto.AbsItemDetailDto
 import com.chapterplayer.data.remote.abs.dto.AbsLibrariesResponse
 import com.chapterplayer.data.remote.abs.dto.AbsLibraryItemsResponse
+import com.chapterplayer.data.remote.abs.dto.AbsListeningStatsDto
 import com.chapterplayer.data.remote.abs.dto.AbsLoginRequest
 import com.chapterplayer.data.remote.abs.dto.AbsMeDto
 import com.chapterplayer.data.remote.abs.dto.AbsPatchProgressRequest
@@ -154,6 +155,12 @@ class AbsApiService(private val client: HttpClient) {
         client.get(endpoint(baseUrl, "api/me")) {
             header(HttpHeaders.Authorization, bearerToken)
         }.body<AbsMeBookmarksDto>().bookmarks
+
+    /** The user's listening history on this server (GET /api/me/listening-stats): totals per day and per item. */
+    suspend fun getListeningStats(baseUrl: String, bearerToken: String): AbsListeningStatsDto =
+        client.get(endpoint(baseUrl, "api/me/listening-stats")) {
+            header(HttpHeaders.Authorization, bearerToken)
+        }.body()
 
     /** Creates a bookmark (POST /api/me/item/{id}/bookmark) at a whole second. [itemId] is the server's own id. */
     suspend fun createBookmark(baseUrl: String, bearerToken: String, itemId: String, timeSec: Long, title: String) {
