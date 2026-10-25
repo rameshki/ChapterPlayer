@@ -16,16 +16,20 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.time.Clock
 
 private const val ERROR_SEPARATOR = "\n"
 
 private const val SERVER_LIST_ERROR = "Could not read the server list"
+
+private const val SIGN_IN_AGAIN_TEXT = "Sign in again in Settings"
 
 data class SyncUiState(
     val isSyncing: Boolean = false,
@@ -50,7 +54,10 @@ class LibrarySyncCoordinator(
     private val servers: ServerRepository,
     private val scope: CoroutineScope,
     /** Chooses Plex addresses: before a first sync, and again after a sync that could not connect. Null for none. */
-    private val connections: PlexConnectionManager? = null
+    private val connections: PlexConnectionManager? = null,
+    /** Keeps each server's last successful sync and last error across restarts. */
+    private val statusStore: ServerStatusStore = NoServerStatusStore,
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() }
 ) : LibrarySync {
     private data class Activity(val running: Int = 0, val errors: List<String> = emptyList())
 
@@ -67,6 +74,29 @@ class LibrarySyncCoordinator(
             addErrors(listOf(SERVER_LIST_ERROR))
             onFailure()
         }
+
+    /** The servers syncing right now (each runs at most once at a time). */
+    private val syncingIds = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Each configured server's sync and connection, keyed by server id, for the Servers page: syncing, the last success
+     * with the cached book count, or the last failure; the connection in use and, for Plex, what the last probe found.
+     */
+    val serverStatus: StateFlow<Map<String, ServerSyncStatus>> = combine(
+        servers.observeAll().catch { e -> if (e is CancellationException) throw e else emit(emptyList()) },
+        statusStore.all.catch { e -> if (e is CancellationException) throw e else emit(emptyMap()) },
+        books.observeAllBooks()
+            .map { list -> list.groupingBy { it.serverId }.eachCount() }
+            .catch { e -> if (e is CancellationException) throw e else emit(emptyMap()) },
+        syncingIds
+    ) { list, records, counts, syncing ->
+        list.associate { server ->
+            server.id to serverSyncStatus(server, records[server.id] ?: ServerStatusRecord(), counts[server.id] ?: 0, server.id in syncing)
+        }
+    }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** "Test connection" on the Servers page: every Plex connection tried at once; null for a server that has none. */
+    suspend fun testConnection(serverId: String): ConnectionTest? = connections?.testConnection(serverId)
 
     override val state: StateFlow<SyncUiState> = combine(safeServers { emit(emptyList()) }, activity) { serverList, act ->
         SyncUiState(
@@ -249,8 +279,18 @@ class LibrarySyncCoordinator(
         if (requested.needsSignIn) {
             // The stored sign-in is gone, so there is nothing to send to the server.
             errors.add(signInAgainMessage(requested))
+            recordOutcome(requested.id, SIGN_IN_AGAIN_TEXT)
             return
         }
+        syncingIds.update { it + requested.id }
+        try {
+            syncReachable(requested, errors, force)
+        } finally {
+            syncingIds.update { it - requested.id }
+        }
+    }
+
+    private suspend fun syncReachable(requested: ServerConfig, errors: MutableList<String>, force: Boolean) {
         var server = choose { connections?.beforeSync(requested) } ?: requested
         var outcome = syncBooks(server)
         // A Plex address that cannot be reached: find the one that answers now, and retry once on it.
@@ -270,14 +310,28 @@ class LibrarySyncCoordinator(
             mergeProgress(server)
             pullBookmarks(server)
         }
-        outcome.onFailure { throwable ->
+        val reason = outcome.exceptionOrNull()?.let { throwable ->
             if (throwable is CancellationException) throw throwable
-            errors.add(
-                if (throwable is SignInRequiredException) signInAgainMessage(server)
-                else "${server.name}: ${connectionMessage ?: throwable.message ?: "Unknown error"}"
-            )
+            if (throwable is SignInRequiredException) SIGN_IN_AGAIN_TEXT else connectionMessage ?: syncFailureReason(throwable)
         }
+        if (reason != null) errors.add("${server.name}: $reason")
+        recordOutcome(server.id, reason)
         dropIfDeleted(server)
+    }
+
+    /** Saves when the server last synced, or why it failed ([failure]); best effort, the sync itself is done. */
+    private suspend fun recordOutcome(serverId: String, failure: String?) {
+        try {
+            val now = nowMs()
+            statusStore.update(serverId) {
+                if (failure == null) it.copy(lastSuccessAtMs = now, lastErrorText = null, lastErrorAtMs = null)
+                else it.copy(lastErrorText = failure, lastErrorAtMs = now)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The page shows the older state until the next sync.
+        }
     }
 
     /** A repository that throws instead of returning a failure must not crash the app. */
@@ -334,5 +388,5 @@ class LibrarySyncCoordinator(
         }
     }
 
-    private fun signInAgainMessage(server: ServerConfig) = "${server.name}: Sign in again in Settings"
+    private fun signInAgainMessage(server: ServerConfig) = "${server.name}: $SIGN_IN_AGAIN_TEXT"
 }

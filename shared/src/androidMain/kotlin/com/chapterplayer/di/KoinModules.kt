@@ -209,7 +209,7 @@ val repositoryModule = module {
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     // Chooses each Plex server's address; the application starts its network watch.
     single { PlexConnectionManager(get(), get(), get(), get()) }
-    single { LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get()) }
+    single { LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get()) }
     // The Plex servers the cover loader adds the token header for.
     single { PlexImageServers(get(), get(AppScopeQualifier)) }
     single<LibrarySync> { get<LibrarySyncCoordinator>() }
