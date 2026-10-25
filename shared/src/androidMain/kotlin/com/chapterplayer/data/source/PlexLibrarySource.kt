@@ -2,6 +2,7 @@ package com.chapterplayer.data.source
 
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
@@ -9,7 +10,11 @@ import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.dto.PlexSectionDto
 import com.chapterplayer.data.remote.plex.fetchAllPlexItems
 import com.chapterplayer.data.remote.plex.dto.PlexMetadataDto
+import com.chapterplayer.domain.plex.PlexBookContent
 import com.chapterplayer.domain.plex.PlexEntryKind
+import com.chapterplayer.domain.plex.isPlexTrack
+import com.chapterplayer.domain.plex.plexBookContent
+import com.chapterplayer.domain.plex.plexRatingKey
 import com.chapterplayer.domain.plex.plexAlbumToBook
 import com.chapterplayer.domain.plex.plexEntryKind
 import kotlinx.coroutines.CancellationException
@@ -87,6 +92,45 @@ class PlexLibrarySource(private val api: PlexApiService) : LibrarySource {
         }
         return albums.values.map { plexAlbumToBook(it, server.baseUrl, server.id, sectionId) }
     }
+
+    /**
+     * Asked when a book is opened: the album's own metadata (description, year, genres), then its tracks and their chapters
+     * ([fetchContent]). The chapters span all the tracks; the length is the sum of the tracks.
+     */
+    override suspend fun fetchBookDetails(server: ServerConfig, bookId: String): BookDetails {
+        val album = api.getMetadata(server.baseUrl, server.token, plexRatingKey(bookId)).mediaContainer.metadata?.firstOrNull()
+        val content = fetchContent(server, bookId)
+        return BookDetails(
+            chapters = content.chapters,
+            description = album?.summary?.takeIf { it.isNotBlank() },
+            genres = album?.genres.orEmpty().map { it.tag }.filter { it.isNotBlank() },
+            publishedYear = album?.year?.toString(),
+            series = emptyList(),
+            downloadSizeBytes = content.sizeBytes,
+            durationMs = content.durationMs.takeIf { it > 0L }
+        )
+    }
+
+    /**
+     * The book's tracks in play order and its chapters. A track list never carries chapters, so the first track's own
+     * metadata is read with them; when it has some, every other track is read too (each file of a multi-file book may
+     * carry its own). When the first has none, the others are taken to have none either (one chapter per track), which
+     * saves a request per file for the common one-file-per-chapter book. What playback needs in step 2 is in the result.
+     */
+    suspend fun fetchContent(server: ServerConfig, bookId: String): PlexBookContent {
+        val tracks = api.getChildren(server.baseUrl, server.token, plexRatingKey(bookId)).mediaContainer.metadata.orEmpty()
+            .filter(::isPlexTrack)
+        val details = LinkedHashMap<String, PlexMetadataDto>()
+        val first = tracks.firstOrNull() ?: return plexBookContent(emptyList(), emptyMap())
+        trackDetail(server, first.ratingKey)?.let { details[first.ratingKey] = it }
+        if (!details[first.ratingKey]?.chapters.isNullOrEmpty()) {
+            for (track in tracks.drop(1)) trackDetail(server, track.ratingKey)?.let { details[track.ratingKey] = it }
+        }
+        return plexBookContent(tracks, details)
+    }
+
+    private suspend fun trackDetail(server: ServerConfig, ratingKey: String): PlexMetadataDto? =
+        api.getMetadata(server.baseUrl, server.token, ratingKey, includeChapters = true).mediaContainer.metadata?.firstOrNull()
 
     override suspend fun fetchLibraries(server: ServerConfig): List<LibraryInfo> = librariesOf(server, musicSections(server))
 

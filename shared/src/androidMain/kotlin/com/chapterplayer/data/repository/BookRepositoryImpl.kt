@@ -120,12 +120,16 @@ class BookRepositoryImpl(
             // All fetching is done; every write below is one transaction, so a cancel or a crash keeps the old rows.
             inTransaction {
                 val cachedRows = bookDao.getByServer(server.id)
-                // The library list carries no chapters: keep the ones details cached for books still on the server.
-                val cached = cachedRows.associate { it.id to it.chaptersJson }
+                // The library list carries no chapters (and a Plex one no length): keep what details cached for books
+                // still on the server.
+                val cached = cachedRows.associateBy { it.id }
                 val noChapters = ChapterJson.encode(emptyList())
                 val books = incoming.map { row ->
                     val old = cached[row.id]
-                    if (row.chaptersJson == noChapters && old != null) row.copy(chaptersJson = old) else row
+                    if (old == null) row else row.copy(
+                        chaptersJson = if (row.chaptersJson == noChapters) old.chaptersJson else row.chaptersJson,
+                        durationMs = if (row.durationMs <= 0L) old.durationMs else row.durationMs
+                    )
                 }
                 // A library that could not be read keeps what was cached for it.
                 val incomingIds = books.mapTo(HashSet()) { it.id }
@@ -160,7 +164,10 @@ class BookRepositoryImpl(
             val source = sources.firstOrNull { it.type == server.source }
                 ?: error("No library source for ${server.source}")
             val details = source.fetchBookDetails(server, bookId)
-            if (details != null) bookDao.updateChapters(bookId, ChapterJson.encode(details.chapters))
+            if (details != null) {
+                bookDao.updateChapters(bookId, ChapterJson.encode(details.chapters))
+                details.durationMs?.takeIf { it > 0L }?.let { bookDao.updateDuration(bookId, it) }
+            }
             Result.success(details)
         } catch (e: CancellationException) {
             throw e

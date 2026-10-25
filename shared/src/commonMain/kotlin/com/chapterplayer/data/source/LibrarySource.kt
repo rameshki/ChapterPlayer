@@ -40,7 +40,7 @@ interface LibrarySource {
 
     /**
      * The details of one book ([bookId] is the app's id for it): chapters, description, genres, year, series.
-     * Null for a source that has no such call (Plex gets its chapters with its tracks). Throws when the call fails.
+     * Null for a source that has no such call. Throws when the call fails.
      */
     suspend fun fetchBookDetails(server: ServerConfig, bookId: String): BookDetails? = null
 

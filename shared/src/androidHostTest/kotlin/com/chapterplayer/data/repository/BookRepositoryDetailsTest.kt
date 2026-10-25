@@ -49,6 +49,9 @@ class BookRepositoryDetailsTest {
             chapterWrites++
             books.value = books.value.map { if (it.id == id) it.copy(chaptersJson = json) else it }
         }
+        override suspend fun updateDuration(id: String, durationMs: Long) {
+            books.value = books.value.map { if (it.id == id) it.copy(durationMs = durationMs) else it }
+        }
 
         fun chaptersOf(id: String): List<Chapter> = ChapterJson.decode(books.value.first { it.id == id }.chaptersJson)
     }
@@ -186,5 +189,25 @@ class BookRepositoryDetailsTest {
             repo(dao, DetailsSource(ServerSource.ABS) { throw CancellationException("stop") }).loadDetails("abs_a")
         }
         assertEquals(0, dao.chapterWrites)
+    }
+
+    @Test
+    fun `a length the details know is stored for that book`() = runTest {
+        val dao = FakeBookDao(listOf(entity("plex_a"), entity("plex_b")))
+
+        repo(dao, DetailsSource(ServerSource.ABS) { details(newChapters).copy(durationMs = 1_620_000L) }).loadDetails("plex_a")
+
+        assertEquals(1_620_000L, dao.books.value.first { it.id == "plex_a" }.durationMs)
+        assertEquals(1L, dao.books.value.first { it.id == "plex_b" }.durationMs)
+    }
+
+    @Test
+    fun `details without a length keep the cached one`() = runTest {
+        val dao = FakeBookDao(listOf(entity("abs_a")))
+
+        repo(dao, DetailsSource(ServerSource.ABS) { details(newChapters).copy(durationMs = 0L) }).loadDetails("abs_a")
+        repo(dao, DetailsSource(ServerSource.ABS) { details(newChapters) }).loadDetails("abs_a")
+
+        assertEquals(1L, dao.books.value.single().durationMs)
     }
 }

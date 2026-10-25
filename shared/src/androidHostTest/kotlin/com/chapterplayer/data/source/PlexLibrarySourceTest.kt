@@ -302,4 +302,108 @@ class PlexLibrarySourceTest {
         assertEquals(listOf("0", "200", "400"), starts)
         assertTrue(requests.all { it.url.parameters["X-Plex-Container-Size"] == null || it.url.parameters["X-Plex-Container-Size"] == "200" })
     }
+
+    /** A server holding [album]'s metadata, its [tracks] list and each track's detail by rating key. */
+    private fun detailsSource(album: String, tracks: String, trackDetails: Map<String, String>) = PlexLibrarySource(
+        PlexApiService(
+            HttpClient(
+                MockEngine { request ->
+                    requests += request
+                    val path = request.url.encodedPath
+                    val key = path.removePrefix("/library/metadata/").removeSuffix("/children")
+                    val body = when {
+                        path.endsWith("/children") -> tracks
+                        key in trackDetails -> trackDetails.getValue(key)
+                        else -> album
+                    }
+                    respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+            ) { installApiDefaults(isDebuggable = false) }
+        )
+    )
+
+    private val albumDetail = """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"1019","type":"album","title":"T",
+        "summary":"About the book","year":2024,"Genre":[{"tag":"Fantasy"},{"tag":""}]}]}}"""
+
+    @Test
+    fun `details of a one-file book read the album, its track and the track's chapters`() = runTest {
+        val details = detailsSource(albumDetail, fixture("plex/album-tracks.json"), mapOf("1024" to fixture("plex/track-with-chapters.json")))
+            .fetchBookDetails(server, "plex_1019")
+
+        assertEquals(
+            listOf("/library/metadata/1019", "/library/metadata/1019/children", "/library/metadata/1024"),
+            requests.map { it.url.encodedPath }
+        )
+        assertEquals(listOf(null, null, "1"), requests.map { it.url.parameters["includeChapters"] })
+        assertTrue(requests.all { it.headers["X-Plex-Token"] == "tok" && it.url.parameters["X-Plex-Token"] == null })
+        assertEquals(24, details.chapters.size)
+        assertEquals("About the book", details.description)
+        assertEquals(listOf("Fantasy"), details.genres)
+        assertEquals("2024", details.publishedYear)
+        assertEquals(emptyList(), details.series)
+        assertEquals(47_198_808L, details.durationMs)
+        assertEquals(749_847_734L, details.downloadSizeBytes)
+    }
+
+    @Test
+    fun `when the first track has chapters every track is read`() = runTest {
+        val multi = fixture("plex/album-tracks-multi.json")
+        val withChapters = fixture("plex/track-1103-with-chapters.json").replace("\"1103\"", "\"1102\"")
+        val source = detailsSource(
+            albumDetail, multi,
+            mapOf(
+                "1102" to withChapters,
+                "1103" to fixture("plex/track-1103-with-chapters.json"),
+                "1104" to fixture("plex/track-1104-no-duration.json"),
+            )
+        )
+
+        val content = source.fetchContent(server, "plex_1101")
+
+        assertEquals(
+            listOf("/library/metadata/1101/children", "/library/metadata/1102", "/library/metadata/1103", "/library/metadata/1104"),
+            requests.map { it.url.encodedPath }
+        )
+        assertEquals(listOf("1102", "1103", "1104"), content.tracks.map { it.ratingKey })
+        assertEquals(5, content.chapters.size)
+    }
+
+    @Test
+    fun `when the first track has no chapters the others are not read`() = runTest {
+        val source = detailsSource(
+            albumDetail, fixture("plex/album-tracks-multi.json"),
+            mapOf("1102" to fixture("plex/track-1102-without-chapters.json"))
+        )
+
+        val content = source.fetchContent(server, "plex_1101")
+
+        assertEquals(listOf("/library/metadata/1101/children", "/library/metadata/1102"), requests.map { it.url.encodedPath })
+        assertEquals(listOf("Fixture title 13", "Fixture title 14", "Fixture title 15"), content.chapters.map { it.title })
+    }
+
+    @Test
+    fun `an album without tracks has no chapters and asks for no track`() = runTest {
+        val details = detailsSource(albumDetail, """{"MediaContainer":{"size":0}}""", emptyMap()).fetchBookDetails(server, "plex_1019")
+
+        assertEquals(emptyList(), details.chapters)
+        assertNull(details.durationMs)
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun `a failing track detail fails the details`() = runTest {
+        val source = PlexLibrarySource(
+            PlexApiService(
+                HttpClient(
+                    MockEngine { request ->
+                        if (request.url.encodedPath.endsWith("/children")) {
+                            respond(fixture("plex/album-tracks.json"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                        } else respond("", HttpStatusCode.NotFound)
+                    }
+                ) { installApiDefaults(isDebuggable = false) }
+            )
+        )
+
+        assertFailsWith<HttpStatusException> { source.fetchContent(server, "plex_1019") }
+    }
 }

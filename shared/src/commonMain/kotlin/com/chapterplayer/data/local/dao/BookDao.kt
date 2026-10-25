@@ -35,6 +35,10 @@ interface BookDao {
     @Query("UPDATE books SET chaptersJson = :json WHERE id = :id")
     suspend fun updateChapters(id: String, json: String)
 
+    /** Replaces the cached length of one book; no other column or book changes. */
+    @Query("UPDATE books SET durationMs = :durationMs WHERE id = :id")
+    suspend fun updateDuration(id: String, durationMs: Long)
+
     /** Remove all cached books from a specific server. Called before re-syncing. */
     @Query("DELETE FROM books WHERE serverId = :serverId")
     suspend fun deleteByServer(serverId: String)

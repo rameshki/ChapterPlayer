@@ -1,0 +1,105 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "allowSync": true,
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 4,
+    "librarySectionTitle": "Fixture librarySectionTitle 1",
+    "librarySectionUUID": "Fixture librarySectionUUID 1",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1775695608,
+    "Metadata": [
+      {
+        "ratingKey": "1104",
+        "key": "/library/metadata/1104",
+        "parentRatingKey": "1101",
+        "grandparentRatingKey": "1005",
+        "guid": "local://fixture1154",
+        "parentGuid": "local://fixture1151",
+        "grandparentGuid": "plex://artist/fixture1006",
+        "type": "track",
+        "title": "Fixture title 15",
+        "grandparentKey": "/library/metadata/1005",
+        "parentKey": "/library/metadata/1101",
+        "grandparentTitle": "Fixture grandparentTitle 1",
+        "parentTitle": "Fixture parentTitle 4",
+        "summary": "Fixture summary 1",
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1101/thumb/1700000000",
+        "parentThumb": "/library/metadata/1101/thumb/1700000000",
+        "addedAt": 1700000000,
+        "Media": [
+          {
+            "id": 1203,
+            "bitrate": 126,
+            "audioChannels": 2,
+            "audioCodec": "Fixture audioCodec 2",
+            "container": "mp3",
+            "optimizedForStreaming": 0,
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1204,
+                "key": "/library/parts/1204/1700000000/file.mp3",
+                "file": "/fixtures/Fixture Author 2/Fixture Book 2/Fixture Track 3.mp3",
+                "size": 1000000,
+                "container": "mp3",
+                "Stream": [
+                  {
+                    "id": 1028,
+                    "streamType": 2,
+                    "selected": true,
+                    "default": true,
+                    "codec": "Fixture codec 1",
+                    "index": 0,
+                    "channels": 2,
+                    "bitrate": 126,
+                    "language": "English",
+                    "languageTag": "Fixture languageTag 1",
+                    "languageCode": "eng",
+                    "albumGain": "Fixture albumGain 1",
+                    "albumPeak": "Fixture albumPeak 1",
+                    "albumRange": "Fixture albumRange 1",
+                    "audioChannelLayout": "Fixture audioChannelLayout 1",
+                    "gain": "Fixture gain 1",
+                    "loudness": "Fixture loudness 1",
+                    "lra": "Fixture lra 1",
+                    "peak": "Fixture peak 1",
+                    "profile": "Fixture profile 1",
+                    "samplingRate": 44100,
+                    "streamIdentifier": "1001",
+                    "displayTitle": "Fixture displayTitle 1",
+                    "extendedDisplayTitle": "Fixture extendedDisplayTitle 1"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Fixture alt 5",
+            "type": "coverPoster",
+            "url": "/library/metadata/1101/thumb/1700000000"
+          }
+        ],
+        "index": 3,
+        "librarySectionTitle": "Fixture librarySectionTitle 1",
+        "librarySectionID": 4,
+        "librarySectionKey": "Fixture librarySectionKey 1",
+        "chapterSource": "Fixture chapterSource 1",
+        "Chapter": [
+          {
+            "id": 1303,
+            "filter": "thumb=1303",
+            "tag": "Fixture tag 32",
+            "index": 1,
+            "startTimeOffset": 0,
+            "endTimeOffset": 120000
+          }
+        ]
+      }
+    ]
+  }
+}

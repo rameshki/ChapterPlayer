@@ -66,6 +66,9 @@ class ServerRepositoryTest {
         override suspend fun updateChapters(id: String, json: String) {
             books.value = books.value.map { if (it.id == id) it.copy(chaptersJson = json) else it }
         }
+        override suspend fun updateDuration(id: String, durationMs: Long) {
+            books.value = books.value.map { if (it.id == id) it.copy(durationMs = durationMs) else it }
+        }
         override suspend fun deleteByServer(serverId: String) {
             if (fail) error("db busy")
             events += "books"
