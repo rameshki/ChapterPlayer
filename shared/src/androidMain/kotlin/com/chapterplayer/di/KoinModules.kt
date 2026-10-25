@@ -257,7 +257,8 @@ val widgetModule = module {
     single<WidgetHost> { GlanceWidgetHost(androidContext()) }
     single { WidgetRefresher(get(), get(), get(AppScopeQualifier)) }
     // The Continue widget's Resume: the main activity hands it the book (the one load path, offline rules apply).
-    single { WidgetResumer(get(), get(), get(), get()) }
+    // It runs in the app scope, so a rotation or leaving the activity does not cut a start short.
+    single { WidgetResumer(get(), get(), get(), get(), get(AppScopeQualifier)) }
 }
 
 /** Everything the shared module declares. The app adds what only it knows. */

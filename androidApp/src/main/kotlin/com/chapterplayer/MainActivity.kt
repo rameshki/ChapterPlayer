@@ -20,11 +20,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.widget.Toast
-import androidx.lifecycle.lifecycleScope
 import com.chapterplayer.data.permissions.AndroidNotificationPermission
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.widgets.EXTRA_RESUME_BOOK_ID
 import com.chapterplayer.data.widgets.WidgetResumer
+import com.chapterplayer.domain.widgets.shouldHandleWidgetResume
 import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.navigation.AppNavigation
@@ -33,7 +33,6 @@ import com.chapterplayer.ui.theme.DarkPalette
 import com.chapterplayer.ui.theme.LightPalette
 import com.chapterplayer.ui.theme.resolveDarkTheme
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
 
@@ -64,7 +63,7 @@ class MainActivity : ComponentActivity() {
         downloadNotifications.attach(askForNotifications)
         askForNotificationsOnce()
         handleOpenPlayer(intent)
-        handleWidgetResume(intent)
+        handleWidgetResume(intent, restored = savedInstanceState != null)
         // Read the saved choice before the first frame so a dark-theme user never sees a light flash.
         val saved = runBlocking { settings.themeMode.first() }
         // Paint the window and set the bars for the first frame, before Compose draws anything.
@@ -98,7 +97,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleOpenPlayer(intent)
-        handleWidgetResume(intent)
+        handleWidgetResume(intent, restored = false)
     }
 
     private fun handleOpenPlayer(intent: Intent?) {
@@ -110,14 +109,16 @@ class MainActivity : ComponentActivity() {
     }
 
     /** The Continue Listening widget's Resume: start its book, then the player opens (see [WidgetResumer]). */
-    private fun handleWidgetResume(intent: Intent?) {
+    private fun handleWidgetResume(intent: Intent?, restored: Boolean) {
         val bookId = intent?.getStringExtra(EXTRA_RESUME_BOOK_ID) ?: return
         // Consumed, like open_player: a rotation must not start the book again.
         intent.removeExtra(EXTRA_RESUME_BOOK_ID)
-        lifecycleScope.launch {
-            widgetResumer.resume(bookId).onFailure { failure ->
-                failure.message?.let { Toast.makeText(this@MainActivity, it, Toast.LENGTH_SHORT).show() }
-            }
+        val fromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        // An old intent (restored after process death, or replayed from Recents) is not a tap.
+        if (!shouldHandleWidgetResume(restored, fromHistory)) return
+        widgetResumer.launch(bookId) { message ->
+            // The start runs in the app scope; the message only shows while this screen is still there.
+            if (!isFinishing && !isDestroyed) Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
 

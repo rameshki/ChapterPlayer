@@ -12,7 +12,12 @@ import com.chapterplayer.testing.FakeDownloadStates
 import com.chapterplayer.testing.FakeLocalBookFiles
 import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.testBook
+import com.chapterplayer.data.playback.PlaybackState
+import com.chapterplayer.domain.playback.NEEDS_CONNECTION_TO_PLAY_TEXT
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -39,7 +44,7 @@ class ContinueWidgetWiringTest {
     private val states = WidgetStates(controller, repo, downloads, connectivity, settings)
     private val openPlayer = OpenPlayerRequest()
     private val starter = PlaybackStarter(controller, repo, settings, connectivity, FakeLocalBookFiles())
-    private val resumer = WidgetResumer(states, repo, starter, openPlayer)
+    private fun TestScope.resumer() = WidgetResumer(states, repo, starter, openPlayer, backgroundScope, EmptyCoroutineContext)
 
     @Test
     fun theStateFollowsProgressAndTheNetwork() = runTest {
@@ -73,7 +78,7 @@ class ContinueWidgetWiringTest {
     fun resumeStartsTheContinueBookAndOpensThePlayer() = runTest {
         repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
 
-        assertTrue(resumer.resume("a").isSuccess)
+        assertTrue(resumer().resume("a").isSuccess)
 
         assertEquals(listOf("a" to 25_000L), controller.loads)
         assertEquals(1, controller.plays)
@@ -85,8 +90,8 @@ class ContinueWidgetWiringTest {
         repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
 
         // "b" was never started, and an unknown id is not a book at all: neither is played.
-        assertTrue(resumer.resume("b").isFailure)
-        assertTrue(resumer.resume("missing").isFailure)
+        assertTrue(resumer().resume("b").isFailure)
+        assertTrue(resumer().resume("missing").isFailure)
 
         assertEquals(emptyList(), controller.loads)
         assertFalse(openPlayer.pending.value)
@@ -97,11 +102,43 @@ class ContinueWidgetWiringTest {
         repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
         connectivity.online.value = false
 
-        val result = resumer.resume("a")
+        val result = resumer().resume("a")
 
-        assertTrue(result.isFailure)
+        // A widget drawn before the connection went: the starter's own reason is shown.
+        assertEquals(NEEDS_CONNECTION_TO_PLAY_TEXT, result.exceptionOrNull()?.message)
         assertEquals(emptyList(), controller.loads)
         assertFalse(openPlayer.pending.value)
+    }
+
+    @Test
+    fun aDoubleTapRunsOneStart() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        val gate = CompletableDeferred<Unit>()
+        controller.onLoad = { book, _ ->
+            gate.await()
+            controller.playback.value = PlaybackState(bookId = book.id, durationMs = book.durationMs)
+        }
+        val failures = mutableListOf<String>()
+        val resumer = resumer()
+
+        resumer.launch("a") { failures += it }
+        runCurrent()
+        resumer.launch("a") { failures += it }
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf("a" to 25_000L), controller.loads)
+        assertEquals(emptyList(), failures) // the second tap is not an error
+        assertTrue(openPlayer.pending.value)
+    }
+
+    @Test
+    fun aBackgroundResumeReportsItsFailure() = runTest {
+        val failures = mutableListOf<String>()
+        resumer().launch("missing") { failures += it }
+        runCurrent()
+        assertEquals(listOf(WidgetResumer.NOTHING_TO_RESUME), failures)
     }
 
     @Test
@@ -109,7 +146,7 @@ class ContinueWidgetWiringTest {
         repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
         controller.onLoad = { _, _ -> throw IllegalStateException("server down") }
 
-        val result = resumer.resume("a")
+        val result = resumer().resume("a")
 
         assertTrue(result.isFailure)
         assertFalse(openPlayer.pending.value)

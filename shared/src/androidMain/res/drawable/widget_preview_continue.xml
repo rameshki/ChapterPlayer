@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker's preview of Continue Listening before Android 12: its own dark card, visible on any picker. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp"
+    android:height="48dp"
+    android:viewportWidth="180"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF1A1916"
+        android:pathData="M12,0h156a12,12 0 0 1 12,12v24a12,12 0 0 1 -12,12h-156a12,12 0 0 1 -12,-12v-24a12,12 0 0 1 12,-12z" />
+    <path
+        android:fillColor="#FFABA89F"
+        android:pathData="M14,12h20v24h-20z" />
+    <path
+        android:fillColor="#FFF0EDE8"
+        android:pathData="M44,14h70v6h-70z" />
+    <path
+        android:fillColor="#FFE8B84B"
+        android:pathData="M44,28h40v5h-40z M150,12v24l18,-12z" />
+</vector>

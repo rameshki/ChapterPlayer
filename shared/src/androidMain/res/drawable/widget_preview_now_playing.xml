@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker's preview of Now Playing before Android 12: its own dark card, so it shows on light and dark pickers. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp"
+    android:height="48dp"
+    android:viewportWidth="180"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF1A1916"
+        android:pathData="M12,0h156a12,12 0 0 1 12,12v24a12,12 0 0 1 -12,12h-156a12,12 0 0 1 -12,-12v-24a12,12 0 0 1 12,-12z" />
+    <path
+        android:fillColor="#FFF0EDE8"
+        android:pathData="M12,16h64v6h-64z" />
+    <path
+        android:fillColor="#FFABA89F"
+        android:pathData="M12,28h44v5h-44z" />
+    <path
+        android:fillColor="#FFE8B84B"
+        android:pathData="M100,14l-10,10l10,10z M140,14v20l16,-10z M126,14l10,10l-10,10z" />
+</vector>

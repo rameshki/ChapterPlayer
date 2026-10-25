@@ -9,10 +9,12 @@ import com.chapterplayer.domain.widgets.ContinueWidgetState
 import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.continueWidgetState
 import com.chapterplayer.domain.widgets.nowPlayingWidgetState
+import com.chapterplayer.domain.widgets.widgetMayResume
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 
 /**
  * What the home screen widgets show, from the same sources as the app: the player for Now Playing, the books,
@@ -35,4 +37,8 @@ class WidgetStates(
         get() = combine(observeBrowseItems(books, downloads), connectivity.isOnline, settings.downloadedOnly) { items, online, downloadedOnly ->
             continueWidgetState(items, online, downloadedOnly)
         }.distinctUntilChanged()
+
+    /** Whether a Resume tap may start [bookId] now (see [widgetMayResume]). */
+    suspend fun mayResume(bookId: String): Boolean =
+        widgetMayResume(observeBrowseItems(books, downloads).first(), connectivity.isOnline.first(), settings.downloadedOnly.first(), bookId)
 }

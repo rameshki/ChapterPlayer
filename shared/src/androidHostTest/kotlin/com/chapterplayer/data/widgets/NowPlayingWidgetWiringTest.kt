@@ -14,6 +14,8 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NowPlayingWidgetWiringTest {
@@ -32,12 +34,13 @@ class NowPlayingWidgetWiringTest {
 
     @Test
     fun playPauseActsOnTheLoadedBookOnly() {
-        actions.playPause()
+        // Nothing loaded: the button says so, and the widget opens the app instead.
+        assertFalse(actions.playPause())
         assertEquals(0, controller.plays)
         assertEquals(0, controller.pauses)
 
         controller.playback.value = PlaybackState(bookId = "a", durationMs = 1_000)
-        actions.playPause()
+        assertTrue(actions.playPause())
         assertEquals(1, controller.plays)
         assertEquals(emptyList(), controller.loads) // never loads a book
 
@@ -48,15 +51,20 @@ class NowPlayingWidgetWiringTest {
 
     @Test
     fun skipsActOnTheLoadedBookOnly() {
-        actions.skipBack()
-        actions.skipForward()
+        assertFalse(actions.skipBack())
+        assertFalse(actions.skipForward())
         assertEquals(0, controller.skipBacks + controller.skipForwards)
 
         controller.playback.value = PlaybackState(bookId = "a", durationMs = 1_000)
-        actions.skipBack()
-        actions.skipForward()
+        assertTrue(actions.skipBack())
+        assertTrue(actions.skipForward())
         assertEquals(1, controller.skipBacks)
         assertEquals(1, controller.skipForwards)
+
+        // A loaded book of unknown length: nothing to skip, but the app need not open either.
+        controller.playback.value = PlaybackState(bookId = "a", durationMs = 0)
+        assertTrue(actions.skipBack())
+        assertEquals(1, controller.skipBacks)
     }
 
     @Test

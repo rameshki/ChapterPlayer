@@ -1,6 +1,7 @@
 package com.chapterplayer.ui.widgets
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -72,8 +73,8 @@ class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
     }
 
     companion object {
-        val NARROW = DpSize(48.dp, 48.dp)
-        val WIDE = DpSize(NOW_PLAYING_WIDE_MIN_DP.dp, 48.dp)
+        val NARROW = DpSize(40.dp, 40.dp)
+        val WIDE = DpSize(NOW_PLAYING_WIDE_MIN_DP.dp, 40.dp)
     }
 }
 
@@ -153,20 +154,41 @@ private fun PlayPause(state: NowPlayingWidgetState.Book, colors: WidgetColors) {
     }
 }
 
-/** The controller is called on the main thread, as it requires. */
-private suspend fun onMain(block: WidgetActions.() -> Unit) {
+/**
+ * Runs a button on the main thread, as the controller requires. When nothing is loaded (the widget still shows a
+ * book from before the app was gone) the app opens instead, and the widget is redrawn.
+ */
+private suspend fun onMain(context: Context, glanceId: GlanceId, block: WidgetActions.() -> Boolean) {
     val actions = object : KoinComponent {}.get<WidgetActions>()
-    withContext(Dispatchers.Main) { actions.block() }
+    val acted = withContext(Dispatchers.Main) { actions.block() }
+    if (acted) return
+    openAppIntent(context, openPlayer = false)?.let { intent ->
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            // The system refused a start from the background; the redraw below still shows "Nothing playing".
+        }
+    }
+    try {
+        NowPlayingWidget().update(context, glanceId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+    }
 }
 
 class PlayPauseAction : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) = onMain { playPause() }
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) =
+        onMain(context, glanceId) { playPause() }
 }
 
 class SkipBackAction : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) = onMain { skipBack() }
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) =
+        onMain(context, glanceId) { skipBack() }
 }
 
 class SkipForwardAction : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) = onMain { skipForward() }
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) =
+        onMain(context, glanceId) { skipForward() }
 }
