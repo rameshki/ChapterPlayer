@@ -45,6 +45,7 @@ import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.AbsSessionManager
 import com.chapterplayer.data.remote.abs.AbsSignIn
 import com.chapterplayer.data.images.PlexImageServers
+import com.chapterplayer.data.local.Migration8To9
 import com.chapterplayer.data.remote.createDownloadHttpClient
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.plex.PlexApiService
@@ -124,7 +125,7 @@ val databaseModule = module {
             androidContext(),
             ChapterPlayerDatabase::class.java,
             ChapterPlayerDatabase.DATABASE_NAME
-        ).build()
+        ).addMigrations(Migration8To9).build()
     }
     single { get<ChapterPlayerDatabase>().bookDao() }
     single { get<ChapterPlayerDatabase>().progressDao() }
