@@ -130,7 +130,7 @@ class CarLibraryCallback(
             ) ?: return
             val busyNow = playback.state.value.bookId != null || player.isPlaying || player.mediaItemCount > 0
             if (carStarts != startsBefore || busyNow) return
-            starter.start(book)
+            starter.start(book, ignoreDownloadedOnly = true)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -283,7 +283,7 @@ class CarLibraryCallback(
         book: AudioBook,
     ): MediaItemsWithStartPosition {
         carStarts++
-        starter.start(book).onFailure {
+        starter.start(book, ignoreDownloadedOnly = true).onFailure {
             throw report(session, controller, SessionError.ERROR_IO, it.message ?: PlaybackStartException.DEFAULT_MESSAGE)
         }
         // The starter's controller hands the items to the player asynchronously: wait until it holds them.

@@ -6,6 +6,7 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.data.playback.PlaybackStarter
+import com.chapterplayer.testing.FakeLocalBookFiles
 import com.chapterplayer.testing.FakePlaybackController
 import kotlinx.coroutines.CancellationException
 import kotlin.test.assertNotNull
@@ -64,7 +65,7 @@ class HomeViewModelTest {
         val controller = FakePlaybackController()
         val vm = HomeViewModel(
             books, servers, downloads, store, monitor, settings, coordinator,
-            PlaybackStarter(controller, books, settings, monitor), Dispatchers.Main
+            PlaybackStarter(controller, books, settings, monitor, FakeLocalBookFiles()), Dispatchers.Main
         )
     }
 

@@ -2,6 +2,7 @@ package com.chapterplayer.data.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
@@ -12,6 +13,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.chapterplayer.data.downloads.LocalBookFiles
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.playback.SleepTimer
@@ -40,6 +42,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.io.File
 import java.util.concurrent.ExecutionException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -56,6 +59,7 @@ class AndroidPlaybackController(
     private val context: Context,
     private val repository: BookRepository,
     private val appScope: CoroutineScope,
+    private val localFiles: LocalBookFiles,
 ) : PlaybackController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -127,15 +131,16 @@ class AndroidPlaybackController(
     // -- Starting a book ---------------------------------------------------------------------
 
     // One load at a time: a second waits for the first, so the last request is the one heard.
-    override suspend fun load(book: AudioBook, startMs: Long) = loadLock.withLock { loadLocked(book, startMs) }
+    override suspend fun load(book: AudioBook, startMs: Long, origin: AudioOrigin) =
+        loadLock.withLock { loadLocked(book, startMs, origin) }
 
-    private suspend fun loadLocked(book: AudioBook, startMs: Long) {
-        val started = repository.startPlayback(book.id).getOrElse { failure ->
-            if (failure is CancellationException) throw failure
-            throw PlaybackStartException(safeStartMessage(failure))
+    private suspend fun loadLocked(book: AudioBook, startMs: Long, origin: AudioOrigin) {
+        val started = when (origin) {
+            AudioOrigin.Server -> streamed(openSession(book))
+            is AudioOrigin.Phone -> fromPhone(book, origin)
         }
         if (started.tracks.isEmpty()) {
-            closeSession(started, 0L)
+            started.session?.let { closeSession(it, 0L) }
             throw PlaybackStartException("This book has no audio to play")
         }
 
@@ -168,7 +173,7 @@ class AndroidPlaybackController(
             } catch (e: Exception) {
                 loaded.end()
                 try { player.clearMediaItems() } catch (_: Exception) { }
-                closeSession(started, 0L)
+                started.session?.let { closeSession(it, 0L) }
                 throw e
             }
         }
@@ -178,12 +183,56 @@ class AndroidPlaybackController(
         publish()
     }
 
+    private suspend fun openSession(book: AudioBook): PlaybackSession =
+        repository.startPlayback(book.id).getOrElse { failure ->
+            if (failure is CancellationException) throw failure
+            throw PlaybackStartException(safeStartMessage(failure))
+        }
+
+    /**
+     * A downloaded book: the audio is always the files on the phone. Online a session is opened as well, so listening
+     * syncs live; when that fails the book plays without one and the progress queue reports it later.
+     */
+    private suspend fun fromPhone(book: AudioBook, origin: AudioOrigin.Phone): PlayableBook {
+        var sessionFailure: Throwable? = null
+        val session = if (origin.openSession) {
+            repository.startPlayback(book.id).getOrElse { failure ->
+                if (failure is CancellationException) throw failure
+                sessionFailure = failure
+                null
+            }
+        } else {
+            null
+        }
+        val playable = playableFromPhone(book, origin.files, session, ::fileUri)
+            // The files' lengths are not known (a download from before they were recorded): stream it this time,
+            // or say why not. Online the server's own failure is the reason; offline the lengths are.
+            ?: return session?.let(::streamed)
+                ?: throw PlaybackStartException(sessionFailure?.let(::safeStartMessage) ?: NEEDS_ONE_ONLINE_PLAY_TEXT)
+        val learnt = durationsToRemember(origin.files, session)
+        if (learnt.isNotEmpty()) {
+            appScope.launch {
+                try {
+                    localFiles.saveDurations(book.id, learnt)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Only a nicety for playing offline later.
+                }
+            }
+        }
+        return playable
+    }
+
+    private fun fileUri(path: String): String = Uri.fromFile(File(path)).toString()
+
     // Artwork is left out for now: the cover address needs the bearer token and a MediaItem must not carry one.
     private fun toMediaItem(spec: TrackItemSpec): MediaItem =
         MediaItem.Builder()
             .setMediaId(spec.mediaId)
             .setUri(spec.url)
-            .setMimeType(spec.mimeType)
+            // Unknown: the player works the format out from the file.
+            .setMimeType(spec.mimeType.ifEmpty { null })
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(spec.title)
@@ -281,7 +330,7 @@ class AndroidPlaybackController(
 
     private fun publish() {
         val player = controller
-        val current = session
+        val current = loaded.book
         if (player == null || current == null) {
             _state.value = PlaybackState(error = error)
             return
@@ -360,7 +409,8 @@ class AndroidPlaybackController(
     private fun closeCurrentSession() {
         val (ended, position) = loaded.end() ?: return
         accumulate()
-        closeSession(ended, position)
+        // A downloaded book playing offline has no session to close; its position is in the progress queue.
+        ended.session?.let { closeSession(it, position) }
     }
 
     // Best effort and off the caller's path: the screen must not wait for the server.
@@ -387,6 +437,13 @@ class AndroidPlaybackController(
             it.clearMediaItems()
         }
         _state.value = PlaybackState()
+    }
+
+    override fun releaseLocalFiles(bookId: String) {
+        scope.launch {
+            val book = loaded.book ?: return@launch
+            if (book.bookId == bookId && playsFromPhone(book)) endSession()
+        }
     }
 
     override fun release() {

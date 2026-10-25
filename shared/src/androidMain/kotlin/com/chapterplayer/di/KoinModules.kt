@@ -16,6 +16,11 @@ import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
 import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.data.downloads.AndroidLocalDisk
+import com.chapterplayer.data.downloads.DownloadLengthFiller
+import com.chapterplayer.data.downloads.DownloadRemovalListener
+import com.chapterplayer.data.downloads.LocalBookFiles
+import com.chapterplayer.data.downloads.RoomLocalBookFiles
 import com.chapterplayer.data.downloads.LiveDownloadProgress
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
@@ -158,6 +163,8 @@ val repositoryModule = module {
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
     single<DownloadStates> { RoomDownloadStates(get()) }
+    // A downloaded book's files, for playing it from the phone (playback and the downloads share it).
+    single<LocalBookFiles> { RoomLocalBookFiles(get(), AndroidLocalDisk, Dispatchers.IO, nowMs = System::currentTimeMillis) }
     single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
@@ -174,7 +181,7 @@ val browseModule = module {
 
 val playbackModule = module {
     // One controller for the app; the service itself finds its parts through Koin too.
-    single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier)) }
+    single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier), get()) }
     // Saves listening progress whichever screen is open; the application starts it.
     single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
     // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
@@ -200,8 +207,12 @@ val downloadModule = module {
     single<LiveDownloadProgress> { get<BookDownloader>() }
     single<DownloadOverview> { RoomDownloadOverview(get(), get()) }
     single<DownloadScheduler> { WorkManagerDownloadScheduler(androidContext()) }
-    single { DefaultDownloadController(get(), get(), get(), get(), get(), get()) }
+    // The player is looked up when a download is removed, not when this is built.
+    single<DownloadRemovalListener> { DownloadRemovalListener { bookId -> get<PlaybackController>().releaseLocalFiles(bookId) } }
+    single { DefaultDownloadController(get(), get(), get(), get(), get(), get(), get()) }
     single<DownloadController> { get<DefaultDownloadController>() }
+    // The application starts it: whenever the phone comes online, fills in the file lengths older downloads lack.
+    single { DownloadLengthFiller(get(), get(), get(), get(), get(), get(), get(AppScopeQualifier)) }
     // The application starts it: reschedules downloads after a reboot or process death.
     single { DownloadQueueRestorer(get(), get(AppScopeQualifier)) }
 }

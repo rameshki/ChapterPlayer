@@ -4,6 +4,7 @@ import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.domain.downloads.DownloadStatus
+import com.chapterplayer.testing.FakeLocalBookFiles
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeConnectivity
@@ -52,7 +53,7 @@ class BookDetailsDownloadTest {
         val settings = FakeAppSettings()
         val player = FakePlaybackController()
         val vm = BookDetailsViewModel(
-            "a", repo, FakeDownloadStates(), player, PlaybackStarter(player, repo, settings, connectivity), connectivity, settings,
+            "a", repo, FakeDownloadStates(), player, PlaybackStarter(player, repo, settings, connectivity, FakeLocalBookFiles()), connectivity, settings,
             Dispatchers.Main, overview, downloads, permission
         )
         fun status(status: DownloadStatus, fraction: Float = 0f, eta: Long? = null, error: String? = null) {

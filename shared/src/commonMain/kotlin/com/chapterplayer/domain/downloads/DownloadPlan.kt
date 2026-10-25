@@ -8,10 +8,23 @@ data class AudioFileEntry(
     val index: Int?,
     /** The server marks a file as left out of the book. */
     val excluded: Boolean = false,
+    /** The file's length. */
+    val durationMs: Long? = null,
+    val mimeType: String? = null,
 )
 
-/** A file to download: the server's file id, a safe display name, its size, and its place in the book (0 first). */
-data class PlannedFile(val ino: String, val fileName: String, val totalBytes: Long, val sortOrder: Int)
+/**
+ * A file to download: the server's file id, a safe display name, its size, its place in the book (0 first), and
+ * its length (0 when unknown) and media type ("" when unknown), so the book can play without the server.
+ */
+data class PlannedFile(
+    val ino: String,
+    val fileName: String,
+    val totalBytes: Long,
+    val sortOrder: Int,
+    val durationMs: Long = 0L,
+    val mimeType: String = "",
+)
 
 /**
  * The files of a book to download, in book order (by the server's index; entries without one keep
@@ -34,7 +47,9 @@ fun planFiles(entries: List<AudioFileEntry>): List<PlannedFile> {
                 ino = ino,
                 fileName = safeFileName(entry.fileName ?: ino),
                 totalBytes = entry.sizeBytes!!,
-                sortOrder = order
+                sortOrder = order,
+                durationMs = entry.durationMs?.coerceAtLeast(0L) ?: 0L,
+                mimeType = entry.mimeType?.trim().orEmpty()
             )
         }
 }

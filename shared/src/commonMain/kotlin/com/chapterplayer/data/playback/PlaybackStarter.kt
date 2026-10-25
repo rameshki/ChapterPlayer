@@ -1,10 +1,15 @@
 package com.chapterplayer.data.playback
 
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.downloads.LocalBookFiles
+import com.chapterplayer.data.downloads.LocalFile
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.playback.LocalCopy
+import com.chapterplayer.domain.playback.PlaybackSource
 import com.chapterplayer.domain.playback.ServerProgress
+import com.chapterplayer.domain.playback.choosePlaybackSource
 import com.chapterplayer.domain.playback.chooseStartPosition
 import com.chapterplayer.domain.playback.startPositionFor
 import kotlinx.coroutines.CancellationException
@@ -20,6 +25,7 @@ class PlaybackStarter(
     private val books: BookRepository,
     private val settings: AppSettings,
     private val connectivity: ConnectivityMonitor,
+    private val localFiles: LocalBookFiles,
 ) {
 
     /**
@@ -27,15 +33,28 @@ class PlaybackStarter(
      * (see [startPositionFor]); a book that is already loaded in the player (and not in an error) is never reloaded: it plays on
      * from where it is (nothing happens when it is already playing). A failure carries a message that is safe to show; cancellation is rethrown.
      * The saved speed is a nicety: if it cannot be read or applied the book still plays.
+     *
+     * A downloaded book plays from its files (see [choosePlaybackSource]); online it still gets a server session.
+     * [ignoreDownloadedOnly] lets a book that is not downloaded stream even with "Downloaded only" on (the car
+     * does not follow that setting).
      */
-    suspend fun start(book: AudioBook, atMs: Long? = null): Result<Unit> = try {
+    suspend fun start(book: AudioBook, atMs: Long? = null, ignoreDownloadedOnly: Boolean = false): Result<Unit> = try {
         if (atMs == null && controller.state.value.let { it.bookId == book.id && it.error == null }) {
             // Already loaded: carry on from the live position. A reload would restart from the last saved one.
             continueLoaded()
             return Result.success(Unit)
         }
-        val startMs = atMs ?: startFromProgress(book)
-        controller.load(book, startMs)
+        val online = isOnline()
+        val files = downloadedFiles(book.id)
+        val copy = if (files != null) LocalCopy.COMPLETE else LocalCopy.NONE
+        val downloadedOnly = !ignoreDownloadedOnly && downloadedOnly()
+        val origin = when (val source = choosePlaybackSource(book.source, copy, online, downloadedOnly)) {
+            PlaybackSource.Stream -> AudioOrigin.Server
+            PlaybackSource.Local -> AudioOrigin.Phone(files!!, openSession = online)
+            is PlaybackSource.Unavailable -> throw PlaybackStartException(source.reason)
+        }
+        val startMs = atMs ?: startFromProgress(book, online)
+        controller.load(book, startMs, origin)
         applySavedSpeed()
         controller.play()
         Result.success(Unit)
@@ -52,10 +71,27 @@ class PlaybackStarter(
      * [chooseStartPosition]); with neither, [startPositionFor] lets the session's own position win. The server is asked
      * only while online and for at most [SERVER_WAIT_MS]; a failure or a timeout means this phone's progress alone.
      */
-    private suspend fun startFromProgress(book: AudioBook): Long {
+    private suspend fun startFromProgress(book: AudioBook, online: Boolean): Long {
         val local = books.observeProgress(book.id).first()
-        val server = if (isOnline()) serverProgress(book.id) else null
+        val server = if (online) serverProgress(book.id) else null
         return chooseStartPosition(local, server) ?: startPositionFor(local, book.durationMs)
+    }
+
+    /** The book's downloaded files when all are on the phone; a failure to look counts as "not downloaded". */
+    private suspend fun downloadedFiles(bookId: String): List<LocalFile>? = try {
+        localFiles.complete(bookId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    private suspend fun downloadedOnly(): Boolean = try {
+        settings.downloadedOnly.first()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
     }
 
     private suspend fun isOnline(): Boolean = try {

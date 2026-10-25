@@ -27,6 +27,19 @@ class DownloadPlanTest {
     }
 
     @Test
+    fun `a file's length and type are kept, and unknown or negative ones become 0 and empty`() {
+        val planned = planFiles(
+            listOf(
+                AudioFileEntry(ino = "1", fileName = "a.mp3", sizeBytes = 10, index = 1, durationMs = 5_000, mimeType = " audio/mpeg "),
+                AudioFileEntry(ino = "2", fileName = "b.mp3", sizeBytes = 10, index = 2),
+                AudioFileEntry(ino = "3", fileName = "c.mp3", sizeBytes = 10, index = 3, durationMs = -4),
+            )
+        )
+        assertEquals(listOf(5_000L, 0L, 0L), planned.map { it.durationMs })
+        assertEquals(listOf("audio/mpeg", "", ""), planned.map { it.mimeType })
+    }
+
+    @Test
     fun `entries without an ino, without a size or with a size of zero are dropped`() {
         val planned = planFiles(
             listOf(

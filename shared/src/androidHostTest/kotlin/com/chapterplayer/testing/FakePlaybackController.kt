@@ -2,6 +2,7 @@ package com.chapterplayer.testing
 
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.playback.AudioOrigin
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.playback.PlaybackState
@@ -25,12 +26,15 @@ class FakePlaybackController : PlaybackController {
         playback.value = PlaybackState(bookId = book.id, durationMs = book.durationMs)
     }
     val loads = mutableListOf<Pair<String, Long>>()
+    /** Where each load's audio came from, in the order of [loads]. */
+    val origins = mutableListOf<AudioOrigin>()
     var plays = 0
     var pauses = 0
     val chapterSeeks = mutableListOf<Int>()
 
-    override suspend fun load(book: AudioBook, startMs: Long) {
+    override suspend fun load(book: AudioBook, startMs: Long, origin: AudioOrigin) {
         loads += book.id to startMs
+        origins += origin
         calls += "load"
         onLoad(book, startMs)
     }
@@ -64,6 +68,8 @@ class FakePlaybackController : PlaybackController {
     override fun skipBack() { skipBacks++ }
     override fun skipForward() { skipForwards++ }
     override fun seekToChapter(index: Int) { chapterSeeks += index }
+    val releasedFiles = mutableListOf<String>()
+    override fun releaseLocalFiles(bookId: String) { releasedFiles += bookId }
     override fun release() {}
 }
 

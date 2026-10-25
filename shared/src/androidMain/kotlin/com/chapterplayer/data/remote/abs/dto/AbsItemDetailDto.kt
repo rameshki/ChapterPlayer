@@ -36,7 +36,9 @@ data class AbsAudioFileDto(
     @SerialName("index") val index: Int? = null,
     @SerialName("ino") val ino: String? = null,
     @SerialName("metadata") val metadata: AbsAudioFileMetadataDto? = null,
-    @SerialName("exclude") val exclude: Boolean = false
+    @SerialName("exclude") val exclude: Boolean = false,
+    @SerialName("duration") val duration: Double? = null, // seconds
+    @SerialName("mimeType") val mimeType: String? = null
 )
 
 @Serializable
@@ -127,6 +129,8 @@ fun AbsItemDetailDto.toAudioFileEntries(): List<AudioFileEntry> = media.audioFil
         fileName = it.metadata?.filename,
         sizeBytes = it.metadata?.size,
         index = it.index,
-        excluded = it.exclude
+        excluded = it.exclude,
+        durationMs = it.duration?.let { seconds -> (seconds * 1000).roundToLong() },
+        mimeType = it.mimeType
     )
 }

@@ -9,6 +9,7 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
+import com.chapterplayer.testing.FakeLocalBookFiles
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeConnectivity
@@ -70,7 +71,7 @@ class BookDetailsViewModelTest {
         val settings: FakeAppSettings = FakeAppSettings()
     ) {
         val vm = BookDetailsViewModel(
-            id, repo, downloads, controller, PlaybackStarter(controller, repo, settings, connectivity), connectivity, settings, Dispatchers.Main,
+            id, repo, downloads, controller, PlaybackStarter(controller, repo, settings, connectivity, FakeLocalBookFiles()), connectivity, settings, Dispatchers.Main,
             FakeDownloadOverview(), FakeDownloadController(), FakeNotificationPermission()
         )
     }

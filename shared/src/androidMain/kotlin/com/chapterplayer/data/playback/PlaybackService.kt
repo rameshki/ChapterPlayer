@@ -10,6 +10,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CommandButton
@@ -55,7 +56,10 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         super.onCreate()
         val exo = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(AuthorizingDataSourceFactory(get<ServerRepository>(), get<AbsAuthorizer>()))
+                // Downloaded books are file addresses (read straight from disk); everything else goes over HTTP with the token.
+                DefaultMediaSourceFactory(
+                    DefaultDataSource.Factory(this, AuthorizingDataSourceFactory(get<ServerRepository>(), get<AbsAuthorizer>()))
+                )
             )
             .setAudioAttributes(
                 AudioAttributes.Builder()

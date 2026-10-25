@@ -47,6 +47,11 @@ class InMemoryDownloadDao(
     override suspend fun updateFileProgress(bookId: String, ino: String, doneBytes: Long) {
         files.value = files.value.map { if (it.bookId == bookId && it.ino == ino) it.copy(doneBytes = doneBytes) else it }
     }
+    override suspend fun fillFileDuration(bookId: String, ino: String, durationMs: Long) {
+        files.value = files.value.map {
+            if (it.bookId == bookId && it.ino == ino && it.durationMs <= 0L) it.copy(durationMs = durationMs) else it
+        }
+    }
     override suspend fun delete(bookId: String) { downloads.value = downloads.value.filterNot { it.bookId == bookId } }
     override suspend fun deleteFiles(bookId: String) { files.value = files.value.filterNot { it.bookId == bookId } }
     override suspend fun deleteBook(bookId: String) {
