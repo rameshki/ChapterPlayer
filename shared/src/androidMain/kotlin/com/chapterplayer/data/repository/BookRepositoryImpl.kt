@@ -104,6 +104,8 @@ class BookRepositoryImpl(
      * Fetches everything first and only then replaces the server's cached books, so a
      * failed fetch leaves the existing cache untouched. The server's libraries and collections are
      * replaced in the same pass, but a failure fetching either only keeps the old rows: it never fails the sync.
+     * A library whose books could not be read (the others could) keeps its cached books; the books that were read are
+     * stored, and the result is then a failure that names the libraries, so the sync shows it.
      */
     override suspend fun syncBooksFromServer(server: ServerConfig): Result<Unit> =
         runCatching {
@@ -114,17 +116,26 @@ class BookRepositoryImpl(
             val incoming = snapshot.books.map { BookEntity.fromDomain(it, cachedAt = now) }
             val libraries = snapshot.libraries
             val collections = snapshot.collections
+            val failed = snapshot.failedLibraries
             // All fetching is done; every write below is one transaction, so a cancel or a crash keeps the old rows.
             inTransaction {
-                // The library list carries no chapters: keep the ones details cached for books still on the server.
-                val cached = bookDao.getByServer(server.id).associate { it.id to it.chaptersJson }
+                val cachedRows = bookDao.getByServer(server.id)
+                // The library list carries no chapters (and a Plex one no length): keep what details cached for books
+                // still on the server.
+                val cached = cachedRows.associateBy { it.id }
                 val noChapters = ChapterJson.encode(emptyList())
                 val books = incoming.map { row ->
                     val old = cached[row.id]
-                    if (row.chaptersJson == noChapters && old != null) row.copy(chaptersJson = old) else row
+                    if (old == null) row else row.copy(
+                        chaptersJson = if (row.chaptersJson == noChapters) old.chaptersJson else row.chaptersJson,
+                        durationMs = if (row.durationMs <= 0L) old.durationMs else row.durationMs
+                    )
                 }
+                // A library that could not be read keeps what was cached for it.
+                val incomingIds = books.mapTo(HashSet()) { it.id }
+                val kept = cachedRows.filter { it.libraryId in failed.keys && it.id !in incomingIds }
                 bookDao.deleteByServer(server.id)
-                bookDao.insertAll(books)
+                bookDao.insertAll(books + kept)
                 if (libraries != null) {
                     libraryDao.deleteForServer(server.id)
                     libraryDao.insertAll(libraries.map { LibraryEntity.fromDomain(it) })
@@ -142,6 +153,7 @@ class BookRepositoryImpl(
                     )
                 }
             }
+            if (failed.isNotEmpty()) throw IllegalStateException(failed.values.joinToString("; "))
         }
 
     /** Failure messages name no token or address. */
@@ -152,7 +164,10 @@ class BookRepositoryImpl(
             val source = sources.firstOrNull { it.type == server.source }
                 ?: error("No library source for ${server.source}")
             val details = source.fetchBookDetails(server, bookId)
-            if (details != null) bookDao.updateChapters(bookId, ChapterJson.encode(details.chapters))
+            if (details != null) {
+                bookDao.updateChapters(bookId, ChapterJson.encode(details.chapters))
+                details.durationMs?.takeIf { it > 0L }?.let { bookDao.updateDuration(bookId, it) }
+            }
             Result.success(details)
         } catch (e: CancellationException) {
             throw e

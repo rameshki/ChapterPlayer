@@ -6,6 +6,7 @@ import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
@@ -622,6 +623,21 @@ class BookDetailsViewModelTest {
         assertEquals(1, s.controller.plays)
         assertTrue(s.controller.seeks.isEmpty())
         assertEquals(DetailsPlayback.PLAYING, state().playback)
+    }
+
+    @Test
+    fun `a Plex book cannot play yet, says so and ignores chapter taps`() = runTest {
+        val s = fresh(longBook().copy(id = "plex_a", source = ServerSource.PLEX))
+        s.downloads.states.value = mapOf("plex_a" to DownloadState.DOWNLOADED)
+        val state = collect(s)
+
+        assertFalse(state().canPlay)
+        assertEquals("This server cannot play books yet", state().cannotPlayReason)
+        assertFalse(chapterTapsEnabled(state().playback, state().canPlay))
+        s.vm.onResumeClicked()
+        s.vm.onChapterClicked(1)
+        assertTrue(s.controller.loads.isEmpty())
+        assertEquals(0, s.controller.plays)
     }
 
     @Test

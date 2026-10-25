@@ -17,6 +17,7 @@ import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.source.LibrarySource
+import com.chapterplayer.data.source.SourceSnapshot
 import com.chapterplayer.testing.FakeServerList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -44,6 +45,7 @@ class BookRepositorySyncTest {
         override suspend fun insertAll(books: List<BookEntity>) { calls += "insertAll:${books.size}"; books.forEach { stored[it.id] = it } }
         override suspend fun insert(book: BookEntity) { stored[book.id] = book }
         override suspend fun updateChapters(id: String, json: String) { stored[id]?.let { stored[id] = it.copy(chaptersJson = json) } }
+        override suspend fun updateDuration(id: String, durationMs: Long) { stored[id]?.let { stored[id] = it.copy(durationMs = durationMs) } }
         override suspend fun deleteByServer(serverId: String) { calls += "deleteByServer:$serverId"; stored.values.removeAll { it.serverId == serverId } }
         override suspend fun deleteByLibrary(serverId: String, libraryId: String) { stored.values.removeAll { it.serverId == serverId && it.libraryId == libraryId } }
         override suspend fun deleteAll() { stored.clear() }
@@ -483,5 +485,40 @@ class BookRepositorySyncTest {
 
         assertEquals(details, ChapterJson.decode(dao.stored.getValue("z").chaptersJson))
         assertEquals(details, ChapterJson.decode(dao.stored.getValue("a").chaptersJson))
+    }
+
+    @Test
+    fun `a library that could not be read keeps its cached books and the sync reports it`() = runTest {
+        val dao = FakeBookDao(
+            listOf(entity("old-a", "srv1").copy(libraryId = "a"), entity("old-b", "srv1").copy(libraryId = "b"), entity("z", "srv2"))
+        )
+        val source = object : LibrarySource {
+            override val type = ServerSource.PLEX
+            override suspend fun fetchBooks(server: ServerConfig) = error("unused")
+            override suspend fun fetchLibraries(server: ServerConfig) = error("unused")
+            override suspend fun fetchCollections(server: ServerConfig) = error("unused")
+            override suspend fun fetchSnapshot(server: ServerConfig) = SourceSnapshot(
+                books = listOf(book("new-a", source = ServerSource.PLEX).copy(libraryId = "a")),
+                libraries = null,
+                collections = null,
+                failedLibraries = mapOf("b" to "Books: HTTP 500 Internal Server Error")
+            )
+        }
+
+        val result = repository(dao, source).syncBooksFromServer(server(source = ServerSource.PLEX))
+
+        assertEquals(setOf("new-a", "old-b", "z"), dao.stored.keys)
+        assertTrue(result.isFailure)
+        assertEquals("Books: HTTP 500 Internal Server Error", result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `a sync keeps the length details cached when the list has none`() = runTest {
+        val dao = FakeBookDao(listOf(entity("a", "srv1").copy(durationMs = 1_620_000L), entity("b", "srv1").copy(durationMs = 5L)))
+
+        repository(dao, FakeSource(ServerSource.ABS, listOf(book("a").copy(durationMs = 0L), book("b")))).syncBooksFromServer(server())
+
+        assertEquals(1_620_000L, dao.stored.getValue("a").durationMs)
+        assertEquals(3_600_000L, dao.stored.getValue("b").durationMs) // a length in the list wins
     }
 }

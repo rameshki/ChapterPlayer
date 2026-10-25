@@ -298,4 +298,18 @@ class RoomSchemaTest {
             assertEquals(primaryKey(table, database6), primaryKey(table, database7), "$table primary key")
         }
     }
+
+    private val database8: JsonObject by lazy { load(8) }
+    private val database9: JsonObject by lazy { load(9) }
+
+    @Test
+    fun `version 9 changes no table (its migration only drops the old Plex rows)`() {
+        assertEquals(9, database9.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database8), tables(database9))
+        for (table in tables(database8)) {
+            assertEquals(columns(table, database8), columns(table, database9), "$table columns")
+            assertEquals(primaryKey(table, database8), primaryKey(table, database9), "$table primary key")
+        }
+        assertEquals(database8.getValue("identityHash"), database9.getValue("identityHash"))
+    }
 }

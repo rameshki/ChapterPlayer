@@ -39,15 +39,50 @@ class PlexApiServiceTest {
     }
 
     @Test
-    fun `lists a section asking for chapters`() = runTest {
-        val items = PlexApiService(client(fixture("plex/library-all-artists.json")))
-            .getLibraryAll("https://plex.test:32400/", token = "tok", sectionId = "4")
+    fun `lists one page of a section's albums`() = runTest {
+        val items = PlexApiService(client(fixture("plex/library-albums.json")))
+            .getSectionAlbums("https://plex.test:32400/", token = "tok", sectionId = "4", start = 200, size = 200)
 
         val request = requests.single()
         assertEquals("/library/sections/4/all", request.url.encodedPath)
-        assertEquals("1", request.url.parameters["includeChapters"])
+        assertEquals("9", request.url.parameters["type"])
+        assertEquals("200", request.url.parameters["X-Plex-Container-Start"])
+        assertEquals("200", request.url.parameters["X-Plex-Container-Size"])
+        assertEquals("200", request.headers["X-Plex-Container-Start"])
+        assertEquals("200", request.headers["X-Plex-Container-Size"])
         assertEquals("tok", request.headers["X-Plex-Token"])
         assertEquals("application/json", request.headers[HttpHeaders.Accept])
-        assertEquals(5, items.mediaContainer.metadata?.size)
+        assertEquals(942, items.mediaContainer.totalSize)
+        assertEquals(4, items.mediaContainer.metadata?.size)
+    }
+
+    @Test
+    fun `lists an album's tracks`() = runTest {
+        val tracks = PlexApiService(client(fixture("plex/album-tracks.json")))
+            .getChildren("https://plex.test:32400", token = "tok", ratingKey = "1019")
+
+        val request = requests.single()
+        assertEquals("https://plex.test:32400/library/metadata/1019/children", request.url.toString())
+        assertEquals("tok", request.headers["X-Plex-Token"])
+        assertEquals("1024", tracks.mediaContainer.metadata?.single()?.ratingKey)
+    }
+
+    @Test
+    fun `reads one track with its chapters`() = runTest {
+        val track = PlexApiService(client(fixture("plex/track-with-chapters.json")))
+            .getMetadata("https://plex.test:32400", token = "tok", ratingKey = "1024", includeChapters = true)
+
+        val request = requests.single()
+        assertEquals("/library/metadata/1024", request.url.encodedPath)
+        assertEquals("1", request.url.parameters["includeChapters"])
+        assertEquals("tok", request.headers["X-Plex-Token"])
+        assertEquals(24, track.mediaContainer.metadata?.single()?.chapters?.size)
+    }
+
+    @Test
+    fun `reads one item without chapters unless asked`() = runTest {
+        PlexApiService(client(fixture("plex/library-albums.json"))).getMetadata("https://plex.test:32400", token = "tok", ratingKey = "1013")
+
+        assertEquals(null, requests.single().url.parameters["includeChapters"])
     }
 }

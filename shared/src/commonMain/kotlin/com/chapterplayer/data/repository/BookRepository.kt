@@ -39,7 +39,8 @@ interface BookRepository {
 
     /**
      * Fetch fresh books from the given server's API and update the local cache.
-     * Returns a [Result] so callers can surface network errors to the UI.
+     * Returns a [Result] so callers can surface network errors to the UI. When only some of the server's libraries
+     * could be read, the others are stored and the result is a failure naming the ones that were not.
      */
     suspend fun syncBooksFromServer(server: ServerConfig): Result<Unit>
 

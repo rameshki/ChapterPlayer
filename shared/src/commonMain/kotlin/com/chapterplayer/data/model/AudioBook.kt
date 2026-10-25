@@ -11,9 +11,10 @@ package com.chapterplayer.data.model
  * @param narrator   Narrator name(s), if available.
  * @param durationMs Total audiobook duration in milliseconds.
  * @param chapters   Ordered list of chapters; may be empty if server doesn't expose them.
- * @param streamUrl  Direct streaming URL. For ABS this is the /api/items/{id}/stream endpoint;
- *                   for Plex it's the /library/parts/{partId}/file path.
- * @param coverUrl   URL for the cover image, or null if unavailable.
+ * @param streamUrl  Where the book's audio is found (no token). For ABS this is the /api/items/{id}/play endpoint;
+ *                   for Plex the album's track list (/library/metadata/{id}/children).
+ * @param coverUrl   URL for the cover image, or null if unavailable. Never carries a token (Plex covers get
+ *                   theirs in a header when they load).
  * @param source     Which server this book came from.
  * @param serverId   ID of the server config this book belongs to.
  */

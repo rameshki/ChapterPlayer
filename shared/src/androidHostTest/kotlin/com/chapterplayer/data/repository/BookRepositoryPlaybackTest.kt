@@ -44,6 +44,7 @@ class BookRepositoryPlaybackTest {
         override suspend fun deleteAll() {}
         override suspend fun getLastCacheTime(serverId: String): Long? = null
         override suspend fun updateChapters(id: String, json: String) {}
+        override suspend fun updateDuration(id: String, durationMs: Long) {}
     }
 
     private class NoProgressDao : ProgressDao {

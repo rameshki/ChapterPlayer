@@ -65,6 +65,9 @@ class LibraryVisibilityTest {
         override suspend fun updateChapters(id: String, json: String) {
             books.value = books.value.map { if (it.id == id) it.copy(chaptersJson = json) else it }
         }
+        override suspend fun updateDuration(id: String, durationMs: Long) {
+            books.value = books.value.map { if (it.id == id) it.copy(durationMs = durationMs) else it }
+        }
         override suspend fun deleteByServer(serverId: String) { books.value = books.value.filter { it.serverId != serverId } }
         override suspend fun deleteByLibrary(serverId: String, libraryId: String) {
             events += "books"

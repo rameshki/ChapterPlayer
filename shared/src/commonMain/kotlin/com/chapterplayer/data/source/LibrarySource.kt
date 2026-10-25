@@ -40,7 +40,7 @@ interface LibrarySource {
 
     /**
      * The details of one book ([bookId] is the app's id for it): chapters, description, genres, year, series.
-     * Null for a source that has no such call (Plex gets its chapters with its tracks). Throws when the call fails.
+     * Null for a source that has no such call. Throws when the call fails.
      */
     suspend fun fetchBookDetails(server: ServerConfig, bookId: String): BookDetails? = null
 
@@ -88,11 +88,16 @@ interface LibrarySource {
     }
 }
 
-/** What one sync of a server fetched. [libraries] and [collections] are null when reading them failed. */
+/**
+ * What one sync of a server fetched. [libraries] and [collections] are null when reading them failed.
+ * [failedLibraries] names the libraries whose books could not be read (library id to a message that is safe to show,
+ * naming the library but no token): the cache keeps their old books and the sync reports the messages.
+ */
 class SourceSnapshot(
     val books: List<AudioBook>,
     val libraries: List<LibraryInfo>?,
-    val collections: List<BookCollection>?
+    val collections: List<BookCollection>?,
+    val failedLibraries: Map<String, String> = emptyMap()
 )
 
 /** The result of [call], or null when it failed (cancellation still propagates). */

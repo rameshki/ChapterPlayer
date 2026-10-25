@@ -33,21 +33,60 @@ class PlexApiService(private val client: HttpClient) {
         }.body()
 
     /**
-     * Fetch all items in a library section.
-     * For audiobooks, the section type is typically "artist" in Plex.
+     * One page of a section's albums (`type=9`): in a Plex music library each audiobook is an album, with the
+     * author as the album's artist. The top level of a music section lists artists, which is why the type is asked for.
+     * Paging goes in both the query and the headers, because Plex reads either.
      */
-    suspend fun getLibraryAll(
+    suspend fun getSectionAlbums(
         baseUrl: String,
         token: String,
         sectionId: String,
+        start: Int,
+        size: Int,
         accept: String = "application/json",
-        includeChapters: Int = 1,
     ): PlexLibraryAllResponse =
         client.get(endpoint(baseUrl, "library/sections/${sectionId.encodeURLPathPart()}/all")) {
             header("X-Plex-Token", token)
             header(HttpHeaders.Accept, accept)
-            parameter("includeChapters", includeChapters)
+            header(CONTAINER_START, start)
+            header(CONTAINER_SIZE, size)
+            parameter("type", PLEX_TYPE_ALBUM)
+            parameter(CONTAINER_START, start)
+            parameter(CONTAINER_SIZE, size)
+        }.body()
+
+    /** The children of one item: an artist's albums or an album's tracks, in the server's order. */
+    suspend fun getChildren(
+        baseUrl: String,
+        token: String,
+        ratingKey: String,
+        accept: String = "application/json",
+    ): PlexLibraryAllResponse =
+        client.get(endpoint(baseUrl, "library/metadata/${ratingKey.encodeURLPathPart()}/children")) {
+            header("X-Plex-Token", token)
+            header(HttpHeaders.Accept, accept)
+        }.body()
+
+    /** One item's full metadata; with [includeChapters] a track carries its chapters (a track list never does). */
+    suspend fun getMetadata(
+        baseUrl: String,
+        token: String,
+        ratingKey: String,
+        includeChapters: Boolean = false,
+        accept: String = "application/json",
+    ): PlexLibraryAllResponse =
+        client.get(endpoint(baseUrl, "library/metadata/${ratingKey.encodeURLPathPart()}")) {
+            header("X-Plex-Token", token)
+            header(HttpHeaders.Accept, accept)
+            if (includeChapters) parameter("includeChapters", 1)
         }.body()
 
     private fun endpoint(baseUrl: String, path: String) = baseUrl.trimEnd('/') + "/" + path
+
+    private companion object {
+        /** Plex's metadata type number for an album. */
+        const val PLEX_TYPE_ALBUM = 9
+        const val CONTAINER_START = "X-Plex-Container-Start"
+        const val CONTAINER_SIZE = "X-Plex-Container-Size"
+    }
 }

@@ -566,6 +566,9 @@ internal class FakeBookDao(vararg initial: BookEntity?) : BookDao {
         chapterUpdates += ChapterJson.decode(json)
         rows.value = rows.value.map { if (it.id == id) it.copy(chaptersJson = json) else it }
     }
+    override suspend fun updateDuration(id: String, durationMs: Long) {
+        rows.value = rows.value.map { if (it.id == id) it.copy(durationMs = durationMs) else it }
+    }
     override suspend fun deleteByServer(serverId: String) {}
     override suspend fun deleteByLibrary(serverId: String, libraryId: String) {}
     override suspend fun deleteAll() {}

@@ -11,5 +11,7 @@ data class BookDetails(
     val publishedYear: String?,
     val series: List<SeriesRef>,
     /** What a download of the book would fetch, in bytes; null when the server did not say. */
-    val downloadSizeBytes: Long? = null
+    val downloadSizeBytes: Long? = null,
+    /** The book's length when details know it better than the library list (a Plex album's tracks); null otherwise. */
+    val durationMs: Long? = null
 )

@@ -52,10 +52,9 @@ class PlexFixtureParsingTest {
     }
 
     @Test
-    fun `the library call the app makes today returns artists with no audio details`() {
-        // Audiobooks are albums under an artist in a Plex music library. The app asks for the
-        // section's top level, so what it gets back are the artists, with no author, duration,
-        // media or chapters.
+    fun `the top level of a music section is artists with no audio details`() {
+        // Audiobooks are albums under an artist in a Plex music library. The section's top level
+        // lists the artists, with no author, duration, media or chapters, so the app asks for albums.
         val artists = items("library-all-artists.json")
 
         assertEquals(5, artists.size)
@@ -84,6 +83,11 @@ class PlexFixtureParsingTest {
         val part = assertNotNull(track.media?.firstOrNull()?.parts?.firstOrNull())
         assertEquals(1027L, part.id)
         assertEquals("/library/parts/1027/1700000000/file.m4b", part.key)
+        assertEquals(47198808L, part.durationMs)
+        assertEquals("mp4", part.container)
+        assertEquals(749847734L, part.sizeBytes)
+        assertEquals("mp4", track.media?.firstOrNull()?.container)
+        assertEquals("track", track.type)
     }
 
     @Test
@@ -97,5 +101,20 @@ class PlexFixtureParsingTest {
         assertEquals(0L, chapters.first().startTimeMs)
         assertEquals("thumb=1029", chapters.first().filter)
         assertEquals(47121400L, chapters.last().startTimeMs)
+        assertEquals(43560L, chapters.first().endTimeMs)
+        assertEquals(47198800L, chapters.last().endTimeMs)
+    }
+
+    @Test
+    fun `an album listing carries the type, year, genres and paging totals`() {
+        val page = PlexParsers.libraryItems(fixture("plex/library-albums.json")).mediaContainer
+
+        assertEquals(942, page.totalSize)
+        assertEquals(0, page.offset)
+        val album = page.metadata.orEmpty().first()
+        assertEquals("album", album.type)
+        assertEquals(2025, album.year)
+        assertEquals("Fixture summary 1", album.summary)
+        assertEquals(listOf("Fixture tag 3"), album.genres?.map { it.tag })
     }
 }
