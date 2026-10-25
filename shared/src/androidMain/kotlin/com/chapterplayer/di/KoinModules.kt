@@ -48,6 +48,14 @@ import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.local.Migration8To9
 import com.chapterplayer.data.remote.createDownloadHttpClient
 import com.chapterplayer.data.remote.createHttpClient
+import com.chapterplayer.data.remote.createProbeHttpClient
+import com.chapterplayer.data.remote.plex.KtorPlexConnectionProbe
+import com.chapterplayer.data.remote.plex.PlexTvCandidateLookup
+import com.chapterplayer.data.sync.DataStoreServerStatusStore
+import com.chapterplayer.data.sync.PlexCandidateLookup
+import com.chapterplayer.data.sync.PlexConnectionManager
+import com.chapterplayer.data.sync.PlexConnectionProbe
+import com.chapterplayer.data.sync.ServerStatusStore
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
@@ -111,6 +119,10 @@ val DebuggableQualifier = named("debuggable")
 
 val SettingsStoreQualifier = named("settings")
 val CredentialsStoreQualifier = named("credentials")
+val ServerStatusStoreQualifier = named("serverStatus")
+
+/** The HTTP client that probes Plex connections: 3 s timeouts, no redirects. */
+val ProbeClientQualifier = named("probeClient")
 
 /** The app-long coroutine scope, and the dispatcher the browse view models do their list work on. */
 val AppScopeQualifier = named("appScope")
@@ -148,6 +160,10 @@ val networkModule = module {
     single { PlexApiService(get(), get<PlexClientIdentifier>()) }
     singleOf(::PlexTvApiService)
     singleOf(::AndroidPlexClientIdentifier) { bind<PlexClientIdentifier>() }
+    // Plex connection choice: probes each address plex.tv lists, and asks plex.tv for the list of a server saved earlier.
+    single(ProbeClientQualifier) { createProbeHttpClient(get<Boolean>(DebuggableQualifier)) }
+    single<PlexConnectionProbe> { KtorPlexConnectionProbe(get(ProbeClientQualifier)) }
+    single<PlexCandidateLookup> { PlexTvCandidateLookup(get(), get()) }
 }
 
 val securityModule = module {
@@ -156,6 +172,9 @@ val securityModule = module {
     single<TokenCipher> { AesGcmTokenCipher { AndroidKeystoreKey.getOrCreate() } }
     single<CredentialStore> { DataStoreCredentialStore(get(CredentialsStoreQualifier), get()) }
     single<AppSettings> { DataStoreAppSettings(get(SettingsStoreQualifier)) }
+    // Each server's connections (Plex) and last sync; no secrets.
+    single(ServerStatusStoreQualifier) { createPreferencesDataStore(androidContext(), "server_status") }
+    single<ServerStatusStore> { DataStoreServerStatusStore(get(ServerStatusStoreQualifier)) }
 }
 
 val sourceModule = module {
@@ -176,7 +195,9 @@ val repositoryModule = module {
             inTransaction = { block ->
                 get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
             },
-            onQueued = { get<PendingProgressFlusher>().kick() }
+            onQueued = { get<PendingProgressFlusher>().kick() },
+            // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
+            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false).retryWith }
         ) }
     singleOf(::ServerRepositoryImpl) { bind<ServerRepository>() }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
@@ -186,7 +207,9 @@ val repositoryModule = module {
     single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
-    single { LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier)) }
+    // Chooses each Plex server's address; the application starts its network watch.
+    single { PlexConnectionManager(get(), get(), get(), get()) }
+    single { LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get()) }
     // The Plex servers the cover loader adds the token header for.
     single { PlexImageServers(get(), get(AppScopeQualifier)) }
     single<LibrarySync> { get<LibrarySyncCoordinator>() }
@@ -257,7 +280,7 @@ val viewModelModule = module {
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
-    viewModelOf(::ServerSetupViewModel)
+    viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get()) }
     viewModelOf(::OfflineStateViewModel)
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }

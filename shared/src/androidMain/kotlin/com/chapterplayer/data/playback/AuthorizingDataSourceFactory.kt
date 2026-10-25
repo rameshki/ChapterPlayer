@@ -10,6 +10,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.plex.PLEX_TOKEN_HEADER
+import com.chapterplayer.domain.plex.plexAddressesOf
 import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.repository.ServerRepository
@@ -186,8 +187,10 @@ internal fun <T> openAuthorized(
 ): T {
     val configured = runBlocking { servers.observeAll().first() }
         .filter { it.source == ServerSource.ABS || it.source == ServerSource.PLEX }
-    val match = serverFor(url, configured.map { ServerBearer(it.baseUrl, it.token) }) ?: return open(null)
-    val server = configured.first { it.baseUrl == match.baseUrl && it.token == match.token }
+    // A Plex server answers on each connection plex.tv listed for it, so each is one of its addresses.
+    val bearers = configured.flatMap { s -> plexAddressesOf(s).map { address -> s to ServerBearer(address, s.token) } }
+    val match = serverFor(url, bearers.map { it.second }) ?: return open(null)
+    val server = bearers.first { it.second === match }.first
     if (server.source == ServerSource.PLEX) {
         return try {
             open(AuthHeader(PLEX_TOKEN_HEADER, server.token))

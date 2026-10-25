@@ -11,10 +11,15 @@ import com.chapterplayer.data.local.entity.ExcludedLibraryEntity
 import com.chapterplayer.data.local.entity.ServerConfigEntity
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.security.CredentialStore
+import com.chapterplayer.data.sync.NoServerStatusStore
+import com.chapterplayer.data.sync.ServerStatusStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -35,8 +40,18 @@ class ServerRepositoryImpl(
     private val libraryDao: LibraryDao,
     private val collectionDao: CollectionDao,
     private val bookmarkDao: BookmarkDao,
-    private val historyDao: HistoryDao
+    private val historyDao: HistoryDao,
+    /** Where the Plex connections plex.tv listed are kept: they become [ServerConfig.alternateBaseUrls]. */
+    private val statusStore: ServerStatusStore = NoServerStatusStore
 ) : ServerRepository {
+
+    /** Each server's listed connection addresses; a failing store means none (only the address in use gets the token). */
+    private val alternates: Flow<Map<String, List<String>>> = statusStore.all
+        .map { all -> all.mapValues { (_, record) -> record.candidates.map { it.uri } } }
+        .catch { e -> if (e is CancellationException) throw e else emit(emptyMap()) }
+        .distinctUntilChanged()
+
+    private suspend fun alternatesNow(): Map<String, List<String>> = alternates.first()
 
     private val migrationLock = Mutex()
     private var migrated = false
@@ -44,10 +59,12 @@ class ServerRepositoryImpl(
     override fun observeAll(): Flow<List<ServerConfig>> = flow {
         ensureTokensMigrated()
         emitAll(
-            combine(serverConfigDao.observeAll(), excludedLibraryDao.observeAll()) { rows, excluded -> rows to excluded }
-                .map { (rows, excluded) ->
+            combine(serverConfigDao.observeAll(), excludedLibraryDao.observeAll(), alternates) { rows, excluded, listed ->
+                Triple(rows, excluded, listed)
+            }
+                .map { (rows, excluded, listed) ->
                     val byServer = excluded.groupBy({ it.serverId }, { it.libraryId })
-                    rows.map { it.withToken(byServer[it.id].orEmpty().toSet()) }
+                    rows.map { it.withToken(byServer[it.id].orEmpty().toSet()).withAlternates(listed) }
                 }
         )
     }
@@ -56,6 +73,7 @@ class ServerRepositoryImpl(
         ensureTokensMigrated()
         val row = serverConfigDao.getById(id) ?: return null
         return row.withToken(excludedLibraryDao.getAll().filter { it.serverId == id }.map { it.libraryId }.toSet())
+            .withAlternates(alternatesNow())
     }
 
     override suspend fun save(config: ServerConfig) {
@@ -104,6 +122,12 @@ class ServerRepositoryImpl(
         collectionDao.deleteCollectionBooksForServer(id)
         collectionDao.deleteCollectionsForServer(id)
         serverConfigDao.deleteById(id)
+        // Its connection and sync record; a failure leaves a record no server reads.
+        try {
+            statusStore.remove(id)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+        }
     }
 
     override suspend fun setLibraryEnabled(serverId: String, libraryId: String, enabled: Boolean) {
@@ -116,6 +140,9 @@ class ServerRepositoryImpl(
             bookDao.deleteByLibrary(serverId, libraryId)
         }
     }
+
+    private fun ServerConfig.withAlternates(listed: Map<String, List<String>>): ServerConfig =
+        listed[id]?.let { copy(alternateBaseUrls = it) } ?: this
 
     // A row that still holds a token (not migrated yet) wins over the store.
     private suspend fun ServerConfigEntity.withToken(excludedLibraryIds: Set<String>): ServerConfig =

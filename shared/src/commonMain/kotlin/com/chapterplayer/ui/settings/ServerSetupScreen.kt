@@ -320,6 +320,21 @@ private fun PlexAuthSection(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when {
+                // A server was picked: its connections are being tried (local, remote, relay).
+                uiState.plexCheckingConnection -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = AmberGold, strokeWidth = 2.dp)
+                        Text(
+                            text = "Checking how to reach the server…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
                 // Already signed in and server selected
                 uiState.baseUrl.isNotBlank() && uiState.plexOAuthStep == PlexOAuthStep.IDLE -> {
                     Row(
@@ -339,10 +354,17 @@ private fun PlexAuthSection(
                         )
                     }
                     Text(
-                        text = uiState.baseUrl,
+                        text = uiState.plexChosen?.let { "${it.kind.label} · ${uiState.baseUrl}" } ?: uiState.baseUrl,
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
+                    uiState.plexConnectionNote?.let { note ->
+                        Text(
+                            text = note,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (uiState.plexChosen == null) MaterialTheme.colorScheme.error else TextSecondary
+                        )
+                    }
                     OutlinedButton(
                         onClick = onSignIn,
                         modifier = Modifier.fillMaxWidth(),

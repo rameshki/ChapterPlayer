@@ -131,7 +131,7 @@ class LibraryViewModel(
     fun onClearFilters() = queryStore.update { BrowseQuery() }
 
     fun onRefreshRequested() {
-        viewModelScope.launch { syncCoordinator.refreshAll() }
+        viewModelScope.launch { syncCoordinator.syncNowAll() }
     }
 
     fun onErrorDismissed() {

@@ -69,7 +69,12 @@ class BookRepositoryImpl(
     /** Runs the block as one database write transaction; the default runs it as is (for fakes). */
     private val inTransaction: suspend (suspend () -> Unit) -> Unit = { it() },
     /** Called after a mark was queued, so the flusher can look at the queue. */
-    private val onQueued: () -> Unit = {}
+    private val onQueued: () -> Unit = {},
+    /**
+     * Called when starting playback failed: the server to retry once with (its address changed, e.g. a Plex server whose
+     * cached connection no longer answers was switched to another one), or null to fail as is.
+     */
+    private val onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null }
 ) : BookRepository {
 
     // -------------------------------------------------------------------------
@@ -182,7 +187,22 @@ class BookRepositoryImpl(
             val server = servers.getById(book.serverId) ?: error("The book's server is no longer configured")
             val source = sources.firstOrNull { it.type == server.source }
                 ?: error("No library source for ${server.source}")
-            Result.success(source.startPlayback(server, bookId) ?: error("This server cannot play books yet"))
+            val session = try {
+                source.startPlayback(server, bookId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val retry = try {
+                    onConnectionFailure(server, e)
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (_: Exception) {
+                    null
+                }
+                if (retry == null || retry.baseUrl == server.baseUrl) throw e
+                source.startPlayback(retry, bookId)
+            }
+            Result.success(session ?: error("This server cannot play books yet"))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

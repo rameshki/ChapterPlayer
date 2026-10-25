@@ -12,6 +12,9 @@ package com.chapterplayer.data.model
  *                  Can be null if the user hasn't selected a library yet.
  * @param refreshToken Long-lived token used to get a new [token]; null when the server gave none.
  * @param excludedLibraryIds Libraries the user turned off for this server.
+ * @param alternateBaseUrls For Plex: the server's other connections as plex.tv listed them (local, raw local address,
+ *                  remote, relay). The token may go to these too, since they are the same server; [baseUrl] is the one in use.
+ *                  Read from the connection store, never saved with the row.
  */
 data class ServerConfig(
     val id: String,
@@ -21,7 +24,8 @@ data class ServerConfig(
     val token: String,
     val libraryId: String? = null,
     val refreshToken: String? = null,
-    val excludedLibraryIds: Set<String> = emptySet()
+    val excludedLibraryIds: Set<String> = emptySet(),
+    val alternateBaseUrls: List<String> = emptyList()
 ) {
     /** The stored token is gone or unreadable, so the user has to sign in again. */
     val needsSignIn: Boolean get() = token.isBlank()

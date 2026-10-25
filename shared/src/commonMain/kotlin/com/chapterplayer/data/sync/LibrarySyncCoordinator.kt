@@ -48,7 +48,9 @@ interface LibrarySync {
 class LibrarySyncCoordinator(
     private val books: BookRepository,
     private val servers: ServerRepository,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    /** Chooses Plex addresses: before a first sync, and again after a sync that could not connect. Null for none. */
+    private val connections: PlexConnectionManager? = null
 ) : LibrarySync {
     private data class Activity(val running: Int = 0, val errors: List<String> = emptyList())
 
@@ -97,11 +99,27 @@ class LibrarySyncCoordinator(
         }
     }
 
-    /** Syncs every configured server. The user asked, so earlier messages go first. */
-    suspend fun refreshAll() {
+    /**
+     * Syncs every configured server now (the Library tab's refresh button and pull to refresh). The user asked, so
+     * earlier messages go first and a Plex connection failure re-probes at once (no 30 s wait). Still one sync per server
+     * at a time: a server that is syncing gets one follow-up run.
+     */
+    suspend fun syncNowAll() {
         dismissError()
         try {
-            syncServers(servers.observeAll().first(), queueBusy = true)
+            syncServers(servers.observeAll().first(), queueBusy = true, force = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            addErrors(listOf("Sync failed: ${e.message ?: "Unknown error"}"))
+        }
+    }
+
+    /** Syncs one server now, as [syncNowAll] does for all ("Sync now" on the Servers page). An unknown id does nothing. */
+    suspend fun syncNow(serverId: String) {
+        try {
+            val server = servers.getById(serverId) ?: return
+            syncServers(listOf(server), queueBusy = true, force = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -159,7 +177,7 @@ class LibrarySyncCoordinator(
      * A server that is already syncing is left to that run, so two syncs of one server never overlap.
      * With [queueBusy] (the user asked) such a server gets ONE follow-up run, like [requestSync], not a dropped request.
      */
-    private suspend fun syncServers(candidates: List<ServerConfig>, queueBusy: Boolean = false) {
+    private suspend fun syncServers(candidates: List<ServerConfig>, queueBusy: Boolean = false, force: Boolean = false) {
         val mine = lock.withLock {
             candidates.filter { server ->
                 val claimed = inFlight.add(server.id)
@@ -167,7 +185,7 @@ class LibrarySyncCoordinator(
                 claimed
             }
         }
-        runClaimed(mine)
+        runClaimed(mine, force)
     }
 
     private suspend fun release(ids: List<String>) {
@@ -180,7 +198,7 @@ class LibrarySyncCoordinator(
     }
 
     /** Runs the claimed servers, then any follow-up that was requested meanwhile, until none is queued. */
-    private suspend fun runClaimed(claimed: List<ServerConfig>) {
+    private suspend fun runClaimed(claimed: List<ServerConfig>, force: Boolean = false) {
         if (claimed.isEmpty()) return
         // One "running" count for the whole chain of runs, so isSyncing does not flicker between a run and its follow-up.
         activity.update { it.copy(running = it.running + 1) }
@@ -192,7 +210,9 @@ class LibrarySyncCoordinator(
                 val errors = mutableListOf<String>()
                 var completed = false
                 try {
-                    current.forEach { server -> syncOne(server, errors) }
+                    // Only the run the user asked for is forced; a follow-up is an ordinary run.
+                    val forced = force && current === claimed
+                    current.forEach { server -> syncOne(server, errors, forced) }
                     completed = true
                 } finally {
                     withContext(NonCancellable) {
@@ -225,19 +245,25 @@ class LibrarySyncCoordinator(
         }
     }
 
-    private suspend fun syncOne(server: ServerConfig, errors: MutableList<String>) {
-        if (server.needsSignIn) {
+    private suspend fun syncOne(requested: ServerConfig, errors: MutableList<String>, force: Boolean = false) {
+        if (requested.needsSignIn) {
             // The stored sign-in is gone, so there is nothing to send to the server.
-            errors.add(signInAgainMessage(server))
+            errors.add(signInAgainMessage(requested))
             return
         }
-        // A repository that throws instead of returning a failure must not crash the app.
-        val outcome = try {
-            books.syncBooksFromServer(server)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
+        var server = choose { connections?.beforeSync(requested) } ?: requested
+        var outcome = syncBooks(server)
+        // A Plex address that cannot be reached: find the one that answers now, and retry once on it.
+        var connectionMessage: String? = null
+        val failure = outcome.exceptionOrNull()
+        if (failure != null && failure !is CancellationException && connections != null) {
+            val next = choose { connections.afterFailure(server, failure, force) }
+            if (next?.retryWith != null) {
+                server = next.retryWith
+                outcome = syncBooks(server)
+            } else {
+                connectionMessage = next?.message
+            }
         }
         // The books are cached: bring in what the server knows about listening to them (best effort).
         if (outcome.isSuccess && server.source == ServerSource.ABS) {
@@ -248,10 +274,28 @@ class LibrarySyncCoordinator(
             if (throwable is CancellationException) throw throwable
             errors.add(
                 if (throwable is SignInRequiredException) signInAgainMessage(server)
-                else "${server.name}: ${throwable.message ?: "Unknown error"}"
+                else "${server.name}: ${connectionMessage ?: throwable.message ?: "Unknown error"}"
             )
         }
         dropIfDeleted(server)
+    }
+
+    /** A repository that throws instead of returning a failure must not crash the app. */
+    private suspend fun syncBooks(server: ServerConfig): Result<Unit> = try {
+        books.syncBooksFromServer(server)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    /** The connection choice is best effort: a failure there leaves the sync as it was. */
+    private suspend fun <T> choose(block: suspend () -> T): T? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     /** A failure here never fails the sync and shows no error: the next sync tries again. */

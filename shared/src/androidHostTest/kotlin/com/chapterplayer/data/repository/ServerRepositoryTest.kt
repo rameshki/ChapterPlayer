@@ -16,6 +16,9 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.security.CredentialStore
+import com.chapterplayer.data.sync.DataStoreServerStatusStore
+import com.chapterplayer.data.sync.StoredCandidate
+import com.chapterplayer.testing.InMemoryPreferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -106,6 +109,23 @@ class ServerRepositoryTest {
 
         assertEquals("", dao.rows.value.getValue("a").token)
         assertEquals("tok-a", creds.tokens["a"])
+    }
+
+    @Test
+    fun `a server's listed connections come with it, and deleting it forgets them`() = runTest {
+        val store = DataStoreServerStatusStore(InMemoryPreferencesDataStore())
+        store.update("a") { it.copy(candidates = listOf(StoredCandidate("http://192.0.2.11:32400", "LOCAL_ADDRESS"))) }
+        val repo = ServerRepositoryImpl(
+            FakeDao(), FakeExcludedDao(), FakeCredentials(), FakeBookDao(), InMemoryLibraryDao(), InMemoryCollectionDao(),
+            InMemoryBookmarkDao(), InMemoryHistoryDao(), store
+        )
+        repo.save(config("a", "tok-a"))
+
+        assertEquals(listOf("http://192.0.2.11:32400"), repo.getById("a")?.alternateBaseUrls)
+        assertEquals(listOf("http://192.0.2.11:32400"), repo.observeAll().first().single().alternateBaseUrls)
+
+        repo.delete("a")
+        assertTrue(store.all.first().isEmpty())
     }
 
     @Test
