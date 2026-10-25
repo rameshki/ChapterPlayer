@@ -110,6 +110,9 @@ kotlin {
 
             // WorkManager: the download worker
             implementation(libs.work.runtime.ktx)
+
+            // Glance: the home screen widgets
+            implementation(libs.glance.appwidget)
         }
     }
 }

@@ -68,6 +68,32 @@
             android:name="com.chapterplayer.data.downloads.DownloadActionReceiver"
             android:exported="false" />
 
+        <!-- Home screen widgets (Glance): Now Playing -->
+        <receiver
+            android:name="com.chapterplayer.ui.widgets.NowPlayingWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_now_playing_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/now_playing_widget_info" />
+        </receiver>
+
+        <!-- Home screen widgets (Glance): Continue Listening -->
+        <receiver
+            android:name="com.chapterplayer.ui.widgets.ContinueListeningWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_continue_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/continue_listening_widget_info" />
+        </receiver>
+
     </application>
 
 </manifest>
