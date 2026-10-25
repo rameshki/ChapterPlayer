@@ -4,6 +4,7 @@ import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.fixture
+import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.installApiDefaults
 import com.chapterplayer.data.remote.plex.PlexApiService
 import io.ktor.client.HttpClient
@@ -16,6 +17,7 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -205,5 +207,99 @@ class PlexLibrarySourceTest {
     fun `has no collections`() = runTest {
         assertEquals(emptyList(), source().fetchCollections(server))
         assertTrue(requests.isEmpty())
+    }
+
+    private val twoSections =
+        """{"MediaContainer":{"size":2,"Directory":[{"key":"1","type":"artist","title":"Talks"},{"key":"4","type":"artist","title":"Books"}]}}"""
+
+    /** The section list, and each section's albums, with [failing] sections answering 500. */
+    private fun syncSource(failing: Set<String>, pages: (String, Int) -> String = { key, _ ->
+        """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"$key-a","type":"album","title":"T"}]}}"""
+    }) = PlexLibrarySource(
+        PlexApiService(
+            HttpClient(
+                MockEngine { request ->
+                    requests += request
+                    val path = request.url.encodedPath
+                    val key = path.removePrefix("/library/sections/").removeSuffix("/all")
+                    when {
+                        path == "/library/sections" -> respond(twoSections, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                        key in failing -> respond("", HttpStatusCode.InternalServerError)
+                        else -> respond(
+                            pages(key, request.url.parameters["X-Plex-Container-Start"]!!.toInt()),
+                            HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    }
+                }
+            ) { installApiDefaults(isDebuggable = false) }
+        )
+    )
+
+    @Test
+    fun `a sync reads the section list once and lists the libraries`() = runTest {
+        val snapshot = syncSource(failing = emptySet()).fetchSnapshot(server)
+
+        assertEquals(listOf("/library/sections", "/library/sections/1/all", "/library/sections/4/all"), requests.map { it.url.encodedPath })
+        assertEquals(listOf("plex_1-a", "plex_4-a"), snapshot.books.map { it.id })
+        assertEquals(listOf(LibraryInfo("srv1", "1", "Talks"), LibraryInfo("srv1", "4", "Books")), snapshot.libraries)
+        assertEquals(emptyList(), snapshot.collections)
+        assertEquals(emptyMap(), snapshot.failedLibraries)
+    }
+
+    @Test
+    fun `one failing section does not fail the others`() = runTest {
+        val snapshot = syncSource(failing = setOf("1")).fetchSnapshot(server)
+
+        assertEquals(listOf("plex_4-a"), snapshot.books.map { it.id })
+        assertEquals(mapOf("1" to "Talks: HTTP 500 Internal Server Error"), snapshot.failedLibraries)
+        assertFalse(snapshot.failedLibraries.values.any { "tok" in it || "plex.test" in it })
+    }
+
+    @Test
+    fun `every section failing fails the sync`() = runTest {
+        assertFailsWith<HttpStatusException> { syncSource(failing = setOf("1", "4")).fetchSnapshot(server) }
+    }
+
+    @Test
+    fun `a failing section list fails the sync when no section is configured`() = runTest {
+        val source = PlexLibrarySource(
+            PlexApiService(HttpClient(MockEngine { respond("", HttpStatusCode.Unauthorized) }) { installApiDefaults(isDebuggable = false) })
+        )
+
+        assertFailsWith<HttpStatusException> { source.fetchSnapshot(server) }
+    }
+
+    @Test
+    fun `a configured section syncs even when the section list fails`() = runTest {
+        val source = PlexLibrarySource(
+            PlexApiService(
+                HttpClient(
+                    MockEngine { request ->
+                        if (request.url.encodedPath == "/library/sections") respond("", HttpStatusCode.InternalServerError)
+                        else respond(fixture("plex/library-albums.json"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                    }
+                ) { installApiDefaults(isDebuggable = false) }
+            )
+        )
+
+        val snapshot = source.fetchSnapshot(server.copy(libraryId = "4"))
+
+        assertEquals(4, snapshot.books.size)
+        assertNull(snapshot.libraries)
+    }
+
+    @Test
+    fun `a large section is read page by page`() = runTest {
+        // 450 albums in pages of 200: three requests.
+        val snapshot = syncSource(failing = emptySet(), pages = { key, start ->
+            val end = minOf(start + 200, 450)
+            val items = (start until end).joinToString(",") { """{"ratingKey":"$key-$it","type":"album","title":"T"}""" }
+            """{"MediaContainer":{"size":${end - start},"totalSize":450,"offset":$start,"Metadata":[$items]}}"""
+        }).fetchSnapshot(server.copy(libraryId = "4"))
+
+        assertEquals(450, snapshot.books.size)
+        val starts = requests.filter { it.url.encodedPath == "/library/sections/4/all" }.map { it.url.parameters["X-Plex-Container-Start"] }
+        assertEquals(listOf("0", "200", "400"), starts)
+        assertTrue(requests.all { it.url.parameters["X-Plex-Container-Size"] == null || it.url.parameters["X-Plex-Container-Size"] == "200" })
     }
 }

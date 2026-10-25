@@ -88,11 +88,16 @@ interface LibrarySource {
     }
 }
 
-/** What one sync of a server fetched. [libraries] and [collections] are null when reading them failed. */
+/**
+ * What one sync of a server fetched. [libraries] and [collections] are null when reading them failed.
+ * [failedLibraries] names the libraries whose books could not be read (library id to a message that is safe to show,
+ * naming the library but no token): the cache keeps their old books and the sync reports the messages.
+ */
 class SourceSnapshot(
     val books: List<AudioBook>,
     val libraries: List<LibraryInfo>?,
-    val collections: List<BookCollection>?
+    val collections: List<BookCollection>?,
+    val failedLibraries: Map<String, String> = emptyMap()
 )
 
 /** The result of [call], or null when it failed (cancellation still propagates). */
