@@ -115,10 +115,37 @@ class CarBrowseTest {
     }
 
     @Test
-    fun `downloaded is a placeholder for now`() {
-        val items = carChildren("car:downloaded", data(book("a", "A")), true)!!
-        assertEquals(listOf(CAR_DOWNLOADS_NOTE), items.map { it.title })
-        assertTrue(!items.single().playable && !items.single().browsable)
+    fun `with nothing downloaded the tab holds one note`() {
+        val d = data(book("a", "A"), book("b", "B", state = DownloadState.DOWNLOADING))
+        for (online in listOf(true, false)) {
+            val items = carChildren("car:downloaded", d, online)!!
+            assertEquals(listOf(CAR_NO_DOWNLOADS_NOTE), items.map { it.title })
+            assertEquals("No downloaded books yet", items.single().title)
+            assertTrue(!items.single().playable && !items.single().browsable)
+        }
+    }
+
+    @Test
+    fun `downloaded lists only the books on the phone, by title, with the usual rows`() {
+        val d = data(
+            book("c", "Cherry", state = DownloadState.DOWNLOADED, progress = progress("c", 5_000_000, 1)),
+            book("a", "Apple"),
+            book("b", "banana", state = DownloadState.DOWNLOADED),
+            book("d", "Date", state = DownloadState.DOWNLOADING),
+        )
+        val items = carChildren("car:downloaded", d, online = true)!!
+        assertEquals(listOf("b", "c"), ids(items))
+        assertEquals(carBookItem(d.items[0], online = true), items[1])
+        assertTrue(items.all { it.playable && !it.dimmed && !it.browsable })
+    }
+
+    @Test
+    fun `offline the downloaded books still play and the tab has no banner`() {
+        val d = data(book("a", "A"), book("b", "B", state = DownloadState.DOWNLOADED))
+        val items = carChildren("car:downloaded", d, online = false)!!
+        assertEquals(listOf("b"), ids(items))
+        assertTrue(items.single().playable)
+        assertTrue(!items.single().dimmed)
     }
 
     @Test

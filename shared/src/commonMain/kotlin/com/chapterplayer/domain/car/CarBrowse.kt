@@ -1,6 +1,7 @@
 package com.chapterplayer.domain.car
 
 import com.chapterplayer.data.model.BookCollection
+import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.BookGroup
 import com.chapterplayer.domain.browse.BrowseItem
@@ -28,7 +29,7 @@ data class CarItem(
 data class CarData(val items: List<BrowseItem>, val collections: List<BookCollection>)
 
 const val CAR_MAX_SHORT_LIST = 50
-const val CAR_DOWNLOADS_NOTE = "Downloads arrive in a later update"
+const val CAR_NO_DOWNLOADS_NOTE = "No downloaded books yet"
 const val CAR_PLEX_NOTE = "Plex books cannot play yet"
 
 private fun folder(id: String, title: String, subtitle: String = "") =
@@ -110,7 +111,10 @@ fun carChildren(nodeId: String, data: CarData, online: Boolean): List<CarItem>? 
                 ranges.firstOrNull { it.label == node.arg }?.let { r -> books(sorted.filter { titleInRange(it.book.title, r) }, online) }
             }
         }
-        "downloaded" -> listOf(CarItem(carNodeId("note"), CAR_DOWNLOADS_NOTE, "", null, browsable = false, playable = false, dimmed = true))
+        // The books on the phone play online or not, so this list never gets the offline banner.
+        "downloaded" -> sortItems(items.filter { it.downloadState == DownloadState.DOWNLOADED }, BrowseSort.TITLE)
+            .map { carBookItem(it, online) }
+            .ifEmpty { listOf(CarItem(carNodeId("note"), CAR_NO_DOWNLOADS_NOTE, "", null, browsable = false, playable = false, dimmed = true)) }
         else -> null
     }
 }
