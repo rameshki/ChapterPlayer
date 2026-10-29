@@ -3,7 +3,9 @@ package com.chapterplayer.data.repository
 import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
+import com.chapterplayer.data.merge.MergedProgressPeers
 import com.chapterplayer.data.merge.ProgressMirrorPeers
+import com.chapterplayer.domain.browse.MergeOverrides
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.LibraryInfo
@@ -86,16 +88,18 @@ class BookRepositoryMirrorTest {
         suspend fun row(id: String): ReadingProgress? = progress.get(id)?.toDomain()
     }
 
-    private fun fixture(local: List<ProgressEntity> = emptyList(), now: Long = 40_000L): Fixture {
+    private val bookRows = listOf(
+        BookEntity("abs_1", "The Book", "A", "N", ABS_LENGTH, "[]", "u", null, "ABS", "srv_abs", 0L),
+        BookEntity("plex_1", "The Book", "A", "", PLEX_LENGTH, "[]", "u", null, "PLEX", "srv_plex", 0L),
+    )
+
+    private fun fixture(local: List<ProgressEntity> = emptyList(), now: Long = 40_000L, peers: ProgressMirrorPeers? = null): Fixture {
         val abs = Source(ServerSource.ABS)
         val plex = Source(ServerSource.PLEX)
         val progressDao = InMemoryProgressDao(local)
         val pendingDao = InMemoryPendingProgressDao()
-        val peers = FakePeers()
-        val books = listOf(
-            BookEntity("abs_1", "The Book", "A", "N", ABS_LENGTH, "[]", "u", null, "ABS", "srv_abs", 0L),
-            BookEntity("plex_1", "The Book", "A", "", PLEX_LENGTH, "[]", "u", null, "PLEX", "srv_plex", 0L),
-        )
+        val fakePeers = FakePeers()
+        val books = bookRows
         val servers = listOf(
             ServerConfig("srv_abs", ServerSource.ABS, "A", "http://abs.test", "tok-secret"),
             ServerConfig("srv_plex", ServerSource.PLEX, "P", "http://plex.test", "tok-secret"),
@@ -103,9 +107,9 @@ class BookRepositoryMirrorTest {
         val repo = BookRepositoryImpl(
             FakeBookDao(books), progressDao, InMemoryLibraryDao(), InMemoryCollectionDao(), FakeServerList(servers), listOf(abs, plex),
             pendingDao = pendingDao, bookmarkDao = InMemoryBookmarkDao(), historyDao = InMemoryHistoryDao(), clock = { now },
-            mirrorPeers = peers,
+            mirrorPeers = peers ?: fakePeers,
         )
-        return Fixture(repo, abs, plex, progressDao, pendingDao, peers)
+        return Fixture(repo, abs, plex, progressDao, pendingDao, fakePeers)
     }
 
     @Test
@@ -199,6 +203,29 @@ class BookRepositoryMirrorTest {
         f.repo.markFinished("abs_1", finished = true)
         assertNull(f.row("plex_1"))
         assertTrue(f.plex.pushed.isEmpty())
+    }
+
+    @Test
+    fun `with the app's grouping a split pair and the switch off stop the mirror at once`() = runTest {
+        // The lengths differ too much for an automatic match: the user merged them ("Merge with…").
+        val merged = MergeOverrides(merges = setOf("abs_1" to "plex_1"))
+        val overrides = MutableStateFlow(merged)
+        val enabled = MutableStateFlow(true)
+        val peers = MergedProgressPeers(MutableStateFlow(bookRows.map { it.toDomain(emptyList()) }), overrides, enabled, backgroundScope)
+        val f = fixture(peers = peers)
+
+        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 5 * HOUR, ABS_LENGTH, 1_000L), loadedSinceMs = 0L)
+        assertEquals(6 * HOUR, f.row("plex_1")?.positionMs)
+
+        overrides.value = MergeOverrides(splits = setOf("abs_1" to "plex_1"))
+        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 8 * HOUR, ABS_LENGTH, 2_000L), loadedSinceMs = 0L)
+        // The split leaves each copy the progress it has.
+        assertEquals(6 * HOUR, f.row("plex_1")?.positionMs)
+
+        overrides.value = merged
+        enabled.value = false
+        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 9 * HOUR, ABS_LENGTH, 3_000L), loadedSinceMs = 0L)
+        assertEquals(6 * HOUR, f.row("plex_1")?.positionMs)
     }
 
     private companion object {
