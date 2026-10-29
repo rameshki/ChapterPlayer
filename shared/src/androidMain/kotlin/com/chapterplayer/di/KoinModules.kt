@@ -13,6 +13,7 @@ import com.chapterplayer.data.downloads.SettingsDownloadLocation
 import com.chapterplayer.data.downloads.AbsDownloadSource
 import com.chapterplayer.data.downloads.BookDownloader
 import com.chapterplayer.data.downloads.DownloadSource
+import com.chapterplayer.data.downloads.PlexDownloadSource
 import com.chapterplayer.data.downloads.DefaultDownloadController
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadJobs
@@ -329,6 +330,13 @@ val downloadModule = module {
     single { FileDownloader(get(DownloadClientQualifier)) }
     // How each kind of server lists a book's files and is asked for one.
     single { AbsDownloadSource(get(), get()) } bind DownloadSource::class
+    // A Plex file that cannot be reached re-probes the connections and carries on at the new address.
+    single {
+        PlexDownloadSource(
+            get(), get(), get(DownloadClientQualifier),
+            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
+        )
+    } bind DownloadSource::class
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
     single {
         BookDownloader(get(), get(), get(), getAll<DownloadSource>(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() })
