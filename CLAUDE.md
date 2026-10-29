@@ -4,6 +4,8 @@ Audiobook player for Audiobookshelf, Plex and (later) Audible. Android first,
 built with Kotlin Multiplatform so it can port to iOS. See `docs/ROADMAP.md`
 for scope, stages and design direction. Keep that file updated as stages complete.
 
+**Continuing from an earlier chat:** read `docs/HANDOFF.md` first (open work, next steps, process, device-testing notes, traps).
+
 ## Priorities
 - Sources: Audiobookshelf > Plex > Audible (Audible scope undecided; never remove DRM)
 - Must have: Android Auto, widgets, offline downloads; later CarPlay + iOS widgets
