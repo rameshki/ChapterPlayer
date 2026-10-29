@@ -349,4 +349,23 @@ class RoomSchemaTest {
             assertEquals(primaryKey(table, database10), primaryKey(table, database11), "$table primary key")
         }
     }
+    private val database12: JsonObject by lazy { load(12) }
+
+    @Test
+    fun `version 12 adds the mirrored flag to progress with a default for old rows`() {
+        assertEquals(12, database12.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database11), tables(database12))
+        assertEquals(columns("progress", database11) + ("mirrored" to "INTEGER"), columns("progress", database12))
+        val field = entity("progress", database12).getValue("fields").jsonArray.map { it.jsonObject }
+            .single { it.getValue("columnName").jsonPrimitive.content == "mirrored" }
+        assertEquals("0", field.getValue("defaultValue").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `version 12 leaves the other tables as they were`() {
+        for (table in tables(database11) - "progress") {
+            assertEquals(columns(table, database11), columns(table, database12), "$table columns")
+            assertEquals(primaryKey(table, database11), primaryKey(table, database12), "$table primary key")
+        }
+    }
 }
