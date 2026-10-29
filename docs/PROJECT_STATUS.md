@@ -10,6 +10,9 @@ The ongoing status document (started 2026-10-29, replaces the one-off handoff no
 ## What exists (short; details in CLAUDE.md)
 ABS and Plex sources, combined library with one entry per book across servers (merge rules, source sheet, corrections, preference), filters (progress, download, server), A to Z scroller, Home/Library/Search/Downloads tabs, book details, full player + mini player + player menu (Mark as finished), bookmarks/history, progress sync (ABS session, Plex timeline/scrobble, offline queue), downloads (resumable, WorkManager), offline playback, Android Auto browse tree, Glance widgets, settings hub, Plex connection choice with sync status page, background Plex length fill, listening stats (merged, #47).
 
+## Decisions (Robert)
+- 2026-10-29: Android first and clean, then iOS (Stage 5). No Apple Developer account yet and no paid publishing for now. TestFlight needs the paid Program, so the iOS test route is a free one: the macOS CI job builds an unsigned `.ipa`, Robert signs it from Windows with Sideloadly (free Apple ID, 7-day expiry, 3 apps, no push/CarPlay entitlements) and installs it on his iPhone over USB. Revisit TestFlight if he decides to pay. There is no Mac available for local Xcode work.
+
 ## Next steps, in order
 1. Install the current main on the phone (wireless debugging, debug build) and check the stats: the page in both themes, Series finished / Series to finish, the first ABS history import and Refresh, and listening logged offline and on Plex.
 2. **Merged sources Phase 2**: mirror progress between copies of a merged book (design in the merged-sources plan; today a merged tile shows the progress of the copy played last while Play starts the chosen copy at its own position).
