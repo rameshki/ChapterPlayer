@@ -241,8 +241,9 @@ private fun BookRow(item: BrowseItem, dimmed: Boolean, onClick: () -> Unit) {
             )
             overlay.progressFraction?.let { ReadingProgressBar(it, Modifier.padding(top = 6.dp)) }
         }
-        SourceBadge(book.source)
-        sourcesMark(item)?.let { SourcesPill(it, sourcesDescription(item)) }
+        // One server's badge only for a book one server has; a merged book shows the "2 sources" pill instead.
+        val mark = sourcesMark(item)
+        if (mark == null) SourceBadge(book.source) else SourcesPill(mark, sourcesDescription(item))
         if (overlay.badge != DownloadBadgeKind.NONE) DownloadBadge(item.downloadState)
         if (overlay.finished) FinishedCheck()
     }

@@ -244,7 +244,8 @@ class BookDetailsViewModel(
                 download = detailsDownload(
                     downloadSource, env.download, env.online,
                     knownSizeBytes = live.details?.downloadSizeBytes ?: env.download?.totalBytes,
-                    confirmingRemove = env.confirmingRemove
+                    confirmingRemove = env.confirmingRemove,
+                    alsoOnOtherServers = merged
                 ),
                 downloadBookId = env.downloadBookId,
                 sources = rows,

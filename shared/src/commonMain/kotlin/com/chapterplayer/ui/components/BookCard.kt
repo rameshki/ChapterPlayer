@@ -77,13 +77,16 @@ fun BookCard(
                     )
                 }
 
-                // Source badge — top-left corner
-                SourceBadge(
-                    source = book.source,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp)
-                )
+                // Source badge, bottom right (clear of a placeholder cover's title). A book several servers have shows
+                // the "2 sources" pill instead of one server's badge.
+                if (sourcesMark == null) {
+                    SourceBadge(
+                        source = book.source,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                    )
+                }
 
                 if (overlay.badge != DownloadBadgeKind.NONE) {
                     DownloadBadge(downloadState, Modifier.align(Alignment.TopEnd).padding(6.dp))

@@ -27,6 +27,16 @@ class DetailsDownloadTest {
     )
 
     @Test
+    fun `a book several servers have names Audiobookshelf as the source and says why`() {
+        val idle = detailsDownload(ServerSource.ABS, null, true, 1_240_000_000, confirmingRemove = false, alsoOnOtherServers = true)
+        assertEquals("Download from Audiobookshelf (1.2 GB)", idle.buttonLabel)
+        assertEquals(PLEX_DOWNLOADS_NOTE, idle.note)
+        val single = detailsDownload(ServerSource.ABS, null, true, 1_240_000_000, confirmingRemove = false)
+        assertEquals("Download (1.2 GB)", single.buttonLabel)
+        assertEquals(null, single.note)
+    }
+
+    @Test
     fun `a plex book has no download control`() {
         assertEquals(DetailsDownloadPhase.HIDDEN, of(null, source = ServerSource.PLEX).phase)
         assertEquals(DetailsDownloadPhase.HIDDEN, of(DownloadStatus.DONE, source = ServerSource.PLEX).phase)

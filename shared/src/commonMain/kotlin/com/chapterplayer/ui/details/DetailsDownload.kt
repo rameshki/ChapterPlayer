@@ -24,9 +24,13 @@ data class DetailsDownload(
     val disabledReason: String? = null,
     /** "Remove download" was tapped and waits for the confirmation. */
     val confirmingRemove: Boolean = false,
+    /** A line under the start button, e.g. why a book several servers have downloads from only one; null otherwise. */
+    val note: String? = null,
 )
 
 internal const val DOWNLOAD_LABEL = "Download"
+internal const val DOWNLOAD_FROM_ABS_LABEL = "Download from Audiobookshelf"
+internal const val PLEX_DOWNLOADS_NOTE = "Plex downloads are not available yet, so this comes from Audiobookshelf."
 internal const val TRY_AGAIN_LABEL = "Try again"
 internal const val DOWNLOAD_NEEDS_CONNECTION_TEXT = "Needs a connection to download"
 internal const val DOWNLOAD_FAILED_TEXT = "The download failed"
@@ -42,6 +46,8 @@ internal fun detailsDownload(
     online: Boolean,
     knownSizeBytes: Long?,
     confirmingRemove: Boolean,
+    /** The book is also on another server (Plex), which cannot download: name the source so it is clear. */
+    alsoOnOtherServers: Boolean = false,
 ): DetailsDownload {
     if (source != ServerSource.ABS) return DetailsDownload()
     val percent = row?.let { (it.fraction * 100).toInt().coerceIn(0, 100) } ?: 0
@@ -54,9 +60,11 @@ internal fun detailsDownload(
     )
     if (row == null) {
         val size = knownSizeBytes?.takeIf { it > 0L }
+        val label = if (alsoOnOtherServers) DOWNLOAD_FROM_ABS_LABEL else DOWNLOAD_LABEL
         return base.copy(
             phase = DetailsDownloadPhase.IDLE,
-            buttonLabel = if (size == null) DOWNLOAD_LABEL else "$DOWNLOAD_LABEL (${formatBytes(size)})",
+            buttonLabel = if (size == null) label else "$label (${formatBytes(size)})",
+            note = if (alsoOnOtherServers) PLEX_DOWNLOADS_NOTE else null,
         )
     }
     return when (row.status) {
