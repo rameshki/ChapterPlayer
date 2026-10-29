@@ -7,12 +7,7 @@ import com.chapterplayer.data.local.entity.DownloadFileEntity
 import com.chapterplayer.data.model.ChapterJson
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.playback.SIGN_IN_AGAIN_TEXT
-import com.chapterplayer.data.remote.abs.AbsApiService
-import com.chapterplayer.data.remote.abs.AbsAuthorizer
-import com.chapterplayer.data.remote.abs.dto.toAudioFileEntries
-import com.chapterplayer.data.remote.abs.dto.toBookDetails
 import com.chapterplayer.data.repository.ServerRepository
-import com.chapterplayer.data.source.toServerItemId
 import com.chapterplayer.domain.downloads.BookProgress
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.domain.downloads.FileProgress
@@ -23,7 +18,6 @@ import com.chapterplayer.domain.downloads.bookProgress
 import com.chapterplayer.domain.downloads.RoomCheck
 import com.chapterplayer.domain.downloads.roomCheck
 import com.chapterplayer.domain.downloads.nextFileIndex
-import com.chapterplayer.domain.downloads.planFiles
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -67,8 +61,9 @@ interface DownloadJobs {
 
 /**
  * Downloads one book, file after file, resuming where Room and the `.part` files say it stopped.
- * On the first run it asks the server for the file list (and saves the chapters if the book row has
- * none, and the cover if it is not stored yet), checks the space, and writes the `download_files` rows.
+ * On the first run it asks the server for the file list through the server kind's [DownloadSource] (and saves the
+ * chapters if the book row has none, and the cover if it is not stored yet), checks the space, and writes the
+ * `download_files` rows. Audiobookshelf and Plex books go through the same steps, tables and folders.
  *
  * Ownership: one job per book at a time (a later job, or [whileIdle], waits until the earlier one has
  * fully stopped and saved), and one book downloading at a time across the app, so the space check holds.
@@ -83,8 +78,7 @@ class BookDownloader(
     private val dao: DownloadDao,
     private val bookDao: BookDao,
     private val servers: ServerRepository,
-    private val api: AbsApiService,
-    private val authorizer: AbsAuthorizer,
+    private val sources: List<DownloadSource>,
     private val files: FileDownloader,
     private val location: DownloadLocation,
     private val limitBytes: suspend () -> Long? = { null },
@@ -134,8 +128,9 @@ class BookDownloader(
         try {
             val server = servers.getById(row.serverId) ?: return fail(bookId, SERVER_GONE)
             if (bookDao.getById(bookId) == null) return fail(bookId, BOOK_GONE)
+            val source = sources.forServer(server) ?: return fail(bookId, CANNOT_DOWNLOAD)
             onStart()
-            val current = Job(bookId, server, bookDirectory(location.rootDir(), server.id, bookId))
+            val current = Job(bookId, server, source, bookDirectory(location.rootDir(), server.id, bookId))
             job = current
             var attempt = 0
             while (true) {
@@ -181,7 +176,7 @@ class BookDownloader(
      * [newDir] is where a book not planned yet goes (the location chosen now). A planned book stays in the folder
      * its file rows name, so changing the location in Settings never moves or splits a download.
      */
-    private inner class Job(val bookId: String, val server: ServerConfig, private val newDir: File) {
+    private inner class Job(val bookId: String, val server: ServerConfig, val source: DownloadSource, private val newDir: File) {
         var dir: File = newDir
             private set
         private val speed = SpeedTracker()
@@ -245,8 +240,9 @@ class BookDownloader(
 
         /** Asks the server for the files and writes the rows; a [Step] when the book cannot be downloaded, else null. */
         private suspend fun plan(): Step? {
-            val item = authorizer.authorized(server) { bearer -> api.getItem(server.baseUrl, bearer, bookId.toServerItemId()) }
-            val planned = planFiles(item.toAudioFileEntries())
+            val plan = source.plan(server, bookId)
+            plan.failure?.let { return Step.Failed(it) }
+            val planned = plan.files
             if (planned.isEmpty()) return Step.Failed(NO_FILES)
             val needed = planned.sumOf { it.totalBytes }
             // Other books' files: their whole planned size counts against the limit, what they still need against the free space.
@@ -273,7 +269,7 @@ class BookDownloader(
 
             // The book row already holds chapters after a sync; only an empty list is filled in.
             val book = bookDao.getById(bookId)
-            val chapters = item.toBookDetails().chapters
+            val chapters = plan.chapters
             if (book != null && chapters.isNotEmpty() && ChapterJson.decode(book.chaptersJson).isEmpty()) {
                 bookDao.updateChapters(bookId, ChapterJson.encode(chapters))
             }
@@ -295,7 +291,7 @@ class BookDownloader(
             if (cover.isFile && cover.length() > 0L) return
             val url = bookDao.getById(bookId)?.coverUrl ?: return
             dir.mkdirs()
-            files.downloadSmall(server, url, cover)
+            files.downloadSmall(source, server, url, cover)
         }
 
         private suspend fun download(file: DownloadFileEntity): FileResult = coroutineScope {
@@ -317,7 +313,7 @@ class BookDownloader(
             }
             try {
                 files.download(
-                    FileRequest(server, bookId.toServerItemId(), file.ino, file.fileName, dir, file.totalBytes, file.doneBytes)
+                    FileRequest(source, server, bookId, file.ino, file.fileName, dir, file.totalBytes, file.doneBytes)
                 ) { done ->
                     currentDone = done
                     if (done - saved >= persistEveryBytes) bigStep.trySend(Unit)
@@ -369,6 +365,7 @@ class BookDownloader(
         const val NO_FILES = "This book has no audio files to download"
         const val SERVER_GONE = "The book's server is no longer configured"
         const val BOOK_GONE = "This book is no longer in the library"
+        const val CANNOT_DOWNLOAD = "Books from this server cannot be downloaded"
         const val FAILED = "The download failed"
     }
 }

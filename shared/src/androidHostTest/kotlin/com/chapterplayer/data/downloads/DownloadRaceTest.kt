@@ -109,7 +109,7 @@ class DownloadRaceTest {
             )
         )
         val downloader = BookDownloader(
-            dao, books, servers, fake.api, authorizer, FileDownloader(fake.downloadClient, authorizer), location,
+            dao, books, servers, listOf(AbsDownloadSource(fake.api, authorizer)), FileDownloader(fake.downloadClient), location,
             sleep = {}, persistIntervalMs = 3_600_000,
         )
         lateinit var controller: DefaultDownloadController

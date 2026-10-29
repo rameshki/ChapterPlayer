@@ -55,7 +55,7 @@ class DownloadLengthFillerTest {
     private fun filler(dao: InMemoryDownloadDao, connectivity: FakeConnectivity = FakeConnectivity(), scope: kotlinx.coroutines.CoroutineScope) =
         FakeServers(testServer()).let { servers ->
             DownloadLengthFiller(
-                dao, servers, abs.api, abs.authorizer(servers),
+                dao, servers, listOf(AbsDownloadSource(abs.api, abs.authorizer(servers))),
                 RoomLocalBookFiles(dao, noDisk, Dispatchers.Unconfined, nowMs = { 1L }), connectivity, scope,
             )
         }

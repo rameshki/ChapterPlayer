@@ -2,11 +2,7 @@ package com.chapterplayer.data.downloads
 
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.local.dao.DownloadDao
-import com.chapterplayer.data.remote.abs.AbsApiService
-import com.chapterplayer.data.remote.abs.AbsAuthorizer
-import com.chapterplayer.data.remote.abs.dto.toAudioFileEntries
 import com.chapterplayer.data.repository.ServerRepository
-import com.chapterplayer.data.source.toServerItemId
 import com.chapterplayer.domain.downloads.DownloadStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -17,14 +13,13 @@ import kotlinx.coroutines.launch
 
 /**
  * Finished downloads made before each file's length was recorded (Room v6) cannot be placed on a timeline offline.
- * Each time the phone comes online this asks the server (`GET /api/items/{id}`, whose audioFiles carry the length)
- * for the books that still have a file without one, and saves the lengths. Books that have them all cost nothing.
+ * Each time the phone comes online this asks the book's server (Audiobookshelf: `GET /api/items/{id}`, whose audioFiles
+ * carry the length; Plex: the album's tracks) for the books that still have a file without one, and saves the lengths. Books that have them all cost nothing.
  */
 class DownloadLengthFiller(
     private val dao: DownloadDao,
     private val servers: ServerRepository,
-    private val api: AbsApiService,
-    private val authorizer: AbsAuthorizer,
+    private val sources: List<DownloadSource>,
     private val localFiles: LocalBookFiles,
     private val connectivity: ConnectivityMonitor,
     private val scope: CoroutineScope,
@@ -55,14 +50,8 @@ class DownloadLengthFiller(
             if (dao.getFiles(row.bookId).none { it.durationMs <= 0L }) continue
             try {
                 val server = servers.getById(row.serverId) ?: continue
-                val item = authorizer.authorized(server) { bearer -> api.getItem(server.baseUrl, bearer, row.bookId.toServerItemId()) }
-                val lengths = item.toAudioFileEntries()
-                    .mapNotNull { entry ->
-                        val ino = entry.ino?.trim().orEmpty()
-                        val ms = entry.durationMs ?: 0L
-                        if (ino.isNotEmpty() && ms > 0L) ino to ms else null
-                    }
-                    .toMap()
+                val source = sources.forServer(server) ?: continue
+                val lengths = source.fileLengths(server, row.bookId)
                 if (lengths.isNotEmpty()) localFiles.saveDurations(row.bookId, lengths)
             } catch (e: CancellationException) {
                 throw e

@@ -10,7 +10,9 @@ import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
 import com.chapterplayer.data.permissions.AndroidNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.downloads.SettingsDownloadLocation
+import com.chapterplayer.data.downloads.AbsDownloadSource
 import com.chapterplayer.data.downloads.BookDownloader
+import com.chapterplayer.data.downloads.DownloadSource
 import com.chapterplayer.data.downloads.DefaultDownloadController
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadJobs
@@ -324,10 +326,12 @@ val playbackModule = module {
 val downloadModule = module {
     single(DownloadClientQualifier) { createDownloadHttpClient(get<Boolean>(DebuggableQualifier)) }
     single { SettingsDownloadLocation(androidContext(), get()) } binds arrayOf(DownloadLocation::class, DownloadStorage::class)
-    single { FileDownloader(get(DownloadClientQualifier), get()) }
+    single { FileDownloader(get(DownloadClientQualifier)) }
+    // How each kind of server lists a book's files and is asked for one.
+    single { AbsDownloadSource(get(), get()) } bind DownloadSource::class
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
     single {
-        BookDownloader(get(), get(), get(), get(), get(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() })
+        BookDownloader(get(), get(), get(), getAll<DownloadSource>(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() })
     } bind DownloadJobs::class
     single<LiveDownloadProgress> { get<BookDownloader>() }
     single<DownloadOverview> { RoomDownloadOverview(get(), get()) }
@@ -337,7 +341,7 @@ val downloadModule = module {
     single { DefaultDownloadController(get(), get(), get(), get(), get(), get(), get()) }
     single<DownloadController> { get<DefaultDownloadController>() }
     // The application starts it: whenever the phone comes online, fills in the file lengths older downloads lack.
-    single { DownloadLengthFiller(get(), get(), get(), get(), get(), get(), get(AppScopeQualifier)) }
+    single { DownloadLengthFiller(get(), get(), getAll<DownloadSource>(), get(), get(), get(AppScopeQualifier)) }
     // The application starts it: reschedules downloads after a reboot or process death.
     single { DownloadQueueRestorer(get(), get(AppScopeQualifier)) }
 }

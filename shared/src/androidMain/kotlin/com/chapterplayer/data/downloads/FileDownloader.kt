@@ -5,8 +5,6 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.playback.SIGN_IN_AGAIN_TEXT
 import com.chapterplayer.data.playback.sameHost
 import com.chapterplayer.data.remote.HttpStatusException
-import com.chapterplayer.data.remote.abs.AbsApiService
-import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.domain.downloads.fileExtension
 import com.chapterplayer.domain.downloads.finalFileName
 import com.chapterplayer.domain.downloads.partFileName
@@ -34,10 +32,14 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-/** One audio file to fetch into [directory]. [itemId] is the server's own item id; [fileName] only gives the extension. */
+/**
+ * One audio file to fetch into [directory]: the file [ino] (the server's file id) of the app's book [bookId], asked for
+ * through [source]. [fileName] only gives the extension.
+ */
 class FileRequest(
+    val source: DownloadSource,
     val server: ServerConfig,
-    val itemId: String,
+    val bookId: String,
     val ino: String,
     val fileName: String?,
     val directory: File,
@@ -75,13 +77,13 @@ internal fun targetsFor(directory: File, ino: String, fileName: String?): Downlo
 /**
  * Downloads one file with `Range` resume into a `.part` file, then renames it. No overall timeout:
  * a request that gets no bytes for [stallMs] is cancelled and reported as [FileResult.Retry].
- * The bearer token comes from [authorizer] per request (refresh once on a 401; a second 401 fails with
- * "Sign in again"). Redirects are followed only on the same server. Tokens and addresses never go into
- * a result or a message.
+ * The address and the credential come from the request's [DownloadSource] per request (Audiobookshelf refreshes once
+ * on a 401; a refused credential fails with "Sign in again"). A request that cannot reach the server asks the source
+ * for a new address ([DownloadSource.afterConnectionFailure]) and, when it gets one, resumes the same `.part` file there
+ * at once. Redirects are followed only on the same server. Tokens and addresses never go into a result or a message.
  */
 class FileDownloader(
     private val client: HttpClient,
-    private val authorizer: AbsAuthorizer,
     private val stallMs: Long = 60_000,
     private val progressIntervalMs: Long = 500,
     private val nowMs: () -> Long = System::currentTimeMillis,
@@ -105,32 +107,46 @@ class FileDownloader(
         }
         if (!request.directory.isDirectory && !request.directory.mkdirs()) return FileResult.Failed(NO_FOLDER)
 
-        val url = AbsApiService.fileDownloadUrl(request.server.baseUrl, request.itemId, request.ino)
+        var server = request.server
         var recorded = request.recordedDoneBytes
         var restarts = 0
+        var switches = 0
         while (true) {
             val offset = validResumeOffset(if (part.isFile) part.length() else 0L, recorded, total)
+            var used: ServerConfig? = null
             val outcome = if (offset == total) {
                 Outcome.Complete
             } else {
                 try {
-                    authorizer.authorized(request.server) { bearer -> fetch(url, bearer, part, offset, total, onProgress) }
+                    request.source.authorized(server, request.bookId, request.ino) { fetch ->
+                        used = fetch.server
+                        fetch(fetch, part, offset, total, onProgress)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: SignInRequiredException) {
                     return FileResult.Failed(SIGN_IN_AGAIN_TEXT, signInRequired = true)
                 } catch (e: StorageException) {
                     return FileResult.Failed(e.userMessage)
+                } catch (_: DownloadFileGoneException) {
+                    return FileResult.Failed(NOT_FOUND, replan = true)
                 } catch (_: HttpStatusException) {
                     // Only the token refresh throws this here (the transfer answers with an outcome). A refused
                     // refresh (401/403) is already a SignInRequiredException; anything else (429, 5xx) may pass.
                     Outcome.Again
-                } catch (_: IOException) {
-                    Outcome.Again
-                } catch (_: Exception) {
-                    // Engine errors that are not IOExceptions (an unresolved address and the like): try again later.
-                    Outcome.Again
+                } catch (e: IOException) {
+                    // Engine errors that are not IOExceptions (an unresolved address and the like) are handled alike.
+                    connectionFailed(request, used ?: server, e, switches)
+                } catch (e: Exception) {
+                    connectionFailed(request, used ?: server, e, switches)
                 }
+            }
+            if (outcome is Outcome.Switch) {
+                // The server is at another address now: carry on there from what is safely in the `.part` file.
+                server = outcome.server
+                switches++
+                recorded = currentLength(part).coerceAtMost(total)
+                continue
             }
             when (outcome) {
                 Outcome.Complete -> return try {
@@ -149,8 +165,22 @@ class FileDownloader(
                     return FileResult.Failed(WRONG_SIZE, replan = true)
                 }
                 is Outcome.Refused -> return FileResult.Failed(outcome.message, replan = outcome.replan)
+                is Outcome.Switch -> Unit // handled above
             }
         }
+    }
+
+    /** A request that could not reach the server: [Outcome.Switch] when the source names a new address, else later. */
+    private suspend fun connectionFailed(request: FileRequest, used: ServerConfig, error: Exception, switches: Int): Outcome {
+        if (switches >= MAX_SWITCHES) return Outcome.Again
+        val next = try {
+            request.source.afterConnectionFailure(used, error)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null // choosing an address failed too: the usual retry later
+        }
+        return if (next != null) Outcome.Switch(next) else Outcome.Again
     }
 
     private sealed interface Outcome {
@@ -159,17 +189,20 @@ class FileDownloader(
         data object Restart : Outcome
         data object WrongSize : Outcome
         data class Refused(val message: String, val replan: Boolean = false) : Outcome
+        /** Try again at once on [server]'s new address. */
+        class Switch(val server: ServerConfig) : Outcome
     }
 
-    /** One request (plus same-server redirects). Throws [HttpStatusException] 401 so the authorizer refreshes. */
+    /** One request (plus same-server redirects). Throws [HttpStatusException] 401 so the source refreshes or gives up. */
     private suspend fun fetch(
-        firstUrl: String, bearer: String, part: File, offset: Long, total: Long, onProgress: (Long) -> Unit,
+        request: FileFetch, part: File, offset: Long, total: Long, onProgress: (Long) -> Unit,
     ): Outcome {
+        val firstUrl = request.url
         var url = firstUrl
         repeat(MAX_REDIRECTS + 1) {
             val next = withHeaderTimeout { headersArrived ->
                 client.prepareGet(url) {
-                    header(HttpHeaders.Authorization, bearer)
+                    for ((name, value) in request.headers) header(name, value)
                     if (offset > 0L) header(HttpHeaders.Range, "bytes=$offset-")
                 }.execute { response ->
                     headersArrived()
@@ -287,14 +320,16 @@ class FileDownloader(
 
     /**
      * Fetches a small file (the cover) whole into [target], replacing it only when complete. Best effort:
-     * false on any failure. [url] must be on [server]; redirects are not followed.
+     * false on any failure. [url] must be on [server] (as [source] gives it now); redirects are not followed.
      */
-    suspend fun downloadSmall(server: ServerConfig, url: String, target: File, maxBytes: Long = MAX_SMALL_BYTES): Boolean {
+    suspend fun downloadSmall(source: DownloadSource, server: ServerConfig, url: String, target: File, maxBytes: Long = MAX_SMALL_BYTES): Boolean {
         if (!sameHost(server.baseUrl, url)) return false
         val temp = File(target.parentFile, target.name + PART_SUFFIX_SMALL)
         return try {
-            val ok = authorizer.authorized(server) { bearer ->
-                withHeaderTimeout { headersArrived -> client.prepareGet(url) { header(HttpHeaders.Authorization, bearer) }.execute { response ->
+            val ok = source.authorizedSmall(server, url) { fetch ->
+                // The credential only goes to the server's own address as it is now.
+                if (!sameHost(fetch.server.baseUrl, url)) return@authorizedSmall false
+                withHeaderTimeout { headersArrived -> client.prepareGet(url) { for ((name, value) in fetch.headers) header(name, value) }.execute { response ->
                     headersArrived()
                     if (response.status == HttpStatusCode.Unauthorized) throw HttpStatusException(response.status)
                     if (response.status != HttpStatusCode.OK) return@execute false
@@ -354,6 +389,8 @@ class FileDownloader(
         const val BUFFER_BYTES = 64 * 1024
         const val MAX_REDIRECTS = 5
         const val MAX_RESTARTS = 2
+        /** New addresses one file may move to within one call (each after a failed connection). */
+        const val MAX_SWITCHES = 2
         const val MAX_SMALL_BYTES = 20L * 1024 * 1024
         const val PART_SUFFIX_SMALL = ".part"
 

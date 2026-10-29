@@ -39,7 +39,7 @@ class FileDownloaderTest {
 
     private fun request(recorded: Long = 0, total: Long = body.size.toLong(), ino: String = "77", fileName: String? = "Part 1.mp3") =
         FileRequest(
-            server = testServer(), itemId = "li_1", ino = ino, fileName = fileName,
+            source = absSource, server = testServer(), bookId = "abs_li_1", ino = ino, fileName = fileName,
             directory = dir, totalBytes = total, recordedDoneBytes = recorded
         )
 
@@ -48,7 +48,13 @@ class FileDownloaderTest {
         stallMs: Long = 60_000,
         clock: () -> Long = System::currentTimeMillis,
         openPart: (File) -> FileOutputStream = { FileOutputStream(it, true) },
-    ) = FileDownloader(fake.downloadClient, fake.authorizer(FakeServers(testServer())), stallMs = stallMs, nowMs = clock, openPart = openPart)
+    ): FileDownloader {
+        absSource = AbsDownloadSource(fake.api, fake.authorizer(FakeServers(testServer())))
+        return FileDownloader(fake.downloadClient, stallMs = stallMs, nowMs = clock, openPart = openPart)
+    }
+
+    /** The source the requests go through; set by [downloader] for its fake server. */
+    private lateinit var absSource: DownloadSource
 
     private val part get() = File(dir, "77.mp3.part")
     private val final get() = File(dir, "77.mp3")
@@ -334,7 +340,7 @@ class FileDownloaderTest {
         dir.mkdirs()
 
         val ok = withTimeout(10_000) {
-            downloader(fake, stallMs = 300).downloadSmall(testServer(), "http://abs.test/api/items/li_1/cover", File(dir, "cover.jpg"))
+            downloader(fake, stallMs = 300).downloadSmall(absSource, testServer(), "http://abs.test/api/items/li_1/cover", File(dir, "cover.jpg"))
         }
 
         assertFalse(ok)

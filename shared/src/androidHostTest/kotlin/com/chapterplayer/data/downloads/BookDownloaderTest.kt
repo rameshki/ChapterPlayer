@@ -113,8 +113,8 @@ class BookDownloaderTest {
             override suspend fun freeBytes(): Long = freeBytes
         }
         val downloader = BookDownloader(
-            dao = wrap(dao), bookDao = books, servers = servers, api = fake.api, authorizer = authorizer,
-            files = FileDownloader(fake.downloadClient, authorizer, stallMs = stallMs, progressIntervalMs = progressIntervalMs),
+            dao = wrap(dao), bookDao = books, servers = servers, sources = listOf(AbsDownloadSource(fake.api, authorizer)),
+            files = FileDownloader(fake.downloadClient, stallMs = stallMs, progressIntervalMs = progressIntervalMs),
             location = location, limitBytes = { limitBytes }, sleep = { sleeps += it }, maxAttempts = maxAttempts,
             persistIntervalMs = persistIntervalMs,
         )
