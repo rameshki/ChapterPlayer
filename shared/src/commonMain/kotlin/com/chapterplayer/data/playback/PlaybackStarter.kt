@@ -3,16 +3,23 @@ package com.chapterplayer.data.playback
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.downloads.LocalBookFiles
 import com.chapterplayer.data.downloads.LocalFile
+import com.chapterplayer.data.merge.ProgressMirrorPeers
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.playback.LocalCopy
+import com.chapterplayer.domain.playback.MirrorPeer
 import com.chapterplayer.domain.playback.PlaybackSource
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.choosePlaybackSource
 import com.chapterplayer.domain.playback.chooseStartPosition
+import com.chapterplayer.domain.playback.newestAcrossCopies
+import com.chapterplayer.domain.playback.progressOnCopy
 import com.chapterplayer.domain.playback.startPositionFor
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -26,6 +33,8 @@ class PlaybackStarter(
     private val settings: AppSettings,
     private val connectivity: ConnectivityMonitor,
     private val localFiles: LocalBookFiles,
+    /** The other copies of a merged book (none with mirroring off): their progress counts at the start too. */
+    private val peers: ProgressMirrorPeers = ProgressMirrorPeers.None,
 ) {
 
     /**
@@ -68,13 +77,45 @@ class PlaybackStarter(
 
     /**
      * Where a book begins when nobody said: the newer of this phone's progress and the server's (see
-     * [chooseStartPosition]); with neither, [startPositionFor] lets the session's own position win. The server is asked
-     * only while online and for at most [SERVER_WAIT_MS]; a failure or a timeout means this phone's progress alone.
+     * [chooseStartPosition]); with neither, [startPositionFor] lets the session's own position win. The servers are asked
+     * only while online and for at most [SERVER_WAIT_MS] (all at once); a failure or a timeout means this phone's progress alone.
+     *
+     * A merged book also weighs its other copies: their own rows here (not mirrored ones, which only repeat a copy) and,
+     * online, their servers' progress, each mapped by fraction ([progressOnCopy]); the newest of all wins
+     * ([newestAcrossCopies]), so listening on another device against the other server is found.
      */
     private suspend fun startFromProgress(book: AudioBook, online: Boolean): Long {
         val local = books.observeProgress(book.id).first()
-        val server = if (online) serverProgress(book.id) else null
-        return chooseStartPosition(local, server) ?: startPositionFor(local, book.durationMs)
+        val copies = peersOf(book.id)
+        val (server, fromServers) = if (online) {
+            coroutineScope {
+                val own = async { serverProgress(book.id) }
+                val others = copies.map { peer -> async { serverProgress(peer.bookId)?.withLengthOf(peer) } }
+                own.await() to others.awaitAll().filterNotNull()
+            }
+        } else {
+            null to emptyList()
+        }
+        val fromPhone = copies.mapNotNull { peer ->
+            books.observeProgress(peer.bookId).first()?.takeIf { !it.mirrored }?.let {
+                ServerProgress(it.positionMs, it.durationMs, it.isFinished, it.lastPlayedAt).withLengthOf(peer)
+            }
+        }
+        val length = book.durationMs.takeIf { it > 0L } ?: local?.durationMs ?: 0L
+        val others = (fromPhone + fromServers).mapNotNull { progressOnCopy(it, length) }
+        return chooseStartPosition(local, newestAcrossCopies(server, others)) ?: startPositionFor(local, book.durationMs)
+    }
+
+    /** A copy's progress without a length gets the copy's own length, so it can be mapped. */
+    private fun ServerProgress.withLengthOf(peer: MirrorPeer): ServerProgress =
+        if (durationMs > 0L) this else copy(durationMs = peer.durationMs)
+
+    private suspend fun peersOf(bookId: String): List<MirrorPeer> = try {
+        peers.peersOf(bookId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        emptyList()
     }
 
     /** The book's downloaded files when all are on the phone; a failure to look counts as "not downloaded". */
