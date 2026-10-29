@@ -211,4 +211,103 @@ class MirrorProgressTest {
         assertEquals(MarkOutcome.SYNCED, combinedMarkOutcome(listOf(MarkOutcome.LOCAL_ONLY, MarkOutcome.SYNCED)))
         assertEquals(MarkOutcome.LOCAL_ONLY, combinedMarkOutcome(listOf(MarkOutcome.LOCAL_ONLY)))
     }
+
+    @Test
+    fun `a mark that failed on one copy is reported as partial, never as synced`() {
+        assertEquals(MarkOutcome.PARTIAL, combinedMarkOutcome(listOf(MarkOutcome.SYNCED, null)))
+        assertEquals(MarkOutcome.PARTIAL, combinedMarkOutcome(listOf(MarkOutcome.QUEUED, null)))
+    }
+
+    // ---- queued mirrors: when they are still worth sending ----
+
+    private fun mirrorRow(pos: Long = 6 * hour, at: Long = 1_000L, marked: Boolean? = null) =
+        PendingProgress("b", "s2", pos, 12 * hour, 0L, at, markedFinished = marked, mirrorOf = "a")
+
+    @Test
+    fun `a queued mirror is sent when nothing newer is known`() {
+        assertEquals(
+            MirrorFlush.SEND,
+            mirrorFlushDecision(mirrorRow(), stillCopies = true, targetLocal = null, sourceLocal = progress(pos = 5 * hour, at = 1_000L), sourceServer = null)
+        )
+        // The source played on a little since (a newer push follows): still the same place.
+        assertEquals(
+            MirrorFlush.SEND,
+            mirrorFlushDecision(mirrorRow(), true, null, progress(pos = 5 * hour + 5_000L, at = 1_500L), ServerProgress(5 * hour, 10 * hour, false, 1_200L))
+        )
+    }
+
+    @Test
+    fun `a queued mirror of a pair that was split, or with the setting off, is dropped`() {
+        assertEquals(MirrorFlush.DROP, mirrorFlushDecision(mirrorRow(), stillCopies = false, targetLocal = null, sourceLocal = null, sourceServer = null))
+    }
+
+    @Test
+    fun `a queued mirror yields to newer real listening on either copy`() {
+        // The copy itself was listened to here later.
+        assertEquals(MirrorFlush.DROP, mirrorFlushDecision(mirrorRow(at = 1_000L), true, progress(id = "b", pos = 1L, dur = 12 * hour, at = 2_000L), null, null))
+        // A mirrored row of the copy is no listening of its own.
+        assertEquals(MirrorFlush.SEND, mirrorFlushDecision(mirrorRow(at = 1_000L), true, progress(id = "b", pos = 1L, dur = 12 * hour, at = 2_000L, mirrored = true), null, null))
+        // The source copy is somewhere else now (a merge from another device).
+        assertEquals(MirrorFlush.DROP, mirrorFlushDecision(mirrorRow(at = 1_000L), true, null, progress(pos = 1 * hour, at = 2_000L), null))
+        // The source copy's server heard of newer listening that this phone does not have.
+        assertEquals(
+            MirrorFlush.DROP,
+            mirrorFlushDecision(mirrorRow(at = 1_000L), true, null, progress(pos = 5 * hour, at = 1_000L), ServerProgress(1 * hour, 10 * hour, false, 1_000L + 3 * 60_000L))
+        )
+    }
+
+    @Test
+    fun `a queued finished mirror is dropped once the source is no longer finished`() {
+        assertEquals(MirrorFlush.DROP, mirrorFlushDecision(mirrorRow(marked = true), true, null, progress(pos = 0L, at = 2_000L), null))
+        assertEquals(MirrorFlush.SEND, mirrorFlushDecision(mirrorRow(marked = true), true, null, progress(pos = 5 * hour, at = 2_000L, finished = true), null))
+    }
+
+    @Test
+    fun `a queued mirror holds back a server merge only of older progress`() {
+        val row = mirrorRow(at = 1_000L)
+        assertTrue(mirrorRowYields(row, ServerProgress(1L, 12 * hour, false, 2_000L)))
+        assertFalse(mirrorRowYields(row, ServerProgress(1L, 12 * hour, false, 900L)))
+        // A real row and a mark never yield.
+        assertFalse(mirrorRowYields(row.copy(mirrorOf = null), ServerProgress(1L, 12 * hour, false, 2_000L)))
+        assertFalse(mirrorRowYields(row.copy(mirrorOf = null, markedFinished = true), ServerProgress(1L, 12 * hour, false, 2_000L)))
+        // A finished mirror (the source copy was marked) is still a mirror.
+        assertTrue(mirrorRowYields(row.copy(markedFinished = true), ServerProgress(1L, 12 * hour, false, 2_000L)))
+    }
+
+    @Test
+    fun `coalescing keeps the mirror marker of the row that wins, and a mark is never a mirror`() {
+        val real = PendingProgress("b", "s2", 1L, 12 * hour, 100L, 500L)
+        val mirror = mirrorRow(at = 1_000L)
+        assertEquals("a", coalescePending(real, mirror).mirrorOf)
+        assertNull(coalescePending(mirror, real.copy(updatedAtMs = 2_000L)).mirrorOf)
+        assertNull(coalescePending(real.copy(markedFinished = true), mirror).mirrorOf)
+        // A finished mirror keeps its marker, and newer listening of the copy replaces its finished state.
+        val finishedMirror = mirror.copy(markedFinished = true)
+        assertEquals("a", coalescePending(mirror.copy(updatedAtMs = 900L), finishedMirror).mirrorOf)
+        val later = coalescePending(finishedMirror, real.copy(updatedAtMs = 2_000L))
+        assertNull(later.markedFinished)
+        assertNull(later.mirrorOf)
+        // The user's own mark still survives a later ordinary position.
+        assertEquals(true, coalescePending(real.copy(markedFinished = true), real.copy(updatedAtMs = 2_000L)).markedFinished)
+    }
+
+    // ---- the server merge and the app's own echo ----
+
+    @Test
+    fun `a mirrored row is kept when the server only echoes the position the app pushed`() {
+        val local = progress(id = "b", pos = 6 * hour, dur = 12 * hour, at = 1_000L, mirrored = true)
+        assertNull(mergeServerProgress("b", local, ServerProgress(6 * hour + 5_000L, 12 * hour, false, 2_000L), hasPendingLocal = false))
+        // Real news far from it is taken.
+        assertEquals(1 * hour, mergeServerProgress("b", local, ServerProgress(1 * hour, 12 * hour, false, 2_000L), hasPendingLocal = false)?.positionMs)
+        // A row of the copy's own listening takes the server's even when close (as before).
+        assertEquals(2_000L, mergeServerProgress("b", local.copy(mirrored = false), ServerProgress(6 * hour + 5_000L, 12 * hour, false, 2_000L), false)?.lastPlayedAt)
+    }
+
+    @Test
+    fun `a server time in the future is stored as now`() {
+        val merged = mergeServerProgress("b", null, ServerProgress(1L, 12 * hour, false, 99_000L), hasPendingLocal = false, nowMs = 5_000L)
+        assertEquals(5_000L, merged?.lastPlayedAt)
+        // ...and a local row as new as now is not overwritten by it.
+        assertNull(mergeServerProgress("b", progress(id = "b", pos = 1L, at = 5_000L), ServerProgress(9L, 12 * hour, false, 99_000L), false, nowMs = 5_000L))
+    }
 }

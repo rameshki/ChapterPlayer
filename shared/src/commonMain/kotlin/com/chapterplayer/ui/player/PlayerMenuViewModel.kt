@@ -221,7 +221,11 @@ class PlayerMenuViewModel(
             message.value = result.fold(
                 onSuccess = { outcome ->
                     val done = if (finished) "Marked as finished" else "Marked as not finished"
-                    if (outcome == MarkOutcome.QUEUED) "$done. It will reach the server when it is back." else done
+                    when (outcome) {
+                        MarkOutcome.QUEUED -> "$done. It will reach the server when it is back."
+                        MarkOutcome.PARTIAL -> "$done. Another copy of this book could not be changed."
+                        else -> done
+                    }
                 },
                 onFailure = { MARK_ERROR }
             )

@@ -8,6 +8,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.sync.Mutex
@@ -17,6 +22,12 @@ import kotlinx.coroutines.sync.withLock
 interface ProgressMirrorPeers {
     /** The other copies of [bookId]; empty for a book on one server, with the setting off, or when they cannot be read. */
     suspend fun peersOf(bookId: String): List<MirrorPeer>
+
+    /** [peersOf] for each of [bookIds] in one go (one look at the corrections and the switch), e.g. for a merge pass. */
+    suspend fun peersOfAll(bookIds: Collection<String>): Map<String, List<MirrorPeer>> = bookIds.associateWith { peersOf(it) }
+
+    /** Emits when the corrections or the switch change (not for the state at the start), so queued mirrors can be looked at again. */
+    val changes: Flow<Unit> get() = emptyFlow()
 
     /** No mirroring (tests and code paths without it). */
     object None : ProgressMirrorPeers {
@@ -43,24 +54,36 @@ class MergedProgressPeers(
     private val lock = Mutex()
     private var cached: Grouping? = null
 
-    override suspend fun peersOf(bookId: String): List<MirrorPeer> = try {
-        if (!enabled.first()) {
-            emptyList()
+    override val changes: Flow<Unit> = combine(overrides, enabled) { o, e -> o to e }.distinctUntilChanged().drop(1).map { }
+
+    override suspend fun peersOf(bookId: String): List<MirrorPeer> = peersOfAll(listOf(bookId))[bookId].orEmpty()
+
+    override suspend fun peersOfAll(bookIds: Collection<String>): Map<String, List<MirrorPeer>> = try {
+        val grouping = currentGrouping()
+        if (grouping == null) {
+            emptyMap()
         } else {
-            val all = library.first()
-            val corrections = overrides.first()
-            val grouping = lock.withLock {
-                cached?.takeIf { it.books === all && it.overrides == corrections }
-                    ?: Grouping(all, corrections, mirrorGroups(all, corrections), all.associateBy { it.id }).also { cached = it }
-            }
-            grouping.groups[bookId].orEmpty().mapNotNull { id ->
-                grouping.byId[id]?.let { MirrorPeer(it.id, it.serverId, it.durationMs) }
+            bookIds.associateWith { bookId ->
+                grouping.groups[bookId].orEmpty().mapNotNull { id ->
+                    grouping.byId[id]?.let { MirrorPeer(it.id, it.serverId, it.durationMs) }
+                }
             }
         }
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
         // Best effort: a copy that cannot be looked up is simply not mirrored this time.
-        emptyList()
+        emptyMap()
+    }
+
+    /** The grouping as it is now; null with the switch off. */
+    private suspend fun currentGrouping(): Grouping? {
+        if (!enabled.first()) return null
+        val all = library.first()
+        val corrections = overrides.first()
+        return lock.withLock {
+            cached?.takeIf { it.books === all && it.overrides == corrections }
+                ?: Grouping(all, corrections, mirrorGroups(all, corrections), all.associateBy { it.id }).also { cached = it }
+        }
     }
 }

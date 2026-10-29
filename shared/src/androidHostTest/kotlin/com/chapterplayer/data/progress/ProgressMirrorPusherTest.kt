@@ -1,6 +1,7 @@
 package com.chapterplayer.data.progress
 
 import com.chapterplayer.data.merge.ProgressMirrorPeers
+import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.sync.ServerStatusRecord
 import com.chapterplayer.data.sync.ServerStatusStore
@@ -72,7 +73,7 @@ class ProgressMirrorPusherTest {
         r.play(pos = 50_000)
         advanceTimeBy(1_000)
         val first = r.repo.queueCalls.single()
-        assertEquals(PendingProgress("plex_a", "plex_srv", 60_000L, 120_000L, 0L, updatedAtMs = first.updatedAtMs), first)
+        assertEquals(PendingProgress("plex_a", "plex_srv", 60_000L, 120_000L, 0L, updatedAtMs = first.updatedAtMs, mirrorOf = "a"), first)
         assertEquals(1, r.kicks)
         // Not again within the minute.
         r.play(pos = 60_000)
@@ -93,6 +94,39 @@ class ProgressMirrorPusherTest {
         r.play(pos = 25_000, playing = true)
         r.play(pos = 25_000, playing = false)
         assertEquals(1, r.repo.queueCalls.size)
+    }
+
+    @Test
+    fun `after mark as finished the other copy is told finished, once, never un-finished`() = runTest {
+        val r = rig()
+        // The user marked the playing copy finished; it plays on with the mark kept.
+        r.repo.progress.value = listOf(ReadingProgress("a", 50_000L, 100_000L, 1_000L, isFinished = true))
+        r.play(pos = 50_000)
+        advanceTimeBy(5_000)
+        r.play(pos = 55_000, playing = false)
+        val row = r.repo.queueCalls.single()
+        assertEquals(true, row.markedFinished)
+        assertEquals("plex_a", row.bookId)
+        // A minute later, and at the next pause: nothing new to tell (a finished Plex copy would scrobble every track again).
+        r.play(pos = 55_000)
+        advanceTimeBy(61_000)
+        r.play(pos = 70_000, playing = false)
+        assertEquals(1, r.repo.queueCalls.size)
+        assertTrue(r.repo.queueCalls.none { it.markedFinished == false })
+    }
+
+    @Test
+    fun `buffering and seeking are not a pause`() = runTest {
+        val r = rig()
+        r.play(pos = 10_000)
+        advanceTimeBy(5_000)
+        r.controller.playback.value = r.controller.playback.value.copy(isPlaying = false, isBuffering = true, playWhenReady = true, positionMs = 40_000)
+        r.play(pos = 40_000)
+        r.controller.playback.value = r.controller.playback.value.copy(isPlaying = false, isBuffering = true, playWhenReady = true)
+        assertTrue(r.repo.queueCalls.isEmpty())
+        // A real pause still sends at once.
+        r.controller.playback.value = r.controller.playback.value.copy(isPlaying = false, isBuffering = false, playWhenReady = false)
+        assertEquals(listOf(48_000L), r.repo.queueCalls.map { it.positionMs })
     }
 
     @Test
@@ -129,7 +163,7 @@ class ProgressMirrorPusherTest {
         val r = rig()
         val connectivity = FakeConnectivity(online = false)
         val scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
-        val flusher = PendingProgressFlusher(r.repo, connectivity, scope, { testScheduler.currentTime }).also { it.start() }
+        val flusher = PendingProgressFlusher(r.repo, connectivity, scope, { testScheduler.currentTime }, peers = r.peers).also { it.start() }
         r.play(pos = 10_000)
         advanceTimeBy(5_000)
         r.play(pos = 50_000, playing = false)
@@ -147,7 +181,7 @@ class ProgressMirrorPusherTest {
         val r = rig()
         val scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
         r.repo.onFetchServerProgress = { id -> Result.success(if (id == "plex_a") ServerProgress(1_000L, 120_000L, false, Long.MAX_VALUE) else null) }
-        val flusher = PendingProgressFlusher(r.repo, FakeConnectivity(online = true), scope, { testScheduler.currentTime }).also { it.start() }
+        val flusher = PendingProgressFlusher(r.repo, FakeConnectivity(online = true), scope, { testScheduler.currentTime }, peers = r.peers).also { it.start() }
         r.play(pos = 10_000)
         advanceTimeBy(5_000)
         r.play(pos = 50_000, playing = false)

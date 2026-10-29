@@ -17,7 +17,9 @@ data class PendingProgressEntity(
     val attempts: Int,
     @ColumnInfo(defaultValue = "0") val nextAttemptAtMs: Long = 0L,
     /** The finished state a "Mark as finished / not finished" asked for; null for an ordinary position. */
-    @ColumnInfo(defaultValue = "NULL") val markedFinished: Boolean? = null
+    @ColumnInfo(defaultValue = "NULL") val markedFinished: Boolean? = null,
+    /** A mirror (merged sources): the copy whose listening this row repeats; null for the book's own positions and marks. */
+    @ColumnInfo(defaultValue = "NULL") val mirrorOf: String? = null
 ) {
     fun toDomain(): PendingProgress = PendingProgress(
         bookId = bookId,
@@ -28,7 +30,8 @@ data class PendingProgressEntity(
         updatedAtMs = updatedAtMs,
         attempts = attempts,
         nextAttemptAtMs = nextAttemptAtMs,
-        markedFinished = markedFinished
+        markedFinished = markedFinished,
+        mirrorOf = mirrorOf
     )
 
     companion object {
@@ -41,7 +44,8 @@ data class PendingProgressEntity(
             updatedAtMs = pending.updatedAtMs,
             attempts = pending.attempts,
             nextAttemptAtMs = nextAttemptAtMs,
-            markedFinished = pending.markedFinished
+            markedFinished = pending.markedFinished,
+            mirrorOf = pending.mirrorOf
         )
     }
 }

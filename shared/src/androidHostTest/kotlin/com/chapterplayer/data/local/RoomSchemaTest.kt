@@ -361,6 +361,22 @@ class RoomSchemaTest {
         assertEquals("0", field.getValue("defaultValue").jsonPrimitive.content)
     }
 
+    private val database13: JsonObject by lazy { load(13) }
+
+    @Test
+    fun `version 13 marks queued mirrors in pending progress with a default for old rows`() {
+        assertEquals(13, database13.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database12), tables(database13))
+        assertEquals(columns("pending_progress", database12) + ("mirrorOf" to "TEXT?"), columns("pending_progress", database13))
+        val field = entity("pending_progress", database13).getValue("fields").jsonArray.map { it.jsonObject }
+            .single { it.getValue("columnName").jsonPrimitive.content == "mirrorOf" }
+        assertEquals("NULL", field.getValue("defaultValue").jsonPrimitive.content)
+        for (table in tables(database12) - "pending_progress") {
+            assertEquals(columns(table, database12), columns(table, database13), "$table columns")
+            assertEquals(primaryKey(table, database12), primaryKey(table, database13), "$table primary key")
+        }
+    }
+
     @Test
     fun `version 12 leaves the other tables as they were`() {
         for (table in tables(database11) - "progress") {

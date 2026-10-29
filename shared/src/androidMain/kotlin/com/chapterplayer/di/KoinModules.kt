@@ -229,7 +229,9 @@ val repositoryModule = module {
             // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
             onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
             // A save of one copy of a merged book moves the other copies' local rows (Settings switch, on by default).
-            mirrorPeers = get()
+            mirrorPeers = get(),
+            // Looked up when a mirror is written, not when this is built (the player is in the playback module).
+            loadedBookId = { get<PlaybackController>().state.value.bookId }
         ) }
     // The other copies of a merged book, grouped like the lists (the user's corrections included).
     single<ProgressMirrorPeers> {
@@ -290,7 +292,7 @@ val playbackModule = module {
     single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
     // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
     single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
-    single { PendingProgressFlusher(get(), get(), get(AppScopeQualifier)) }
+    single { PendingProgressFlusher(get(), get(), get(AppScopeQualifier), peers = get()) }
     // The other copies of a merged book: their servers hear the mapped position through the queue (throttled).
     single {
         ProgressMirrorPusher(get(), get(), get(), statusStore = get(), scope = get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() })

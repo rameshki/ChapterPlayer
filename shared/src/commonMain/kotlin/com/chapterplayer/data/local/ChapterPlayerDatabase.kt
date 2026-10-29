@@ -59,11 +59,12 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
     // Version 10 adds book_merges (the user's corrections of merged sources).
     // Version 11 adds the listening log and the imported listening history (statistics).
     // Version 12 adds progress.mirrored (a row copied from another copy of a merged book).
-    version = 12,
+    // Version 13 adds pending_progress.mirrorOf (a queued position that repeats another copy's listening).
+    version = 13,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8),
-        AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12),
+        AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13),
     ],
     exportSchema = true
 )

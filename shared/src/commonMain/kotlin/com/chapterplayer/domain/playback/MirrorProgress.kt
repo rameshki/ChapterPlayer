@@ -28,6 +28,56 @@ const val MIRROR_PUSH_INTERVAL_MS = 60_000L
  */
 const val MIRROR_ECHO_MS = 15_000L
 
+/**
+ * How much newer than both a queued mirror and this phone's row the source copy's server progress must be to count as
+ * listening elsewhere (this phone's own syncs keep that server a few seconds ahead of the queue while playing).
+ */
+const val MIRROR_STALE_SLACK_MS = 60_000L
+
+/** What the flusher does with a queued mirror. */
+enum class MirrorFlush { SEND, DROP }
+
+/**
+ * Whether a queued mirror [row] (its `mirrorOf` is the source copy) is still worth sending to its copy's server; the
+ * flusher's own rule (that server holds something newer) is checked as well. DROP when:
+ * - the two are no longer copies of one book ([stillCopies] false: "Not the same book", or the setting is off);
+ * - the copy itself was listened to here later ([targetLocal], a row of its own newer than the row);
+ * - the source copy is somewhere else now ([sourceLocal], a row of its own newer than the row whose place or finished
+ *   state differs: a merge brought listening from another device; just playing on queues a newer mirror anyway);
+ * - the source copy's server holds listening this phone does not have ([sourceServer] newer than the row and than this
+ *   phone's source row by more than [MIRROR_STALE_SLACK_MS]): delivered late, the mirror would be stamped as the newest.
+ */
+fun mirrorFlushDecision(
+    row: PendingProgress,
+    stillCopies: Boolean,
+    targetLocal: ReadingProgress?,
+    sourceLocal: ReadingProgress?,
+    sourceServer: ServerProgress?,
+): MirrorFlush {
+    if (!stillCopies) return MirrorFlush.DROP
+    if (targetLocal != null && !targetLocal.mirrored && targetLocal.lastPlayedAt > row.updatedAtMs) return MirrorFlush.DROP
+    if (sourceLocal != null && !sourceLocal.mirrored && sourceLocal.lastPlayedAt > row.updatedAtMs) {
+        val rowFinished = row.markedFinished ?: isFinishedAt(row.positionMs, row.durationMs)
+        if (sourceLocal.isFinished != rowFinished) return MirrorFlush.DROP
+        if (!rowFinished) {
+            val mapped = mirrorPosition(sourceLocal.positionMs, sourceLocal.durationMs, row.durationMs) ?: return MirrorFlush.DROP
+            if (abs(mapped - row.positionMs) > MIRROR_ECHO_MS) return MirrorFlush.DROP
+        }
+    }
+    if (sourceServer != null && sourceServer.updatedAtMs > row.updatedAtMs + MIRROR_STALE_SLACK_MS &&
+        (sourceLocal == null || sourceServer.updatedAtMs > sourceLocal.lastPlayedAt + MIRROR_STALE_SLACK_MS)
+    ) return MirrorFlush.DROP
+    return MirrorFlush.SEND
+}
+
+/**
+ * Whether a queued [row] gives way to [server] progress of its copy in the server merge: a mirror older than what the
+ * server holds is out of date and is removed, so it never holds back newer listening; the book's own row or the user's
+ * mark keeps the merge waiting, as before.
+ */
+fun mirrorRowYields(row: PendingProgress, server: ServerProgress): Boolean =
+    row.mirrorOf != null && server.updatedAtMs > row.updatedAtMs
+
 /** Another copy of a book: its id, its server and its length (0 when unknown). */
 data class MirrorPeer(val bookId: String, val serverId: String, val durationMs: Long)
 
@@ -137,8 +187,12 @@ fun newestAcrossCopies(own: ServerProgress?, others: List<ServerProgress>): Serv
     return best
 }
 
-/** What a mark on every copy reports: queued when any copy waits for its server, else synced when any server took it. */
-fun combinedMarkOutcome(outcomes: List<MarkOutcome>): MarkOutcome = when {
+/**
+ * What a mark on every copy reports ([outcomes] per copy, null for a copy that could not be marked): partial when a copy
+ * failed, queued when any copy waits for its server, else synced when any server took it.
+ */
+fun combinedMarkOutcome(outcomes: List<MarkOutcome?>): MarkOutcome = when {
+    null in outcomes || MarkOutcome.PARTIAL in outcomes -> MarkOutcome.PARTIAL
     MarkOutcome.QUEUED in outcomes -> MarkOutcome.QUEUED
     MarkOutcome.SYNCED in outcomes -> MarkOutcome.SYNCED
     else -> MarkOutcome.LOCAL_ONLY

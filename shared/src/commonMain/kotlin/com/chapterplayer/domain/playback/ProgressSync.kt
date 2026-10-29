@@ -14,7 +14,12 @@ data class PendingProgress(val bookId: String, val serverId: String, val positio
     /** The earliest time to try again; 0 when it may be sent at once. Kept by the queue, not by [coalescePending]. */
     val nextAttemptAtMs: Long = 0L,
     /** Set by "Mark as finished / not finished": the finished state to deliver as it is, instead of deriving it from the position. Null for ordinary positions. */
-    val markedFinished: Boolean? = null)
+    val markedFinished: Boolean? = null,
+    /**
+     * Set on a mirror (merged sources): the id of the copy whose listening this row repeats on [bookId]'s server, queued by
+     * `ProgressMirrorPusher`. Null for the book's own positions and for marks. See `mirrorFlushDecision`.
+     */
+    val mirrorOf: String? = null)
 
 /**
  * Dictates whether a pending progress update should be sent to the server or discarded.
@@ -80,17 +85,22 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
     val totalListened = existing.listenedMs + incoming.listenedMs
     val newer = incoming.updatedAtMs >= existing.updatedAtMs
     // An explicit mark is a user action that must reach the server: a later ordinary position never removes it; of two marks the newer wins.
+    // A finished state that only repeats another copy (a mirror, [PendingProgress.mirrorOf]) is no user action: newer rows replace it.
+    val existingUserMark = existing.markedFinished != null && existing.mirrorOf == null
+    val incomingUserMark = incoming.markedFinished != null && incoming.mirrorOf == null
     val mark = when {
         existing.markedFinished == null -> incoming.markedFinished
-        incoming.markedFinished == null -> existing.markedFinished
+        incoming.markedFinished == null -> if (newer && !existingUserMark) null else existing.markedFinished
         newer -> incoming.markedFinished
         else -> existing.markedFinished
     }
+    // A row that carries the user's own mark is never a mirror (queued mirrors may be dropped).
+    val userMark = existingUserMark || incomingUserMark
     return if (newer) {
-        incoming.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark)
+        incoming.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark, mirrorOf = if (userMark) null else incoming.mirrorOf)
     } else {
         // Keep existing metadata but update the cumulative listened time
-        existing.copy(listenedMs = totalListened, markedFinished = mark)
+        existing.copy(listenedMs = totalListened, markedFinished = mark, mirrorOf = if (userMark) null else existing.mirrorOf)
     }
 }
 
@@ -107,16 +117,23 @@ fun flushDecision(pending: PendingProgress, server: ServerProgress?): FlushDecis
 
 /**
  * Merges server progress into the local state, provided there are no newer pending local updates.
+ * A server time later than [nowMs] (a server clock ahead) counts as [nowMs], so it cannot block every later save.
+ * A mirrored local row (merged sources) is kept when the server only echoes it: the same finished state and a position
+ * within [MIRROR_ECHO_MS] (the app pushed it there), so the lists keep showing the copy really played.
  */
-fun mergeServerProgress(bookId: String, local: ReadingProgress?, server: ServerProgress, hasPendingLocal: Boolean): ReadingProgress? {
+fun mergeServerProgress(bookId: String, local: ReadingProgress?, server: ServerProgress, hasPendingLocal: Boolean, nowMs: Long = Long.MAX_VALUE): ReadingProgress? {
     if (hasPendingLocal) return null
-    if (local != null && local.lastPlayedAt >= server.updatedAtMs) return null
-    
+    val stamp = minOf(server.updatedAtMs, nowMs)
+    if (local != null && local.lastPlayedAt >= stamp) return null
+    if (local != null && local.mirrored && local.isFinished == server.isFinished &&
+        kotlin.math.abs(local.positionMs - server.positionMs) <= MIRROR_ECHO_MS
+    ) return null
+
     return ReadingProgress(
         bookId = bookId,
         positionMs = server.positionMs,
         durationMs = server.durationMs,
-        lastPlayedAt = server.updatedAtMs,
+        lastPlayedAt = stamp,
         isFinished = server.isFinished
     )
 }
