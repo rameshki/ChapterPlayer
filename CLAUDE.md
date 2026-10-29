@@ -4,7 +4,7 @@ Audiobook player for Audiobookshelf, Plex and (later) Audible. Android first,
 built with Kotlin Multiplatform so it can port to iOS. See `docs/ROADMAP.md`
 for scope, stages and design direction. Keep that file updated as stages complete.
 
-**Continuing from an earlier chat:** read `docs/HANDOFF.md` first (open work, next steps, process, device-testing notes, traps).
+**Start here in every session:** read `docs/PROJECT_STATUS.md` first. It is the ongoing project status and progress document (what is merged and open, what is verified on devices, next steps, process, device-testing notes, traps) and must be updated whenever a block of work finishes.
 
 ## Priorities
 - Sources: Audiobookshelf > Plex > Audible (Audible scope undecided; never remove DRM)

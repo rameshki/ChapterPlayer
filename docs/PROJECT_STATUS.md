@@ -1,6 +1,6 @@
-# Handoff: where the project stands
+# Project status and progress
 
-Written 2026-10-29 so a new chat can continue without the old conversation. Read `CLAUDE.md` (architecture, current state per area) and `docs/ROADMAP.md` (scope and stages) first; this file adds what they do not: open work, process, and the traps found on the way. The repo is public: nothing here is real server data.
+The ongoing status document (started 2026-10-29, replaces the one-off handoff note) so a new session can continue without the old conversation. Read `CLAUDE.md` (architecture, current state per area) and `docs/ROADMAP.md` (scope and stages) first; this file adds what they do not: open work, process, and the traps found on the way. The repo is public: nothing here is real server data.
 
 ## State at a glance
 - Stages 0 to 3 are done and tagged (`v0.3.0` = Stage 3: downloads, offline playback, widgets). Stage 4 (Plex parity) is in progress and untagged; the app is at `0.3.3` (`androidApp` versionName). Tag `v0.4.0` when Stage 4 is closed.
