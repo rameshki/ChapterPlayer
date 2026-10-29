@@ -1,9 +1,9 @@
 package com.chapterplayer.ui.details
 
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.SourceOption
 import com.chapterplayer.domain.browse.shortLabel
+import com.chapterplayer.domain.downloads.formatBytes
 
 /** One copy of a book on several servers, as the Sources section and the source sheet show it. */
 data class SourceRow(
@@ -16,6 +16,8 @@ data class SourceRow(
     val enabled: Boolean,
     /** Why it cannot ("No network", "Server not reachable"); null when [enabled]. */
     val reason: String?,
+    /** What downloading this copy fetches ("1.2 GB"), in the "Download from" sheet when the server said; null otherwise. */
+    val sizeText: String? = null,
 )
 
 /** What the source sheet is choosing a copy for. */
@@ -56,14 +58,26 @@ internal fun candidateRow(entry: BrowseItem, serverNames: Map<String, String>): 
     memberIds = entry.allSources.map { it.book.id },
 )
 
-/** A download can only come from an Audiobookshelf copy. */
-internal fun downloadableMembers(entry: BrowseItem): List<BrowseItem> = entry.allSources.filter { it.book.source == ServerSource.ABS }
+/** The copies a download can come from: every copy (Audiobookshelf and Plex download alike). */
+internal fun downloadableMembers(entry: BrowseItem): List<BrowseItem> = entry.allSources
 
-/** The rows of the "Download from" sheet: the Audiobookshelf copies, usable only when their server answers. */
-internal fun downloadRows(entry: BrowseItem, rows: List<SourceRow>, context: com.chapterplayer.domain.browse.MergeContext): List<SourceRow> {
+/**
+ * The rows of the "Download from" sheet: each copy, usable only when its server answers, with its size when known
+ * ([sizes] by book id: what the server said a download fetches).
+ */
+internal fun downloadRows(
+    entry: BrowseItem,
+    rows: List<SourceRow>,
+    context: com.chapterplayer.domain.browse.MergeContext,
+    sizes: Map<String, Long> = emptyMap(),
+): List<SourceRow> {
     val copies = downloadableMembers(entry).associateBy { it.book.id }
     return rows.filter { it.bookId in copies }.map { row ->
         val reachable = copies.getValue(row.bookId).book.serverId in context.onlineServerIds
-        row.copy(enabled = reachable, reason = if (reachable) null else row.reason ?: "Server not reachable")
+        row.copy(
+            enabled = reachable,
+            reason = if (reachable) null else row.reason ?: "Server not reachable",
+            sizeText = sizes[row.bookId]?.takeIf { it > 0L }?.let(::formatBytes),
+        )
     }
 }

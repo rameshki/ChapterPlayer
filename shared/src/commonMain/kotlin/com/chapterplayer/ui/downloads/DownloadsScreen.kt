@@ -37,6 +37,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import com.chapterplayer.ui.components.SourceBadge
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -161,6 +162,8 @@ private fun DownloadItemRow(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            // Which server the download came from, when servers of both kinds are added (the badge decides).
+            item.source?.let { SourceBadge(it, modifier = Modifier.padding(top = 2.dp)) }
             if (item.author.isNotBlank()) {
                 Text(
                     text = item.author,

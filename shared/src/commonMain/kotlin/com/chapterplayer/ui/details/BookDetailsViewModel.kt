@@ -93,13 +93,17 @@ class BookDetailsViewModel(
         val all: List<BrowseItem> = emptyList()
     )
 
-    /** The merging inputs, the server names, the open source sheet, the "Merge with" sheet (null: closed) and a notice. */
+    /**
+     * The merging inputs, the server names, the open source sheet, the "Merge with" sheet (null: closed), a notice, and
+     * the download sizes the other copies' servers gave (by book id).
+     */
     private class Extras(
         val context: MergeContext?,
         val serverNames: Map<String, String>,
         val sheet: SourceAction?,
         val mergeSheet: MergeSheetUi?,
-        val notice: String?
+        val notice: String?,
+        val copySizes: Map<String, Long>,
     )
 
     /**
@@ -135,6 +139,8 @@ class BookDetailsViewModel(
     }.flowOn(dispatcher)
 
     private val sourceSheet = MutableStateFlow<SourceAction?>(null)
+    private val copySizes = MutableStateFlow<Map<String, Long>>(emptyMap())
+    private val sheetAndSizes = combine(sourceSheet, copySizes) { sheet, sizes -> sheet to sizes }
     private val mergeQuery = MutableStateFlow<String?>(null)
     private val notice = MutableStateFlow<String?>(null)
     private val serverNames = servers?.observeAll()?.map { list -> list.associate { it.id to it.name } } ?: flowOf(emptyMap())
@@ -146,22 +152,21 @@ class BookDetailsViewModel(
         else MergeSheetUi(query, mergeCandidates(w.all, entry, query).map { candidateRow(it, names) })
     }.distinctUntilChanged().flowOn(dispatcher)
 
-    private val extras = combine(merging.context, serverNames, sourceSheet, mergeSheet, notice) { context, names, sheet, merge, text ->
-        Extras(context, names, sheet, merge, text)
+    private val extras = combine(merging.context, serverNames, sheetAndSizes, mergeSheet, notice) { context, names, sheetSizes, merge, text ->
+        Extras(context, names, sheetSizes.first, merge, text, sheetSizes.second)
     }
 
     /*
      * The copy the download control is about: one that already has a download (of any member), otherwise this page's
-     * book when it is an Audiobookshelf book, otherwise the first Audiobookshelf copy of a merged book.
+     * book (every copy can download; a merged book picks its copy when Download is tapped).
      */
     private val downloadTarget = whole
         .map { w -> w.entry?.let(::downloadableMembers)?.map { it.book.id }.orEmpty() }
         .distinctUntilChanged()
-        .flatMapLatest { absIds ->
-            val ids = (listOf(bookId) + absIds).distinct()
+        .flatMapLatest { copyIds ->
+            val ids = (listOf(bookId) + copyIds).distinct()
             combine(ids.map { id -> overview.observeBook(id).map { row -> id to row } }) { rows ->
-                rows.firstOrNull { it.second != null }
-                    ?: ((if (bookId in absIds || absIds.isEmpty()) bookId else absIds.first()) to null)
+                rows.firstOrNull { it.second != null } ?: (bookId to null)
             }
         }
 
@@ -213,7 +218,6 @@ class BookDetailsViewModel(
                 )
             val options = if (merged) sourceOptions(entry!!, context!!.onlineServerIds, context.deviceOnline) else emptyList()
             val rows = options.map { sourceRow(it, extras.serverNames) }
-            val downloadSource = entry?.allSources?.firstOrNull { it.book.id == env.downloadBookId }?.book?.source ?: book.source
             // While this book is loaded in the player the highlight follows the live position.
             val shown = if (thisLoaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
             // No local progress: let the server say where; a book finished here starts over.
@@ -242,16 +246,18 @@ class BookDetailsViewModel(
                 currentPositionMs = if (thisLoaded) env.player.positionMs else progress?.positionMs ?: 0L,
                 resumePositionMs = savedStart,
                 download = detailsDownload(
-                    downloadSource, env.download, env.online,
-                    knownSizeBytes = live.details?.downloadSizeBytes ?: env.download?.totalBytes,
+                    env.download, env.online,
+                    // A shown download of another copy has its own size; this page's server only knows this copy's.
+                    knownSizeBytes = env.download?.totalBytes?.takeIf { it > 0L }
+                        ?: live.details?.downloadSizeBytes?.takeIf { env.downloadBookId == bookId },
                     confirmingRemove = env.confirmingRemove,
-                    alsoOnOtherServers = merged
                 ),
                 downloadBookId = env.downloadBookId,
                 sources = rows,
                 sourcesDescription = if (merged) sourcesDescription(entry!!) else null,
                 sourceSheet = extras.sheet?.takeIf { merged }?.let { action ->
-                    SourceSheetUi(action, if (action == SourceAction.PLAY) rows else downloadRows(entry!!, rows, context!!))
+                    val sizes = extras.copySizes + listOfNotNull(live.details?.downloadSizeBytes?.let { bookId to it })
+                    SourceSheetUi(action, if (action == SourceAction.PLAY) rows else downloadRows(entry!!, rows, context!!, sizes))
                 },
                 canSplit = merged && merges != null,
                 canMerge = context != null && entry != null && merges != null,
@@ -460,7 +466,11 @@ class BookDetailsViewModel(
         }
     }
 
-    // A merged book with several Audiobookshelf copies downloads the one the Settings choice picks, or asks.
+    /*
+     * A merged book downloads the copy the Settings choice picks (Prefer downloaded: none is downloaded yet, so a
+     * reachable Audiobookshelf copy, else the only reachable one), or asks with the "Download from" sheet, which shows
+     * each copy's size once its server says.
+     */
     private fun startDownload() {
         val state = uiState.value
         val entry = state.entry
@@ -471,8 +481,29 @@ class BookDetailsViewModel(
             return
         }
         val chosen = chosenSource(entry.copy(sources = copies), context.preference, context.onlineServerIds)
-        if (chosen == null) sourceSheet.value = SourceAction.DOWNLOAD
-        else downloadAction(askNotifications = true) { downloadController.enqueue(chosen.book.id) }
+        if (chosen == null) {
+            sourceSheet.value = SourceAction.DOWNLOAD
+            loadCopySizes(copies.map { it.book.id } - bookId)
+        } else {
+            downloadAction(askNotifications = true) { downloadController.enqueue(chosen.book.id) }
+        }
+    }
+
+    // The other copies' sizes for the "Download from" sheet; best effort, a copy whose server does not answer shows none.
+    private fun loadCopySizes(ids: List<String>) {
+        for (id in ids) {
+            if (id in copySizes.value) continue
+            viewModelScope.launch {
+                val size = try {
+                    books.loadDetails(id).getOrNull()?.downloadSizeBytes
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                if (size != null && size > 0L) copySizes.value = copySizes.value + (id to size)
+            }
+        }
     }
 
     // The copy the download control shows (see downloadTarget); this page's book until the state is known.

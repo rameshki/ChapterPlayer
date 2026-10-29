@@ -95,11 +95,11 @@ class PlayerMenuViewModelTest {
     }
 
     @Test
-    fun `a Plex book hides Download but offers Mark as finished`() = runTest {
+    fun `a Plex book offers Download and Mark as finished`() = runTest {
         val r = rig(book.copy(source = ServerSource.PLEX))
         val state = collect(r)
         load(r)
-        assertEquals(MenuDownloadKind.HIDDEN, state().download.kind)
+        assertEquals(MenuDownloadKind.DOWNLOAD, state().download.kind)
         assertEquals(MarkAction.MarkFinished, state().mark)
     }
 
