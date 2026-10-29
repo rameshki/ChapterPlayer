@@ -12,6 +12,7 @@ import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.images.installCoverImageLoader
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
+import com.chapterplayer.data.progress.ProgressMirrorPusher
 import com.chapterplayer.data.progress.ServerProgressRefresher
 import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
@@ -42,6 +43,8 @@ class ChapterPlayerApp : Application() {
         // The server hears about it too, and what it missed (offline, errors) is delivered later.
         GlobalContext.get().get<ProgressSyncer>().start()
         GlobalContext.get().get<PendingProgressFlusher>().start()
+        // A book on several servers: the other copies' servers hear where listening is too (through the queue).
+        GlobalContext.get().get<ProgressMirrorPusher>().start()
         GlobalContext.get().get<ServerProgressRefresher>().start()
         // Bookmarks sync with the servers, and jumps in the playing book are remembered.
         GlobalContext.get().get<BookmarkSyncer>().start()

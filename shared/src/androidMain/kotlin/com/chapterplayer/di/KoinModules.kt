@@ -51,6 +51,7 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.stats.DayZone
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
+import com.chapterplayer.data.progress.ProgressMirrorPusher
 import com.chapterplayer.data.progress.ServerProgressRefresher
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.remote.abs.AbsApiService
@@ -290,6 +291,10 @@ val playbackModule = module {
     // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
     single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
     single { PendingProgressFlusher(get(), get(), get(AppScopeQualifier)) }
+    // The other copies of a merged book: their servers hear the mapped position through the queue (throttled).
+    single {
+        ProgressMirrorPusher(get(), get(), get(), statusStore = get(), scope = get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() })
+    }
     single { ServerProgressRefresher(get(), get(), get(), get(AppScopeQualifier)) }
     single { BookmarkSyncer(get(), get(), get(), get(AppScopeQualifier)) }
     single { HistoryRecorder(get(), get(), get(AppScopeQualifier)) }
