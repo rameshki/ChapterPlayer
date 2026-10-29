@@ -338,7 +338,7 @@ class BookRepositoryImpl(
                 val queued = pendingDao.get(bookId)
                 val blocked = when {
                     queued == null -> false
-                    mirrorRowYields(queued.toDomain(), server) -> {
+                    mirrorRowYields(queued.toDomain(), server, nowMs = clock()) -> {
                         pendingDao.delete(bookId, queued.updatedAtMs)
                         false
                     }
@@ -362,7 +362,7 @@ class BookRepositoryImpl(
             // The other copies are looked up once for the whole pass.
             val ids = all.keys.filter { it in cached }
             val peers = try {
-                mirrorPeers.peersOfAll(ids)
+                mirrorPeers.peersOfAll(ids) ?: emptyMap()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -640,34 +640,61 @@ class BookRepositoryImpl(
     }
 
     /**
-     * Marks [bookId] and, for a merged book with mirroring on, every other copy too, all at once: each copy changes locally
-     * first and goes to its own server (Audiobookshelf progress, Plex scrobbles); a server that does not answer within
-     * [MARK_SERVER_WAIT_MS] gets the mark through the queue. The book's own failure is the result; otherwise the outcome
-     * is PARTIAL when another copy could not be marked, QUEUED when any copy waits (see [combinedMarkOutcome]).
+     * Marks [bookId] and, for a merged book with mirroring on, every other copy too. The book itself changes locally first:
+     * when that fails, the result is the failure and no other copy is touched. Then the other copies change locally, and
+     * every copy goes to its own server at once (Audiobookshelf progress, Plex scrobbles); a server that does not answer
+     * within [markServerWaitMs] gets the mark through the queue. The outcome is PARTIAL (or PARTIAL_QUEUED) when another
+     * copy could not be marked, QUEUED when any copy waits (see [combinedMarkOutcome]).
      */
-    override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> = coroutineScope {
-        val copies = peersOf(bookId)
-        val own = async { markOne(bookId, finished) }
-        val others = copies.map { peer -> async { markOne(peer.bookId, finished).getOrNull() } }
-        val first = own.await()
-        val rest = others.awaitAll()
-        val outcome = first.getOrNull() ?: return@coroutineScope first
-        Result.success(combinedMarkOutcome(listOf(outcome) + rest))
-    }
-
-    private suspend fun markOne(bookId: String, finished: Boolean): Result<MarkOutcome> =
+    override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> =
         try {
-            val book = bookDao.getById(bookId) ?: error("Unknown book")
-            val now = clock()
-            // Local first: the UI follows at once and it works offline.
-            lateinit var local: ReadingProgress
-            progressLock.withLock {
-                inTransaction {
-                    local = progressAfterMark(progressDao.get(bookId)?.toDomain(), bookId, finished, book.durationMs, now)
-                    progressDao.upsert(ProgressEntity.fromDomain(local))
-                    if (finished) userMarks[bookId] = now else userMarks.remove(bookId)
+            val own = markLocally(bookId, finished)
+            val others = peersOf(bookId).map { peer ->
+                try {
+                    markLocally(peer.bookId, finished)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
                 }
             }
+            coroutineScope {
+                val first = async { markOnServer(own) }
+                val rest = others.map { mark -> async { mark?.let { markOnServer(it) } } }
+                Result.success(combinedMarkOutcome(listOf(first.await()) + rest.awaitAll()))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    /** A mark made on the phone, waiting to go to its server. */
+    private class LocalMark(val book: BookEntity, val local: ReadingProgress, val atMs: Long, val finished: Boolean)
+
+    /** The local half of a mark: the UI follows at once and it works offline. Throws for a book that is not in the library. */
+    private suspend fun markLocally(bookId: String, finished: Boolean): LocalMark {
+        val book = bookDao.getById(bookId) ?: error("Unknown book")
+        val now = clock()
+        lateinit var local: ReadingProgress
+        progressLock.withLock {
+            inTransaction {
+                local = progressAfterMark(progressDao.get(bookId)?.toDomain(), bookId, finished, book.durationMs, now)
+                progressDao.upsert(ProgressEntity.fromDomain(local))
+                if (finished) userMarks[bookId] = now else userMarks.remove(bookId)
+            }
+        }
+        return LocalMark(book, local, now, finished)
+    }
+
+    /** The server half of a mark; null only when something unexpected failed (the local mark stays). */
+    private suspend fun markOnServer(mark: LocalMark): MarkOutcome? =
+        try {
+            val book = mark.book
+            val bookId = book.id
+            val local = mark.local
+            val now = mark.atMs
+            val finished = mark.finished
             val target = try {
                 // Audiobookshelf takes the mark as progress; Plex as a scrobble (or unscrobble) of every track.
                 serverAndSource(book.serverId).takeIf { (server, _) -> server.source == ServerSource.ABS || server.source == ServerSource.PLEX }
@@ -677,7 +704,7 @@ class BookRepositoryImpl(
                 null
             }
             if (target == null) {
-                Result.success(MarkOutcome.LOCAL_ONLY)
+                MarkOutcome.LOCAL_ONLY
             } else {
                 val pending = PendingProgress(
                     bookId, book.serverId, local.positionMs, local.durationMs, listenedMs = 0L, updatedAtMs = now, markedFinished = finished
@@ -689,17 +716,17 @@ class BookRepositoryImpl(
                         if (queued != null && queued.updatedAtMs <= now) pendingDao.delete(bookId, queued.updatedAtMs)
                     }
                     adoptServerAnswer(bookId, local)
-                    Result.success(MarkOutcome.SYNCED)
+                    MarkOutcome.SYNCED
                 } else {
                     queueProgress(pending)
                     onQueued()
-                    Result.success(MarkOutcome.QUEUED)
+                    MarkOutcome.QUEUED
                 }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Result.failure(e)
+            null
         }
 
     /**

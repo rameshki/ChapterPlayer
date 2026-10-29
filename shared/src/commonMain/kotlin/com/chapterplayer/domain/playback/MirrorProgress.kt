@@ -45,7 +45,9 @@ enum class MirrorFlush { SEND, DROP }
  * - the source copy is somewhere else now ([sourceLocal], a row of its own newer than the row whose place or finished
  *   state differs: a merge brought listening from another device; just playing on queues a newer mirror anyway);
  * - the source copy's server holds listening this phone does not have ([sourceServer] newer than the row and than this
- *   phone's source row by more than [MIRROR_STALE_SLACK_MS]): delivered late, the mirror would be stamped as the newest.
+ *   phone's source row by more than [MIRROR_STALE_SLACK_MS], AND in another place or finished state than that row):
+ *   delivered late, the mirror would be stamped as the newest. A server that holds what this phone has is only this
+ *   phone's own delivery (an Audiobookshelf PATCH or a Plex stopped timeline stamps it with the server's clock).
  */
 fun mirrorFlushDecision(
     row: PendingProgress,
@@ -66,17 +68,21 @@ fun mirrorFlushDecision(
     }
     if (sourceServer != null && sourceServer.updatedAtMs > row.updatedAtMs + MIRROR_STALE_SLACK_MS &&
         (sourceLocal == null || sourceServer.updatedAtMs > sourceLocal.lastPlayedAt + MIRROR_STALE_SLACK_MS)
-    ) return MirrorFlush.DROP
+    ) {
+        val ownDelivery = sourceLocal != null && sourceLocal.isFinished == sourceServer.isFinished &&
+            abs(sourceLocal.positionMs - sourceServer.positionMs) <= MIRROR_ECHO_MS
+        if (!ownDelivery) return MirrorFlush.DROP
+    }
     return MirrorFlush.SEND
 }
 
 /**
  * Whether a queued [row] gives way to [server] progress of its copy in the server merge: a mirror older than what the
  * server holds is out of date and is removed, so it never holds back newer listening; the book's own row or the user's
- * mark keeps the merge waiting, as before.
+ * mark keeps the merge waiting, as before. A server time later than [nowMs] counts as [nowMs].
  */
-fun mirrorRowYields(row: PendingProgress, server: ServerProgress): Boolean =
-    row.mirrorOf != null && server.updatedAtMs > row.updatedAtMs
+fun mirrorRowYields(row: PendingProgress, server: ServerProgress, nowMs: Long = Long.MAX_VALUE): Boolean =
+    row.mirrorOf != null && minOf(server.updatedAtMs, nowMs) > row.updatedAtMs
 
 /** Another copy of a book: its id, its server and its length (0 when unknown). */
 data class MirrorPeer(val bookId: String, val serverId: String, val durationMs: Long)
@@ -192,7 +198,8 @@ fun newestAcrossCopies(own: ServerProgress?, others: List<ServerProgress>): Serv
  * failed, queued when any copy waits for its server, else synced when any server took it.
  */
 fun combinedMarkOutcome(outcomes: List<MarkOutcome?>): MarkOutcome = when {
-    null in outcomes || MarkOutcome.PARTIAL in outcomes -> MarkOutcome.PARTIAL
+    null in outcomes || MarkOutcome.PARTIAL in outcomes || MarkOutcome.PARTIAL_QUEUED in outcomes ->
+        if (MarkOutcome.QUEUED in outcomes || MarkOutcome.PARTIAL_QUEUED in outcomes) MarkOutcome.PARTIAL_QUEUED else MarkOutcome.PARTIAL
     MarkOutcome.QUEUED in outcomes -> MarkOutcome.QUEUED
     MarkOutcome.SYNCED in outcomes -> MarkOutcome.SYNCED
     else -> MarkOutcome.LOCAL_ONLY

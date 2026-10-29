@@ -224,6 +224,7 @@ class PlayerMenuViewModel(
                     when (outcome) {
                         MarkOutcome.QUEUED -> "$done. It will reach the server when it is back."
                         MarkOutcome.PARTIAL -> "$done. Another copy of this book could not be changed."
+                        MarkOutcome.PARTIAL_QUEUED -> "$done. Another copy could not be changed; the rest reaches the servers when they are back."
                         else -> done
                     }
                 },

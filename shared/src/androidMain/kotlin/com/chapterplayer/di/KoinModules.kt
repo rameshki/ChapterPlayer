@@ -292,7 +292,9 @@ val playbackModule = module {
     single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
     // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
     single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
-    single { PendingProgressFlusher(get(), get(), get(AppScopeQualifier), peers = get()) }
+    single {
+        PendingProgressFlusher(get(), get(), get(AppScopeQualifier), peers = get(), loadedBookId = { get<PlaybackController>().state.value.bookId })
+    }
     // The other copies of a merged book: their servers hear the mapped position through the queue (throttled).
     single {
         ProgressMirrorPusher(get(), get(), get(), statusStore = get(), scope = get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() })

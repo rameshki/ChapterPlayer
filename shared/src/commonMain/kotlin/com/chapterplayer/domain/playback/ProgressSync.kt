@@ -94,13 +94,13 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
         newer -> incoming.markedFinished
         else -> existing.markedFinished
     }
-    // A row that carries the user's own mark is never a mirror (queued mirrors may be dropped).
-    val userMark = existingUserMark || incomingUserMark
+    // Only two mirrors make a mirror (queued mirrors may be dropped): the copy's own listening or the user's mark never does.
+    val stillMirror = existing.mirrorOf != null && incoming.mirrorOf != null && !existingUserMark && !incomingUserMark
     return if (newer) {
-        incoming.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark, mirrorOf = if (userMark) null else incoming.mirrorOf)
+        incoming.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark, mirrorOf = if (stillMirror) incoming.mirrorOf else null)
     } else {
         // Keep existing metadata but update the cumulative listened time
-        existing.copy(listenedMs = totalListened, markedFinished = mark, mirrorOf = if (userMark) null else existing.mirrorOf)
+        existing.copy(listenedMs = totalListened, markedFinished = mark, mirrorOf = if (stillMirror) existing.mirrorOf else null)
     }
 }
 

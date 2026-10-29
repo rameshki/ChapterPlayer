@@ -263,6 +263,24 @@ class BookRepositoryMirrorTest {
     }
 
     @Test
+    fun `a newer merge of the other copy leaves the loaded copy alone, finished or not`() = runTest {
+        val own = ProgressEntity("abs_1", 2 * HOUR, ABS_LENGTH, 1_000L, false)
+        val f = fixture(local = listOf(own), loaded = "abs_1")
+        f.repo.saveServerProgress("plex_1", ServerProgress(9 * HOUR, PLEX_LENGTH, false, 20_000L))
+        assertEquals(9 * HOUR, f.row("plex_1")?.positionMs)
+        assertEquals(own, f.progress.get("abs_1"))
+    }
+
+    @Test
+    fun `when the book's own mark fails, the other copies are not touched`() = runTest {
+        val f = fixture()
+        f.peers.groups = mapOf("missing" to listOf(MirrorPeer("plex_1", "srv_plex", PLEX_LENGTH)))
+        assertTrue(f.repo.markFinished("missing", finished = true).isFailure)
+        assertNull(f.row("plex_1"))
+        assertTrue(f.plex.pushed.isEmpty())
+    }
+
+    @Test
     fun `a copy carrying the user's mark is not rewritten by a mirror even when the player is not known`() = runTest {
         val f = fixture(local = listOf(ProgressEntity("abs_1", 5 * HOUR, ABS_LENGTH, 100L, false)))
         f.repo.markFinished("abs_1", finished = true)

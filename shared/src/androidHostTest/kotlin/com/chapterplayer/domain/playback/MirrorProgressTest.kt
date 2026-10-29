@@ -215,7 +215,7 @@ class MirrorProgressTest {
     @Test
     fun `a mark that failed on one copy is reported as partial, never as synced`() {
         assertEquals(MarkOutcome.PARTIAL, combinedMarkOutcome(listOf(MarkOutcome.SYNCED, null)))
-        assertEquals(MarkOutcome.PARTIAL, combinedMarkOutcome(listOf(MarkOutcome.QUEUED, null)))
+        assertEquals(MarkOutcome.PARTIAL_QUEUED, combinedMarkOutcome(listOf(MarkOutcome.QUEUED, null)))
     }
 
     // ---- queued mirrors: when they are still worth sending ----
@@ -257,6 +257,19 @@ class MirrorProgressTest {
     }
 
     @Test
+    fun `the source server holding what this phone delivered itself is no newer listening`() {
+        // This phone's own report moved the source server's stamp (an Audiobookshelf PATCH, a Plex stopped timeline):
+        // same place and finished state as the phone's row, so the mirror still goes.
+        val own = ServerProgress(5 * hour + 3_000L, 10 * hour, false, 1_000L + 10 * 60_000L)
+        assertEquals(MirrorFlush.SEND, mirrorFlushDecision(mirrorRow(at = 1_000L), true, null, progress(pos = 5 * hour, at = 1_000L), own))
+        // A different finished state there is news.
+        assertEquals(
+            MirrorFlush.DROP,
+            mirrorFlushDecision(mirrorRow(at = 1_000L), true, null, progress(pos = 5 * hour, at = 1_000L), own.copy(isFinished = true))
+        )
+    }
+
+    @Test
     fun `a queued finished mirror is dropped once the source is no longer finished`() {
         assertEquals(MirrorFlush.DROP, mirrorFlushDecision(mirrorRow(marked = true), true, null, progress(pos = 0L, at = 2_000L), null))
         assertEquals(MirrorFlush.SEND, mirrorFlushDecision(mirrorRow(marked = true), true, null, progress(pos = 5 * hour, at = 2_000L, finished = true), null))
@@ -267,6 +280,9 @@ class MirrorProgressTest {
         val row = mirrorRow(at = 1_000L)
         assertTrue(mirrorRowYields(row, ServerProgress(1L, 12 * hour, false, 2_000L)))
         assertFalse(mirrorRowYields(row, ServerProgress(1L, 12 * hour, false, 900L)))
+        // A server time in the future counts as now.
+        assertFalse(mirrorRowYields(row, ServerProgress(1L, 12 * hour, false, 99_000L), nowMs = 900L))
+        assertTrue(mirrorRowYields(row, ServerProgress(1L, 12 * hour, false, 99_000L), nowMs = 1_500L))
         // A real row and a mark never yield.
         assertFalse(mirrorRowYields(row.copy(mirrorOf = null), ServerProgress(1L, 12 * hour, false, 2_000L)))
         assertFalse(mirrorRowYields(row.copy(mirrorOf = null, markedFinished = true), ServerProgress(1L, 12 * hour, false, 2_000L)))
@@ -278,7 +294,10 @@ class MirrorProgressTest {
     fun `coalescing keeps the mirror marker of the row that wins, and a mark is never a mirror`() {
         val real = PendingProgress("b", "s2", 1L, 12 * hour, 100L, 500L)
         val mirror = mirrorRow(at = 1_000L)
-        assertEquals("a", coalescePending(real, mirror).mirrorOf)
+        // A copy's own queued listening never turns into a mirror (a mirror may be dropped).
+        assertNull(coalescePending(real, mirror).mirrorOf)
+        assertEquals(100L, coalescePending(real, mirror).listenedMs)
+        assertEquals("a", coalescePending(mirror.copy(updatedAtMs = 900L), mirror).mirrorOf)
         assertNull(coalescePending(mirror, real.copy(updatedAtMs = 2_000L)).mirrorOf)
         assertNull(coalescePending(real.copy(markedFinished = true), mirror).mirrorOf)
         // A finished mirror keeps its marker, and newer listening of the copy replaces its finished state.

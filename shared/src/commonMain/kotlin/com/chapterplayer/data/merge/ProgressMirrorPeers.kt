@@ -23,8 +23,11 @@ interface ProgressMirrorPeers {
     /** The other copies of [bookId]; empty for a book on one server, with the setting off, or when they cannot be read. */
     suspend fun peersOf(bookId: String): List<MirrorPeer>
 
-    /** [peersOf] for each of [bookIds] in one go (one look at the corrections and the switch), e.g. for a merge pass. */
-    suspend fun peersOfAll(bookIds: Collection<String>): Map<String, List<MirrorPeer>> = bookIds.associateWith { peersOf(it) }
+    /**
+     * [peersOf] for each of [bookIds] in one go (one look at the corrections and the switch), e.g. for a merge pass.
+     * Null when the copies could not be looked up: unlike an empty answer, that is no reason to drop a queued mirror.
+     */
+    suspend fun peersOfAll(bookIds: Collection<String>): Map<String, List<MirrorPeer>>? = bookIds.associateWith { peersOf(it) }
 
     /** Emits when the corrections or the switch change (not for the state at the start), so queued mirrors can be looked at again. */
     val changes: Flow<Unit> get() = emptyFlow()
@@ -56,9 +59,9 @@ class MergedProgressPeers(
 
     override val changes: Flow<Unit> = combine(overrides, enabled) { o, e -> o to e }.distinctUntilChanged().drop(1).map { }
 
-    override suspend fun peersOf(bookId: String): List<MirrorPeer> = peersOfAll(listOf(bookId))[bookId].orEmpty()
+    override suspend fun peersOf(bookId: String): List<MirrorPeer> = peersOfAll(listOf(bookId))?.get(bookId).orEmpty()
 
-    override suspend fun peersOfAll(bookIds: Collection<String>): Map<String, List<MirrorPeer>> = try {
+    override suspend fun peersOfAll(bookIds: Collection<String>): Map<String, List<MirrorPeer>>? = try {
         val grouping = currentGrouping()
         if (grouping == null) {
             emptyMap()
@@ -72,8 +75,8 @@ class MergedProgressPeers(
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
-        // Best effort: a copy that cannot be looked up is simply not mirrored this time.
-        emptyMap()
+        // Best effort: a copy that cannot be looked up is simply not mirrored this time (and no queued mirror is dropped).
+        null
     }
 
     /** The grouping as it is now; null with the switch off. */

@@ -50,7 +50,7 @@ class MergedProgressPeersTest {
         val overrides = MutableStateFlow(MergeOverrides())
         val enabled = MutableStateFlow(true)
         val peers = MergedProgressPeers(MutableStateFlow(listOf(absCopy, plexCopy)), overrides, enabled, backgroundScope)
-        val all = peers.peersOfAll(listOf("abs_1", "plex_1", "x"))
+        val all = peers.peersOfAll(listOf("abs_1", "plex_1", "x"))!!
         assertEquals(listOf("plex_1"), all["abs_1"]?.map { it.bookId })
         assertEquals(listOf("abs_1"), all["plex_1"]?.map { it.bookId })
         assertTrue(all["x"].isNullOrEmpty())
@@ -65,7 +65,19 @@ class MergedProgressPeersTest {
         runCurrent()
         assertEquals(2, announced.size)
         enabled.value = true
-        assertTrue(peers.peersOfAll(listOf("abs_1")).values.all { it.isEmpty() })
+        assertTrue(peers.peersOfAll(listOf("abs_1"))!!.values.all { it.isEmpty() })
+    }
+
+    @Test
+    fun `a lookup that fails says so instead of claiming no copies`() = runTest {
+        val failing = kotlinx.coroutines.flow.flow<MergeOverrides> { throw IllegalStateException("db closed") }
+        val peers = MergedProgressPeers(MutableStateFlow(listOf(absCopy, plexCopy)), failing, MutableStateFlow(true), backgroundScope)
+        kotlin.test.assertNull(peers.peersOfAll(listOf("abs_1")))
+        assertTrue(peers.peersOf("abs_1").isEmpty())
+        // The switch off is a real "no copies".
+        val off = MergedProgressPeers(MutableStateFlow(listOf(absCopy, plexCopy)), MutableStateFlow(MergeOverrides()), MutableStateFlow(false), backgroundScope)
+        assertEquals(emptyList(), off.peersOfAll(listOf("abs_1"))?.get("abs_1").orEmpty())
+        kotlin.test.assertNotNull(off.peersOfAll(listOf("abs_1")))
     }
 
     @Test
