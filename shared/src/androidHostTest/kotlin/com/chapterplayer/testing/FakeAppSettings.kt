@@ -50,4 +50,10 @@ class FakeAppSettings(
     val sourcePreferenceFlow = MutableStateFlow(com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE)
     override val sourcePreference: Flow<com.chapterplayer.domain.browse.SourcePreference> = sourcePreferenceFlow
     override suspend fun setSourcePreference(preference: com.chapterplayer.domain.browse.SourcePreference) { sourcePreferenceFlow.value = preference }
+    val mirrorProgressFlow = MutableStateFlow(true)
+    override val mirrorProgress: Flow<Boolean> = mirrorProgressFlow
+    override suspend fun setMirrorProgress(enabled: Boolean) {
+        if (failOnSet) error("storage unavailable")
+        mirrorProgressFlow.value = enabled
+    }
 }

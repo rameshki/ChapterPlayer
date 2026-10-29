@@ -77,6 +77,8 @@ import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.RoomBookMergeRepository
 import com.chapterplayer.data.merge.AppSourceMerging
 import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.merge.MergedProgressPeers
+import com.chapterplayer.data.merge.ProgressMirrorPeers
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.BookRepositoryImpl
 import com.chapterplayer.data.repository.LibraryCatalog
@@ -224,8 +226,19 @@ val repositoryModule = module {
             },
             onQueued = { get<PendingProgressFlusher>().kick() },
             // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
-            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith }
+            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
+            // A save of one copy of a merged book moves the other copies' local rows (Settings switch, on by default).
+            mirrorPeers = get()
         ) }
+    // The other copies of a merged book, grouped like the lists (the user's corrections included).
+    single<ProgressMirrorPeers> {
+        MergedProgressPeers(
+            get<BookDao>().observeAll().map { rows -> rows.map { it.toDomain(emptyList()) } },
+            get<BookMergeRepository>().overrides,
+            get<AppSettings>().mirrorProgress,
+            get(AppScopeQualifier),
+        )
+    }
     single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get()) }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
     // The user's "Not the same book" and "Merge with" choices for books on several servers.

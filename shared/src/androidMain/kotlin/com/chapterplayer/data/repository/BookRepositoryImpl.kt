@@ -16,6 +16,7 @@ import com.chapterplayer.data.local.entity.CollectionEntity
 import com.chapterplayer.data.local.entity.LibraryEntity
 import com.chapterplayer.data.local.entity.PendingProgressEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
+import com.chapterplayer.data.merge.ProgressMirrorPeers
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
@@ -30,6 +31,9 @@ import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.MarkOutcome
+import com.chapterplayer.domain.playback.MirrorPeer
+import com.chapterplayer.domain.playback.combinedMarkOutcome
+import com.chapterplayer.domain.playback.mirroredProgress
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.addToHistory
@@ -74,7 +78,9 @@ class BookRepositoryImpl(
      * Called when starting playback failed: the server to retry once with (its address changed, e.g. a Plex server whose
      * cached connection no longer answers was switched to another one), or null to fail as is.
      */
-    private val onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null }
+    private val onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null },
+    /** The other copies of a merged book, whose local progress follows each save (none: no mirroring). */
+    private val mirrorPeers: ProgressMirrorPeers = ProgressMirrorPeers.None,
 ) : BookRepository {
 
     // -------------------------------------------------------------------------
@@ -304,12 +310,18 @@ class BookRepositoryImpl(
     override suspend fun saveServerProgress(bookId: String, server: ServerProgress) {
         // A book that is not in the library gets no orphan progress row.
         if (bookDao.getById(bookId) == null) return
-        // Read, decide and write together, so a save from the player cannot slip in between.
-        inTransaction {
-            val merged = mergeServerProgress(
-                bookId, progressDao.get(bookId)?.toDomain(), server, hasPendingLocal = pendingDao.get(bookId) != null
-            )
-            if (merged != null) progressDao.upsert(ProgressEntity.fromDomain(merged))
+        val peers = peersOf(bookId)
+        // Read, decide and write together (the other copies' rows too), so a save from the player cannot slip in between.
+        progressLock.withLock {
+            inTransaction {
+                val merged = mergeServerProgress(
+                    bookId, progressDao.get(bookId)?.toDomain(), server, hasPendingLocal = pendingDao.get(bookId) != null
+                )
+                if (merged != null) {
+                    progressDao.upsert(ProgressEntity.fromDomain(merged))
+                    mirrorLocked(merged, peers)
+                }
+            }
         }
     }
 
@@ -543,17 +555,54 @@ class BookRepositoryImpl(
     private val userMarks = HashMap<String, Long>()
 
     override suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long) {
+        val peers = peersOf(progress.bookId)
         progressLock.withLock {
             inTransaction {
                 val existing = progressDao.get(progress.bookId)?.toDomain()
                 val keep = keepsFinishedMark(existing, userMarks[progress.bookId], loadedSinceMs)
                 if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else userMarks.remove(progress.bookId)
-                progressDao.upsert(ProgressEntity.fromDomain(if (keep) progress.copy(isFinished = true) else progress))
+                // The player's save is listening on this copy: never a mirrored row.
+                val saved = (if (keep) progress.copy(isFinished = true) else progress).copy(mirrored = false)
+                progressDao.upsert(ProgressEntity.fromDomain(saved))
+                mirrorLocked(saved, peers)
             }
         }
     }
 
-    override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> =
+    /** The other copies of [bookId] (empty with mirroring off); looked up before the lock, as it reads other tables. */
+    private suspend fun peersOf(bookId: String): List<MirrorPeer> = try {
+        mirrorPeers.peersOf(bookId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    /**
+     * Moves the other copies' local rows to where [source] is (see `mirroredProgress`: by fraction, newest wins, flagged
+     * mirrored). Call with [progressLock] held, inside the transaction that wrote [source].
+     */
+    private suspend fun mirrorLocked(source: ReadingProgress, peers: List<MirrorPeer>) {
+        for (peer in peers) {
+            val existing = progressDao.get(peer.bookId)?.toDomain()
+            val mirror = mirroredProgress(source, peer.bookId, peer.durationMs, existing) ?: continue
+            progressDao.upsert(ProgressEntity.fromDomain(mirror))
+        }
+    }
+
+    /**
+     * Marks [bookId] and, for a merged book with mirroring on, every other copy too: each copy changes locally first and
+     * goes to its own server (Audiobookshelf progress, Plex scrobbles). The result is the book's own; a copy that fails
+     * is left out of the outcome, which is QUEUED when any copy waits for its server (see [combinedMarkOutcome]).
+     */
+    override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> {
+        val own = markOne(bookId, finished)
+        val first = own.getOrNull() ?: return own
+        val others = peersOf(bookId).mapNotNull { peer -> markOne(peer.bookId, finished).getOrNull() }
+        return Result.success(combinedMarkOutcome(listOf(first) + others))
+    }
+
+    private suspend fun markOne(bookId: String, finished: Boolean): Result<MarkOutcome> =
         try {
             val book = bookDao.getById(bookId) ?: error("Unknown book")
             val now = clock()

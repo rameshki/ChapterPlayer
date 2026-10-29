@@ -24,6 +24,7 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
     val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
     val storageUsed by viewModel.downloadStorageUsed.collectAsStateWithLifecycle()
     val sourcePreference by viewModel.sourcePreference.collectAsStateWithLifecycle()
+    val mirrorProgress by viewModel.mirrorProgress.collectAsStateWithLifecycle()
     // A card may have been put in or taken out since the screen was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
 
@@ -62,5 +63,12 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
 
         SectionTitle("Books on several servers")
         SourcePreferenceCard(sourcePreference, viewModel::setSourcePreference)
+        Spacer(Modifier.height(8.dp))
+        SwitchCard(
+            title = "Keep progress in sync between copies",
+            description = "Listening to one copy moves the others to the same place, on this phone and on their servers.",
+            checked = mirrorProgress,
+            onChange = viewModel::setMirrorProgress
+        )
     }
 }
