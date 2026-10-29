@@ -54,12 +54,13 @@ const val NEEDS_CONNECTION_TO_PLAY_TEXT = "Needs a connection to play"
 const val NOT_DOWNLOADED_TEXT = "This book is not downloaded"
 
 /**
- * Where [source]'s book plays from: a complete download always plays from the phone; anything else streams,
- * but only while [online] and not limited to downloaded books ([downloadedOnly]). Only Audiobookshelf books can be
- * downloaded, so a Plex book always streams (a download record for one is ignored).
+ * Where a book plays from: a complete download always plays from the phone (Audiobookshelf and Plex alike, so [source]
+ * does not change the answer); anything else streams, but only while [online] and not limited to downloaded books
+ * ([downloadedOnly]).
  */
+@Suppress("UNUSED_PARAMETER")
 fun choosePlaybackSource(source: ServerSource, copy: LocalCopy, online: Boolean, downloadedOnly: Boolean): PlaybackSource = when {
-    copy == LocalCopy.COMPLETE && source == ServerSource.ABS -> PlaybackSource.Local
+    copy == LocalCopy.COMPLETE -> PlaybackSource.Local
     !online -> PlaybackSource.Unavailable(NEEDS_CONNECTION_TO_PLAY_TEXT)
     downloadedOnly -> PlaybackSource.Unavailable(NOT_DOWNLOADED_TEXT)
     else -> PlaybackSource.Stream

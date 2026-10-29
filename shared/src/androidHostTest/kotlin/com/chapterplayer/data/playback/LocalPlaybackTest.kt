@@ -187,4 +187,65 @@ class LocalPlaybackTest {
         assertEquals(true, playsFromPhone(local))
         assertEquals(false, playsFromPhone(streamed(session(track(0, "11", 0, 6_000)))))
     }
+
+    // -- Plex downloads ------------------------------------------------------------------------
+
+    private val plexBook = book.copy(id = "plex_1101", source = ServerSource.PLEX, chapters = emptyList(), durationMs = 0)
+
+    /** A Plex session: its tracks are part paths (no file id), so the stored lengths make the timeline. */
+    private fun plexSession(chapters: List<Chapter> = emptyList()) = PlaybackSession(
+        sessionId = "plex-1101-1", serverId = "s1", bookId = "plex_1101", durationMs = 1_500_000, startPositionMs = 700_000,
+        tracks = listOf(
+            PlaybackTrack(0, 0, 600_000, "audio/mpeg", "http://plex.test:32400/library/parts/1202/1700000000/file.mp3"),
+            PlaybackTrack(1, 600_000, 900_000, "audio/mpeg", "http://plex.test:32400/library/parts/1203/1700000000/file.mp3"),
+        ),
+        chapters = chapters,
+    )
+
+    @Test
+    fun `offline a plex download plays its stored lengths, with one chapter per file when none were stored`() {
+        val playable = playableFromPhone(
+            plexBook, listOf(file("1102", 600_000, "audio/mpeg"), file("1103", 900_000, "audio/mpeg")), session = null, toUri = uri
+        )!!
+
+        assertEquals(
+            listOf(
+                PlaybackTrack(0, 0, 600_000, "audio/mpeg", "file:///d/1102.mp3"),
+                PlaybackTrack(1, 600_000, 900_000, "audio/mpeg", "file:///d/1103.mp3"),
+            ),
+            playable.tracks,
+        )
+        assertEquals(1_500_000L, playable.durationMs)
+        assertEquals(listOf(Chapter(0, "Part 1", 0, 600_000), Chapter(1, "Part 2", 600_000, 1_500_000)), playable.chapters)
+        assertNull(playable.session)
+    }
+
+    @Test
+    fun `a plex download keeps the chapters stored with the book`() {
+        val chapters = listOf(Chapter(0, "Opening", 0, 1_500_000))
+        val playable = playableFromPhone(
+            plexBook.copy(chapters = chapters), listOf(file("1102", 600_000), file("1103", 900_000)), session = null, toUri = uri
+        )!!
+        assertEquals(chapters, playable.chapters)
+    }
+
+    @Test
+    fun `online a plex download plays the files and keeps the session for the reports`() {
+        val chapters = listOf(Chapter(0, "Server", 0, 1_500_000))
+        val s = plexSession(chapters)
+
+        val playable = playableFromPhone(plexBook, listOf(file("1102", 600_000), file("1103", 900_000)), s, toUri = uri)!!
+
+        assertEquals(listOf("file:///d/1102.mp3", "file:///d/1103.mp3"), playable.tracks.map { it.url })
+        assertEquals(listOf(0L, 600_000L), playable.tracks.map { it.startMs })
+        assertSame(s, playable.session)
+        assertEquals(700_000L, playable.startPositionMs)
+        assertEquals(chapters, playable.chapters)
+    }
+
+    @Test
+    fun `an abs book without chapters keeps none`() {
+        val playable = playableFromPhone(book.copy(chapters = emptyList()), listOf(file("11", 4_000), file("12", 2_000)), null, uri)!!
+        assertEquals(emptyList(), playable.chapters)
+    }
 }

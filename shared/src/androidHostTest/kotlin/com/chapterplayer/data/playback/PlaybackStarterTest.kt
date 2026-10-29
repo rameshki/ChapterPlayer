@@ -425,6 +425,22 @@ class PlaybackStarterTest {
     }
 
     @Test
+    fun `a downloaded plex book plays its files, with the app's session online and none offline`() = runTest {
+        val plex = book.copy(id = "plex_1", source = com.chapterplayer.data.model.ServerSource.PLEX)
+        local.files["plex_1"] = downloaded
+
+        assertTrue(starter.start(plex, 0L).isSuccess)
+        connectivity.online.value = false
+        controller.playback.value = com.chapterplayer.data.playback.PlaybackState() // nothing loaded
+        assertTrue(starter.start(plex, 0L).isSuccess)
+
+        assertEquals(
+            listOf<AudioOrigin>(AudioOrigin.Phone(downloaded, openSession = true), AudioOrigin.Phone(downloaded, openSession = false)),
+            controller.origins
+        )
+    }
+
+    @Test
     fun `offline a plex book needs a connection and is not loaded`() = runTest {
         connectivity.online.value = false
         val plex = book.copy(id = "plex_1", source = com.chapterplayer.data.model.ServerSource.PLEX)

@@ -3,6 +3,7 @@ package com.chapterplayer.data.playback
 import com.chapterplayer.data.downloads.LocalFile
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.Chapter
+import com.chapterplayer.data.model.ServerSource
 
 /**
  * What the player is given for one book: its audio files in order on the book's timeline, its length and
@@ -54,8 +55,10 @@ private fun tracksByIno(session: PlaybackSession?): Map<String, PlaybackTrack> =
  * A downloaded book played from [files] (in book order). The session's tracks are matched to the files by file id.
  * When the [session] lists exactly these files in this order, its timeline is used as it is (the same as streaming);
  * otherwise each file's length is the session's for that file, else the stored one, else (for a single file) the
- * book's, and the files follow one another. The session's length and chapters win over the book's. Each track's
- * address is [toUri] of the file's path. Null when there are no files or a length is unknown.
+ * book's, and the files follow one another. The session's length and chapters win over the book's; a Plex book with
+ * neither has one chapter per file ("Part 1", ...). Each track's address is [toUri] of the file's path. Null when there
+ * are no files or a length is unknown. A Plex session's tracks are part paths with no file id, so for a Plex download
+ * the stored lengths make the timeline and the session is kept for the reports to the server.
  */
 fun playableFromPhone(
     book: AudioBook,
@@ -92,10 +95,18 @@ fun playableFromPhone(
         durationMs = session?.durationMs?.takeIf { it > 0L } ?: book.durationMs.takeIf { it > 0L } ?: tracks.sumOf { it.durationMs },
         startPositionMs = session?.startPositionMs ?: 0L,
         tracks = tracks,
-        chapters = session?.chapters?.takeIf { it.isNotEmpty() } ?: book.chapters,
+        chapters = session?.chapters?.takeIf { it.isNotEmpty() } ?: book.chapters.takeIf { it.isNotEmpty() } ?: partChapters(book, tracks),
         session = session,
     )
 }
+
+/** One chapter per file for a Plex download that has no chapters stored; none for other books (as before). */
+private fun partChapters(book: AudioBook, tracks: List<PlaybackTrack>): List<Chapter> =
+    if (book.source != ServerSource.PLEX) {
+        emptyList()
+    } else {
+        tracks.mapIndexed { i, t -> Chapter(id = i, title = "Part ${i + 1}", startMs = t.startMs, endMs = t.startMs + t.durationMs) }
+    }
 
 /** Whether [book]'s audio is downloaded files (so removing the download takes it away from the player). */
 fun playsFromPhone(book: PlayableBook): Boolean = book.tracks.any { it.url.startsWith("file:") }
