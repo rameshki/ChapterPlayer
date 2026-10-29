@@ -110,7 +110,7 @@ fun groupByCollection(items: List<BrowseItem>, collections: List<BookCollection>
     return groups
 }
 
-private fun splitPeople(name: String): List<String> {
+internal fun splitPeople(name: String): List<String> {
     if (name.isBlank()) {
         return listOf()
     }

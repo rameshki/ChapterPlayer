@@ -1,0 +1,50 @@
+{
+  "totalTime": 12960.7,
+  "items": {
+    "li_fixture01": {
+      "id": "li_fixture01",
+      "timeListening": 7200.5,
+      "mediaMetadata": {
+        "title": "Synthetic Book One",
+        "authors": [{ "id": "au_fixture01", "name": "Author One" }],
+        "narrators": ["Narrator One"],
+        "series": [{ "id": "se_fixture01", "name": "Synthetic Saga", "sequence": "1" }]
+      }
+    },
+    "li_fixture02": {
+      "id": "li_fixture02",
+      "timeListening": 3600,
+      "mediaMetadata": { "title": "Synthetic Book Two", "authors": [] }
+    },
+    "li_fixture03": {
+      "id": "li_fixture03",
+      "timeListening": 0
+    }
+  },
+  "days": {
+    "2026-10-19": 1800.2,
+    "2026-10-20": 3600,
+    "2026-10-24": 7560.5,
+    "2026-10-25": 0,
+    "not-a-day": 50
+  },
+  "dayOfWeek": {
+    "Monday": 1800.2,
+    "Tuesday": 3600,
+    "Saturday": 7560.5
+  },
+  "today": 0,
+  "recentSessions": [
+    {
+      "id": "ses_fixture01",
+      "libraryItemId": "li_fixture01",
+      "mediaType": "book",
+      "displayTitle": "Synthetic Book One",
+      "displayAuthor": "Author One",
+      "duration": 36000,
+      "timeListening": 600,
+      "startedAt": 1761300000000,
+      "updatedAt": 1761300600000
+    }
+  ]
+}

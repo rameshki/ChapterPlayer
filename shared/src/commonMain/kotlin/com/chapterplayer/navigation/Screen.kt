@@ -14,6 +14,8 @@ sealed class Screen(val route: String) {
     object Library : Screen("library")
     object Downloads : Screen("downloads")
     object Search : Screen("search")
+    /** Listening statistics, reached from the Library top bar and from Settings. */
+    object Stats : Screen("stats")
     /** Always shows what is playing, so it takes no argument. */
     object Player : Screen("player")
     object BookDetails : Screen("book/{id}") {

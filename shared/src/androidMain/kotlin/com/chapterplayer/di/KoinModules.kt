@@ -36,6 +36,19 @@ import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
+import com.chapterplayer.data.stats.AndroidListeningClock
+import com.chapterplayer.data.stats.BookOwner
+import com.chapterplayer.data.stats.BookOwners
+import com.chapterplayer.data.stats.ListeningClock
+import com.chapterplayer.data.stats.ListeningImport
+import com.chapterplayer.data.stats.ListeningLog
+import com.chapterplayer.data.stats.ListeningStatsImporter
+import com.chapterplayer.data.stats.ListeningRecorder
+import com.chapterplayer.data.stats.RoomListeningLog
+import com.chapterplayer.data.stats.SystemDayZone
+import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.domain.stats.DayZone
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
 import com.chapterplayer.data.progress.ServerProgressRefresher
@@ -96,6 +109,7 @@ import com.chapterplayer.ui.player.PlayerMenuViewModel
 import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.search.SearchViewModel
+import com.chapterplayer.ui.stats.StatsViewModel
 import com.chapterplayer.ui.offline.OfflineStateViewModel
 import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.settings.ServerSetupViewModel
@@ -161,6 +175,7 @@ val databaseModule = module {
     single { get<ChapterPlayerDatabase>().historyDao() }
     single { get<ChapterPlayerDatabase>().downloadDao() }
     single { get<ChapterPlayerDatabase>().bookMergeDao() }
+    single { get<ChapterPlayerDatabase>().listeningDao() }
 }
 
 val networkModule = module {
@@ -265,6 +280,19 @@ val playbackModule = module {
     single { ServerProgressRefresher(get(), get(), get(), get(AppScopeQualifier)) }
     single { BookmarkSyncer(get(), get(), get(), get(AppScopeQualifier)) }
     single { HistoryRecorder(get(), get(), get(AppScopeQualifier)) }
+    // Listening time per day and book for the statistics page, from every source, online or not.
+    single<DayZone> { SystemDayZone }
+    single<ListeningLog> {
+        RoomListeningLog(get(), inTransaction = { block -> get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } } })
+    }
+    single<BookOwners> {
+        val bookDao = get<BookDao>()
+        BookOwners { id -> bookDao.getById(id)?.let { book -> BookOwner(book.serverId, ServerSource.entries.firstOrNull { it.name == book.source } ?: ServerSource.ABS) } }
+    }
+    single<ListeningClock> { AndroidListeningClock }
+    single { ListeningRecorder(get(), get(), get(), get(AppScopeQualifier), get(), get()) }
+    // Audiobookshelf's own listening history, imported once per server (and again from the stats page).
+    single<ListeningImport> { ListeningStatsImporter(get(), getAll<LibrarySource>(), get(), get(), get(AppScopeQualifier), get()) }
     // Starts a book (position, saved speed, play) for details, Home and the player.
     singleOf(::PlaybackStarter)
     // A tapped notification asks the navigation host to open the player once.
@@ -319,6 +347,8 @@ val viewModelModule = module {
     viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
     viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
     viewModelOf(::OfflineStateViewModel)
+    // The statistics page; its figures are worked out off the main thread.
+    viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }

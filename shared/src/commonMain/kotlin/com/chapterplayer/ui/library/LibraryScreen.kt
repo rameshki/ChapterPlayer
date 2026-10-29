@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +47,8 @@ fun LibraryScreen(
     onOpenSettings: () -> Unit,
     /** The "Add a server" button of the empty state: the Servers page of Settings. */
     onOpenServers: () -> Unit,
+    /** The chart button: the listening statistics. */
+    onOpenStats: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -80,6 +83,9 @@ fun LibraryScreen(
                         IconButton(onClick = viewModel::onRefreshRequested) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TextSecondary)
                         }
+                    }
+                    IconButton(onClick = onOpenStats) {
+                        Icon(Icons.Default.BarChart, contentDescription = "Statistics", tint = TextSecondary)
                     }
                     SettingsAction(onOpenSettings)
                 },
