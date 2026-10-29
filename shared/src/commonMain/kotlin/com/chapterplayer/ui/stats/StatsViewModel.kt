@@ -20,7 +20,10 @@ import com.chapterplayer.domain.stats.epochDayOf
 import com.chapterplayer.domain.stats.importOutcomeText
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -53,6 +56,8 @@ class StatsViewModel(
     private val clock: ListeningClock,
     dispatcher: CoroutineDispatcher,
     merging: SourceMerging = SourceMerging.None,
+    /** How often the page checks whether the day changed (an open page follows midnight). */
+    tickMs: Long = 60_000L,
 ) : ViewModel() {
 
     private val period = MutableStateFlow(StatsPeriod.MONTH)
@@ -67,10 +72,18 @@ class StatsViewModel(
         days.filter { it.serverId in ids } to items.filter { it.serverId in ids }
     }
 
+    /** Today's epoch day, again whenever it changes (checked every [tickMs]). */
+    private val today = flow {
+        while (true) {
+            emit(epochDayOf(clock.nowMs(), zone))
+            delay(tickMs)
+        }
+    }.distinctUntilChanged()
+
     private val input = combine(
-        observeBrowseItems(books, downloads, merging), log.observeLog(), imported, overview.storageUsedBytes()
-    ) { items, entries, (days, importedItems), bytes ->
-        StatsInput(entries, days, importedItems, items, bytes, epochDayOf(clock.nowMs(), zone), zone)
+        observeBrowseItems(books, downloads, merging), log.observeLog(), imported, overview.storageUsedBytes(), today
+    ) { items, entries, (days, importedItems), bytes, day ->
+        StatsInput(entries, days, importedItems, items, bytes, day, zone)
     }
 
     private val report = combine(input, period) { input, period -> buildStats(input, period) }.flowOn(dispatcher)

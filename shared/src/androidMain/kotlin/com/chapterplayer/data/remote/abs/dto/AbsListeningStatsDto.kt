@@ -9,7 +9,9 @@ import kotlin.math.roundToLong
 
 /**
  * `GET /api/me/listening-stats`: the user's listening on this server, in seconds. [days] is keyed by "YYYY-MM-DD"
- * (the server's local date), [items] by library item id. Recent sessions and metadata are not read.
+ * in the SERVER's time zone (Audiobookshelf dates each session where it runs); the app takes each key as that day in
+ * the phone's zone, so when the two zones differ, listening near midnight can land on the neighbouring day.
+ * [items] is keyed by library item id. Recent sessions and metadata are not read.
  */
 @Serializable
 data class AbsListeningStatsDto(

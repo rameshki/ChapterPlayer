@@ -1,12 +1,16 @@
 package com.chapterplayer.data.stats
 
 import com.chapterplayer.data.auth.SignInRequiredException
+import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.source.LibrarySource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -17,7 +21,7 @@ data class ImportOutcome(val imported: Int = 0, val failed: Int = 0, val signInR
 
 /** Brings each server's own listening history into the statistics. */
 interface ListeningImport {
-    /** Imports every server that has never been imported, now and whenever one is added. */
+    /** Imports every server that has never been imported, now and whenever one is added; retries failures. */
     fun start()
 
     /** Imports every server that keeps a history again, now. */
@@ -27,41 +31,85 @@ interface ListeningImport {
 /**
  * Imports Audiobookshelf's listening history (`/api/me/listening-stats`) so the charts do not start empty. The first
  * import of each server runs on its own (at start, and when a server is added); later ones only when the stats page
- * asks ([refresh]). A failed first import is tried again at the next start. Only sources with a history take part.
+ * asks ([refresh]). A failed first import is retried with a growing wait (30 s doubling to 30 min), at once when the
+ * server's row changes (a new sign-in, a new address) or the network comes back, and never while offline or while the
+ * server waits for a sign-in. Only sources with a history take part.
  */
 class ListeningStatsImporter(
     private val servers: ServerRepository,
     private val sources: List<LibrarySource>,
     private val log: ListeningLog,
+    private val connectivity: ConnectivityMonitor,
     private val scope: CoroutineScope,
     private val clock: ListeningClock,
 ) : ListeningImport {
 
+    /** A first import that failed: the row it was tried with, how often, and when to try again (monotonic ms). */
+    private class Failure(val config: ServerConfig, val attempts: Int, val retryAtMs: Long)
+
     private val lock = Mutex()
     private var started = false
-    /** Servers whose first import was tried in this process, so a failure does not retry on every list change. */
-    private val tried = HashSet<String>()
+    private val failures = HashMap<String, Failure>()
 
     override fun start() {
         if (started) return
         started = true
         scope.launch {
-            servers.observeAll().collect { list ->
-                try {
-                    lock.withLock {
-                        val done = log.importedServerIds()
-                        for (server in list) {
-                            if (!keepsHistory(server) || server.id in done || !tried.add(server.id)) continue
-                            importOne(server)
-                        }
+            var wasOnline: Boolean? = null
+            // A new list or a network change cancels a pending wait and looks again at once.
+            combine(servers.observeAll(), connectivity.isOnline) { list, online -> list to online }.collectLatest { (list, online) ->
+                val cameOnline = online && wasOnline == false
+                wasOnline = online
+                if (!online) return@collectLatest
+                var ignoreWait = cameOnline
+                while (true) {
+                    val wait = try {
+                        lock.withLock { importFirstTimes(list, ignoreWait) }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // The database could not be read: look again a little later.
+                        FIRST_RETRY_MS
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // The next start tries again.
+                    ignoreWait = false
+                    if (wait == null) break
+                    delay(wait)
                 }
             }
         }
+    }
+
+    /**
+     * Imports each server not yet imported whose retry is due (all of them with [ignoreWait]); the time until the
+     * next retry falls due, or null when nothing waits.
+     */
+    private suspend fun importFirstTimes(list: List<ServerConfig>, ignoreWait: Boolean): Long? {
+        val done = log.importedServerIds()
+        failures.keys.retainAll(list.mapTo(HashSet()) { it.id })
+        var next: Long? = null
+        for (server in list) {
+            if (!keepsHistory(server) || server.id in done) {
+                failures.remove(server.id)
+                continue
+            }
+            // A server waiting for a sign-in is tried when its row changes.
+            if (server.needsSignIn) continue
+            val failure = failures[server.id]?.takeIf { it.config == server }
+            val now = clock.monoMs()
+            if (failure != null && !ignoreWait && now < failure.retryAtMs) {
+                next = minOf(next ?: Long.MAX_VALUE, failure.retryAtMs - now)
+                continue
+            }
+            if (importOne(server) == Result.OK) {
+                failures.remove(server.id)
+            } else {
+                val attempts = (failure?.attempts ?: 0) + 1
+                val wait = retryWaitMs(attempts)
+                failures[server.id] = Failure(server, attempts, clock.monoMs() + wait)
+                next = minOf(next ?: Long.MAX_VALUE, wait)
+            }
+        }
+        return next
     }
 
     override suspend fun refresh(): ImportOutcome = lock.withLock {
@@ -78,6 +126,18 @@ class ListeningStatsImporter(
     }
 
     private enum class Result { OK, SIGN_IN, FAILED }
+
+    private companion object {
+        const val FIRST_RETRY_MS = 30_000L
+        const val MAX_RETRY_MS = 30 * 60_000L
+
+        /** 30 s after the first failure, doubling, at most 30 min. */
+        fun retryWaitMs(attempts: Int): Long {
+            var wait = FIRST_RETRY_MS
+            repeat((attempts - 1).coerceAtMost(10)) { wait *= 2 }
+            return wait.coerceAtMost(MAX_RETRY_MS)
+        }
+    }
 
     private fun sourceFor(server: ServerConfig): LibrarySource? = sources.firstOrNull { it.type == server.source }
 

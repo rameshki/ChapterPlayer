@@ -126,6 +126,9 @@ fun sourceShares(sources: Map<ServerSource, Long>): List<Pair<ServerSource, Int>
     return floors.sortedWith(compareByDescending<Pair<ServerSource, Int>> { it.second }.thenBy { it.first.ordinal })
 }
 
+/** A share as the legend shows it: a source that was used but rounds to nothing is "<1%", never "0%". */
+fun shareText(percent: Int): String = if (percent <= 0) "<1%" else "$percent%"
+
 /** "Listening by weekday: Saturday is highest, 2 hours". */
 fun weekdayDescription(weekdays: List<Long>): String {
     val best = weekdays.indices.maxByOrNull { weekdays[it] }
@@ -145,7 +148,7 @@ fun heatDescription(grid: List<List<HeatCell>>): String {
 /** "Audiobookshelf 68%, Plex 32%". */
 fun sourcesDescription(shares: List<Pair<ServerSource, Int>>): String =
     if (shares.isEmpty()) "Where you listened: nothing yet"
-    else "Where you listened: " + shares.joinToString(", ") { "${sourceName(it.first)} ${it.second}%" }
+    else "Where you listened: " + shares.joinToString(", ") { "${sourceName(it.first)} ${shareText(it.second)}" }
 
 /** The line under Statistics in the Settings hub. */
 const val STATS_SUMMARY = "Listening time, streaks and series"

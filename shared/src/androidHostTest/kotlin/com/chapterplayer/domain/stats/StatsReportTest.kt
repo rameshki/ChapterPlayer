@@ -78,7 +78,7 @@ class StatsReportTest {
         val input = StatsInput(
             log = listOf(entry(today - 40, "abs_a", 600)),
             importedDays = listOf(ImportedDay("s1", today - 1, 1_200), ImportedDay("s1", today - 40, 50)),
-            importedItems = listOf(ImportedItem("s1", "abs_a", 3_000)),
+            importedItems = listOf(ImportedItem("s1", "abs_a", 3_000, loggedAtImport = 600)),
             items = listOf(BrowseItem(book("abs_a"), null, DownloadState.NOT_DOWNLOADED)),
             today = today,
         )

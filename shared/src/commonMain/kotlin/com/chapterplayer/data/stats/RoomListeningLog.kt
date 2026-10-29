@@ -37,17 +37,18 @@ class RoomListeningLog(
     }
 
     override fun observeImportedItems(): Flow<List<ImportedItem>> = dao.observeImportedItems().map { rows ->
-        rows.map { ImportedItem(it.serverId, it.bookId, it.seconds) }
+        rows.map { ImportedItem(it.serverId, it.bookId, it.seconds, it.loggedAtImport) }
     }
 
     override suspend fun importedServerIds(): Set<String> = dao.importedServerIds().toSet()
 
     override suspend fun replaceImport(serverId: String, stats: ServerListeningStats, importedAtMs: Long) {
         inTransaction {
+            val logged = dao.loggedTotals().associate { it.bookId to it.seconds }
             dao.deleteImportedDays(serverId)
             dao.deleteImportedItems(serverId)
             dao.insertImportedDays(stats.days.map { (day, seconds) -> ImportedListeningDayEntity(serverId, day, seconds) })
-            dao.insertImportedItems(stats.items.map { (bookId, seconds) -> ImportedListeningItemEntity(serverId, bookId, seconds) })
+            dao.insertImportedItems(stats.items.map { (bookId, seconds) -> ImportedListeningItemEntity(serverId, bookId, seconds, logged[bookId] ?: 0L) })
             dao.upsertImport(ListeningImportEntity(serverId, importedAtMs))
         }
     }

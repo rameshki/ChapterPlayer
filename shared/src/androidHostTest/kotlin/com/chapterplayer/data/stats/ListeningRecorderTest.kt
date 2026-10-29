@@ -173,6 +173,25 @@ class ListeningRecorderTest {
     }
 
     @Test
+    fun `after a failed write the next tries wait, then the time is written`() = runTest {
+        val r = rig()
+        r.log.onAdd = { error("disk full") }
+        r.play(2)
+        r.emit(playing = false)
+        assertEquals(1, r.log.addCalls)
+        // Pausing and playing again within the five second wait does not hit the database again.
+        r.play(2)
+        r.emit(playing = false)
+        assertEquals(1, r.log.addCalls)
+        r.log.onAdd = {}
+        advanceTimeBy(2_000)
+        r.play(1)
+        r.emit(playing = false)
+        assertEquals(2, r.log.addCalls)
+        assertEquals(5L, r.log.wall()[day to "abs_a"])
+    }
+
+    @Test
     fun `stopping playback writes what was pending`() = runTest {
         val r = rig()
         r.play(6)

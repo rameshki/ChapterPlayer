@@ -50,6 +50,9 @@ class ListeningRecorder(
     private val knownOwners = HashMap<String, BookOwner>()
     /** When the time not yet written began to gather; null when everything is written. */
     private var gatheringSince: Long? = null
+    /** Writes that failed in a row, and the monotonic time before which no write is tried again. */
+    private var failedWrites = 0
+    private var retryAt = 0L
 
     fun start() {
         if (started) return
@@ -92,8 +95,12 @@ class ListeningRecorder(
         if (!tick.audible || (since != null && mono - since >= flushEveryMs)) flush()
     }
 
-    /** Writes the whole seconds gathered so far; parts of a second stay for the next write. */
+    /**
+     * Writes the whole seconds gathered so far; parts of a second stay for the next write. After a failed write the
+     * next one waits (5 s, doubling to 5 min) so a broken database is not hit on every tick; the time is kept meanwhile.
+     */
     private suspend fun flush() {
+        if (clock.monoMs() < retryAt) return
         val entries = mutableListOf<ListeningLogEntry>()
         for ((key, p) in pending) {
             val wallSeconds = p.wallMs / 1_000
@@ -104,7 +111,16 @@ class ListeningRecorder(
         }
         if (entries.isNotEmpty()) {
             // On failure nothing is taken away, so the next write tries again with everything.
-            log.add(entries)
+            try {
+                log.add(entries)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failedWrites++
+                retryAt = clock.monoMs() + retryWaitMs(failedWrites)
+                return
+            }
+            failedWrites = 0
             for (e in entries) {
                 val p = pending.getValue(e.day to e.bookId)
                 p.wallMs -= e.wallSeconds * 1_000
@@ -125,5 +141,13 @@ class ListeningRecorder(
 
     private companion object {
         const val FLUSH_EVERY_MS = 30_000L
+        const val FIRST_RETRY_MS = 5_000L
+        const val MAX_RETRY_MS = 5 * 60_000L
+
+        fun retryWaitMs(failures: Int): Long {
+            var wait = FIRST_RETRY_MS
+            repeat((failures - 1).coerceAtMost(10)) { wait *= 2 }
+            return wait.coerceAtMost(MAX_RETRY_MS)
+        }
     }
 }

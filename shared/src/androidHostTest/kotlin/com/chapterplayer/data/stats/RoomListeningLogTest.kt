@@ -2,6 +2,7 @@ package com.chapterplayer.data.stats
 
 import com.chapterplayer.data.local.dao.ListeningDao
 import com.chapterplayer.data.local.entity.ImportedListeningDayEntity
+import com.chapterplayer.data.local.entity.BookSecondsRow
 import com.chapterplayer.data.local.entity.ImportedListeningItemEntity
 import com.chapterplayer.data.local.entity.ListeningImportEntity
 import com.chapterplayer.data.local.entity.ListeningLogEntity
@@ -36,6 +37,8 @@ class RoomListeningLogTest {
             log.value = log.value + row
             return log.value.size.toLong()
         }
+        override suspend fun loggedTotals(): List<BookSecondsRow> =
+            log.value.groupBy { it.bookId }.map { (bookId, rows) -> BookSecondsRow(bookId, rows.sumOf { it.wallSeconds }) }
         override fun observeImportedDays(): Flow<List<ImportedListeningDayEntity>> = days
         override fun observeImportedItems(): Flow<List<ImportedListeningItemEntity>> = items
         override suspend fun importedServerIds(): List<String> = imports.map { it.serverId }
@@ -74,5 +77,20 @@ class RoomListeningLogTest {
         assertEquals(emptyList(), log.observeImportedItems().first())
         assertEquals(setOf("s1", "s2"), log.importedServerIds())
         assertEquals(2_000L, dao.imports.single { it.serverId == "s1" }.importedAt)
+    }
+
+    @Test
+    fun `an import stores what the app had logged for each book at that moment`() = runTest {
+        val dao = MemoryDao()
+        val log = RoomListeningLog(dao)
+        log.add(listOf(ListeningLogEntry(5, "abs_a", "s1", ServerSource.ABS, 30, 30), ListeningLogEntry(6, "abs_a", "s1", ServerSource.ABS, 20, 20)))
+        log.replaceImport("s1", ServerListeningStats(items = mapOf("abs_a" to 300L, "abs_b" to 60L)), 1_000)
+        // Listening after the import does not change the stored baseline.
+        log.add(listOf(ListeningLogEntry(7, "abs_a", "s1", ServerSource.ABS, 99, 99)))
+
+        assertEquals(
+            setOf(ImportedItem("s1", "abs_a", 300, loggedAtImport = 50), ImportedItem("s1", "abs_b", 60, loggedAtImport = 0)),
+            log.observeImportedItems().first().toSet()
+        )
     }
 }

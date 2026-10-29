@@ -17,8 +17,11 @@ data class ListeningLogEntry(
 /** A day's total from a server's own history (Audiobookshelf's listening stats). */
 data class ImportedDay(val serverId: String, val day: Int, val seconds: Long)
 
-/** A book's all-time total from a server's own history, with the app's book id. */
-data class ImportedItem(val serverId: String, val bookId: String, val seconds: Long)
+/**
+ * A book's all-time total from a server's own history, with the app's book id. [loggedAtImport] is what the app had
+ * logged for the book when the history was imported (that listening reached the server, so it is inside [seconds]).
+ */
+data class ImportedItem(val serverId: String, val bookId: String, val seconds: Long, val loggedAtImport: Long = 0L)
 
 /** The listening log and the imported server history the statistics page reads. */
 interface ListeningLog {
@@ -35,6 +38,9 @@ interface ListeningLog {
     /** The servers whose history has been imported at least once. */
     suspend fun importedServerIds(): Set<String>
 
-    /** Replaces everything imported from [serverId] with [stats] and records the import time. */
+    /**
+     * Replaces everything imported from [serverId] with [stats] and records the import time. Each book's logged total
+     * at this moment is stored with its server total ([ImportedItem.loggedAtImport]), in the same transaction.
+     */
     suspend fun replaceImport(serverId: String, stats: ServerListeningStats, importedAtMs: Long)
 }

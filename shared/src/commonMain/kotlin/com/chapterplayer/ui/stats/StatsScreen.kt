@@ -47,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -80,6 +79,7 @@ import com.chapterplayer.domain.stats.heroDetail
 import com.chapterplayer.domain.stats.heroLabel
 import com.chapterplayer.domain.stats.periodLabel
 import com.chapterplayer.domain.stats.seriesToFinishLine
+import com.chapterplayer.domain.stats.shareText
 import com.chapterplayer.domain.stats.sourceName
 import com.chapterplayer.domain.stats.sourceShares
 import com.chapterplayer.domain.stats.sourcesDescription
@@ -264,16 +264,8 @@ private fun Tile(value: String, label: String, modifier: Modifier = Modifier, sp
     }
 }
 
-/** The colour of a heat level: from the empty square towards amber. */
 @Composable
-private fun heatColor(cell: HeatCell): Color {
-    val empty = SurfaceSecondary
-    if (cell.future) return empty.copy(alpha = 0.35f)
-    return when (cell.level) {
-        0 -> empty
-        else -> lerp(empty, AmberGold, cell.level / 4f)
-    }
-}
+private fun heatColor(cell: HeatCell): Color = heatCellColor(LocalPalette.current, cell.level, cell.future)
 
 @Composable
 private fun HeatGrid(weeks: List<List<HeatCell>>, period: StatsPeriod) {
@@ -401,7 +393,7 @@ private fun Sources(sources: Map<ServerSource, Long>) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(sourceColor(source)))
                     Text(
-                        "${sourceName(source)} $percent%",
+                        "${sourceName(source)} ${shareText(percent)}",
                         style = MaterialTheme.typography.bodySmall.merge(Tabular),
                         color = TextSecondary,
                         modifier = Modifier.padding(start = 5.dp),

@@ -65,14 +65,34 @@ class StatsRulesTest {
     // ---- Day totals ---------------------------------------------------------------------------------------------------
 
     @Test
-    fun `imported days count only where the app logged nothing`() {
+    fun `a day takes the larger of the app's log and the servers' history`() {
         val totals = dayTotals(
-            listOf(entry(today, wall = 100), entry(today, book = "plex_b", wall = 50, source = ServerSource.PLEX)),
-            listOf(ImportedDay("s1", today, 9_999), ImportedDay("s1", today - 1, 300), ImportedDay("s2", today - 1, 200))
+            listOf(
+                entry(today, wall = 100), entry(today, book = "plex_b", wall = 50, source = ServerSource.PLEX),
+                entry(today - 2, wall = 900),
+            ),
+            listOf(
+                // Today the history holds more: listening in another client too.
+                ImportedDay("s1", today, 9_999),
+                // Only imported, summed over servers.
+                ImportedDay("s1", today - 1, 300), ImportedDay("s2", today - 1, 200),
+                // The app's own listening that reached the server: not counted twice.
+                ImportedDay("s1", today - 2, 600),
+            )
         )
-        assertEquals(DayTotal(150, imported = false), totals[today])
+        assertEquals(DayTotal(9_999, imported = true), totals[today])
         assertEquals(DayTotal(500, imported = true), totals[today - 1])
-        assertEquals(2, totals.size)
+        assertEquals(DayTotal(900, imported = false), totals[today - 2])
+        assertEquals(3, totals.size)
+    }
+
+    @Test
+    fun `on an overlap day the source split adds only the history beyond the log, and matches the total`() {
+        val log = listOf(entry(today, wall = 300), entry(today, "plex_b", 100, source = ServerSource.PLEX))
+        val totals = dayTotals(log, listOf(ImportedDay("s1", today, 1_000)))
+        val split = sourceSplit(log, totals, DayRange(today, today))
+        assertEquals(mapOf(ServerSource.ABS to 900L, ServerSource.PLEX to 100L), split)
+        assertEquals(totals.getValue(today).seconds, split.values.sum())
     }
 
     @Test
@@ -164,13 +184,31 @@ class StatsRulesTest {
     }
 
     @Test
-    fun `all time adds the server's earlier totals beyond what the app logged`() {
+    fun `all time adds the server's totals beyond what the app had logged at the import`() {
         val items = listOf(item(book("abs_a", author = "Ann Lee")), item(book("abs_b", author = "Bob Ray")))
         val log = listOf(entry(today, "abs_a", 600))
-        val imported = listOf(ImportedItem("s1", "abs_a", 1_000), ImportedItem("s1", "abs_b", 300), ImportedItem("s1", "abs_gone", 5_000))
+        val imported = listOf(
+            ImportedItem("s1", "abs_a", 1_000, loggedAtImport = 600), ImportedItem("s1", "abs_b", 300), ImportedItem("s1", "abs_gone", 5_000)
+        )
         val top = topListened(TopKind.AUTHORS, log, imported, items, DayRange(today - 400, today), includeEarlier = true)
-        // abs_a: 600 logged + (1000 - 600) earlier. abs_b: 300 earlier only.
+        // abs_a: 600 logged + (1000 - 600) the app never logged. abs_b: 300 from the server only.
         assertEquals(listOf(Ranked("ann lee", "Ann Lee", 1_000), Ranked("bob ray", "Bob Ray", 300)), top)
+    }
+
+    @Test
+    fun `all time lists keep growing with listening logged after the import`() {
+        val h = 3_600L
+        val items = listOf(item(book("abs_a", author = "Ann Lee")))
+        fun allTime(log: List<ListeningLogEntry>, imported: List<ImportedItem>) =
+            topListened(TopKind.AUTHORS, log, imported, items, DayRange(today - 400, today), includeEarlier = true).single().seconds
+        // 2 h logged in the app, then an import whose 10 h include those 2 h: the book shows 10 h, not 12.
+        val before = listOf(entry(today - 3, "abs_a", 2 * h))
+        val imported = listOf(ImportedItem("s1", "abs_a", 10 * h, loggedAtImport = 2 * h))
+        assertEquals(10 * h, allTime(before, imported))
+        // 9 h more logged after the import: it grows, without waiting for another import.
+        assertEquals(19 * h, allTime(before + entry(today, "abs_a", 9 * h), imported))
+        // An import made before any logging: the 2 h logged afterwards are new listening on top.
+        assertEquals(12 * h, allTime(listOf(entry(today, "abs_a", 2 * h)), listOf(ImportedItem("s1", "abs_a", 10 * h, loggedAtImport = 0))))
     }
 
     @Test
@@ -200,6 +238,13 @@ class StatsRulesTest {
         val items = listOf(a, b, c, d)
         assertEquals(2, booksFinished(items, DayRange(today - 7, today), DayZone.UTC))
         assertEquals(3, booksFinished(items, null, DayZone.UTC))
+    }
+
+    @Test
+    fun `a finished book without a play time counts in all time only`() {
+        val undated = item(book("abs_a"), positionMs = 100, finished = true, playedAt = 0L)
+        assertEquals(1, booksFinished(listOf(undated), null, DayZone.UTC))
+        assertEquals(0, booksFinished(listOf(undated), DayRange(today - 7, today), DayZone.UTC))
     }
 
     @Test

@@ -69,19 +69,32 @@ fun changePercent(current: Long, currentDays: Int, previous: Long, previousDays:
     return ((now / before - 1.0) * 100.0).roundToInt()
 }
 
-/** One day's listening in seconds; [imported] when it comes from a server's history rather than the app's log. */
+/** One day's listening in seconds; [imported] when the servers' history for the day is more than the app logged. */
 data class DayTotal(val seconds: Long, val imported: Boolean)
 
-/** Seconds per day: the app's log where it has rows for the day, otherwise the imported totals of every server. */
+/**
+ * Seconds per day: the larger of what the app logged and what the servers' histories hold for the day (summed over
+ * servers). The app's own listening reaches Audiobookshelf too, so adding the two would count it twice; taking the
+ * larger keeps listening in another client on a day the app also logged (and the day the feature arrived), at the
+ * cost of under-counting a day split between this app on Plex and another Audiobookshelf client.
+ */
 fun dayTotals(log: List<ListeningLogEntry>, imported: List<ImportedDay>): Map<Int, DayTotal> {
+    val local = loggedPerDay(log)
+    val fromServers = HashMap<Int, Long>()
+    for (d in imported) fromServers[d.day] = (fromServers[d.day] ?: 0L) + d.seconds
+    val result = HashMap<Int, DayTotal>()
+    for (day in local.keys + fromServers.keys) {
+        val logged = local[day] ?: 0L
+        val server = fromServers[day] ?: 0L
+        result[day] = if (server > logged) DayTotal(server, imported = true) else DayTotal(logged, imported = false)
+    }
+    return result
+}
+
+private fun loggedPerDay(log: List<ListeningLogEntry>): Map<Int, Long> {
     val local = HashMap<Int, Long>()
     for (e in log) local[e.day] = (local[e.day] ?: 0L) + e.wallSeconds
-    val fromServers = HashMap<Int, Long>()
-    for (d in imported) if (d.day !in local) fromServers[d.day] = (fromServers[d.day] ?: 0L) + d.seconds
-    val result = HashMap<Int, DayTotal>()
-    for ((day, seconds) in local) result[day] = DayTotal(seconds, imported = false)
-    for ((day, seconds) in fromServers) result[day] = DayTotal(seconds, imported = true)
-    return result
+    return local
 }
 
 /** A day counts towards a streak with at least this much listening. */
@@ -134,8 +147,8 @@ private fun entriesById(items: List<BrowseItem>): Map<String, BrowseItem> {
 
 /**
  * The most listened authors, narrators or series in [range]: each book's logged time goes to every name it lists
- * (a co-author gets the whole book). With [includeEarlier] (all time), a book's server total that is more than the app
- * logged for it is added too, as listening from before the app counted. Books no longer in the library are left out.
+ * (a co-author gets the whole book). With [includeEarlier] (all time), a book's server total beyond what the app had
+ * logged for it at the import ([ImportedItem.loggedAtImport]) is added too, as listening the app did not log. Books no longer in the library are left out.
  * Highest first, then by name; at most [limit].
  */
 fun topListened(
@@ -156,13 +169,9 @@ fun topListened(
         perEntry[entry.book.id] = entry to ((perEntry[entry.book.id]?.second ?: 0L) + seconds)
     }
     for (e in log) if (e.day in range) add(e.bookId, e.wallSeconds)
-    if (includeEarlier) {
-        val loggedByBook = HashMap<String, Long>()
-        for (e in log) loggedByBook[e.bookId] = (loggedByBook[e.bookId] ?: 0L) + e.wallSeconds
-        val serverByBook = HashMap<String, Long>()
-        for (i in importedItems) serverByBook[i.bookId] = (serverByBook[i.bookId] ?: 0L) + i.seconds
-        for ((bookId, seconds) in serverByBook) add(bookId, seconds - (loggedByBook[bookId] ?: 0L))
-    }
+    // The server's total already holds what the app had logged for the book at the import; only the rest is listening
+    // the app never logged. Listening logged after the import is in the log above, so the list keeps growing.
+    if (includeEarlier) for (i in importedItems) add(i.bookId, i.seconds - i.loggedAtImport)
     val totals = LinkedHashMap<String, Ranked>()
     for ((entry, seconds) in perEntry.values) {
         val names = when (kind) {
@@ -181,14 +190,19 @@ fun topListened(
         .take(limit)
 }
 
-/** Listening in [range] by kind of server: logged days by the source of each row, imported days as Audiobookshelf. */
+/**
+ * Listening in [range] by kind of server: logged time by the source of each row, plus what a day's imported history
+ * holds beyond the log as Audiobookshelf. The shares add up to the hero total.
+ */
 fun sourceSplit(log: List<ListeningLogEntry>, totals: Map<Int, DayTotal>, range: DayRange): Map<ServerSource, Long> {
     val result = LinkedHashMap<ServerSource, Long>()
     fun add(source: ServerSource, seconds: Long) {
         if (seconds > 0L) result[source] = (result[source] ?: 0L) + seconds
     }
     for (e in log) if (e.day in range) add(e.source, e.wallSeconds)
-    for ((day, total) in totals) if (day in range && total.imported) add(ServerSource.ABS, total.seconds)
+    // What a day's history holds beyond the app's log was heard in another Audiobookshelf client.
+    val logged = loggedPerDay(log)
+    for ((day, total) in totals) if (day in range && total.imported) add(ServerSource.ABS, total.seconds - (logged[day] ?: 0L))
     return result
 }
 

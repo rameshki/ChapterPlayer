@@ -333,7 +333,10 @@ class RoomSchemaTest {
         assertEquals(listOf("day", "bookId"), primaryKey("listening_log", database11))
         assertEquals(mapOf("serverId" to "TEXT", "day" to "INTEGER", "seconds" to "INTEGER"), columns("imported_listening_days", database11))
         assertEquals(listOf("serverId", "day"), primaryKey("imported_listening_days", database11))
-        assertEquals(mapOf("serverId" to "TEXT", "bookId" to "TEXT", "seconds" to "INTEGER"), columns("imported_listening_items", database11))
+        assertEquals(
+            mapOf("serverId" to "TEXT", "bookId" to "TEXT", "seconds" to "INTEGER", "loggedAtImport" to "INTEGER"),
+            columns("imported_listening_items", database11)
+        )
         assertEquals(listOf("serverId", "bookId"), primaryKey("imported_listening_items", database11))
         assertEquals(mapOf("serverId" to "TEXT", "importedAt" to "INTEGER"), columns("listening_imports", database11))
         assertEquals(listOf("serverId"), primaryKey("listening_imports", database11))

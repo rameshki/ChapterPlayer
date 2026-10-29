@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -57,11 +58,12 @@ class StatsViewModelTest {
         val log = FakeListeningLog()
         val importer = FakeImport()
         val servers = FakeServerList(listOf(testServer("s1")))
+        var nowMs = today * MS_PER_DAY + 3_600_000L
         val vm = StatsViewModel(
             books, FakeDownloadStates(), FakeDownloadOverview(), log, servers, importer, DayZone.UTC,
             object : ListeningClock {
                 override fun monoMs() = 0L
-                override fun nowMs() = today * MS_PER_DAY + 3_600_000L
+                override fun nowMs() = nowMs
             },
             Dispatchers.Main,
         )
@@ -105,6 +107,20 @@ class StatsViewModelTest {
         assertEquals("History updated from 1 server", s.vm.uiState.value.message)
         s.vm.onMessageShown()
         assertNull(s.vm.uiState.value.message)
+    }
+
+    @Test
+    fun `an open page moves to the new day after midnight`() = runTest {
+        val s = Setup()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.vm.uiState.collect {} }
+        s.vm.onPeriodSelected(StatsPeriod.WEEK)
+        assertEquals(today, s.vm.uiState.value.report!!.range.last)
+        s.log.log.value = listOf(ListeningLogEntry(today + 1, "abs_a", "s1", ServerSource.ABS, 600, 600))
+        // The clock passes midnight; within the minute the page notices.
+        s.nowMs = (today + 1) * MS_PER_DAY + 60_000L
+        advanceTimeBy(60_001)
+        assertEquals(today + 1, s.vm.uiState.value.report!!.range.last)
+        assertEquals(600L, s.vm.uiState.value.report!!.listenedSeconds)
     }
 
     @Test

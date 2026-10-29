@@ -26,13 +26,20 @@ data class ImportedListeningDayEntity(
     val seconds: Long,
 )
 
-/** A book's all-time total from a server's own history (no dates: the server does not break it down by day). */
+/**
+ * A book's all-time total from a server's own history (no dates: the server does not break it down by day).
+ * [loggedAtImport] is the app's logged total for the book at the import, already part of [seconds].
+ */
 @Entity(tableName = "imported_listening_items", primaryKeys = ["serverId", "bookId"])
 data class ImportedListeningItemEntity(
     val serverId: String,
     val bookId: String,
     val seconds: Long,
+    val loggedAtImport: Long,
 )
+
+/** A book's summed logged seconds (a query result, not a table). */
+data class BookSecondsRow(val bookId: String, val seconds: Long)
 
 /** When a server's history was last imported; a server without a row has never been imported. */
 @Entity(tableName = "listening_imports")

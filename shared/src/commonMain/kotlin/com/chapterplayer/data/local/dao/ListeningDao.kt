@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.chapterplayer.data.local.entity.BookSecondsRow
 import com.chapterplayer.data.local.entity.ImportedListeningDayEntity
 import com.chapterplayer.data.local.entity.ImportedListeningItemEntity
 import com.chapterplayer.data.local.entity.ListeningImportEntity
@@ -25,6 +26,10 @@ interface ListeningDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertLog(row: ListeningLogEntity): Long
+
+    /** Each book's logged wall seconds over all days. */
+    @Query("SELECT bookId, SUM(wallSeconds) AS seconds FROM listening_log GROUP BY bookId")
+    suspend fun loggedTotals(): List<BookSecondsRow>
 
     @Query("SELECT * FROM imported_listening_days ORDER BY day, serverId")
     fun observeImportedDays(): Flow<List<ImportedListeningDayEntity>>

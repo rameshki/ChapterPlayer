@@ -62,6 +62,14 @@ class StatsTextTest {
     }
 
     @Test
+    fun `a tiny share reads as less than one percent, never zero`() {
+        val shares = sourceShares(mapOf(ServerSource.ABS to 100_000L, ServerSource.PLEX to 10L))
+        assertEquals(listOf(ServerSource.ABS to 100, ServerSource.PLEX to 0), shares)
+        assertEquals("<1%", shareText(shares[1].second))
+        assertEquals("Where you listened: Audiobookshelf 100%, Plex <1%", sourcesDescription(shares))
+    }
+
+    @Test
     fun `chart descriptions name the highest weekday and the busiest day`() {
         assertEquals("Listening by weekday: Saturday is highest, 2 hours", weekdayDescription(listOf(60L, 0, 0, 0, 0, 7_200, 3_600)))
         assertEquals("Listening by weekday: nothing yet", weekdayDescription(List(7) { 0L }))

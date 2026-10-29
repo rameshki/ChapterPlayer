@@ -35,7 +35,9 @@ class FakeListeningLog : ListeningLog {
 
     override suspend fun replaceImport(serverId: String, stats: ServerListeningStats, importedAtMs: Long) {
         days.value = days.value.filter { it.serverId != serverId } + stats.days.map { ImportedDay(serverId, it.key, it.value) }
-        items.value = items.value.filter { it.serverId != serverId } + stats.items.map { ImportedItem(serverId, it.key, it.value) }
+        val logged = log.value.groupBy { it.bookId }.mapValues { (_, rows) -> rows.sumOf { it.wallSeconds } }
+        items.value = items.value.filter { it.serverId != serverId } +
+            stats.items.map { ImportedItem(serverId, it.key, it.value, logged[it.key] ?: 0L) }
         imports[serverId] = importedAtMs
     }
 
