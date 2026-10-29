@@ -109,8 +109,11 @@ class PlexLibrarySource(
         )
     }
 
-    /** Runs [call]; a 401 from the server blanks its token ([markSignedOut]) and is a [SignInRequiredException]. */
-    private suspend fun <T> signedIn(server: ServerConfig, call: suspend () -> T): T =
+    /**
+     * Runs [call]; a 401 from the server (an [HttpStatusException]) blanks its token ([markSignedOut]) and is a
+     * [SignInRequiredException]. Downloads go through it too.
+     */
+    suspend fun <T> signedIn(server: ServerConfig, call: suspend () -> T): T =
         try {
             call()
         } catch (e: HttpStatusException) {
