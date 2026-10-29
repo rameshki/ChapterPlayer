@@ -16,7 +16,7 @@ import kotlin.math.max
  * The members are ordered (and the first is the primary, the one the lists show) by: a downloaded copy first, a
  * reachable server before an unreachable one, then the server type the preference names, then Audiobookshelf, then
  * the book id. The entry's progress is the member progress with the newest `lastPlayedAt` (the copy listened to last;
- * progress is not mirrored between sources yet).
+ * on a tie a copy's own row wins over a mirrored one, see `mirroredProgress`).
  */
 
 /** What to do when a book is on several servers. The default prefers the downloaded copy, then Audiobookshelf. */
@@ -245,7 +245,10 @@ private fun metadataOrder(members: List<BrowseItem>): List<BrowseItem> =
     members.sortedBy { if (it.book.source == ServerSource.ABS) 0 else 1 }
 
 private fun withPrimary(primary: BrowseItem, ordered: List<BrowseItem>): BrowseItem {
-    val newest = ordered.mapNotNull { it.progress }.sortedWith(compareByDescending<com.chapterplayer.data.model.ReadingProgress> { it.lastPlayedAt }.thenBy { it.bookId }).firstOrNull()
+    // A mirrored row carries the time of the copy it was copied from: on a tie the copy really played wins.
+    val newest = ordered.mapNotNull { it.progress }.sortedWith(
+        compareByDescending<com.chapterplayer.data.model.ReadingProgress> { it.lastPlayedAt }.thenBy { it.mirrored }.thenBy { it.bookId }
+    ).firstOrNull()
     val sources = listOf(primary) + ordered.filter { it.book.id != primary.book.id }
     // Series, author and narrator for the groupings come from any copy that has them, an Audiobookshelf one first,
     // so a book never drops out of its series because the primary is a Plex copy without one.

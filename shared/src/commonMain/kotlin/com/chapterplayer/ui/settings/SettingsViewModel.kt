@@ -219,6 +219,25 @@ class SettingsViewModel(
         }
     }
 
+    /** The copies of a book on several servers keep their progress in step (on for new installs). */
+    val mirrorProgress: StateFlow<Boolean> =
+        appSettings.mirrorProgress.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = true
+        )
+
+    fun setMirrorProgress(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                appSettings.setMirrorProgress(enabled)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
+    }
+
     /** Android Auto starts the last book by itself when the phone connects to the car (on for new installs). */
     val resumeOnCarConnect: StateFlow<Boolean> =
         appSettings.resumeOnCarConnect.stateIn(

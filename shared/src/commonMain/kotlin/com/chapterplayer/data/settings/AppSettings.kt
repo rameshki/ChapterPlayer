@@ -54,6 +54,10 @@ interface AppSettings {
     /** Which copy plays when a book is on several servers; by default the downloaded one, then Audiobookshelf. */
     val sourcePreference: Flow<SourcePreference>
     suspend fun setSourcePreference(preference: SourcePreference)
+
+    /** Whether the copies of a book on several servers keep their progress in step (on by default). */
+    val mirrorProgress: Flow<Boolean>
+    suspend fun setMirrorProgress(enabled: Boolean)
 }
 
 class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSettings {
@@ -68,6 +72,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val downloadLimit = longPreferencesKey("download_storage_limit_bytes")
         val downloadLocation = stringPreferencesKey("download_location_id")
         val sourcePreference = stringPreferencesKey("source_preference")
+        val mirrorProgress = booleanPreferencesKey("mirror_progress")
     }
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
@@ -99,6 +104,8 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         p[Keys.sourcePreference]?.let { name -> SourcePreference.entries.firstOrNull { it.name == name } } ?: DEFAULT_SOURCE_PREFERENCE
     }
 
+    override val mirrorProgress: Flow<Boolean> = prefs.map { it[Keys.mirrorProgress] ?: true }
+
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
@@ -115,4 +122,5 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
     }
     override suspend fun setSourcePreference(preference: SourcePreference) { store.edit { it[Keys.sourcePreference] = preference.name } }
+    override suspend fun setMirrorProgress(enabled: Boolean) { store.edit { it[Keys.mirrorProgress] = enabled } }
 }

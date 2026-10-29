@@ -428,6 +428,15 @@ class MergedSourcesTest {
     // ---- resume copy and grouping metadata ----
 
     @Test
+    fun `a mirrored row as new as the copy played last does not take its place`() {
+        // The Plex copy was listened to; the Audiobookshelf row was copied from it with the same time.
+        val abs = item("a", "abs1", lastPlayedAt = 9L).let { it.copy(progress = it.progress!!.copy(mirrored = true)) }
+        val entry = merge(listOf(abs, item("p", "plex1", lastPlayedAt = 9L))).single()
+        assertEquals("p", entry.progress?.bookId)
+        assertEquals("p", resumeCopy(entry).book.id)
+    }
+
+    @Test
     fun `resume picks the copy played last, or one that can play`() {
         val entry = merge(listOf(item("a", "abs1", lastPlayedAt = 1L), item("p", "plex1", lastPlayedAt = 9L))).single()
         assertEquals("a", entry.book.id)

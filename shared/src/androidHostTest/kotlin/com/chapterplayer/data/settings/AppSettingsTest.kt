@@ -41,6 +41,16 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `copies of a book keep their progress in step until switched off`() = runTest {
+        val settings = DataStoreAppSettings(InMemoryPreferencesDataStore())
+        assertEquals(true, settings.mirrorProgress.first())
+        settings.setMirrorProgress(false)
+        assertEquals(false, settings.mirrorProgress.first())
+        settings.setMirrorProgress(true)
+        assertEquals(true, settings.mirrorProgress.first())
+    }
+
+    @Test
     fun `downloads have no storage limit and use internal storage until changed`() = runTest {
         val store = InMemoryPreferencesDataStore()
         val settings = DataStoreAppSettings(store)

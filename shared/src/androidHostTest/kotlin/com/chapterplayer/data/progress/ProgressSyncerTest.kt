@@ -183,6 +183,15 @@ class ProgressSyncerTest {
     }
 
     @Test
+    fun `a live sync drops a queued mirror of the book, a finished one too`() = runTest {
+        val r = rig()
+        r.repo.queueProgress(PendingProgress("a", "s1", 90_000, 100_000, 0, updatedAtMs = 0, markedFinished = true, mirrorOf = "plex"))
+        r.play("a", pos = 7_000)
+        advanceTimeBy(10_500)
+        assertTrue(r.repo.queued.isEmpty())
+    }
+
+    @Test
     fun `a failed live sync keeps the queue`() = runTest {
         val r = rig()
         r.repo.onSyncPlayback = { Result.failure(IllegalStateException("down")) }

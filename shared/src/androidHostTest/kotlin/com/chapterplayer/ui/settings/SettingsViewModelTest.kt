@@ -93,6 +93,20 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `keeping copies in step starts on and can be switched off and on`() = runTest {
+        val settings = FakeAppSettings()
+        val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+        assertEquals(true, vm.mirrorProgress.value)
+
+        vm.setMirrorProgress(false)
+        assertEquals(false, settings.mirrorProgressFlow.value)
+        assertEquals(false, vm.mirrorProgress.value)
+
+        vm.setMirrorProgress(true)
+        assertEquals(true, settings.mirrorProgressFlow.value)
+    }
+
+    @Test
     fun `resume when connected to the car starts on and can be switched off and on`() = runTest {
         val settings = FakeAppSettings()
         val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())

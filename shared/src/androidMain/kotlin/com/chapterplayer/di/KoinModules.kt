@@ -51,6 +51,7 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.stats.DayZone
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressSyncer
+import com.chapterplayer.data.progress.ProgressMirrorPusher
 import com.chapterplayer.data.progress.ServerProgressRefresher
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.remote.abs.AbsApiService
@@ -77,6 +78,8 @@ import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.RoomBookMergeRepository
 import com.chapterplayer.data.merge.AppSourceMerging
 import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.merge.MergedProgressPeers
+import com.chapterplayer.data.merge.ProgressMirrorPeers
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.BookRepositoryImpl
 import com.chapterplayer.data.repository.LibraryCatalog
@@ -224,8 +227,21 @@ val repositoryModule = module {
             },
             onQueued = { get<PendingProgressFlusher>().kick() },
             // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
-            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith }
+            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
+            // A save of one copy of a merged book moves the other copies' local rows (Settings switch, on by default).
+            mirrorPeers = get(),
+            // Looked up when a mirror is written, not when this is built (the player is in the playback module).
+            loadedBookId = { get<PlaybackController>().state.value.bookId }
         ) }
+    // The other copies of a merged book, grouped like the lists (the user's corrections included).
+    single<ProgressMirrorPeers> {
+        MergedProgressPeers(
+            get<BookDao>().observeAll().map { rows -> rows.map { it.toDomain(emptyList()) } },
+            get<BookMergeRepository>().overrides,
+            get<AppSettings>().mirrorProgress,
+            get(AppScopeQualifier),
+        )
+    }
     single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get()) }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
     // The user's "Not the same book" and "Merge with" choices for books on several servers.
@@ -276,7 +292,13 @@ val playbackModule = module {
     single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
     // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
     single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
-    single { PendingProgressFlusher(get(), get(), get(AppScopeQualifier)) }
+    single {
+        PendingProgressFlusher(get(), get(), get(AppScopeQualifier), peers = get(), loadedBookId = { get<PlaybackController>().state.value.bookId })
+    }
+    // The other copies of a merged book: their servers hear the mapped position through the queue (throttled).
+    single {
+        ProgressMirrorPusher(get(), get(), get(), statusStore = get(), scope = get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() })
+    }
     single { ServerProgressRefresher(get(), get(), get(), get(AppScopeQualifier)) }
     single { BookmarkSyncer(get(), get(), get(), get(AppScopeQualifier)) }
     single { HistoryRecorder(get(), get(), get(AppScopeQualifier)) }

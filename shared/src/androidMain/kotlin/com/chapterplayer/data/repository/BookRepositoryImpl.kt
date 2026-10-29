@@ -16,6 +16,7 @@ import com.chapterplayer.data.local.entity.CollectionEntity
 import com.chapterplayer.data.local.entity.LibraryEntity
 import com.chapterplayer.data.local.entity.PendingProgressEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
+import com.chapterplayer.data.merge.ProgressMirrorPeers
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
@@ -30,6 +31,10 @@ import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.MarkOutcome
+import com.chapterplayer.domain.playback.MirrorPeer
+import com.chapterplayer.domain.playback.combinedMarkOutcome
+import com.chapterplayer.domain.playback.mirroredProgress
+import com.chapterplayer.domain.playback.mirrorRowYields
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.addToHistory
@@ -45,6 +50,12 @@ import com.chapterplayer.domain.playback.visibleBookmarks
 import com.chapterplayer.data.remote.HttpStatusException
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -74,7 +85,13 @@ class BookRepositoryImpl(
      * Called when starting playback failed: the server to retry once with (its address changed, e.g. a Plex server whose
      * cached connection no longer answers was switched to another one), or null to fail as is.
      */
-    private val onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null }
+    private val onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null },
+    /** The other copies of a merged book, whose local progress follows each save (none: no mirroring). */
+    private val mirrorPeers: ProgressMirrorPeers = ProgressMirrorPeers.None,
+    /** The book loaded in the player, if any: a mirror never rewrites its row (the player's own saves own it). */
+    private val loadedBookId: () -> String? = { null },
+    /** How long a mark waits for a server before it is queued instead (the menu's message waits for it). */
+    private val markServerWaitMs: Long = MARK_SERVER_WAIT_MS,
 ) : BookRepository {
 
     // -------------------------------------------------------------------------
@@ -304,12 +321,35 @@ class BookRepositoryImpl(
     override suspend fun saveServerProgress(bookId: String, server: ServerProgress) {
         // A book that is not in the library gets no orphan progress row.
         if (bookDao.getById(bookId) == null) return
-        // Read, decide and write together, so a save from the player cannot slip in between.
-        inTransaction {
-            val merged = mergeServerProgress(
-                bookId, progressDao.get(bookId)?.toDomain(), server, hasPendingLocal = pendingDao.get(bookId) != null
-            )
-            if (merged != null) progressDao.upsert(ProgressEntity.fromDomain(merged))
+        saveServerProgress(bookId, server, peersOf(bookId))
+    }
+
+    /**
+     * [saveServerProgress] with the other copies already looked up ([peers]). A queued mirror older than [server] is out of
+     * date: it is removed and the merge goes ahead ([mirrorRowYields]); the book's own queued row or a mark holds it back.
+     * The server's time is never later than now, and a mirrored row the server only echoes stays (see `mergeServerProgress`).
+     */
+    private suspend fun saveServerProgress(bookId: String, server: ServerProgress, peers: List<MirrorPeer>) {
+        val loaded = loadedOrNull()
+        // Read, decide and write together (the other copies' rows too), so a save from the player cannot slip in between.
+        progressLock.withLock {
+            inTransaction {
+                val local = progressDao.get(bookId)?.toDomain()
+                val queued = pendingDao.get(bookId)
+                val blocked = when {
+                    queued == null -> false
+                    mirrorRowYields(queued.toDomain(), server, nowMs = clock()) -> {
+                        pendingDao.delete(bookId, queued.updatedAtMs)
+                        false
+                    }
+                    else -> true
+                }
+                val merged = mergeServerProgress(bookId, local, server, hasPendingLocal = blocked, nowMs = clock())
+                if (merged != null) {
+                    progressDao.upsert(ProgressEntity.fromDomain(merged))
+                    mirrorLocked(merged, peers, loaded)
+                }
+            }
         }
     }
 
@@ -319,9 +359,16 @@ class BookRepositoryImpl(
             val all = source.fetchAllProgress(server)
             if (all.isEmpty()) return
             val cached = bookDao.getByServer(serverId).map { it.id }.toSet()
-            for ((bookId, progress) in all) {
-                if (bookId in cached) saveServerProgress(bookId, progress)
+            // The other copies are looked up once for the whole pass.
+            val ids = all.keys.filter { it in cached }
+            val peers = try {
+                mirrorPeers.peersOfAll(ids) ?: emptyMap()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                emptyMap()
             }
+            for (bookId in ids) saveServerProgress(bookId, all.getValue(bookId), peers[bookId].orEmpty())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -543,29 +590,111 @@ class BookRepositoryImpl(
     private val userMarks = HashMap<String, Long>()
 
     override suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long) {
+        val peers = peersOf(progress.bookId)
+        val loaded = loadedOrNull()
         progressLock.withLock {
             inTransaction {
                 val existing = progressDao.get(progress.bookId)?.toDomain()
                 val keep = keepsFinishedMark(existing, userMarks[progress.bookId], loadedSinceMs)
                 if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else userMarks.remove(progress.bookId)
-                progressDao.upsert(ProgressEntity.fromDomain(if (keep) progress.copy(isFinished = true) else progress))
+                // The player's save is listening on this copy: never a mirrored row.
+                val saved = (if (keep) progress.copy(isFinished = true) else progress).copy(mirrored = false)
+                progressDao.upsert(ProgressEntity.fromDomain(saved))
+                mirrorLocked(saved, peers, loaded)
             }
         }
     }
 
+    /** The other copies of [bookId] (empty with mirroring off); looked up before the lock, as it reads other tables. */
+    private suspend fun peersOf(bookId: String): List<MirrorPeer> = try {
+        mirrorPeers.peersOf(bookId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    private fun loadedOrNull(): String? = try {
+        loadedBookId()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * Moves the other copies' local rows to where [source] is (see `mirroredProgress`: by fraction, newest wins, flagged
+     * mirrored). Never the copy [loaded] in the player (its own saves own its row), and never a copy whose row is the
+     * user's finished mark of this session (the player's pin, `keepsFinishedMark`, would be lost). Call with
+     * [progressLock] held, inside the transaction that wrote [source].
+     */
+    private suspend fun mirrorLocked(source: ReadingProgress, peers: List<MirrorPeer>, loaded: String?) {
+        for (peer in peers) {
+            if (peer.bookId == loaded) continue
+            val existing = progressDao.get(peer.bookId)?.toDomain()
+            val pinned = userMarks[peer.bookId]?.let { at -> existing != null && existing.isFinished && existing.lastPlayedAt == at } == true
+            if (pinned) continue
+            val mirror = mirroredProgress(source, peer.bookId, peer.durationMs, existing) ?: continue
+            progressDao.upsert(ProgressEntity.fromDomain(mirror))
+        }
+    }
+
+    /**
+     * Marks [bookId] and, for a merged book with mirroring on, every other copy too. The book itself changes locally first:
+     * when that fails, the result is the failure and no other copy is touched. Then the other copies change locally, and
+     * every copy goes to its own server at once (Audiobookshelf progress, Plex scrobbles); a server that does not answer
+     * within [markServerWaitMs] gets the mark through the queue. The outcome is PARTIAL (or PARTIAL_QUEUED) when another
+     * copy could not be marked, QUEUED when any copy waits (see [combinedMarkOutcome]).
+     */
     override suspend fun markFinished(bookId: String, finished: Boolean): Result<MarkOutcome> =
         try {
-            val book = bookDao.getById(bookId) ?: error("Unknown book")
-            val now = clock()
-            // Local first: the UI follows at once and it works offline.
-            lateinit var local: ReadingProgress
-            progressLock.withLock {
-                inTransaction {
-                    local = progressAfterMark(progressDao.get(bookId)?.toDomain(), bookId, finished, book.durationMs, now)
-                    progressDao.upsert(ProgressEntity.fromDomain(local))
-                    if (finished) userMarks[bookId] = now else userMarks.remove(bookId)
+            val own = markLocally(bookId, finished)
+            val others = peersOf(bookId).map { peer ->
+                try {
+                    markLocally(peer.bookId, finished)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
                 }
             }
+            coroutineScope {
+                val first = async { markOnServer(own) }
+                val rest = others.map { mark -> async { mark?.let { markOnServer(it) } } }
+                Result.success(combinedMarkOutcome(listOf(first.await()) + rest.awaitAll()))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    /** A mark made on the phone, waiting to go to its server. */
+    private class LocalMark(val book: BookEntity, val local: ReadingProgress, val atMs: Long, val finished: Boolean)
+
+    /** The local half of a mark: the UI follows at once and it works offline. Throws for a book that is not in the library. */
+    private suspend fun markLocally(bookId: String, finished: Boolean): LocalMark {
+        val book = bookDao.getById(bookId) ?: error("Unknown book")
+        val now = clock()
+        lateinit var local: ReadingProgress
+        progressLock.withLock {
+            inTransaction {
+                local = progressAfterMark(progressDao.get(bookId)?.toDomain(), bookId, finished, book.durationMs, now)
+                progressDao.upsert(ProgressEntity.fromDomain(local))
+                if (finished) userMarks[bookId] = now else userMarks.remove(bookId)
+            }
+        }
+        return LocalMark(book, local, now, finished)
+    }
+
+    /** The server half of a mark; null only when something unexpected failed (the local mark stays). */
+    private suspend fun markOnServer(mark: LocalMark): MarkOutcome? =
+        try {
+            val book = mark.book
+            val bookId = book.id
+            val local = mark.local
+            val now = mark.atMs
+            val finished = mark.finished
             val target = try {
                 // Audiobookshelf takes the mark as progress; Plex as a scrobble (or unscrobble) of every track.
                 serverAndSource(book.serverId).takeIf { (server, _) -> server.source == ServerSource.ABS || server.source == ServerSource.PLEX }
@@ -575,29 +704,29 @@ class BookRepositoryImpl(
                 null
             }
             if (target == null) {
-                Result.success(MarkOutcome.LOCAL_ONLY)
+                MarkOutcome.LOCAL_ONLY
             } else {
                 val pending = PendingProgress(
                     bookId, book.serverId, local.positionMs, local.durationMs, listenedMs = 0L, updatedAtMs = now, markedFinished = finished
                 )
-                if (pushProgress(pending).isSuccess) {
+                if (withServerWait { pushProgress(pending) }?.isSuccess == true) {
                     // The mark replaces older queued positions of the book (a newer one is kept and delivered after it).
                     inTransaction {
                         val queued = pendingDao.get(bookId)
                         if (queued != null && queued.updatedAtMs <= now) pendingDao.delete(bookId, queued.updatedAtMs)
                     }
                     adoptServerAnswer(bookId, local)
-                    Result.success(MarkOutcome.SYNCED)
+                    MarkOutcome.SYNCED
                 } else {
                     queueProgress(pending)
                     onQueued()
-                    Result.success(MarkOutcome.QUEUED)
+                    MarkOutcome.QUEUED
                 }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Result.failure(e)
+            null
         }
 
     /**
@@ -605,7 +734,7 @@ class BookRepositoryImpl(
      * it, unless the progress changed again meanwhile. A failed or empty read keeps the local mark.
      */
     private suspend fun adoptServerAnswer(bookId: String, mark: ReadingProgress) {
-        val answer = fetchServerProgress(bookId).getOrNull() ?: return
+        val answer = withServerWait { fetchServerProgress(bookId) }?.getOrNull() ?: return
         progressLock.withLock {
             inTransaction {
                 val current = progressDao.get(bookId)
@@ -622,6 +751,14 @@ class BookRepositoryImpl(
                 }
             }
         }
+    }
+
+    /** [call] on the wall clock for at most [markServerWaitMs]; null when the server took longer. */
+    private suspend fun <T> withServerWait(call: suspend () -> T): T? =
+        withContext(Dispatchers.Default) { withTimeoutOrNull(markServerWaitMs) { call() } }
+
+    private companion object {
+        const val MARK_SERVER_WAIT_MS = 8_000L
     }
 
     // -------------------------------------------------------------------------

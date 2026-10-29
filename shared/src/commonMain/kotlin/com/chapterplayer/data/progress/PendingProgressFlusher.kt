@@ -3,7 +3,11 @@ package com.chapterplayer.data.progress
 import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.data.merge.ProgressMirrorPeers
+import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.domain.playback.FlushDecision
+import com.chapterplayer.domain.playback.MirrorFlush
+import com.chapterplayer.domain.playback.mirrorFlushDecision
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.flushDecision
@@ -15,6 +19,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +40,10 @@ class PendingProgressFlusher(
     private val connectivity: ConnectivityMonitor,
     private val scope: CoroutineScope,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** The copies of merged books, for queued mirrors (see [mirrorFlushDecision]). */
+    private val peers: ProgressMirrorPeers = ProgressMirrorPeers.None,
+    /** The book loaded in the player: a mirror aimed at it waits (the player reports for it, and its live sync replaces the mirror). */
+    private val loadedBookId: () -> String? = { null },
 ) {
     private val kicks = Channel<Unit>(Channel.CONFLATED)
     private val passLock = Mutex()
@@ -50,6 +59,10 @@ class PendingProgressFlusher(
                 online = isOnline
                 if (isOnline) kick()
             }
+        }
+        // "Not the same book" or the switch turned off: queued mirrors go at once, online or not.
+        scope.launch {
+            peers.changes.collect { kick() }
         }
         scope.launch {
             for (ignored in kicks) {
@@ -70,6 +83,7 @@ class PendingProgressFlusher(
     }
 
     private suspend fun pass() = passLock.withLock {
+        dropMirrorsOfSplitCopies()
         if (!online) return@withLock
         val now = nowMs()
         val blocked = HashSet<String>() // servers whose sign-in was refused during this pass
@@ -84,8 +98,60 @@ class PendingProgressFlusher(
         scheduleNext()
     }
 
+    /** Removes queued mirrors whose two books are no longer copies of one book (a split, or the setting off). */
+    private suspend fun dropMirrorsOfSplitCopies() {
+        val mirrors = books.pendingProgress().filter { it.mirrorOf != null }
+        if (mirrors.isEmpty()) return
+        // Copies that cannot be looked up now are no reason to drop anything.
+        val copies = peers.peersOfAll(mirrors.mapNotNull { it.mirrorOf }.distinct()) ?: return
+        for (row in mirrors) {
+            if (copies[row.mirrorOf].orEmpty().none { it.bookId == row.bookId }) books.deletePending(row.bookId, row.updatedAtMs)
+        }
+    }
+
+    private enum class MirrorCheck { SEND, DROP, WAIT }
+
+    /**
+     * For a queued mirror: whether it is still worth sending ([mirrorFlushDecision]); its source copy's server is asked once.
+     * WAIT when it is aimed at the book in the player, or when the copies cannot be looked up now.
+     */
+    private suspend fun mirrorCheck(row: PendingProgress): MirrorCheck {
+        val source = row.mirrorOf ?: return MirrorCheck.SEND
+        if (row.bookId == loadedOrNull()) return MirrorCheck.WAIT
+        val copies = peers.peersOfAll(listOf(source)) ?: return MirrorCheck.WAIT
+        val stillCopies = copies[source].orEmpty().any { it.bookId == row.bookId }
+        val targetLocal = books.localProgressOrNull(row.bookId)
+        val sourceLocal = books.localProgressOrNull(source)
+        val sourceServer = if (stillCopies) books.fetchServerProgressOrFailure(source).getOrNull() else null
+        return if (mirrorFlushDecision(row, stillCopies, targetLocal, sourceLocal, sourceServer) == MirrorFlush.SEND) MirrorCheck.SEND else MirrorCheck.DROP
+    }
+
+    private fun loadedOrNull(): String? = try {
+        loadedBookId()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    private suspend fun BookRepository.localProgressOrNull(bookId: String): ReadingProgress? = try {
+        observeProgress(bookId).first()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
     /** Delivers one row. False when the sign-in of the row's server is refused (its other rows wait for the next pass). */
     private suspend fun flushOne(row: PendingProgress): Boolean {
+        when (mirrorCheck(row)) {
+            MirrorCheck.SEND -> Unit
+            MirrorCheck.WAIT -> return true
+            MirrorCheck.DROP -> {
+                books.deletePending(row.bookId, row.updatedAtMs)
+                return true
+            }
+        }
         val server: ServerProgress? = books.fetchServerProgressOrFailure(row.bookId).getOrElse { error ->
             if (error is SignInRequiredException) return false
             fail(row)

@@ -152,12 +152,14 @@ class ProgressSyncer(
     /**
      * The server just took a live position for [bookId]: an older queued position of the book is out of date and must
      * never be delivered after it (it would rewind the book, and for Plex unscrobble tracks). A queued Mark as finished /
-     * not finished is a user action and stays.
+     * not finished is a user action and stays; a queued mirror goes, finished or not (it would mark the book while it plays).
      */
     private suspend fun dropReplacedPending(bookId: String, nowMs: Long) {
         try {
             val queued = books.pendingProgress().firstOrNull { it.bookId == bookId } ?: return
-            if (queued.markedFinished == null && queued.updatedAtMs <= nowMs) books.deletePending(bookId, queued.updatedAtMs)
+            // A mirror (another copy's listening, even a finished one) is replaced by this copy's own live report.
+            val replaceable = queued.markedFinished == null || queued.mirrorOf != null
+            if (replaceable && queued.updatedAtMs <= nowMs) books.deletePending(bookId, queued.updatedAtMs)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

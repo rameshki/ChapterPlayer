@@ -349,4 +349,39 @@ class RoomSchemaTest {
             assertEquals(primaryKey(table, database10), primaryKey(table, database11), "$table primary key")
         }
     }
+    private val database12: JsonObject by lazy { load(12) }
+
+    @Test
+    fun `version 12 adds the mirrored flag to progress with a default for old rows`() {
+        assertEquals(12, database12.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database11), tables(database12))
+        assertEquals(columns("progress", database11) + ("mirrored" to "INTEGER"), columns("progress", database12))
+        val field = entity("progress", database12).getValue("fields").jsonArray.map { it.jsonObject }
+            .single { it.getValue("columnName").jsonPrimitive.content == "mirrored" }
+        assertEquals("0", field.getValue("defaultValue").jsonPrimitive.content)
+    }
+
+    private val database13: JsonObject by lazy { load(13) }
+
+    @Test
+    fun `version 13 marks queued mirrors in pending progress with a default for old rows`() {
+        assertEquals(13, database13.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database12), tables(database13))
+        assertEquals(columns("pending_progress", database12) + ("mirrorOf" to "TEXT?"), columns("pending_progress", database13))
+        val field = entity("pending_progress", database13).getValue("fields").jsonArray.map { it.jsonObject }
+            .single { it.getValue("columnName").jsonPrimitive.content == "mirrorOf" }
+        assertEquals("NULL", field.getValue("defaultValue").jsonPrimitive.content)
+        for (table in tables(database12) - "pending_progress") {
+            assertEquals(columns(table, database12), columns(table, database13), "$table columns")
+            assertEquals(primaryKey(table, database12), primaryKey(table, database13), "$table primary key")
+        }
+    }
+
+    @Test
+    fun `version 12 leaves the other tables as they were`() {
+        for (table in tables(database11) - "progress") {
+            assertEquals(columns(table, database11), columns(table, database12), "$table columns")
+            assertEquals(primaryKey(table, database11), primaryKey(table, database12), "$table primary key")
+        }
+    }
 }
