@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.Clock
 
 /**
  * Keeps a local copy of every server's books and the listening progress.
@@ -76,7 +77,7 @@ class BookRepositoryImpl(
     private val pendingDao: PendingProgressDao,
     private val bookmarkDao: BookmarkDao,
     private val historyDao: HistoryDao,
-    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Runs the block as one database write transaction; the default runs it as is (for fakes). */
     private val inTransaction: suspend (suspend () -> Unit) -> Unit = { it() },
     /** Called after a mark was queued, so the flusher can look at the queue. */
