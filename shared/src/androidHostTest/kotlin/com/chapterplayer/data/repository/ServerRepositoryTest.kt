@@ -156,6 +156,50 @@ class ServerRepositoryTest {
         assertNull(repo.getById("a"))
     }
 
+    /** A store whose reads fail for a while (the iOS Keychain before the first unlock), its secrets intact. */
+    private class FlakyCredentials(val inner: FakeCredentials, var failing: Boolean = false) : CredentialStore {
+        override suspend fun get(serverId: String): String? = if (failing) error("Keychain status -25308") else inner.get(serverId)
+        override suspend fun put(serverId: String, token: String) = inner.put(serverId, token)
+        override suspend fun remove(serverId: String) = inner.remove(serverId)
+    }
+
+    @Test
+    fun `a store that cannot be read for now reads as empty and a save never wipes the stored token`() = runTest {
+        val inner = FakeCredentials()
+        val creds = FlakyCredentials(inner)
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), creds, FakeBookDao(), InMemoryLibraryDao(), InMemoryCollectionDao(), InMemoryBookmarkDao(), InMemoryHistoryDao())
+        repo.save(config("a", "tok-a").copy(refreshToken = "ref-a"))
+
+        creds.failing = true
+        val read = repo.getById("a")!!
+        assertEquals("", read.token)
+        assertEquals("", repo.observeAll().first().single().token)
+        // Something saves what it read (an edit of the name): the stored secrets stay.
+        repo.save(read.copy(name = "Renamed"))
+        assertEquals("tok-a", inner.tokens["a"])
+        assertEquals("ref-a", inner.tokens["a.refresh"])
+
+        creds.failing = false
+        assertEquals("tok-a", repo.getById("a")?.token)
+        assertEquals("Renamed", repo.getById("a")?.name)
+    }
+
+    @Test
+    fun `after a good read an empty token is written as before (signed out)`() = runTest {
+        val inner = FakeCredentials()
+        val creds = FlakyCredentials(inner)
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), creds, FakeBookDao(), InMemoryLibraryDao(), InMemoryCollectionDao(), InMemoryBookmarkDao(), InMemoryHistoryDao())
+        repo.save(config("a", "tok-a"))
+        creds.failing = true
+        repo.getById("a")
+        creds.failing = false
+        val read = repo.getById("a")!!
+
+        repo.save(read.copy(token = ""))
+
+        assertEquals("", inner.tokens["a"])
+    }
+
     @Test
     fun `a token the keystore can no longer decrypt reads as empty`() = runTest {
         val dao = FakeDao(listOf(entity("a", ""))) // migrated earlier, then the key was lost

@@ -45,7 +45,8 @@ import com.chapterplayer.ui.theme.TextSecondary
 @Composable
 internal fun SettingsPage(
     title: String,
-    onBack: () -> Unit,
+    /** Null for a page with nowhere to go back to: no back arrow then. */
+    onBack: (() -> Unit)?,
     floatingActionButton: @Composable () -> Unit = {},
     bottomPadding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit
@@ -56,8 +57,10 @@ internal fun SettingsPage(
             TopAppBar(
                 title = { Text(title, style = MaterialTheme.typography.headlineSmall) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDeep)

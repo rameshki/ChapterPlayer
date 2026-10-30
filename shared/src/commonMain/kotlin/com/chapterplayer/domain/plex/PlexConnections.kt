@@ -40,8 +40,11 @@ data class PlexConnectionInfo(
 /** An address to try, with what kind of connection it is. */
 data class PlexCandidate(val uri: String, val kind: PlexConnectionKind)
 
-/** What went wrong with one try. Words only: never an address, never a token. */
-enum class ProblemKind { UNKNOWN_HOST, TIMEOUT, REFUSED, UNREACHABLE, TLS, HTTP, WRONG_SERVER, OTHER }
+/**
+ * What went wrong with one try. Words only: never an address, never a token. [LOCAL_NETWORK_OFF]: iOS refused a local
+ * address because the app may not use the local network (iOS Settings, Privacy, Local Network).
+ */
+enum class ProblemKind { UNKNOWN_HOST, TIMEOUT, REFUSED, UNREACHABLE, LOCAL_NETWORK_OFF, TLS, HTTP, WRONG_SERVER, OTHER }
 
 data class ConnectionProblem(val kind: ProblemKind, val httpStatus: Int? = null) {
     val text: String
@@ -50,6 +53,7 @@ data class ConnectionProblem(val kind: ProblemKind, val httpStatus: Int? = null)
             ProblemKind.TIMEOUT -> "timeout"
             ProblemKind.REFUSED -> "connection refused"
             ProblemKind.UNREACHABLE -> "network unreachable"
+            ProblemKind.LOCAL_NETWORK_OFF -> "local network access is off"
             ProblemKind.TLS -> "secure connection failed"
             ProblemKind.HTTP -> when (httpStatus) {
                 401, 403 -> "HTTP $httpStatus: token refused"
@@ -270,6 +274,9 @@ fun classifyConnectionError(error: Throwable): ConnectionProblem {
     return ConnectionProblem(ProblemKind.OTHER)
 }
 
+/** What the Servers page says when iOS kept the app off the local network. */
+const val LOCAL_NETWORK_OFF_NOTE = "Local network access may be off for ChapterPlayer in iOS Settings"
+
 private val NSURL_ERROR_CODE = Regex("""Domain=NSURLErrorDomain Code=(-?\d+)""")
 
 /**
@@ -279,6 +286,8 @@ private val NSURL_ERROR_CODE = Regex("""Domain=NSURLErrorDomain Code=(-?\d+)""")
  */
 private fun darwinProblemKind(message: String?): ProblemKind? {
     val code = NSURL_ERROR_CODE.find(message ?: return null)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    // iOS 14 and later: a local address the app may not reach fails as "not connected", its path "Local network prohibited".
+    if (code == -1009 && message.contains("Local network prohibited", ignoreCase = true)) return ProblemKind.LOCAL_NETWORK_OFF
     return when (code) {
         -1003, -1006 -> ProblemKind.UNKNOWN_HOST // cannot find host, DNS lookup failed
         -1001 -> ProblemKind.TIMEOUT // timed out
@@ -301,6 +310,11 @@ fun reprobeAllowed(lastProbeAtMs: Long?, nowMs: Long, intervalMs: Long = REPROBE
  * network would not resolve is said in words, whether the raw local address got around it or not.
  */
 fun connectionNote(pick: ConnectionPick): String? {
+    // iOS refused a local address: the user can turn local network access back on, so that is said first.
+    if (pick.failures.any { it.problem.kind == ProblemKind.LOCAL_NETWORK_OFF }) {
+        val chosen = pick.winner ?: return LOCAL_NETWORK_OFF_NOTE
+        return "$LOCAL_NETWORK_OFF_NOTE; using the ${chosen.kind.label.lowercase()} connection"
+    }
     val blockedName = pick.failures.any {
         it.candidate.kind == PlexConnectionKind.LOCAL && it.problem.kind == ProblemKind.UNKNOWN_HOST &&
             hostOf(it.candidate.uri).endsWith(PLEX_DIRECT_SUFFIX)

@@ -27,6 +27,7 @@ import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.NSUserDefaults
 import platform.Foundation.create
 import platform.Foundation.dataUsingEncoding
 import platform.Security.SecItemAdd
@@ -51,8 +52,11 @@ import platform.darwin.OSStatus
  * The iOS [CredentialStore]: each secret is a generic-password Keychain item of the app's own service, its account the
  * key the app uses everywhere (the server id, or "<server id>.refresh" for an Audiobookshelf refresh token), its data the
  * token as UTF-8. Items are readable after the first unlock (so a background sync can use them) and never leave this
- * device (no iCloud Keychain, not in backups restored to another phone). Like Android, a value that cannot be read is
- * null (the user signs in again); a failed write throws. Tokens are never logged or put in a message.
+ * device (no iCloud Keychain, not in backups restored to another phone). A missing item is null; any other failed read
+ * (errSecInteractionNotAllowed while the phone is locked, for one) throws [KeychainUnavailableException], so it is never
+ * mistaken for "no token" (the server list reads it as empty for now and keeps the stored item). A failed write throws.
+ * Keychain items outlive an uninstall, so a fresh install clears the old ones first ([clearAfterReinstall]).
+ * Tokens are never logged or put in a message.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class KeychainCredentialStore(
@@ -69,7 +73,8 @@ class KeychainCredentialStore(
             val status = withQuery(serverId, kSecReturnData to kCFBooleanTrue, kSecMatchLimit to kSecMatchLimitOne) { query ->
                 SecItemCopyMatching(query, result.ptr)
             }
-            if (status != errSecSuccess) return@memScoped null
+            if (status == errSecItemNotFound) return@memScoped null
+            if (status != errSecSuccess) throw KeychainUnavailableException(status)
             val data = CFBridgingRelease(result.value) as? NSData ?: return@memScoped null
             NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
         }
@@ -104,6 +109,23 @@ class KeychainCredentialStore(
                 check(status == errSecSuccess || status == errSecItemNotFound) { "The sign-in could not be removed (Keychain status $status)" }
             }
         }
+    }
+
+    /**
+     * Keychain items survive an uninstall, unlike the app's files: on the first launch of a fresh install (no marker in
+     * the app's user defaults, which an uninstall removes) every item of [service] is deleted, then the marker is set.
+     * Without this a reinstalled app would find tokens of servers its new, empty database no longer knows.
+     */
+    fun clearAfterReinstall(defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults) {
+        if (defaults.boolForKey(INSTALLED_MARKER)) return
+        val serviceRef = CFBridgingRetain(service)
+        val status = try {
+            withDictionary(kSecClass to kSecClassGenericPassword, kSecAttrService to serviceRef) { query -> SecItemDelete(query) }
+        } finally {
+            CFRelease(serviceRef)
+        }
+        // A failure is tried again on the next launch.
+        if (status == errSecSuccess || status == errSecItemNotFound) defaults.setBool(true, forKey = INSTALLED_MARKER)
     }
 
     /** Runs [operation] with the query for [key]'s item (class, service, account) plus [extra] entries. */
@@ -141,5 +163,11 @@ class KeychainCredentialStore(
     companion object {
         /** The Keychain service every ChapterPlayer secret is filed under. */
         const val SERVICE = "com.chapterplayer.credentials"
+
+        /** Set in user defaults once the Keychain was cleared for this install. */
+        const val INSTALLED_MARKER = "credentials.install_marker"
     }
 }
+
+/** The Keychain answered with [status] (not "not found"): the item may be there but cannot be read now. */
+class KeychainUnavailableException(val status: Int) : IllegalStateException("The Keychain cannot be read now (status $status)")

@@ -18,10 +18,14 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        # Compose Multiplatform checks this at start (PlistSanityCheck) and stops the app without it: ProMotion screens
+        # may then run above 60 Hz.
+        CADisableMinimumFrameDurationOnPhone: true
         # Audiobookshelf and Plex servers on the home network: iOS asks once before the app may reach them.
         NSLocalNetworkUsageDescription: ChapterPlayer connects to your Audiobookshelf and Plex servers on your local network.
         # Home servers are often plain http (a LAN address or a home DNS name, no certificate), so plain http is
-        # allowed everywhere. Only this key: with NSAllowsLocalNetworking beside it iOS would ignore it.
+        # allowed everywhere. Only this key: with NSAllowsLocalNetworking beside it iOS would ignore it. Fine for a
+        # sideloaded build; an App Store build would need a narrower exception.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
     preBuildScripts:

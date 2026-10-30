@@ -2,6 +2,7 @@ package com.chapterplayer.di
 
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.NotYetOnIosBookRepository
+import org.koin.core.Koin
 import org.koin.core.module.Module
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
@@ -17,9 +18,11 @@ val notYetOnIosModule = module {
 
 /**
  * Starts Koin with [commonModules] plus the platform's own modules, once: a second call (the app entry and the root
- * view controller both ask) does nothing. Android starts Koin itself in its Application with `sharedModules`.
+ * view controller both ask) does nothing. [onStarted] runs after the first start only (the app-wide watches).
+ * Android starts Koin itself in its Application with `sharedModules`.
  */
-fun initKoin(platformModules: List<Module>) {
+fun initKoin(platformModules: List<Module>, onStarted: (Koin) -> Unit = {}) {
     if (KoinPlatformTools.defaultContext().getOrNull() != null) return
-    startKoin { modules(commonModules + platformModules) }
+    val koin = startKoin { modules(commonModules + platformModules) }.koin
+    onStarted(koin)
 }

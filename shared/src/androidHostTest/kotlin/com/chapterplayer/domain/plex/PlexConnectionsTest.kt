@@ -266,6 +266,28 @@ class PlexConnectionsTest {
     }
 
     @Test
+    fun `iOS keeping the app off the local network is its own problem, not plain unreachable`() {
+        val prohibited = DarwinHttpRequestException(
+            "Exception in http request: Error Domain=NSURLErrorDomain Code=-1009 \"The Internet connection appears to be offline.\" " +
+                "UserInfo={_NSURLErrorNWPathKey=unsatisfied (Local network prohibited), interface: en0[802.11]}"
+        )
+        assertEquals(ProblemKind.LOCAL_NETWORK_OFF, classifyConnectionError(prohibited).kind)
+        assertEquals("local network access is off", ConnectionProblem(ProblemKind.LOCAL_NETWORK_OFF).text)
+        assertTrue(isConnectionFailure(prohibited))
+        // Offline without that path note stays unreachable.
+        assertEquals(ProblemKind.UNREACHABLE, classifyConnectionError(darwin(-1009)).kind)
+    }
+
+    @Test
+    fun `the note says local network access may be off, with or without another connection`() {
+        val local = PlexCandidate("https://a.plex.direct:32400", PlexConnectionKind.LOCAL)
+        val remote = PlexCandidate("https://b.plex.direct:32400", PlexConnectionKind.REMOTE)
+        val off = ProbeFailure(local, ConnectionProblem(ProblemKind.LOCAL_NETWORK_OFF))
+        assertEquals(LOCAL_NETWORK_OFF_NOTE, connectionNote(ConnectionPick(null, listOf(off))))
+        assertEquals("$LOCAL_NETWORK_OFF_NOTE; using the remote connection", connectionNote(ConnectionPick(remote, listOf(off))))
+    }
+
+    @Test
     fun `an iOS error of another domain or code is not a connection problem`() {
         assertEquals(ProblemKind.OTHER, classifyConnectionError(darwin(-1003, domain = "NSPOSIXErrorDomain")).kind)
         assertEquals(ProblemKind.OTHER, classifyConnectionError(darwin(-1011)).kind)

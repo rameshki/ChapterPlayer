@@ -57,8 +57,8 @@ fun IosAppNavigation() {
 /** The start page: the app's name and version, what this build can do, and the way to the servers. */
 @Composable
 private fun IosHomeScreen(onOpenServers: () -> Unit, appInfo: AppInfo = koinInject()) {
-    // The start page has nowhere to go back to.
-    SettingsPage(title = "ChapterPlayer", onBack = {}) {
+    // The start page has nowhere to go back to, so it has no back arrow.
+    SettingsPage(title = "ChapterPlayer", onBack = null) {
         Text("Version ${appInfo.versionName}", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         Spacer(Modifier.height(16.dp))
         Text(
