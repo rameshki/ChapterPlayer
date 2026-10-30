@@ -4,6 +4,7 @@ kotlin = "2.4.21"
 ksp = "2.3.12"
 compose-bom = "2026.09.00"
 room = "2.8.5"
+sqlite = "2.6.2"
 coroutines = "1.11.0"
 lifecycle = "2.11.0"
 activity-compose = "1.13.0"
@@ -46,6 +47,8 @@ lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtim
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+# The SQLite driver the iOS database uses (Android keeps the framework SQLite)
+sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
 
 
 # Coroutines

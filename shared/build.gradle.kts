@@ -118,6 +118,8 @@ kotlin {
         iosMain.dependencies {
             // Ktor: the iOS engine (NSURLSession)
             implementation(libs.ktor.client.darwin)
+            // Room: the bundled SQLite driver
+            implementation(libs.sqlite.bundled)
         }
     }
 }

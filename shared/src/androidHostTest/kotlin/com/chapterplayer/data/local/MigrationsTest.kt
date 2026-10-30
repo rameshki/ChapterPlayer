@@ -57,6 +57,16 @@ class MigrationsTest {
     }
 
     @Test
+    fun `the common migration (iOS, with a driver) runs the same clean-up on a connection`() {
+        val common = DropPlexRowsMigration()
+        common.migrate(connection)
+
+        assertEquals(8, common.startVersion)
+        assertEquals(9, common.endVersion)
+        assertEquals(expected, executed)
+    }
+
+    @Test
     fun `a support database runs the same clean-up`() {
         Migration8To9.migrate(database)
 
