@@ -101,7 +101,7 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 - [x] Move ViewModels and Compose screens into `commonMain`
 - [x] Define the `LibrarySource` and `PlaybackController` interfaces (`PlaybackController` has no implementation until Stage 2)
 - [x] Unit tests for the API parsers using recorded JSON responses
-- [x] Empty `iosApp/` that compiles the shared framework (CI on a macOS runner). Not yet done: the iOS database driver, HTTP engine and Koin start-up (`iosMain` is only a placeholder screen); these come in Stage 5
+- [x] Empty `iosApp/` that compiles the shared framework (CI on a macOS runner). The iOS database driver, HTTP engine and Koin start-up followed in Stage 5 step 1
 
 **Done when:** the Android app has the same features as today, running entirely on the shared module.
 
@@ -161,7 +161,11 @@ Each stage ends with a tagged release (`v0.N.0`) and a working debug APK.
 **Done when:** a Plex audiobook works end-to-end exactly like an ABS one, including Auto and widgets.
 
 ### Stage 5: iOS port
-- [ ] Shared Compose UI running on iOS
+Design: `docs/superpowers/specs/2026-10-30-stage-5-ios-design.md` (seven steps; free Apple ID + Sideloadly for the first builds, Robert's iPhone 12 is the target).
+- [x] Step 1, shared foundations (branch `stage-5/shared-foundations`, plan `docs/superpowers/plans/2026-10-30-stage-5-step-1-shared-foundations.md`): the HTTP client set-up in commonMain with the engine per platform (OkHttp / Darwin), the Audiobookshelf and Plex APIs, DTOs, both library sources and the server list (`ServerRepositoryImpl`) in commonMain; `PathProvider` and a common DataStore factory, the iOS database builder (bundled SQLite) and the 8-to-9 migration on the connection API; iOS Keychain credential store, `NWPathMonitor` connectivity, bundle version, Plex client id; Koin split into common and platform modules with `initKoin` for Swift; the iOS app starts Koin and shows a start page plus the real Settings, Servers pages (add, edit, delete an Audiobookshelf or Plex server, sync status), with `NotYetOnIosBookRepository` standing in for the book repository ("Library sync is not available on iOS yet"); Info.plist local network text and an ATS exception for plain http servers. Android behaviour unchanged (host tests green). iOS code is type-checked (it compiles to klibs on Windows too) and the CI Mac links the framework and builds the app, but it has NEVER RUN on a simulator or an iPhone
+- [ ] Step 2, repositories and sync in common: the iOS app syncs and shows Library, Home, Search and Details
+- [ ] Step 3, Kotlin/Native tests in CI (`iosSimulatorArm64Test`), pure-domain tests moved to commonTest
+- [ ] Shared Compose UI running on iOS (the whole app: steps 2 to 5)
 - [ ] AVPlayer `PlaybackController`; background audio; lock-screen / Control Center
 - [ ] CarPlay (Swift): Home / Library / Downloads tabs + Now Playing
 - [ ] WidgetKit widgets + sleep-timer Live Activity (Swift)
