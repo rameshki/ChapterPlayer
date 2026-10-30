@@ -1,6 +1,5 @@
 package com.chapterplayer.ui.details
 
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.testing.downloadRow
 import kotlin.test.Test
@@ -15,31 +14,20 @@ class DetailsDownloadTest {
         status: DownloadStatus?,
         online: Boolean = true,
         size: Long? = null,
-        source: ServerSource = ServerSource.ABS,
         fraction: Float = 0f,
         eta: Long? = null,
         error: String? = null,
         total: Long = 0,
     ) = detailsDownload(
-        source,
         status?.let { downloadRow("a", it, fraction = fraction, etaSeconds = eta, error = error, totalBytes = total) },
         online, size, confirmingRemove = false
     )
 
     @Test
-    fun `a book several servers have names Audiobookshelf as the source and says why`() {
-        val idle = detailsDownload(ServerSource.ABS, null, true, 1_240_000_000, confirmingRemove = false, alsoOnOtherServers = true)
-        assertEquals("Download from Audiobookshelf (1.2 GB)", idle.buttonLabel)
-        assertEquals(PLEX_DOWNLOADS_NOTE, idle.note)
-        val single = detailsDownload(ServerSource.ABS, null, true, 1_240_000_000, confirmingRemove = false)
-        assertEquals("Download (1.2 GB)", single.buttonLabel)
-        assertEquals(null, single.note)
-    }
-
-    @Test
-    fun `a plex book has no download control`() {
-        assertEquals(DetailsDownloadPhase.HIDDEN, of(null, source = ServerSource.PLEX).phase)
-        assertEquals(DetailsDownloadPhase.HIDDEN, of(DownloadStatus.DONE, source = ServerSource.PLEX).phase)
+    fun `Download names no source and adds no note`() {
+        val idle = detailsDownload(null, true, 1_240_000_000, confirmingRemove = false)
+        assertEquals("Download (1.2 GB)", idle.buttonLabel)
+        assertEquals(null, idle.note)
     }
 
     @Test

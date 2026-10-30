@@ -41,7 +41,7 @@ class DownloadsViewModelTest {
     }
 
     private class Setup(online: Boolean = true, freeSpaceEveryMs: Long = 0) {
-        val books = FakeBookRepository(listOf(testBook("a", title = "Alpha"), testBook("b", title = "Bravo"), testBook("c", title = "Charlie")))
+        val books = FakeBookRepository(listOf(testBook("a", title = "Alpha"), testBook("b", title = "Bravo"), testBook("c", title = "Charlie").copy(source = com.chapterplayer.data.model.ServerSource.PLEX)))
         val overview = FakeDownloadOverview()
         val controller = FakeDownloadController()
         val storage = CountingStorage()
@@ -189,5 +189,17 @@ class DownloadsViewModelTest {
         s.controller.failWith = null
         s.vm.cancel("a")
         assertEquals(listOf("pause a", "cancel a"), s.controller.calls)
+    }
+
+    @Test
+    fun `each row names the kind of server its download came from`() = runTest {
+        val s = Setup()
+        val state = collect(s)
+        s.overview.rows.value = listOf(downloadRow("a", DownloadStatus.DONE, fraction = 1f), downloadRow("c", DownloadStatus.QUEUED), downloadRow("gone", DownloadStatus.DONE))
+
+        val byId = state().items.associate { it.bookId to it.source }
+        assertEquals(com.chapterplayer.data.model.ServerSource.ABS, byId["a"])
+        assertEquals(com.chapterplayer.data.model.ServerSource.PLEX, byId["c"])
+        assertNull(byId["gone"])
     }
 }

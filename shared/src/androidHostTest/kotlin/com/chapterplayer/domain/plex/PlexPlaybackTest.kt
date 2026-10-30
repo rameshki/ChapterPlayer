@@ -30,9 +30,9 @@ class PlexPlaybackTest {
 
         assertEquals(
             listOf(
-                PlaybackTrack(0, 0L, 600_000L, "audio/mpeg", "http://plex.test:32400/library/parts/1/1700000000/file.mp3"),
-                PlaybackTrack(1, 600_000L, 900_000L, "audio/mpeg", "http://plex.test:32400/library/parts/2/1700000000/file.mp3"),
-                PlaybackTrack(2, 1_500_000L, 300_000L, "audio/mpeg", "http://plex.test:32400/library/parts/3/1700000000/file.mp3"),
+                PlaybackTrack(0, 0L, 600_000L, "audio/mpeg", "http://plex.test:32400/library/parts/1/1700000000/file.mp3", fileId = "1"),
+                PlaybackTrack(1, 600_000L, 900_000L, "audio/mpeg", "http://plex.test:32400/library/parts/2/1700000000/file.mp3", fileId = "2"),
+                PlaybackTrack(2, 1_500_000L, 300_000L, "audio/mpeg", "http://plex.test:32400/library/parts/3/1700000000/file.mp3", fileId = "3"),
             ),
             items,
         )

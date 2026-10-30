@@ -40,6 +40,7 @@ fun plexPlaybackTracks(baseUrl: String, tracks: List<PlexTrack>): List<PlaybackT
             durationMs = track.durationMs,
             mimeType = plexMimeType(track.container),
             url = plexUrl(baseUrl, track.partKey!!),
+            fileId = track.ratingKey,
         ).also { start += track.durationMs }
     }
 }

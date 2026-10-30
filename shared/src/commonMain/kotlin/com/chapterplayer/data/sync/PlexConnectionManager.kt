@@ -178,6 +178,18 @@ class PlexConnectionManager(
     }
 
     /**
+     * The server to send the token to now, for calls that are not a sync (downloads): [beforeSync] first, so an address
+     * with no chosen connection is probed and a plain http address not verified on this network is checked (and left
+     * for https when it fails). Null when the address is still plain http and not verified here: then nothing may be
+     * sent with the token (a foreign Wi-Fi could hold that LAN address).
+     */
+    suspend fun forTokenRequest(server: ServerConfig): ServerConfig? {
+        val ready = beforeSync(server)
+        if (ready.source != ServerSource.PLEX || ready.needsSignIn) return ready
+        return if (unverifiedHttp(ready.baseUrl, store.get(ready.id))) null else ready
+    }
+
+    /**
      * After a failed call to [server]: when the stored address has changed meanwhile, retry on it without probing.
      * Otherwise, when [error] is a connection failure (name not found, timeout, refused), re-probe ([force] skips the
      * 30 s wait) and hand back the server to retry with when its address changed. With no address that answers,

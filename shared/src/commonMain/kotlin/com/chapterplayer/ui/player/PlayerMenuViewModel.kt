@@ -7,7 +7,6 @@ import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.DownloadState
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.NoDownloadStates
@@ -40,7 +39,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** What the download item of the player menu does when tapped. HIDDEN: the book cannot be downloaded (Plex), no item. */
+/** What the download item of the player menu does when tapped. HIDDEN: nothing is loaded, no item. */
 enum class MenuDownloadKind { HIDDEN, DOWNLOAD, TRY_AGAIN, PAUSE, RESUME, REMOVE }
 
 /** The download item of the player menu: its label, whether it can be tapped and the state line under it. */
@@ -115,7 +114,7 @@ class PlayerMenuViewModel(
     val state: StateFlow<PlayerMenuState> = combine(facts, confirmingRemove, message, otherCopies) { facts, confirming, text, others ->
         val book = facts.book ?: return@combine PlayerMenuState(message = text)
         val links = bookLinks(facts.all.map { BrowseItem(it, null, DownloadState.NOT_DOWNLOADED) }, book)
-        val download = menuDownload(book.source, facts)
+        val download = menuDownload(facts)
         PlayerMenuState(
             bookId = book.id,
             moreBy = links.authors.firstOrNull(),
@@ -135,8 +134,8 @@ class PlayerMenuViewModel(
         }
     }
 
-    private fun menuDownload(source: ServerSource, facts: Facts): MenuDownload {
-        val control = detailsDownload(source, facts.download, facts.online, knownSizeBytes = null, confirmingRemove = false)
+    private fun menuDownload(facts: Facts): MenuDownload {
+        val control = detailsDownload(facts.download, facts.online, knownSizeBytes = null, confirmingRemove = false)
         val subtitle = control.statusText ?: control.disabledReason
         return when (control.phase) {
             DetailsDownloadPhase.HIDDEN -> MenuDownload()

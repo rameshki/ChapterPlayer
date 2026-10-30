@@ -124,4 +124,12 @@ class PlexBookContentTest {
         assertNull(content.sizeBytes)
         assertNull(PlexBookContent(emptyList(), emptyList()).sizeBytes)
     }
+
+    @Test
+    fun `a part sum never shows as the book's size`() {
+        fun t(key: String, size: Long?) = PlexTrack(key, "T", "/library/parts/$key/1/file.mp3", 1_000, "mp3", size)
+        assertNull(PlexBookContent(listOf(t("1", 5_000), t("2", 0)), emptyList()).sizeBytes)
+        assertNull(PlexBookContent(listOf(t("1", 5_000), t("2", null)), emptyList()).sizeBytes)
+        assertEquals(8_000L, PlexBookContent(listOf(t("1", 5_000), t("2", 3_000)), emptyList()).sizeBytes)
+    }
 }

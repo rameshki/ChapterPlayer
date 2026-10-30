@@ -1,12 +1,11 @@
 package com.chapterplayer.ui.details
 
 import com.chapterplayer.data.downloads.DownloadRow
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.domain.downloads.formatBytes
 import com.chapterplayer.domain.downloads.formatTimeLeft
 
-/** Where the book's download is, as the details screen draws it. HIDDEN: no control (a Plex book). */
+/** Where the book's download is, as the details screen draws it. HIDDEN: no control (no book shown yet). */
 enum class DetailsDownloadPhase { HIDDEN, IDLE, QUEUED, DOWNLOADING, PAUSED, FAILED, DONE }
 
 /** The download control of Book details. */
@@ -24,32 +23,27 @@ data class DetailsDownload(
     val disabledReason: String? = null,
     /** "Remove download" was tapped and waits for the confirmation. */
     val confirmingRemove: Boolean = false,
-    /** A line under the start button, e.g. why a book several servers have downloads from only one; null otherwise. */
+    /** A line under the start button; null when there is nothing to add. */
     val note: String? = null,
 )
 
 internal const val DOWNLOAD_LABEL = "Download"
-internal const val DOWNLOAD_FROM_ABS_LABEL = "Download from Audiobookshelf"
-internal const val PLEX_DOWNLOADS_NOTE = "Plex downloads are not available yet, so this comes from Audiobookshelf."
 internal const val TRY_AGAIN_LABEL = "Try again"
 internal const val DOWNLOAD_NEEDS_CONNECTION_TEXT = "Needs a connection to download"
 internal const val DOWNLOAD_FAILED_TEXT = "The download failed"
 internal const val CALCULATING_TEXT = "Calculating"
 
 /**
- * The control for a book of [source] whose download is [row] (null: not on the phone). Only
- * Audiobookshelf books can be downloaded. [knownSizeBytes] is what the server said a download fetches.
+ * The control for a book whose download is [row] (null: not on the phone). Audiobookshelf and Plex books download
+ * alike; a book several servers have picks its copy when Download is tapped (the source sheet or the Settings choice).
+ * [knownSizeBytes] is what the server said a download fetches.
  */
 internal fun detailsDownload(
-    source: ServerSource,
     row: DownloadRow?,
     online: Boolean,
     knownSizeBytes: Long?,
     confirmingRemove: Boolean,
-    /** The book is also on another server (Plex), which cannot download: name the source so it is clear. */
-    alsoOnOtherServers: Boolean = false,
 ): DetailsDownload {
-    if (source != ServerSource.ABS) return DetailsDownload()
     val percent = row?.let { (it.fraction * 100).toInt().coerceIn(0, 100) } ?: 0
     val needsStart = row == null || row.status == DownloadStatus.FAILED
     val canStart = online
@@ -60,11 +54,9 @@ internal fun detailsDownload(
     )
     if (row == null) {
         val size = knownSizeBytes?.takeIf { it > 0L }
-        val label = if (alsoOnOtherServers) DOWNLOAD_FROM_ABS_LABEL else DOWNLOAD_LABEL
         return base.copy(
             phase = DetailsDownloadPhase.IDLE,
-            buttonLabel = if (size == null) label else "$label (${formatBytes(size)})",
-            note = if (alsoOnOtherServers) PLEX_DOWNLOADS_NOTE else null,
+            buttonLabel = if (size == null) DOWNLOAD_LABEL else "$DOWNLOAD_LABEL (${formatBytes(size)})",
         )
     }
     return when (row.status) {

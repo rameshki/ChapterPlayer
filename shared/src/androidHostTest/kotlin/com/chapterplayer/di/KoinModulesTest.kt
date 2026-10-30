@@ -65,21 +65,21 @@ class KoinModulesTest {
 
     @Test
     fun `the download module resolves`() {
-        // The length filler watches the network (deviceModule).
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, downloadModule) }
+        // The length filler watches the network (deviceModule); Plex downloads read the tracks through the Plex source (sourceModule).
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, sourceModule, deviceModule, downloadModule) }
             .verify(extraTypes = providedByApp)
     }
 
     @Test
     fun `every screen's view model can be built`() {
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule, downloadModule, browseModule, viewModelModule) }
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, sourceModule, deviceModule, playbackModule, downloadModule, browseModule, viewModelModule) }
             .verify(extraTypes = providedByApp)
     }
 
     @Test
     fun `the widget module resolves`() {
         // The widgets read the player, the books, the downloads, the network and the settings.
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule, deviceModule, playbackModule, downloadModule, browseModule, widgetModule) }
+        module { includes(databaseModule, networkModule, securityModule, repositoryModule, sourceModule, deviceModule, playbackModule, downloadModule, browseModule, widgetModule) }
             .verify(extraTypes = providedByApp)
     }
 

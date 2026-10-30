@@ -7,6 +7,7 @@ import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.downloads.DownloadStorage
+import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.domain.downloads.storageHeaderText
@@ -39,6 +40,8 @@ data class DownloadItem(
     val canRetry: Boolean = true,
     /** The book is still in the library, so the row opens its details. */
     val opensDetails: Boolean = true,
+    /** Which kind of server the download came from (a small badge); null when the book left the library. */
+    val source: ServerSource? = null,
 )
 
 /** The download waiting for "Remove" to be confirmed. */
@@ -67,14 +70,14 @@ class DownloadsViewModel(
     private val nowMs: () -> Long = { kotlin.time.Clock.System.now().toEpochMilliseconds() },
 ) : ViewModel() {
 
-    private data class BookInfo(val title: String, val author: String, val coverUrl: String?)
+    private data class BookInfo(val title: String, val author: String, val coverUrl: String?, val source: ServerSource)
 
     private val confirm = MutableStateFlow<String?>(null)
     private val online = connectivity.isOnline.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     // Only what the rows need, keyed by id, so a change elsewhere in the library list does not rebuild the rows.
     private val bookInfo = books.observeAllBooks()
-        .map { all -> all.associate { it.id to BookInfo(it.title, it.author, it.coverUrl) } }
+        .map { all -> all.associate { it.id to BookInfo(it.title, it.author, it.coverUrl, it.source) } }
         .distinctUntilChanged()
         .flowOn(dispatcher)
 
@@ -93,6 +96,7 @@ class DownloadsViewModel(
                     error = row.error,
                     canRetry = isOnline,
                     opensDetails = book != null,
+                    source = book?.source,
                 )
             }
         )

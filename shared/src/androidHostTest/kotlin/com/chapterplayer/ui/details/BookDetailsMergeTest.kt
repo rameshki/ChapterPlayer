@@ -2,6 +2,9 @@ package com.chapterplayer.ui.details
 
 import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.model.AudioBook
+import com.chapterplayer.data.model.BookDetails
+import com.chapterplayer.domain.downloads.DownloadStatus
+import com.chapterplayer.testing.downloadRow
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
@@ -71,8 +74,15 @@ class BookDetailsMergeTest {
         online: Set<String> = setOf("abs1", "abs2", "plex1"),
         downloadStates: Map<String, DownloadState> = emptyMap(),
         deviceOnline: Boolean = true,
+        /** What each copy's server says a download fetches. */
+        sizes: Map<String, Long> = emptyMap(),
+        /** The download rows on the phone, by book id. */
+        rows: Map<String, com.chapterplayer.data.downloads.DownloadRow> = emptyMap(),
     ) {
-        val repo = FakeBookRepository(books)
+        val repo = object : FakeBookRepository(books) {
+            override suspend fun loadDetails(bookId: String): Result<BookDetails?> =
+                Result.success(sizes[bookId]?.let { BookDetails(emptyList(), null, emptyList(), null, emptyList(), downloadSizeBytes = it) })
+        }
         val controller = FakePlaybackController()
         val settings = FakeAppSettings()
         val connectivity = FakeConnectivity()
@@ -86,7 +96,7 @@ class BookDetailsMergeTest {
         val vm = BookDetailsViewModel(
             id, repo, FakeDownloadStates(downloadStates), controller,
             PlaybackStarter(controller, repo, settings, connectivity, FakeLocalBookFiles()), connectivity, settings, Dispatchers.Main,
-            FakeDownloadOverview(), downloads, FakeNotificationPermission(),
+            FakeDownloadOverview(rows.values.toList()), downloads, FakeNotificationPermission(),
             // The corrections flow into the merging, as AppSourceMerging does.
             merging = object : com.chapterplayer.data.merge.SourceMerging {
                 override val context = merges.flow.map { MergeContext(it, preference, online, deviceOnline) }
@@ -193,13 +203,73 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `a Plex page downloads the Audiobookshelf copy`() = runTest {
+    fun `prefer downloaded with nothing downloaded takes the reachable Audiobookshelf copy, also from the Plex page`() = runTest {
         val s = Setup(listOf(abs("a"), plex("p")), "p")
         val state = collect(s)
-        assertEquals("a", state().downloadBookId)
+        assertEquals("p", state().downloadBookId)
         assertEquals(DetailsDownloadPhase.IDLE, state().download.phase)
+        assertEquals("Download", state().download.buttonLabel)
+        assertNull(state().download.note)
         s.vm.onDownloadClicked()
         assertEquals(listOf("enqueue a"), s.downloads.calls)
+    }
+
+    @Test
+    fun `prefer downloaded takes the Plex copy when only Plex answers`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", online = setOf("plex1"))
+        collect(s)
+        s.vm.onDownloadClicked()
+        assertEquals(listOf("enqueue p"), s.downloads.calls)
+    }
+
+    @Test
+    fun `prefer Plex downloads the Plex copy`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.PREFER_PLEX)
+        val state = collect(s)
+        s.vm.onDownloadClicked()
+        assertNull(state().sourceSheet)
+        assertEquals(listOf("enqueue p"), s.downloads.calls)
+    }
+
+    @Test
+    fun `always ask offers both copies to download from, with the sizes their servers give`() = runTest {
+        val s = Setup(
+            listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK,
+            sizes = mapOf("a" to 1_240_000_000L, "p" to 980_000_000L),
+        )
+        val state = collect(s)
+        s.vm.onDownloadClicked()
+        val sheet = assertNotNull(state().sourceSheet)
+        assertEquals(SourceAction.DOWNLOAD, sheet.action)
+        assertEquals("Download from", sheet.title)
+        assertEquals(listOf("a", "p"), sheet.rows.map { it.bookId })
+        assertEquals(listOf("1.2 GB", "980 MB"), sheet.rows.map { it.sizeText })
+        assertTrue(sheet.rows.all { it.enabled })
+        s.vm.onSourceChosen("p")
+        assertNull(state().sourceSheet)
+        assertEquals(listOf("enqueue p"), s.downloads.calls)
+    }
+
+    @Test
+    fun `the download sheet greys a copy whose server does not answer`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK, online = setOf("abs1"))
+        val state = collect(s)
+        s.vm.onDownloadClicked()
+        val plexRow = state().sourceSheet!!.rows.single { it.bookId == "p" }
+        assertFalse(plexRow.enabled)
+        assertEquals("Server not reachable", plexRow.reason)
+        s.vm.onSourceChosen("p")
+        assertTrue(s.downloads.calls.isEmpty())
+    }
+
+    @Test
+    fun `a copy already downloaded is what the control shows, so nothing more is offered`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", rows = mapOf("p" to downloadRow("p", DownloadStatus.DONE, totalBytes = 5_000_000)))
+        val state = collect(s)
+        assertEquals("p", state().downloadBookId)
+        assertEquals(DetailsDownloadPhase.DONE, state().download.phase)
+        s.vm.onDownloadClicked()
+        assertTrue(s.downloads.calls.isEmpty())
     }
 
     @Test

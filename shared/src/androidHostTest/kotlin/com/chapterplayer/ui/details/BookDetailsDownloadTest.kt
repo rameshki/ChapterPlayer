@@ -222,13 +222,14 @@ class BookDetailsDownloadTest {
     }
 
     @Test
-    fun `a plex book has no download control`() = runTest {
-        val s = Setup(plex = true)
+    fun `a plex book offers Download with its size and queues it`() = runTest {
+        val s = Setup(size = 1_240_000_000, plex = true)
         val download = collect(s)
-        assertEquals(DetailsDownloadPhase.HIDDEN, download().phase)
+        assertEquals(DetailsDownloadPhase.IDLE, download().phase)
+        assertEquals("Download (1.2 GB)", download().buttonLabel)
 
         s.vm.onDownloadClicked()
 
-        assertTrue(s.downloads.calls.isEmpty())
+        assertEquals(listOf("notifications=true", "enqueue a"), s.downloads.calls)
     }
 }

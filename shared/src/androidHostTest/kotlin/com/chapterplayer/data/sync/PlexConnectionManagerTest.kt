@@ -258,6 +258,40 @@ class PlexConnectionManagerTest {
     }
 
     @Test
+    fun `a token request to a plain LAN address not verified on this network is refused when no https connection answers`() = runTest {
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri)))
+        // Only the raw LAN address is known (no https connection to fall back to), verified on another network.
+        remembered(raw, chosen = raw, probedAt = now, verified = emptyList())
+        answers = { ConnectionProblem(ProblemKind.REFUSED) }
+        val m = manager(servers)
+
+        assertNull(m.forTokenRequest(servers.getById("p1")!!))
+        assertTrue(probed.isNotEmpty())
+    }
+
+    @Test
+    fun `a token request goes to a verified address, and to a plain one once it answered here`() = runTest {
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri)))
+        remembered(raw, chosen = raw, probedAt = now, verified = emptyList())
+        val m = manager(servers)
+
+        assertEquals(raw.uri, m.forTokenRequest(servers.getById("p1")!!)?.baseUrl)
+        val probes = probed.size
+        assertEquals(raw.uri, m.forTokenRequest(servers.getById("p1")!!)?.baseUrl)
+        assertEquals(probes, probed.size) // verified now: no second probe
+    }
+
+    @Test
+    fun `a token request to an unverified plain address moves to https when that answers`() = runTest {
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri)))
+        remembered(local, raw, remote, chosen = raw, probedAt = now, verified = listOf(local.uri))
+        answers = { uri -> if (uri == remote.uri) null else ConnectionProblem(ProblemKind.REFUSED) }
+        val m = manager(servers)
+
+        assertEquals(remote.uri, m.forTokenRequest(servers.getById("p1")!!)?.baseUrl)
+    }
+
+    @Test
     fun `audiobookshelf servers and signed out servers are never probed`() = runTest {
         val abs = ServerConfig("a1", ServerSource.ABS, "ABS", "http://abs.test", "t")
         val out = plex(token = "")
