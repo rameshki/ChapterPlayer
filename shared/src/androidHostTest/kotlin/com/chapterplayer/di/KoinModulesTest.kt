@@ -1,18 +1,28 @@
 package com.chapterplayer.di
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import com.chapterplayer.data.AppInfo
+import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.local.ChapterPlayerDatabase
+import com.chapterplayer.data.remote.plex.PlexClientIdentifier
+import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.data.security.CredentialStore
 import androidx.lifecycle.SavedStateHandle
 import com.chapterplayer.ui.library.LibraryView
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import org.koin.core.annotation.KoinInternalApi
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.koin.test.verify.verify
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 /**
  * Hilt failed the build when a binding was missing. Koin only fails when a screen opens,
@@ -86,6 +96,39 @@ class KoinModulesTest {
     @Test
     fun `the whole shared graph resolves`() {
         module { includes(sharedModules) }.verify(extraTypes = providedByApp)
+    }
+
+    // What a platform module provides for the common modules besides a BookRepository (the iOS module: iosPlatformModule),
+    // plus the HTTP engine and config the client constructor mentions.
+    private val providedByPlatform = listOf(
+        ChapterPlayerDatabase::class, DataStore::class, CredentialStore::class, PlexClientIdentifier::class,
+        ConnectivityMonitor::class, AppInfo::class, CoroutineDispatcher::class, Boolean::class,
+        HttpClientEngine::class, HttpClientConfig::class,
+    )
+
+    @Test
+    fun `the common modules resolve with what a platform provides and the iOS stand-ins`() {
+        module { includes(commonModules + notYetOnIosModule) }.verify(extraTypes = providedByPlatform)
+    }
+
+    @Test
+    fun `the common modules need a book repository from the platform`() {
+        val missing = runCatching { module { includes(commonModules) }.verify(extraTypes = providedByPlatform) }.exceptionOrNull()
+        assertNotNull(missing)
+        assertTrue(BookRepository::class.qualifiedName!! in missing.message.orEmpty())
+    }
+
+    @Test
+    fun `the iOS stand-in module gives the not-yet book repository`() {
+        val koin = koinApplication { modules(notYetOnIosModule) }.koin
+        assertSame(com.chapterplayer.data.repository.NotYetOnIosBookRepository, koin.get<BookRepository>())
+    }
+
+    @OptIn(KoinInternalApi::class)
+    @Test
+    fun `Android's modules include every common module`() {
+        val android = sharedModules.flatMap { it.includedModules + it }.toSet()
+        commonModules.forEach { common -> assertTrue(common in android, "a common module is not part of Android's set") }
     }
 
     @Test

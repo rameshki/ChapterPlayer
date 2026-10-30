@@ -5,7 +5,6 @@ import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.RoomDownloadStates
-import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
 import com.chapterplayer.data.permissions.AndroidNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
@@ -57,53 +56,26 @@ import com.chapterplayer.data.progress.ProgressSyncer
 import com.chapterplayer.data.progress.ProgressMirrorPusher
 import com.chapterplayer.data.progress.ServerProgressRefresher
 import com.chapterplayer.data.playback.PlaybackStarter
-import com.chapterplayer.data.remote.abs.AbsApiService
-import com.chapterplayer.data.remote.abs.AbsAuthorizer
-import com.chapterplayer.data.remote.abs.AbsSessionManager
-import com.chapterplayer.data.remote.abs.AbsSignIn
-import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.local.Migration8To9
 import com.chapterplayer.data.remote.createDownloadHttpClient
-import com.chapterplayer.data.remote.createHttpClient
-import com.chapterplayer.data.remote.createProbeHttpClient
-import com.chapterplayer.data.remote.plex.KtorPlexConnectionProbe
-import com.chapterplayer.data.remote.plex.PlexTvCandidateLookup
-import com.chapterplayer.data.sync.DataStoreServerStatusStore
-import com.chapterplayer.data.sync.PlexCandidateLookup
 import com.chapterplayer.data.sync.PlexConnectionManager
-import com.chapterplayer.data.sync.PlexConnectionProbe
-import com.chapterplayer.data.sync.ServerStatusStore
-import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
-import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.chapterplayer.data.merge.BookMergeRepository
-import com.chapterplayer.data.merge.RoomBookMergeRepository
 import com.chapterplayer.data.merge.AppSourceMerging
 import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.merge.MergedProgressPeers
 import com.chapterplayer.data.merge.ProgressMirrorPeers
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.BookRepositoryImpl
-import com.chapterplayer.data.repository.LibraryCatalog
-import com.chapterplayer.data.repository.LibraryCatalogImpl
 import com.chapterplayer.data.repository.ServerRepository
-import com.chapterplayer.data.repository.ServerRepositoryImpl
 import com.chapterplayer.data.security.AesGcmTokenCipher
 import com.chapterplayer.data.security.AndroidKeystoreKey
 import com.chapterplayer.data.security.CredentialStore
 import com.chapterplayer.data.security.DataStoreCredentialStore
 import com.chapterplayer.data.security.TokenCipher
 import com.chapterplayer.data.settings.AppSettings
-import com.chapterplayer.data.settings.DataStoreAppSettings
-import com.chapterplayer.data.source.AbsLibrarySource
 import com.chapterplayer.data.source.LibrarySource
-import com.chapterplayer.data.source.PlexLibrarySource
-import com.chapterplayer.data.sync.LibrarySync
-import com.chapterplayer.data.sync.LibrarySyncCoordinator
-import com.chapterplayer.data.sync.NoPlexSectionLengths
-import com.chapterplayer.data.sync.PlexLengthFiller
-import com.chapterplayer.data.sync.PlexSectionLengths
 import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.ui.home.HomeViewModel
 import com.chapterplayer.ui.details.BookDetailsViewModel
@@ -116,10 +88,7 @@ import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.stats.StatsViewModel
-import com.chapterplayer.ui.offline.OfflineStateViewModel
 import com.chapterplayer.ui.downloads.DownloadsViewModel
-import com.chapterplayer.ui.settings.ServerSetupViewModel
-import com.chapterplayer.ui.settings.ServersViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
 import com.chapterplayer.data.widgets.WidgetActions
 import com.chapterplayer.data.widgets.WidgetRefresher
@@ -129,9 +98,7 @@ import com.chapterplayer.data.widgets.WidgetResumer
 import com.chapterplayer.ui.widgets.GlanceWidgetHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -140,29 +107,17 @@ import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
-import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.binds
 import org.koin.dsl.module
 
-/** The debug flag. The shared module has no BuildConfig, so the app module provides it. */
-val DebuggableQualifier = named("debuggable")
-
-val SettingsStoreQualifier = named("settings")
-val CredentialsStoreQualifier = named("credentials")
-val ServerStatusStoreQualifier = named("serverStatus")
-
-/** The HTTP client that probes Plex connections: 3 s timeouts, no redirects. */
-val ProbeClientQualifier = named("probeClient")
-
-/** The app-long coroutine scope, and the dispatcher the browse view models do their list work on. */
-val AppScopeQualifier = named("appScope")
-val IoDispatcherQualifier = named("io")
-
-/** The HTTP client for audio downloads: no request timeout, no redirects followed (see installDownloadDefaults). */
-val DownloadClientQualifier = named("downloadClient")
+/*
+ * Android's modules. Each includes the common module of its area (di/CommonModules.kt, shared with iOS, where the
+ * qualifiers are declared too) and adds what only Android has.
+ */
 
 val databaseModule = module {
+    includes(commonDaoModule)
     single {
         Room.databaseBuilder(
             androidContext(),
@@ -170,59 +125,31 @@ val databaseModule = module {
             ChapterPlayerDatabase.DATABASE_NAME
         ).addMigrations(Migration8To9).build()
     }
-    single { get<ChapterPlayerDatabase>().bookDao() }
-    single { get<ChapterPlayerDatabase>().progressDao() }
-    single { get<ChapterPlayerDatabase>().serverConfigDao() }
-    single { get<ChapterPlayerDatabase>().excludedLibraryDao() }
-    single { get<ChapterPlayerDatabase>().libraryDao() }
-    single { get<ChapterPlayerDatabase>().collectionDao() }
-    single { get<ChapterPlayerDatabase>().pendingProgressDao() }
-    single { get<ChapterPlayerDatabase>().bookmarkDao() }
-    single { get<ChapterPlayerDatabase>().historyDao() }
-    single { get<ChapterPlayerDatabase>().downloadDao() }
-    single { get<ChapterPlayerDatabase>().bookMergeDao() }
-    single { get<ChapterPlayerDatabase>().listeningDao() }
 }
 
 val networkModule = module {
-    // One HTTP client for every server. Debug builds log requests with auth headers hidden.
-    single { createHttpClient(get<Boolean>(DebuggableQualifier)) }
-    singleOf(::AbsApiService)
-    singleOf(::AbsSignIn) { bind<AbsSignInPort>() }
-    // The playback reports name this installation to the server.
-    single { PlexApiService(get(), get<PlexClientIdentifier>()) }
-    singleOf(::PlexTvApiService)
+    includes(commonNetworkModule)
     singleOf(::AndroidPlexClientIdentifier) { bind<PlexClientIdentifier>() }
-    // Plex connection choice: probes each address plex.tv lists, and asks plex.tv for the list of a server saved earlier.
-    single(ProbeClientQualifier) { createProbeHttpClient(get<Boolean>(DebuggableQualifier)) }
-    single<PlexConnectionProbe> { KtorPlexConnectionProbe(get(ProbeClientQualifier)) }
-    single<PlexCandidateLookup> { PlexTvCandidateLookup(get(), get()) }
 }
 
 val securityModule = module {
+    includes(commonStoreModule)
     single(SettingsStoreQualifier) { createPreferencesDataStore(androidContext(), "settings") }
     single(CredentialsStoreQualifier) { createPreferencesDataStore(androidContext(), "credentials") }
     single<TokenCipher> { AesGcmTokenCipher { AndroidKeystoreKey.getOrCreate() } }
     single<CredentialStore> { DataStoreCredentialStore(get(CredentialsStoreQualifier), get()) }
-    single<AppSettings> { DataStoreAppSettings(get(SettingsStoreQualifier)) }
     // Each server's connections (Plex) and last sync; no secrets.
     single(ServerStatusStoreQualifier) { createPreferencesDataStore(androidContext(), "server_status") }
-    single<ServerStatusStore> { DataStoreServerStatusStore(get(ServerStatusStoreQualifier)) }
 }
 
 val sourceModule = module {
-    singleOf(::AbsLibrarySource) { bind<LibrarySource>() }
-    // A refused Plex token cannot be refreshed: it is blanked (if it is still the one that was refused), so Settings says "Sign in again".
-    single {
-        val servers = get<ServerRepository>()
-        PlexLibrarySource(get()) { refused ->
-            val current = servers.getById(refused.id)
-            if (current != null && current.token.isNotBlank() && current.token == refused.token) servers.save(current.copy(token = ""))
-        }
-    } bind LibrarySource::class
+    includes(commonSourceModule)
 }
 
 val repositoryModule = module {
+    includes(commonServerModule)
+    // Blocking I/O (Plex probes, plex.tv reads) for the common classes.
+    single<CoroutineDispatcher>(BlockingIoQualifier) { Dispatchers.IO }
     single<BookRepository> { BookRepositoryImpl(
             get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(), bookmarkDao = get(), historyDao = get(),
             inTransaction = { block ->
@@ -245,31 +172,9 @@ val repositoryModule = module {
             get(AppScopeQualifier),
         )
     }
-    single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get()) }
-    singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
-    // The user's "Not the same book" and "Merge with" choices for books on several servers.
-    single<BookMergeRepository> { RoomBookMergeRepository(get()) }
     single<DownloadStates> { RoomDownloadStates(get()) }
     // A downloaded book's files, for playing it from the phone (playback and the downloads share it).
     single<LocalBookFiles> { RoomLocalBookFiles(get(), AndroidLocalDisk, Dispatchers.IO, nowMs = System::currentTimeMillis) }
-    single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
-    // Lives as long as the app: syncs servers whichever screen is open.
-    single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
-    // Chooses each Plex server's address; the application starts its network watch.
-    single { PlexConnectionManager(get(), get(), get(), get(), io = Dispatchers.IO) }
-    // A switched Plex address syncs that server again, so stored cover addresses follow the address in use.
-    single {
-        LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get(), lengthFiller = get()).also { sync ->
-            get<PlexConnectionManager>().onSwitched = { id -> sync.requestSync(id) }
-        }
-    }
-    // After a Plex sync, reads the album lengths the album list leaves out (background, one pass per server).
-    single {
-        PlexLengthFiller(get(), getAll<LibrarySource>().filterIsInstance<PlexSectionLengths>().firstOrNull() ?: NoPlexSectionLengths, get(AppScopeQualifier))
-    }
-    // The Plex servers the cover loader adds the token header for.
-    single { PlexImageServers(get(), get(AppScopeQualifier)) }
-    single<LibrarySync> { get<LibrarySyncCoordinator>() }
 }
 
 val browseModule = module {
@@ -284,8 +189,6 @@ val browseModule = module {
     }
     // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).
     single<SourceMerging> { AppSourceMerging(get(), get(), get(), get(), get()) }
-    // Where the browse view models do their list work; tests pass their own.
-    single<CoroutineDispatcher>(IoDispatcherQualifier) { Dispatchers.Default }
 }
 
 val playbackModule = module {
@@ -366,6 +269,8 @@ val deviceModule = module {
 }
 
 val viewModelModule = module {
+    // The Servers pages and the offline state (shared with iOS).
+    includes(commonViewModelModule)
     viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get()) }
     viewModelOf(::LibrariesViewModel)
     // Built with parametersOf(kind, groupKey) by the group detail screen.
@@ -382,10 +287,6 @@ val viewModelModule = module {
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
-    // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
-    viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
-    viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
-    viewModelOf(::OfflineStateViewModel)
     // The statistics page; its figures are worked out off the main thread.
     viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
