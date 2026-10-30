@@ -37,7 +37,11 @@ class PlexDownloadSourceTest {
         id = "plex1", source = ServerSource.PLEX, name = "Test Plex", baseUrl = "http://plex.test:32400", token = "tok", libraryId = null
     )
 
-    private val tracks = fixture("plex/album-tracks-multi.json")
+    /** The recorded three-track album, as recorded (its third track has no length). */
+    private val recorded = fixture("plex/album-tracks-multi.json")
+
+    /** The same album with the length its third track lacks in the recording (600 + 900 + 300 s). */
+    private val tracks = recorded.replace("\"ratingKey\": \"1104\",", "\"ratingKey\": \"1104\", \"duration\": 300000,")
     private val noChapters = """{"MediaContainer":{"size":1,"Metadata":[{"ratingKey":"1102","type":"track","title":"Fixture title 13"}]}}"""
 
     private val requests = CopyOnWriteArrayList<HttpRequestData>()
@@ -46,6 +50,10 @@ class PlexDownloadSourceTest {
     private inner class Rig(
         var children: String = tracks,
         var childrenStatus: HttpStatusCode = HttpStatusCode.OK,
+        /** Requests to this host fail to connect. */
+        val deadHost: String? = null,
+        onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null },
+        prepare: suspend (ServerConfig) -> ServerConfig? = { it },
         val parts: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respond("", HttpStatusCode.NotFound) },
     ) {
         val servers = FakeServers(server)
@@ -53,6 +61,7 @@ class PlexDownloadSourceTest {
             requests += request
             val path = request.url.encodedPath
             when {
+                request.url.host == deadHost -> throw java.net.ConnectException("Connection refused")
                 path.startsWith("/library/parts/") -> parts(request)
                 path.endsWith("/children") ->
                     if (childrenStatus != HttpStatusCode.OK) respond("", childrenStatus)
@@ -67,7 +76,10 @@ class PlexDownloadSourceTest {
             ),
             markSignedOut = { signedOut += it.id },
         )
-        val source = PlexDownloadSource(plex, servers, HttpClient(engine) { installDownloadDefaults(isDebuggable = false, sink = {}) })
+        val source = PlexDownloadSource(
+            plex, servers, HttpClient(engine) { installDownloadDefaults(isDebuggable = false, sink = {}) },
+            onConnectionFailure = onConnectionFailure, prepare = prepare,
+        )
     }
 
     @Test
@@ -79,7 +91,7 @@ class PlexDownloadSourceTest {
             listOf(
                 PlannedFile("1102", "1102.mp3", 9_600_000, 0, 600_000, "audio/mpeg"),
                 PlannedFile("1103", "1103.mp3", 14_400_000, 1, 900_000, "audio/mpeg"),
-                PlannedFile("1104", "1104.mp3", 1_000_000, 2, 0, "audio/mpeg"),
+                PlannedFile("1104", "1104.mp3", 1_000_000, 2, 300_000, "audio/mpeg"),
             ),
             plan.files
         )
@@ -188,20 +200,83 @@ class PlexDownloadSourceTest {
 
     @Test
     fun `the lengths Plex knows are given by rating key`() = runBlocking {
-        assertEquals(mapOf("1102" to 600_000L, "1103" to 900_000L), Rig().source.fileLengths(server, "plex_1101"))
+        assertEquals(mapOf("1102" to 600_000L, "1103" to 900_000L), Rig(children = recorded).source.fileLengths(server, "plex_1101"))
     }
 
     @Test
-    fun `a connection failure is handed to the connection manager`() = runBlocking {
-        val rig = Rig()
+    fun `a book with a track of unknown length is refused before anything is downloaded`() = runBlocking {
+        val plan = Rig(children = recorded).source.plan(server, "plex_1101")
+
+        assertEquals(com.chapterplayer.domain.plex.PLEX_LENGTH_UNKNOWN_TEXT, plan.failure)
+        assertTrue(plan.files.isEmpty())
+        assertTrue(requests.none { it.url.encodedPath.startsWith("/library/parts/") })
+    }
+
+    @Test
+    fun `a size request without a definite answer is tried again later, not given up`() = runBlocking {
+        for (status in listOf(HttpStatusCode.ServiceUnavailable, HttpStatusCode.Found, HttpStatusCode.TooManyRequests)) {
+            val rig = Rig(children = tracks.replace("\"size\": 1000000,", "")) {
+                respond("", status, headersOf(HttpHeaders.Location, "http://elsewhere.test/x"))
+            }
+            assertFailsWith<PlexTryLaterException>("status $status") { rig.source.plan(server, "plex_1101") }
+        }
+    }
+
+    @Test
+    fun `a size request for a file the server does not have makes the book not downloadable`() = runBlocking {
+        val rig = Rig(children = tracks.replace("\"size\": 1000000,", "")) { respond("", HttpStatusCode.NotFound) }
+        assertEquals(PLEX_AUDIO_MISSING_TEXT, rig.source.plan(server, "plex_1101").failure)
+    }
+
+    @Test
+    fun `a stored address that does not answer while planning re-probes and plans at the new address`() = runBlocking {
         val moved = server.copy(baseUrl = "http://10.0.0.2:32400")
-        val seen = mutableListOf<String>()
-        val source = PlexDownloadSource(rig.plex, rig.servers, HttpClient(MockEngine { respond("") }), onConnectionFailure = { used, _ ->
-            seen += used.baseUrl
+        val seen = mutableListOf<Pair<String, String>>()
+        lateinit var rig: Rig
+        rig = Rig(deadHost = "plex.test", onConnectionFailure = { used, error ->
+            seen += used.baseUrl to error::class.simpleName.orEmpty()
+            rig.servers.save(moved)
             moved
         })
 
-        assertEquals(moved, source.afterConnectionFailure(server, java.io.IOException("unreachable")))
-        assertEquals(listOf("http://plex.test:32400"), seen)
+        val plan = rig.source.plan(server, "plex_1101")
+
+        assertNull(plan.failure)
+        assertEquals(3, plan.files.size)
+        assertEquals(listOf("http://plex.test:32400" to "ConnectException"), seen)
+        assertEquals("10.0.0.2", requests.last().url.host)
+        // A later file request follows the new address too.
+        assertEquals("http://10.0.0.2:32400/library/parts/1202/1700000000/file.mp3", rig.source.authorized(server, "plex_1101", "1102") { it.url })
+    }
+
+    @Test
+    fun `without a new address a planning connection failure is thrown, so the job tries again later`() = runBlocking {
+        val rig = Rig(deadHost = "plex.test")
+        assertFailsWith<java.net.ConnectException> { rig.source.plan(server, "plex_1101") }
+        Unit
+    }
+
+    @Test
+    fun `a plain http address not verified on this network gets no request with the token`() = runBlocking {
+        val lan = server.copy(baseUrl = "http://192.0.2.11:32400")
+        val rig = Rig(prepare = { null })
+        rig.servers.save(lan)
+
+        assertFailsWith<PlexAddressNotVerifiedException> { rig.source.plan(lan, "plex_1101") }
+        assertFailsWith<PlexAddressNotVerifiedException> { rig.source.authorized(lan, "plex_1101", "1102") { it } }
+        assertFailsWith<PlexAddressNotVerifiedException> { rig.source.authorizedSmall(lan, "http://192.0.2.11:32400/library/metadata/1/thumb/2") { it } }
+        assertFailsWith<PlexAddressNotVerifiedException> { rig.source.fileLengths(lan, "plex_1101") }
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `requests go to the address the check hands back`() = runBlocking {
+        val https = server.copy(baseUrl = "https://192-0-2-11.fixture.plex.direct:32400")
+        val rig = Rig(prepare = { https })
+
+        rig.source.plan(server, "plex_1101")
+
+        assertTrue(requests.isNotEmpty())
+        assertTrue(requests.all { it.url.host == "192-0-2-11.fixture.plex.direct" && it.url.protocol.name == "https" })
     }
 }

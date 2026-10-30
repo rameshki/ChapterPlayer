@@ -1,6 +1,5 @@
 package com.chapterplayer.domain.playback
 
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.downloads.DownloadStatus
 
 /** What this phone holds of a book. */
@@ -54,12 +53,10 @@ const val NEEDS_CONNECTION_TO_PLAY_TEXT = "Needs a connection to play"
 const val NOT_DOWNLOADED_TEXT = "This book is not downloaded"
 
 /**
- * Where a book plays from: a complete download always plays from the phone (Audiobookshelf and Plex alike, so [source]
- * does not change the answer); anything else streams, but only while [online] and not limited to downloaded books
- * ([downloadedOnly]).
+ * Where a book plays from: a complete download always plays from the phone (Audiobookshelf and Plex alike); anything
+ * else streams, but only while [online] and not limited to downloaded books ([downloadedOnly]).
  */
-@Suppress("UNUSED_PARAMETER")
-fun choosePlaybackSource(source: ServerSource, copy: LocalCopy, online: Boolean, downloadedOnly: Boolean): PlaybackSource = when {
+fun choosePlaybackSource(copy: LocalCopy, online: Boolean, downloadedOnly: Boolean): PlaybackSource = when {
     copy == LocalCopy.COMPLETE -> PlaybackSource.Local
     !online -> PlaybackSource.Unavailable(NEEDS_CONNECTION_TO_PLAY_TEXT)
     downloadedOnly -> PlaybackSource.Unavailable(NOT_DOWNLOADED_TEXT)

@@ -17,6 +17,11 @@ data class PlaybackTrack(
     val durationMs: Long,
     val mimeType: String,
     val url: String,
+    /**
+     * The server's id of this file when the address does not carry one (a Plex track's rating key); null for
+     * Audiobookshelf, whose `/file/{ino}` address names the file. Used to match a session to downloaded files.
+     */
+    val fileId: String? = null,
 )
 
 /**

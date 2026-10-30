@@ -135,9 +135,9 @@ class FileDownloader(
                     // refresh (401/403) is already a SignInRequiredException; anything else (429, 5xx) may pass.
                     Outcome.Again
                 } catch (e: IOException) {
-                    // Engine errors that are not IOExceptions (an unresolved address and the like) are handled alike.
                     connectionFailed(request, used ?: server, e, switches)
                 } catch (e: Exception) {
+                    // Engine errors that are not IOExceptions (an unresolved address and the like) are handled alike.
                     connectionFailed(request, used ?: server, e, switches)
                 }
             }

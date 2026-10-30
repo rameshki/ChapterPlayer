@@ -16,13 +16,18 @@ class PlexDownloadsTest {
 
     @Test
     fun `each track is one file in play order, named by its rating key, with its size, length and type`() {
-        val plan = plexDownloadPlan(listOf(track("12", size = 5_000, durationMs = 900_000), track("11", container = "mp4")))
+        val plan = plexDownloadPlan(
+            listOf(
+                track("12", size = 5_000, durationMs = 900_000),
+                track("11", part = "/library/parts/11/1700000000/file.m4b", container = "mp4"),
+            )
+        )
 
         assertEquals(
             PlexDownloadPlan.Files(
                 listOf(
                     PlexDownloadFile(PlannedFile("12", "12.mp3", 5_000, 0, 900_000, "audio/mpeg"), "/library/parts/12/1700000000/file.mp3"),
-                    PlexDownloadFile(PlannedFile("11", "11.mp4", 1_000, 1, 600_000, "audio/mp4"), "/library/parts/11/1700000000/file.mp3"),
+                    PlexDownloadFile(PlannedFile("11", "11.m4b", 1_000, 1, 600_000, "audio/mp4"), "/library/parts/11/1700000000/file.m4b"),
                 )
             ),
             plan
@@ -35,10 +40,14 @@ class PlexDownloadsTest {
     }
 
     @Test
-    fun `an unknown size is planned as 0 and an unknown length as 0`() {
-        val files = (plexDownloadPlan(listOf(track("1", size = null, durationMs = 0), track("2", size = -4))) as PlexDownloadPlan.Files).files
+    fun `a track without a known length makes the book not downloadable, as it could never play`() {
+        assertEquals(PlexDownloadPlan.Unavailable(PLEX_LENGTH_UNKNOWN_TEXT), plexDownloadPlan(listOf(track("1"), track("2", durationMs = 0))))
+    }
+
+    @Test
+    fun `an unknown size is planned as 0, to be asked for`() {
+        val files = (plexDownloadPlan(listOf(track("1", size = null), track("2", size = -4))) as PlexDownloadPlan.Files).files
         assertEquals(listOf(0L, 0L), files.map { it.file.totalBytes })
-        assertEquals(listOf(0L, 600_000L), files.map { it.file.durationMs })
     }
 
     @Test
@@ -54,13 +63,16 @@ class PlexDownloadsTest {
     }
 
     @Test
-    fun `the extension comes from the container, else audio`() {
-        assertEquals("mp3", plexFileExtension("MP3"))
-        assertEquals("m4b", plexFileExtension(" m4b "))
-        assertEquals("audio", plexFileExtension(null))
-        assertEquals("audio", plexFileExtension(""))
-        assertEquals("audio", plexFileExtension("../x"))
-        assertEquals("audio", plexFileExtension("averyverylongname"))
+    fun `the extension comes from the part's file name, else the container, else audio`() {
+        assertEquals("m4b", plexFileExtension("/library/parts/1/2/file.m4b", "mp4"))
+        assertEquals("mp3", plexFileExtension("/library/parts/1/2/file.MP3?x=1", null))
+        assertEquals("mp4", plexFileExtension("/library/parts/1/2/file", "mp4"))
+        assertEquals("mp3", plexFileExtension(null, "MP3"))
+        assertEquals("m4b", plexFileExtension(null, " m4b "))
+        assertEquals("audio", plexFileExtension(null, null))
+        assertEquals("audio", plexFileExtension("/library/parts/1/2/file.", ""))
+        assertEquals("audio", plexFileExtension(null, "../x"))
+        assertEquals("audio", plexFileExtension("/x/file.averyverylongname", "averyverylongname"))
     }
 
     @Test
@@ -71,11 +83,18 @@ class PlexDownloadsTest {
 
     @Test
     fun `the size Plex sends with a range or a whole answer`() {
-        assertEquals(9_600_000L, plexSizeFromAnswer(206, contentRange = "bytes 0-0/9600000", contentLength = "1"))
-        assertEquals(9_600_000L, plexSizeFromAnswer(200, contentRange = null, contentLength = "9600000"))
-        assertEquals(null, plexSizeFromAnswer(206, contentRange = "bytes 0-0/*", contentLength = "1"))
-        assertEquals(null, plexSizeFromAnswer(200, contentRange = null, contentLength = null))
-        assertEquals(null, plexSizeFromAnswer(200, contentRange = null, contentLength = "0"))
-        assertEquals(null, plexSizeFromAnswer(404, contentRange = null, contentLength = "12"))
+        assertEquals(PlexSizeAnswer.Size(9_600_000L), plexSizeAnswer(206, contentRange = "bytes 0-0/9600000", contentLength = "1"))
+        assertEquals(PlexSizeAnswer.Size(9_600_000L), plexSizeAnswer(200, contentRange = null, contentLength = "9600000"))
+    }
+
+    @Test
+    fun `only a definite answer without a size is final, other answers are asked again later`() {
+        assertEquals(PlexSizeAnswer.NoSize, plexSizeAnswer(206, contentRange = "bytes 0-0/*", contentLength = "1"))
+        assertEquals(PlexSizeAnswer.NoSize, plexSizeAnswer(200, contentRange = null, contentLength = null))
+        assertEquals(PlexSizeAnswer.NoSize, plexSizeAnswer(200, contentRange = null, contentLength = "0"))
+        assertEquals(PlexSizeAnswer.Missing, plexSizeAnswer(404, contentRange = null, contentLength = "12"))
+        for (status in listOf(301, 302, 307, 403, 408, 429, 500, 503)) {
+            assertEquals(PlexSizeAnswer.TryLater, plexSizeAnswer(status, contentRange = null, contentLength = "12"), "status $status")
+        }
     }
 }

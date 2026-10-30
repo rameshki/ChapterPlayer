@@ -52,6 +52,8 @@ class PlexBookDownloadTest {
 
     /** The recorded three-track album with small synthetic sizes, so the test files stay small. */
     private val tracks = fixture("plex/album-tracks-multi.json")
+        // The length the third track lacks in the recording: a book with an unknown length is refused.
+        .replace("\"ratingKey\": \"1104\",", "\"ratingKey\": \"1104\", \"duration\": 300000,")
         .replace("\"size\": 9600000,", "\"size\": 3000,")
         .replace("\"size\": 14400000,", "\"size\": 5000,")
         .replace("\"size\": 1000000,", "\"size\": 2000,")
@@ -79,6 +81,8 @@ class PlexBookDownloadTest {
     private inner class Rig(
         val dao: InMemoryDownloadDao = InMemoryDownloadDao(listOf(DownloadEntity(bookId, "plex1", DownloadStatus.QUEUED.name, 0, null, 0))),
         onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null },
+        prepare: suspend (ServerConfig) -> ServerConfig? = { it },
+        val children: String = tracks,
         val part: suspend MockRequestHandleScope.(HttpRequestData, ByteArray) -> HttpResponseData = { req, body -> serve(body, req) },
     ) {
         val servers = FakeServers(server)
@@ -88,7 +92,7 @@ class PlexBookDownloadTest {
             val path = request.url.encodedPath
             when {
                 path.startsWith("/library/parts/") -> bodies[path]?.let { part(request, it) } ?: respond("", HttpStatusCode.NotFound)
-                path.endsWith("/children") -> respond(tracks, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                path.endsWith("/children") -> respond(children, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 else -> respond(noChapters, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
@@ -103,7 +107,7 @@ class PlexBookDownloadTest {
         )
         val downloader = BookDownloader(
             dao = dao, bookDao = books, servers = servers,
-            sources = listOf(PlexDownloadSource(plex, servers, downloadClient, onConnectionFailure)),
+            sources = listOf(PlexDownloadSource(plex, servers, downloadClient, onConnectionFailure, prepare)),
             files = FileDownloader(downloadClient),
             location = object : DownloadLocation {
                 override suspend fun rootDir(): File = root
@@ -126,7 +130,7 @@ class PlexBookDownloadTest {
         val rows = rig.dao.files.value.sortedBy { it.sortOrder }
         assertEquals(listOf("1102", "1103", "1104"), rows.map { it.ino })
         assertEquals(listOf(File(dir, "1102.mp3").path, File(dir, "1103.mp3").path, File(dir, "1104.mp3").path), rows.map { it.path })
-        assertEquals(listOf(600_000L, 900_000L, 0L), rows.map { it.durationMs })
+        assertEquals(listOf(600_000L, 900_000L, 300_000L), rows.map { it.durationMs })
         assertEquals(listOf("audio/mpeg", "audio/mpeg", "audio/mpeg"), rows.map { it.mimeType })
         for ((i, path) in bodies.keys.withIndex()) assertContentEquals(bodies.getValue(path), File(rows[i].path).readBytes())
         assertEquals(bodies.keys.toList(), partRequests.map { it.url.encodedPath })
@@ -183,9 +187,34 @@ class PlexBookDownloadTest {
         assertEquals("bytes=1200-", second.last().headers[HttpHeaders.Range])
         assertEquals("tok", second.last().headers["X-Plex-Token"])
         assertContentEquals(bodies.getValue("/library/parts/1203/1700000000/file.mp3"), File(dir, "1103.mp3").readBytes())
-        // The third file goes straight to the new address.
-        assertEquals("10.0.0.2", partRequests.last().url.host)
+        // Only the cut request went to the old address; every later one, the third file too, to the new one.
+        val afterCut = partRequests.dropWhile { !(it.url.host == "plex.test" && it.url.encodedPath.contains("/1203/")) }.drop(1)
+        assertEquals(2, afterCut.size)
+        assertTrue(afterCut.all { it.url.host == "10.0.0.2" })
+        assertEquals(listOf("/1203/", "/1204/"), afterCut.map { if ("/1203/" in it.url.encodedPath) "/1203/" else "/1204/" })
         assertEquals(DownloadStatus.DONE.name, rig.status())
+    }
+
+    @Test
+    fun `a job whose address is plain http and not verified here sends nothing and waits`() = runBlocking {
+        val rig = Rig(prepare = { null })
+
+        val result = rig.downloader.run(bookId)
+
+        assertEquals(BookResult.Retry, result)
+        assertEquals(DownloadStatus.QUEUED.name, rig.status())
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `an album with a track of unknown length fails at once with the reason and downloads nothing`() = runBlocking {
+        val rig = Rig(children = tracks.replace("\"ratingKey\": \"1104\", \"duration\": 300000,", "\"ratingKey\": \"1104\","))
+
+        val result = rig.downloader.run(bookId)
+
+        assertEquals(BookResult.Failed(com.chapterplayer.domain.plex.PLEX_LENGTH_UNKNOWN_TEXT), result)
+        assertTrue(partRequests.isEmpty())
+        assertTrue(rig.dao.files.value.isEmpty())
     }
 
     @Test

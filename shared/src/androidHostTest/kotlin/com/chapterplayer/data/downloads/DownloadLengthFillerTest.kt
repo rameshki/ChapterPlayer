@@ -117,4 +117,42 @@ class DownloadLengthFillerTest {
         }
         assertEquals(listOf(10_000L), lengths(dao, "abs_li_c"))
     }
+
+    /** A Plex source that knows only the lengths in [lengths]; counts its reads. */
+    private class CountingPlexSource(var lengths: Map<String, Long>) : DownloadSource {
+        var reads = 0
+        override val type = com.chapterplayer.data.model.ServerSource.PLEX
+        override suspend fun plan(server: com.chapterplayer.data.model.ServerConfig, bookId: String) = error("unused")
+        override suspend fun <T> authorized(server: com.chapterplayer.data.model.ServerConfig, bookId: String, fileId: String, fetch: suspend (FileFetch) -> T): T = error("unused")
+        override suspend fun <T> authorizedSmall(server: com.chapterplayer.data.model.ServerConfig, url: String, fetch: suspend (FileFetch) -> T): T = error("unused")
+        override suspend fun fileLengths(server: com.chapterplayer.data.model.ServerConfig, bookId: String): Map<String, Long> {
+            reads++
+            return lengths
+        }
+    }
+
+    @Test
+    fun `a plex book whose server has no length is not read again until the sync writes its row again`() = runTest {
+        val dao = InMemoryDownloadDao(listOf(download("plex_1", DownloadStatus.DONE)), listOf(file("plex_1", "11", 0), file("plex_1", "12", 1)))
+        val plex = CountingPlexSource(mapOf("11" to 5_000L))
+        var syncedAt = 1L
+        val servers = FakeServers(testServer().copy(source = com.chapterplayer.data.model.ServerSource.PLEX))
+        val filler = DownloadLengthFiller(
+            dao, servers, listOf(plex), RoomLocalBookFiles(dao, noDisk, Dispatchers.Unconfined, nowMs = { 1L }), FakeConnectivity(),
+            backgroundScope, cachedAt = { syncedAt },
+        )
+
+        filler.fill()
+        filler.fill()
+        assertEquals(1, plex.reads)
+        assertEquals(listOf(5_000L, 0L), dao.files.value.sortedBy { it.sortOrder }.map { it.durationMs })
+
+        syncedAt = 2L
+        plex.lengths = mapOf("11" to 5_000L, "12" to 7_000L)
+        filler.fill()
+        assertEquals(2, plex.reads)
+        assertEquals(listOf(5_000L, 7_000L), dao.files.value.sortedBy { it.sortOrder }.map { it.durationMs })
+        filler.fill()
+        assertEquals(2, plex.reads) // nothing missing any more
+    }
 }

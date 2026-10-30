@@ -57,7 +57,7 @@ class PlaybackStarter(
         val files = downloadedFiles(book.id)
         val copy = if (files != null) LocalCopy.COMPLETE else LocalCopy.NONE
         val downloadedOnly = !ignoreDownloadedOnly && downloadedOnly()
-        val origin = when (val source = choosePlaybackSource(book.source, copy, online, downloadedOnly)) {
+        val origin = when (val source = choosePlaybackSource(copy, online, downloadedOnly)) {
             PlaybackSource.Stream -> AudioOrigin.Server
             PlaybackSource.Local -> AudioOrigin.Phone(files!!, openSession = online)
             is PlaybackSource.Unavailable -> throw PlaybackStartException(source.reason)

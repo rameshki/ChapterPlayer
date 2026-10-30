@@ -335,6 +335,8 @@ val downloadModule = module {
         PlexDownloadSource(
             get(), get(), get(DownloadClientQualifier),
             onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
+            // The same address check as a sync: a plain http address not verified on this network never gets the token.
+            prepare = { server -> get<PlexConnectionManager>().forTokenRequest(server) },
         )
     } bind DownloadSource::class
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
@@ -349,7 +351,10 @@ val downloadModule = module {
     single { DefaultDownloadController(get(), get(), get(), get(), get(), get(), get()) }
     single<DownloadController> { get<DefaultDownloadController>() }
     // The application starts it: whenever the phone comes online, fills in the file lengths older downloads lack.
-    single { DownloadLengthFiller(get(), get(), getAll<DownloadSource>(), get(), get(), get(AppScopeQualifier)) }
+    single {
+        val bookDao = get<BookDao>()
+        DownloadLengthFiller(get(), get(), getAll<DownloadSource>(), get(), get(), get(AppScopeQualifier), cachedAt = { id -> bookDao.getById(id)?.cachedAt })
+    }
     // The application starts it: reschedules downloads after a reboot or process death.
     single { DownloadQueueRestorer(get(), get(AppScopeQualifier)) }
 }

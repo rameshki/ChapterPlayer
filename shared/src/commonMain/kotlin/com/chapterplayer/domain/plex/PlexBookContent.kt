@@ -26,9 +26,9 @@ data class PlexBookContent(val tracks: List<PlexTrack>, val chapters: List<Chapt
     /** The whole book's length; 0 when no track's length is known. */
     val durationMs: Long get() = tracks.sumOf { it.durationMs }
 
-    /** What a download would fetch, in bytes; null when any track's size is unknown. */
+    /** What a download would fetch, in bytes; null when any track's size is unknown (or 0), so a part sum never shows. */
     val sizeBytes: Long?
-        get() = if (tracks.isNotEmpty() && tracks.all { it.sizeBytes != null }) tracks.sumOf { it.sizeBytes!! } else null
+        get() = if (tracks.isNotEmpty() && tracks.all { (it.sizeBytes ?: 0L) > 0L }) tracks.sumOf { it.sizeBytes!! } else null
 }
 
 /** Only tracks are audio (an entry without a type, as some servers send, is taken as one). */

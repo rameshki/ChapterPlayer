@@ -6,37 +6,56 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.source.PlexLibrarySource
+import com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT
 import com.chapterplayer.domain.plex.PLEX_SIZE_UNKNOWN_TEXT
 import com.chapterplayer.domain.plex.PLEX_TOKEN_HEADER
 import com.chapterplayer.domain.plex.PlexDownloadPlan
+import com.chapterplayer.domain.plex.PlexSizeAnswer
 import com.chapterplayer.domain.plex.plexDownloadPlan
-import com.chapterplayer.domain.plex.plexSizeFromAnswer
+import com.chapterplayer.domain.plex.plexSizeAnswer
 import com.chapterplayer.domain.plex.plexUrl
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
+
+/** The server's address is plain http and not verified on this network: nothing is sent with the token (tried later). */
+class PlexAddressNotVerifiedException : IOException("The server's address is not verified on this network")
+
+/** Plex gave no definite answer about a file (a redirect, a server error, a timeout): planning is tried again later. */
+class PlexTryLaterException : IOException("The server did not answer about a file")
 
 /**
  * Plex downloads: one file per track of the album ([PlexLibrarySource.fetchContent], in play order), its id the track's
  * rating key (kept in the `ino` column of `download_files`), fetched from the part's path under the server's address
  * in use ([servers] is read for every request, so a download follows a change of connection) with the `X-Plex-Token`
  * header; no token is ever in an address. A 401 blanks the token and is "Sign in again" ([PlexLibrarySource.signedIn]).
- * A track whose size Plex leaves out is asked for its first byte before the plan is written; when that answer has no
- * size either, the book cannot be downloaded ([PLEX_SIZE_UNKNOWN_TEXT]).
+ *
+ * A book with a track of unknown length is refused when planned (it could never play from the phone). A track whose
+ * size Plex leaves out is asked for its first byte before the plan is written: an answer that definitely has no size
+ * makes the book not downloadable ([PLEX_SIZE_UNKNOWN_TEXT]); one that says nothing definite (a redirect, a server
+ * error, a timeout) is asked again later.
+ *
+ * Before anything is sent with the token, [prepare] checks the address (the connection manager's `forTokenRequest`: a
+ * plain http address not verified on this network gets no token, and the request is tried later). A planning call that
+ * cannot connect asks [onConnectionFailure] for another address and is tried there once.
  *
  * @param client the download client (no redirects followed), for those size requests.
  * @param onConnectionFailure the connection manager's re-probe: the server to try again with, or null.
+ * @param prepare the server to send the token to now, or null when its address must not get it.
  */
 class PlexDownloadSource(
     private val plex: PlexLibrarySource,
     private val servers: ServerRepository,
     private val client: HttpClient,
     private val onConnectionFailure: suspend (ServerConfig, Throwable) -> ServerConfig? = { _, _ -> null },
+    private val prepare: suspend (ServerConfig) -> ServerConfig? = { it },
     private val sizeTimeoutMs: Long = 30_000,
 ) : DownloadSource {
 
@@ -47,7 +66,24 @@ class PlexDownloadSource(
     private val parts = HashMap<String, Map<String, String>>()
 
     override suspend fun plan(server: ServerConfig, bookId: String): SourcePlan {
-        val current = current(server)
+        val first = current(server)
+        return try {
+            planAt(first, bookId)
+        } catch (e: Exception) {
+            if (e is CancellationException || e is SignInRequiredException || e is HttpStatusException) throw e
+            // A stored address that no longer answers: the connection manager re-probes, and the plan is tried there once.
+            val next = try {
+                onConnectionFailure(first, e)
+            } catch (c: CancellationException) {
+                throw c
+            } catch (_: Exception) {
+                null
+            } ?: throw e
+            planAt(current(next), bookId)
+        }
+    }
+
+    private suspend fun planAt(current: ServerConfig, bookId: String): SourcePlan {
         val content = plex.signedIn(current) { plex.fetchContent(current, bookId) }
         val files = when (val plan = plexDownloadPlan(content.tracks)) {
             is PlexDownloadPlan.Unavailable -> return SourcePlan(emptyList(), emptyList(), plan.reason)
@@ -58,8 +94,12 @@ class PlexDownloadSource(
             if (planned.file.totalBytes > 0L) {
                 planned.file
             } else {
-                val size = sizeOf(current, planned.partKey) ?: return SourcePlan(emptyList(), emptyList(), PLEX_SIZE_UNKNOWN_TEXT)
-                planned.file.copy(totalBytes = size)
+                when (val answer = sizeOf(current, planned.partKey)) {
+                    is PlexSizeAnswer.Size -> planned.file.copy(totalBytes = answer.bytes)
+                    PlexSizeAnswer.NoSize -> return SourcePlan(emptyList(), emptyList(), PLEX_SIZE_UNKNOWN_TEXT)
+                    PlexSizeAnswer.Missing -> return SourcePlan(emptyList(), emptyList(), PLEX_AUDIO_MISSING_TEXT)
+                    PlexSizeAnswer.TryLater -> throw PlexTryLaterException()
+                }
             }
         }
         return SourcePlan(sized, content.chapters)
@@ -84,11 +124,16 @@ class PlexDownloadSource(
         return tracks.filter { it.durationMs > 0L }.associate { it.ratingKey to it.durationMs }
     }
 
-    /** The server as saved now (its address may have changed since the job started); signed out = "Sign in again". */
+    /**
+     * The server as saved now (its address may have changed since the job started), checked by [prepare] before the
+     * token goes anywhere. Signed out = "Sign in again"; an address that must not get the token = try later.
+     */
     private suspend fun current(server: ServerConfig): ServerConfig {
         val now = servers.getById(server.id) ?: server
         if (now.token.isBlank()) throw SignInRequiredException(now.name)
-        return now
+        val ready = prepare(now) ?: throw PlexAddressNotVerifiedException()
+        if (ready.token.isBlank()) throw SignInRequiredException(ready.name)
+        return ready
     }
 
     private fun tokenHeader(server: ServerConfig) = listOf(PLEX_TOKEN_HEADER to server.token)
@@ -105,8 +150,8 @@ class PlexDownloadSource(
         return byKey[ratingKey]
     }
 
-    /** Asks for the part's first byte and reads its size from the answer; null when the answer has none. */
-    private suspend fun sizeOf(server: ServerConfig, partKey: String): Long? = plex.signedIn(server) {
+    /** Asks for the part's first byte and reads what the answer says about its size; no answer in time is "try later". */
+    private suspend fun sizeOf(server: ServerConfig, partKey: String): PlexSizeAnswer = plex.signedIn(server) {
         withTimeoutOrNull(sizeTimeoutMs) {
             client.prepareGet(plexUrl(server.baseUrl, partKey)) {
                 header(PLEX_TOKEN_HEADER, server.token)
@@ -114,8 +159,8 @@ class PlexDownloadSource(
             }.execute { response ->
                 if (response.status == HttpStatusCode.Unauthorized) throw HttpStatusException(response.status)
                 // The body is not read: leaving the block closes the request.
-                plexSizeFromAnswer(response.status.value, response.headers[HttpHeaders.ContentRange], response.headers[HttpHeaders.ContentLength])
+                plexSizeAnswer(response.status.value, response.headers[HttpHeaders.ContentRange], response.headers[HttpHeaders.ContentLength])
             }
-        }
+        } ?: PlexSizeAnswer.TryLater
     }
 }

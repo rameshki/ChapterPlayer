@@ -20,25 +20,28 @@ sealed interface PlexDownloadPlan {
 
 /**
  * The files of a Plex book, one per track in play order ([tracks] as `plexBookContent` gives them). Each is named
- * `<ratingKey>.<ext>` (the extension from the part's container, [plexFileExtension]) and keeps its size (0 when Plex
- * gave none, to be asked for before downloading), its length (0 when unknown) and its media type. A track repeating a
- * rating key already planned is dropped. A track without a file makes the whole book [PlexDownloadPlan.Unavailable]
- * ([PLEX_AUDIO_MISSING_TEXT]): it could not be placed on the book's timeline.
+ * `<ratingKey>.<ext>` ([plexFileExtension]: from the part's file name, else its container) and keeps its size (0 when
+ * Plex gave none, to be asked for before downloading), its length and its media type. A track repeating a rating key
+ * already planned is dropped. The whole book is [PlexDownloadPlan.Unavailable] when a track has no file
+ * ([PLEX_AUDIO_MISSING_TEXT]) or no known length ([PLEX_LENGTH_UNKNOWN_TEXT]): either way it could not be placed on the
+ * book's timeline, so it could never play from the phone (the same rule as streaming).
  */
 fun plexDownloadPlan(tracks: List<PlexTrack>): PlexDownloadPlan {
     if (tracks.any { it.partKey.isNullOrBlank() }) return PlexDownloadPlan.Unavailable(PLEX_AUDIO_MISSING_TEXT)
+    if (tracks.any { it.durationMs <= 0L }) return PlexDownloadPlan.Unavailable(PLEX_LENGTH_UNKNOWN_TEXT)
     val seen = HashSet<String>()
     val files = tracks
         .filter { it.ratingKey.isNotBlank() && seen.add(it.ratingKey) }
         .mapIndexed { order, track ->
+            val ext = plexFileExtension(track.partKey, track.container)
             PlexDownloadFile(
                 PlannedFile(
                     ino = track.ratingKey,
-                    fileName = safeFileName("${track.ratingKey}.${plexFileExtension(track.container)}"),
+                    fileName = safeFileName("${track.ratingKey}.$ext"),
                     totalBytes = track.sizeBytes?.takeIf { it > 0L } ?: 0L,
                     sortOrder = order,
-                    durationMs = track.durationMs.coerceAtLeast(0L),
-                    mimeType = plexMimeType(track.container),
+                    durationMs = track.durationMs,
+                    mimeType = plexMimeType(track.container).ifEmpty { plexMimeType(ext) },
                 ),
                 track.partKey!!,
             )
@@ -48,20 +51,49 @@ fun plexDownloadPlan(tracks: List<PlexTrack>): PlexDownloadPlan {
 
 private val EXTENSION = Regex("[a-z0-9]{1,8}")
 
-/** The file extension for a Plex part's [container] ("mp3", "mp4", "m4b"), or "audio" when there is no usable one. */
-fun plexFileExtension(container: String?): String {
+/**
+ * The file extension for a Plex part: the one in the part path's file name (`/library/parts/1/2/file.m4b` gives "m4b")
+ * when it has a usable one, else the part's [container] ("mp3", "mp4"), else "audio".
+ */
+fun plexFileExtension(partKey: String?, container: String?): String {
+    val name = partKey?.substringBefore('?')?.substringAfterLast('/').orEmpty()
+    val fromName = if ('.' in name) name.substringAfterLast('.').lowercase() else ""
+    if (EXTENSION.matches(fromName)) return fromName
     val ext = container?.trim()?.lowercase().orEmpty()
     return if (EXTENSION.matches(ext)) ext else "audio"
 }
 
 private val CONTENT_RANGE_TOTAL = Regex("bytes\\s+\\d+-\\d+/(\\d+)")
 
+/** What the answer to a request for a file's first byte (`Range: bytes=0-0`) says about its size. */
+sealed interface PlexSizeAnswer {
+    data class Size(val bytes: Long) : PlexSizeAnswer
+
+    /** A definite answer without a size: the download cannot be checked ([PLEX_SIZE_UNKNOWN_TEXT]). */
+    data object NoSize : PlexSizeAnswer
+
+    /** The server has no such file (404). */
+    data object Missing : PlexSizeAnswer
+
+    /** Nothing definite (a redirect, a server error, a refusal that may pass): ask again later. */
+    data object TryLater : PlexSizeAnswer
+}
+
 /**
- * A file's size from the answer to a request for its first byte (`Range: bytes=0-0`): the total of a 206's
- * `Content-Range`, or the `Content-Length` of a 200 (a server that ignored the range). Null otherwise.
+ * Reads the answer to a request for a file's first byte: the total of a 206's `Content-Range`, or the `Content-Length`
+ * of a 200 (a server that ignored the range). Only a 2xx without a size is a definite [PlexSizeAnswer.NoSize]; a 404 is
+ * [PlexSizeAnswer.Missing]; anything else (3xx, 5xx, 408, 429 and other refusals) is [PlexSizeAnswer.TryLater].
  */
-fun plexSizeFromAnswer(status: Int, contentRange: String?, contentLength: String?): Long? = when (status) {
-    206 -> contentRange?.trim()?.let { CONTENT_RANGE_TOTAL.matchEntire(it) }?.groupValues?.get(1)?.toLongOrNull()?.takeIf { it > 0L }
-    200 -> contentLength?.trim()?.toLongOrNull()?.takeIf { it > 0L }
-    else -> null
+fun plexSizeAnswer(status: Int, contentRange: String?, contentLength: String?): PlexSizeAnswer {
+    val size = when (status) {
+        206 -> contentRange?.trim()?.let { CONTENT_RANGE_TOTAL.matchEntire(it) }?.groupValues?.get(1)?.toLongOrNull()
+        200 -> contentLength?.trim()?.toLongOrNull()
+        else -> null
+    }?.takeIf { it > 0L }
+    return when {
+        size != null -> PlexSizeAnswer.Size(size)
+        status in 200..299 -> PlexSizeAnswer.NoSize
+        status == 404 -> PlexSizeAnswer.Missing
+        else -> PlexSizeAnswer.TryLater
+    }
 }

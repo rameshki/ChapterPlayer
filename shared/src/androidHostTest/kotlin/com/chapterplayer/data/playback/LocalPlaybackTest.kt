@@ -192,15 +192,32 @@ class LocalPlaybackTest {
 
     private val plexBook = book.copy(id = "plex_1101", source = ServerSource.PLEX, chapters = emptyList(), durationMs = 0)
 
-    /** A Plex session: its tracks are part paths (no file id), so the stored lengths make the timeline. */
-    private fun plexSession(chapters: List<Chapter> = emptyList()) = PlaybackSession(
+    /** A Plex session the app built from the album's tracks now: part paths, with each track's rating key as its file id. */
+    private fun plexSession(chapters: List<Chapter> = emptyList(), keys: List<String> = listOf("1102", "1103")) = PlaybackSession(
         sessionId = "plex-1101-1", serverId = "s1", bookId = "plex_1101", durationMs = 1_500_000, startPositionMs = 700_000,
         tracks = listOf(
-            PlaybackTrack(0, 0, 600_000, "audio/mpeg", "http://plex.test:32400/library/parts/1202/1700000000/file.mp3"),
-            PlaybackTrack(1, 600_000, 900_000, "audio/mpeg", "http://plex.test:32400/library/parts/1203/1700000000/file.mp3"),
+            PlaybackTrack(0, 0, 600_000, "audio/mpeg", "http://plex.test:32400/library/parts/1202/1700000000/file.mp3", fileId = keys[0]),
+            PlaybackTrack(1, 600_000, 900_000, "audio/mpeg", "http://plex.test:32400/library/parts/1203/1700000000/file.mp3", fileId = keys[1]),
         ),
         chapters = chapters,
     )
+
+    @Test
+    fun `online a plex download whose album changed is not played with that session's reports`() {
+        val files = listOf(file("1102", 600_000), file("1103", 900_000))
+        // A track was replaced on the server since the download: its positions would land on the wrong tracks.
+        assertNull(playableFromPhone(plexBook, files, plexSession(keys = listOf("1102", "9999")), toUri = uri))
+        // The same tracks in another order: also not the downloaded book.
+        assertNull(playableFromPhone(plexBook, files, plexSession(keys = listOf("1103", "1102")), toUri = uri))
+        // Offline (no session) the files play as stored.
+        assertEquals(2, playableFromPhone(plexBook, files, session = null, toUri = uri)!!.tracks.size)
+    }
+
+    @Test
+    fun `a plex session matching the files gives the lengths a download lacks`() {
+        val files = listOf(file("1102", 0), file("1103", 900_000))
+        assertEquals(mapOf("1102" to 600_000L), durationsToRemember(files, plexSession()))
+    }
 
     @Test
     fun `offline a plex download plays its stored lengths, with one chapter per file when none were stored`() {
