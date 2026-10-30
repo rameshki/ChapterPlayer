@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.details
 
+import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.auth.SignInRequiredException
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookDetails
@@ -69,12 +70,41 @@ class BookDetailsViewModelTest {
         val downloads: FakeDownloadStates = FakeDownloadStates(),
         val controller: FakePlaybackController = FakePlaybackController(),
         val connectivity: FakeConnectivity = FakeConnectivity(),
-        val settings: FakeAppSettings = FakeAppSettings()
+        val settings: FakeAppSettings = FakeAppSettings(),
+        features: PlatformFeatures = PlatformFeatures.Full,
     ) {
         val vm = BookDetailsViewModel(
             id, repo, downloads, controller, PlaybackStarter(controller, repo, settings, connectivity, FakeLocalBookFiles()), connectivity, settings, Dispatchers.Main,
-            FakeDownloadOverview(), FakeDownloadController(), FakeNotificationPermission()
+            FakeDownloadOverview(), FakeDownloadController(), FakeNotificationPermission(), features = features
         )
+    }
+
+    @Test
+    fun `without playback on this platform Play is off with the reason and a tap starts nothing`() = runTest {
+        val s = Setup(DetailsRepo(listOf(cachedBook())), "a", features = PlatformFeatures.IosBrowsingOnly)
+        val state = collect(s)
+        assertFalse(state().canPlay)
+        assertEquals("Playback is not available on iOS yet", state().cannotPlayReason)
+        s.vm.onResumeClicked()
+        assertNull(s.controller.state.value.bookId)
+        assertEquals(DetailsPlayback.NOT_PLAYING, state().playback)
+    }
+
+    @Test
+    fun `without downloads on this platform Download is off with the reason`() = runTest {
+        val s = Setup(DetailsRepo(listOf(cachedBook())), "a", features = PlatformFeatures.IosBrowsingOnly)
+        val state = collect(s)
+        assertEquals(DetailsDownloadPhase.IDLE, state().download.phase)
+        assertFalse(state().download.canStart)
+        assertEquals("Downloads are not available on iOS yet", state().download.disabledReason)
+    }
+
+    @Test
+    fun `with every feature a cached book can play and download`() = runTest {
+        val state = collect(Setup(DetailsRepo(listOf(cachedBook())), "a"))
+        assertTrue(state().canPlay)
+        assertNull(state().cannotPlayReason)
+        assertTrue(state().download.canStart)
     }
 
     private fun TestScope.collect(s: Setup): () -> BookDetailsUiState {

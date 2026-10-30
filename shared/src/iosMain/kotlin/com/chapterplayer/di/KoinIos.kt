@@ -7,6 +7,8 @@ import com.chapterplayer.data.connectivity.IosConnectivityMonitor
 import com.chapterplayer.data.local.createIosDatabase
 import com.chapterplayer.data.remote.plex.IosPlexClientIdentifier
 import com.chapterplayer.data.security.KeychainCredentialStore
+import com.chapterplayer.data.stats.IosDayZone
+import com.chapterplayer.data.stats.IosListeningClock
 import com.chapterplayer.data.sync.PlexConnectionManager
 import kotlin.experimental.ExperimentalNativeApi
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +29,8 @@ val iosPlatformModule = platformModule(
         connectivity = { IosConnectivityMonitor() },
         appInfo = { IosAppInfo() },
         blockingIo = Dispatchers.IO,
+        dayZone = { IosDayZone },
+        listeningClock = { IosListeningClock },
     )
 )
 

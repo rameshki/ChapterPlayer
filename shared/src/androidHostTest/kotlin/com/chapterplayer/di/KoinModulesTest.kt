@@ -8,6 +8,19 @@ import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.security.CredentialStore
+import com.chapterplayer.data.PlatformFeatures
+import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadStorage
+import com.chapterplayer.data.downloads.LocalBookFiles
+import com.chapterplayer.data.downloads.NoDownloadStorage
+import com.chapterplayer.data.downloads.NoLocalBookFiles
+import com.chapterplayer.data.downloads.NotYetOnIosDownloadController
+import com.chapterplayer.data.permissions.NoNotificationPermission
+import com.chapterplayer.data.permissions.NotificationPermission
+import com.chapterplayer.data.playback.NotYetOnIosPlaybackController
+import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.stats.ListeningClock
+import com.chapterplayer.domain.stats.DayZone
 import androidx.lifecycle.SavedStateHandle
 import com.chapterplayer.ui.library.LibraryView
 import io.ktor.client.HttpClientConfig
@@ -98,12 +111,14 @@ class KoinModulesTest {
         module { includes(sharedModules) }.verify(extraTypes = providedByApp)
     }
 
-    // What a platform module provides for the common modules besides a BookRepository (the iOS module: iosPlatformModule),
-    // plus the HTTP engine and config the client constructor mentions.
+    // What a platform module provides for the common modules besides the player and download parts (the iOS module:
+    // iosPlatformModule), plus the HTTP engine and config the client constructor mentions and the view model parameters.
     private val providedByPlatform = listOf(
         ChapterPlayerDatabase::class, DataStore::class, CredentialStore::class, PlexClientIdentifier::class,
         ConnectivityMonitor::class, AppInfo::class, CoroutineDispatcher::class, Boolean::class,
+        DayZone::class, ListeningClock::class,
         HttpClientEngine::class, HttpClientConfig::class,
+        LibraryView::class, String::class, SavedStateHandle::class,
     )
 
     @Test
@@ -131,6 +146,11 @@ class KoinModulesTest {
             connectivity = { object : ConnectivityMonitor { override val isOnline = kotlinx.coroutines.flow.flowOf(true) } },
             appInfo = { object : AppInfo { override val versionName = "test" } },
             blockingIo = kotlinx.coroutines.Dispatchers.IO,
+            dayZone = { DayZone.UTC },
+            listeningClock = { object : ListeningClock {
+                override fun monoMs() = 0L
+                override fun nowMs() = 0L
+            } },
         )
     )
 
@@ -159,7 +179,7 @@ class KoinModulesTest {
     fun `the common modules resolve with the platform module and the iOS stand-ins`() {
         val dir = kotlin.io.path.createTempDirectory("koin").toFile()
         module { includes(commonModules + notYetOnIosModule + fakePlatform(dir)) }
-            .verify(extraTypes = listOf(HttpClientEngine::class, HttpClientConfig::class))
+            .verify(extraTypes = listOf(HttpClientEngine::class, HttpClientConfig::class, LibraryView::class, String::class, SavedStateHandle::class))
     }
 
     @Test
@@ -174,16 +194,37 @@ class KoinModulesTest {
     }
 
     @Test
-    fun `the common modules need a book repository from the platform`() {
+    fun `the common modules need the player from the platform`() {
         val missing = runCatching { module { includes(commonModules) }.verify(extraTypes = providedByPlatform) }.exceptionOrNull()
         assertNotNull(missing)
-        assertTrue(BookRepository::class.qualifiedName!! in missing.message.orEmpty())
+        assertTrue(PlaybackController::class.qualifiedName!! in missing.message.orEmpty())
+    }
+
+    @OptIn(KoinInternalApi::class)
+    @Test
+    fun `the book repository is the shared one on every platform`() {
+        val name = BookRepository::class.qualifiedName!!
+        assertTrue(commonRepositoryModule.mappings.keys.any { name in it })
+        // Neither iOS's stand-ins nor Android's own modules bind another one.
+        assertTrue(notYetOnIosModule.mappings.keys.none { name in it })
+        assertTrue(listOf(databaseModule, networkModule, securityModule, deviceModule, downloadModule, widgetModule).none { m -> m.mappings.keys.any { name in it } })
     }
 
     @Test
-    fun `the iOS stand-in module gives the not-yet book repository`() {
+    fun `the iOS stand-in module gives the not-yet player, downloads and browsing-only features`() {
         val koin = koinApplication { modules(notYetOnIosModule) }.koin
-        assertSame(com.chapterplayer.data.repository.NotYetOnIosBookRepository, koin.get<BookRepository>())
+        assertTrue(koin.get<PlaybackController>() is NotYetOnIosPlaybackController)
+        assertTrue(koin.get<DownloadController>() is NotYetOnIosDownloadController)
+        assertSame(NoLocalBookFiles, koin.get<LocalBookFiles>())
+        assertSame(NoDownloadStorage, koin.get<DownloadStorage>())
+        assertSame(NoNotificationPermission, koin.get<NotificationPermission>())
+        assertSame(PlatformFeatures.IosBrowsingOnly, koin.get<PlatformFeatures>())
+    }
+
+    @Test
+    fun `Android has every feature`() {
+        val koin = koinApplication { modules(deviceModule) }.koin
+        assertSame(PlatformFeatures.Full, koin.get<PlatformFeatures>())
     }
 
     @OptIn(KoinInternalApi::class)

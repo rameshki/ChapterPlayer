@@ -7,6 +7,8 @@ import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.security.CredentialStore
+import com.chapterplayer.data.stats.ListeningClock
+import com.chapterplayer.domain.stats.DayZone
 import kotlinx.coroutines.CoroutineDispatcher
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -22,12 +24,16 @@ class PlatformParts(
     val appInfo: () -> AppInfo,
     /** Dispatchers.IO, which common code cannot name. */
     val blockingIo: CoroutineDispatcher,
+    /** The phone's time zone as it is set now, for the listening days. */
+    val dayZone: () -> DayZone,
+    /** A monotonic clock (counting sleep) and the wall clock, for the listening log. */
+    val listeningClock: () -> ListeningClock,
 )
 
 /**
  * The platform module, with every binding (and qualifier) [commonModules] expect from a platform: the debug flag, the
- * files, the database, the two DataStores, the credential store, the Plex client id, connectivity, app info and the
- * blocking I/O dispatcher. iOS builds it from its parts (`iosPlatformModule`); the host tests build it from fakes, so
+ * files, the database, the two DataStores, the credential store, the Plex client id, connectivity, app info, the
+ * blocking I/O dispatcher, the day zone and the listening clock. iOS builds it from its parts (`iosPlatformModule`); the host tests build it from fakes, so
  * a qualified binding that goes missing fails there. Android binds the same things in its own modules.
  */
 fun platformModule(parts: PlatformParts): Module = module {
@@ -48,4 +54,6 @@ fun platformModule(parts: PlatformParts): Module = module {
     single<ConnectivityMonitor> { parts.connectivity() }
     single<AppInfo> { parts.appInfo() }
     single<CoroutineDispatcher>(BlockingIoQualifier) { parts.blockingIo }
+    single<DayZone> { parts.dayZone() }
+    single<ListeningClock> { parts.listeningClock() }
 }

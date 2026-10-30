@@ -51,6 +51,19 @@ class DetailsDownloadTest {
     }
 
     @Test
+    fun `without a downloader Download and Try again are off with the platform wording, online or not`() {
+        for (online in listOf(true, false)) {
+            val idle = detailsDownload(null, online, null, confirmingRemove = false, available = false)
+            assertEquals(DetailsDownloadPhase.IDLE, idle.phase)
+            assertFalse(idle.canStart)
+            assertEquals("Downloads are not available on iOS yet", idle.disabledReason)
+            val failed = detailsDownload(downloadRow("a", DownloadStatus.FAILED), online, null, confirmingRemove = false, available = false)
+            assertFalse(failed.canStart)
+            assertEquals("Downloads are not available on iOS yet", failed.disabledReason)
+        }
+    }
+
+    @Test
     fun `downloading shows the percent and the time left, or Calculating while unknown`() {
         val running = of(DownloadStatus.DOWNLOADING, fraction = 0.42f, eta = 3 * 3600 + 10 * 60)
         assertEquals(DetailsDownloadPhase.DOWNLOADING, running.phase)

@@ -14,6 +14,8 @@ import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.playback.PLAYBACK_NOT_ON_IOS_TEXT
+import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
@@ -79,6 +81,8 @@ class BookDetailsViewModel(
     merging: SourceMerging = SourceMerging.None,
     private val merges: BookMergeRepository? = null,
     servers: ServerRepository? = null,
+    /** Without playback (iOS until Stage 5 step 4) Play is off with the reason; without downloads, Download is. */
+    private val features: PlatformFeatures = PlatformFeatures.Full,
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -212,7 +216,7 @@ class BookDetailsViewModel(
                 loaded -> DetailsPlayback.PAUSED
                 else -> DetailsPlayback.NOT_PLAYING
             }
-            val canPlay = book.serverId.isNotBlank() && (
+            val canPlay = features.playback && book.serverId.isNotBlank() && (
                 isPlayable(whole.downloadState, env.online, env.downloadedOnly) ||
                     (merged && entry!!.sources.any { isPlayable(it.downloadState, env.online, env.downloadedOnly) })
                 )
@@ -239,6 +243,7 @@ class BookDetailsViewModel(
                 canPlay = canPlay,
                 cannotPlayReason = when {
                     canPlay -> null
+                    !features.playback -> PLAYBACK_NOT_ON_IOS_TEXT
                     else -> NEEDS_CONNECTION_TEXT
                 },
                 playError = env.local.error
@@ -251,6 +256,7 @@ class BookDetailsViewModel(
                     knownSizeBytes = env.download?.totalBytes?.takeIf { it > 0L }
                         ?: live.details?.downloadSizeBytes?.takeIf { env.downloadBookId == bookId },
                     confirmingRemove = env.confirmingRemove,
+                    available = features.downloads,
                 ),
                 downloadBookId = env.downloadBookId,
                 sources = rows,

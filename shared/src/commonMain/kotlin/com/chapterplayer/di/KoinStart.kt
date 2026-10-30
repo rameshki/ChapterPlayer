@@ -1,7 +1,19 @@
 package com.chapterplayer.di
 
-import com.chapterplayer.data.repository.BookRepository
-import com.chapterplayer.data.repository.NotYetOnIosBookRepository
+import com.chapterplayer.data.PlatformFeatures
+import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.data.downloads.DownloadStorage
+import com.chapterplayer.data.downloads.LocalBookFiles
+import com.chapterplayer.data.downloads.NoDownloadStorage
+import com.chapterplayer.data.downloads.NoLiveDownloadProgress
+import com.chapterplayer.data.downloads.NoLocalBookFiles
+import com.chapterplayer.data.downloads.NotYetOnIosDownloadController
+import com.chapterplayer.data.downloads.RoomDownloadOverview
+import com.chapterplayer.data.permissions.NoNotificationPermission
+import com.chapterplayer.data.permissions.NotificationPermission
+import com.chapterplayer.data.playback.NotYetOnIosPlaybackController
+import com.chapterplayer.data.playback.PlaybackController
 import org.koin.core.Koin
 import org.koin.core.module.Module
 import org.koin.core.context.startKoin
@@ -9,11 +21,19 @@ import org.koin.dsl.module
 import org.koin.mp.KoinPlatformTools
 
 /**
- * The bindings iOS cannot make for real yet (Stage 5 step 1): the book repository is still Android-only, so the Servers
- * pages get [NotYetOnIosBookRepository] (empty lists, "not available on iOS yet" for a sync). Step 2 replaces it.
+ * The bindings iOS cannot make for real yet (Stage 5 step 2): no player until step 4 and no downloader until step 5.
+ * Nothing ever loads in the player (a start fails with "Playback is not available on iOS yet"), downloads cannot start
+ * ("Downloads are not available on iOS yet"), there are no downloaded files, no download storage and no notification
+ * prompt; the download overview reads the (empty) download tables. [PlatformFeatures.IosBrowsingOnly] tells the screens.
  */
 val notYetOnIosModule = module {
-    single<BookRepository> { NotYetOnIosBookRepository }
+    single<PlatformFeatures> { PlatformFeatures.IosBrowsingOnly }
+    single<PlaybackController> { NotYetOnIosPlaybackController() }
+    single<DownloadController> { NotYetOnIosDownloadController() }
+    single<DownloadStorage> { NoDownloadStorage }
+    single<DownloadOverview> { RoomDownloadOverview(get(), NoLiveDownloadProgress) }
+    single<LocalBookFiles> { NoLocalBookFiles }
+    single<NotificationPermission> { NoNotificationPermission }
 }
 
 /**
