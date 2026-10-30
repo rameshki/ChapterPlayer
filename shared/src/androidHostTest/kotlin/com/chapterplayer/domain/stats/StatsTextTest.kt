@@ -11,7 +11,8 @@ class StatsTextTest {
 
     @Test
     fun `listened time reads in hours and two digit minutes`() {
-        assertEquals("0 m", formatListened(59))
+        assertEquals("<1 m", formatListened(59))
+        assertEquals("0 m", formatListened(0))
         assertEquals("12 m", formatListened(12 * 60 + 30))
         assertEquals("3 h 02 m", formatListened(3 * 3_600 + 2 * 60))
         assertEquals("38 h 12 m", formatListened(38 * 3_600 + 12 * 60))

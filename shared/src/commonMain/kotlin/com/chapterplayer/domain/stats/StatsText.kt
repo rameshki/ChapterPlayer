@@ -15,8 +15,9 @@ val WEEKDAY_LETTERS = listOf("M", "T", "W", "T", "F", "S", "S")
 
 fun weekdayName(weekday: Int): String = WEEKDAY_LONG[weekday.mod(7)]
 
-/** "38 h 12 m", "3 h 02 m", "12 m"; under a minute is "0 m". */
+/** "38 h 12 m", "3 h 02 m", "12 m"; some listening under a minute is "<1 m", none is "0 m". */
 fun formatListened(seconds: Long): String {
+    if (seconds in 1L..59L) return "<1 m"
     val minutes = seconds.coerceAtLeast(0L) / 60
     val h = minutes / 60
     val m = minutes % 60
