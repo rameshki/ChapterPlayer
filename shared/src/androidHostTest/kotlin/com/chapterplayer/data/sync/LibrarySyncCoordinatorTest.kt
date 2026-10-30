@@ -159,6 +159,23 @@ class LibrarySyncCoordinatorTest {
     }
 
     @Test
+    fun `a foreground pass syncs every server, keeps earlier messages and leaves a busy server to its run`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val books = RecordingBooks(gate = gate)
+        books.books.value = listOf(testBook("x"))
+        val c = coordinator(books, FakeServerList(listOf(server("s1"), server("s2"))))
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.syncAll() }
+        assertEquals(listOf("s1"), books.synced)
+        // s1 is still syncing: a second pass does not queue another run of it (only the user's refresh does).
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { c.syncAll() }
+        gate.complete(Unit)
+        assertEquals(listOf("s1", "s2"), books.synced)
+        c.syncAll()
+        assertEquals(listOf("s1", "s2", "s1", "s2"), books.synced)
+    }
+
+    @Test
     fun `errors of overlapping runs add up`() = runTest {
         val gate = CompletableDeferred<Unit>()
         val books = RecordingBooks(outcome = { Result.failure(IllegalStateException("boom")) }, gate = gate)

@@ -27,8 +27,8 @@ fun appearanceSummary(mode: ThemeMode): String = when (mode) {
 }
 
 /** [locationLabel] is the chosen download location's name; null while the volumes are not read yet. */
-fun downloadsSummary(wifiOnly: Boolean, locationLabel: String?, limitBytes: Long?): String =
-    listOf(
+fun downloadsSummary(wifiOnly: Boolean, locationLabel: String?, limitBytes: Long?, available: Boolean = true): String =
+    if (!available) DOWNLOADS_UNAVAILABLE_SUMMARY else listOf(
         if (wifiOnly) "Wi-Fi only" else "Any network",
         locationLabel ?: "Internal storage",
         storageLimitLabel(limitBytes)
@@ -48,6 +48,9 @@ fun downloadLocationLabel(chosenId: String?, labels: Map<String, String>): Strin
         else -> labels[INTERNAL_VOLUME_ID] ?: "Internal storage"
     }
 }
+
+/** The Downloads row on a platform without a downloader (iOS until Stage 5 step 5). */
+const val DOWNLOADS_UNAVAILABLE_SUMMARY = "Not available on iOS yet"
 
 fun carSummary(resumeOnConnect: Boolean): String = "Resume on connect: ${if (resumeOnConnect) "on" else "off"}"
 

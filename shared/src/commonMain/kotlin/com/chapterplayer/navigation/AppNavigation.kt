@@ -36,6 +36,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.chapterplayer.data.PlatformFeatures
+import com.chapterplayer.ui.components.LocalPlatformFeatures
 import com.chapterplayer.ui.components.LocalShowSourceBadge
 import com.chapterplayer.domain.browse.showSourceBadges
 import com.chapterplayer.data.repository.ServerRepository
@@ -88,9 +90,16 @@ val bottomNavItems = listOf(
     BottomNavItem("Search", Screen.Search, Icons.Default.Search)
 )
 
+/** The tabs this platform shows: without downloads (iOS for now) there is no Downloads tab. */
+fun visibleTabs(features: PlatformFeatures): List<BottomNavItem> =
+    bottomNavItems.filter { features.downloads || it.screen != Screen.Downloads }
+
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    // What this platform can do (iOS: no player, downloads or car yet); the screens hide or disable the rest.
+    val features = koinInject<PlatformFeatures>()
+    val tabs = visibleTabs(features)
 
     // Starts the app-wide library sync once, so a new install fills in whichever tab is open.
     val syncCoordinator = koinInject<LibrarySyncCoordinator>()
@@ -104,7 +113,7 @@ fun AppNavigation() {
 
     // The bar belongs to the four tabs; Settings, server setup and the player cover the screen.
     val showBottomBar = currentDestination == null ||
-        bottomNavItems.any { item -> currentDestination.hierarchy.any { it.route == item.screen.route } }
+        tabs.any { item -> currentDestination.hierarchy.any { it.route == item.screen.route } }
 
     val openSettings = {
         navController.navigate(Screen.Settings.route) { launchSingleTop = true }
@@ -141,7 +150,11 @@ fun AppNavigation() {
         }
     }
 
-    CompositionLocalProvider(LocalShowSourceBadge provides showBadges, LocalHaptics provides rememberComposeHaptics()) {
+    CompositionLocalProvider(
+        LocalShowSourceBadge provides showBadges,
+        LocalHaptics provides rememberComposeHaptics(),
+        LocalPlatformFeatures provides features,
+    ) {
         Scaffold(
             bottomBar = {
                 Column {
@@ -155,7 +168,7 @@ fun AppNavigation() {
                     }
                 if (showBottomBar) {
                     NavigationBar(containerColor = NavBarSurface) {
-                        bottomNavItems.forEach { item ->
+                        tabs.forEach { item ->
                             NavigationBarItem(
                                 selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true,
                                 onClick = { navController.openTab(item.screen) },

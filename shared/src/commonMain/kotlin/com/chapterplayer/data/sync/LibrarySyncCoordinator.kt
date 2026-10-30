@@ -61,7 +61,7 @@ class LibrarySyncCoordinator(
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Reads Plex album lengths after a Plex sync, in the background; null for none. */
     private val lengthFiller: PlexLengthFiller? = null,
-) : LibrarySync {
+) : LibrarySync, SyncAllServers {
     private data class Activity(val running: Int = 0, val errors: List<String> = emptyList())
 
     private val activity = MutableStateFlow(Activity())
@@ -143,6 +143,21 @@ class LibrarySyncCoordinator(
         dismissError()
         try {
             syncServers(servers.observeAll().first(), queueBusy = true, force = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            addErrors(listOf("Sync failed: ${e.message ?: "Unknown error"}"))
+        }
+    }
+
+    /**
+     * Syncs every configured server that is not syncing already, without the user having asked: earlier messages stay
+     * and a Plex connection failure waits for the usual re-probe interval. iOS calls it (through [ForegroundSync]) when
+     * the app comes to the front or the network changes, as it has no background sync yet.
+     */
+    override suspend fun syncAll() {
+        try {
+            syncServers(servers.observeAll().first())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -45,6 +45,7 @@ import com.chapterplayer.domain.stats.STATS_SUMMARY
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
+import com.chapterplayer.ui.components.LocalPlatformFeatures
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -70,6 +71,8 @@ fun SettingsHubScreen(
 
     // A card may have been put in or taken out since the hub was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
+    // iOS has no downloader and no car yet: the Downloads row says so, and there is no Android Auto row.
+    val features = LocalPlatformFeatures.current
     val locationLabel = downloadLocationLabel(downloadLocations.chosenId, downloadLocations.options.associate { it.id to it.label })
 
     SettingsPage(title = "Settings", onBack = onBack) {
@@ -84,12 +87,14 @@ fun SettingsHubScreen(
             HubRow(
                 Icons.Default.Download,
                 "Downloads and offline",
-                downloadsSummary(downloadWifiOnly, locationLabel, downloadStorageLimit),
+                downloadsSummary(downloadWifiOnly, locationLabel, downloadStorageLimit, available = features.downloads),
                 onOpenDownloads
             )
         }
-        HubGroup("Devices") {
-            HubRow(Icons.Default.DirectionsCar, "Android Auto", carSummary(resumeOnCarConnect), onOpenCar)
+        if (features.car) {
+            HubGroup("Devices") {
+                HubRow(Icons.Default.DirectionsCar, "Android Auto", carSummary(resumeOnCarConnect), onOpenCar)
+            }
         }
         HubGroup("About") {
             HubRow(Icons.Default.Info, "About", aboutSummary(appInfo.versionName), onOpenAbout)

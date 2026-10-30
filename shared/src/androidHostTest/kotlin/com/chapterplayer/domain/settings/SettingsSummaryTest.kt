@@ -46,6 +46,11 @@ class SettingsSummaryTest {
     }
 
     @Test
+    fun `without a downloader the downloads row says it is not available yet`() {
+        assertEquals("Not available on iOS yet", downloadsSummary(true, "SD card", 5 * GIGABYTE, available = false))
+    }
+
+    @Test
     fun `the location label follows the saved choice even before the volumes are read`() {
         assertEquals("Internal storage", downloadLocationLabel(null, emptyMap()))
         assertEquals("Internal storage", downloadLocationLabel("internal", emptyMap()))

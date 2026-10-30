@@ -71,6 +71,8 @@ import com.chapterplayer.data.source.AbsLibrarySource
 import com.chapterplayer.data.source.LibrarySource
 import com.chapterplayer.data.source.PlexLibrarySource
 import com.chapterplayer.data.sync.DataStoreServerStatusStore
+import com.chapterplayer.data.sync.ForegroundSync
+import com.chapterplayer.data.sync.SyncAllServers
 import com.chapterplayer.data.sync.LibrarySync
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.data.sync.NoPlexSectionLengths
@@ -203,6 +205,9 @@ val commonServerModule = module {
     // The Plex servers the cover loader adds the token header for.
     single { PlexImageServers(get(), get(AppScopeQualifier)) }
     single<LibrarySync> { get<LibrarySyncCoordinator>() }
+    // iOS only (no background sync there yet): every server syncs at start, on becoming active and on a network change.
+    single<SyncAllServers> { get<LibrarySyncCoordinator>() }
+    single { ForegroundSync(get(), get(AppScopeQualifier)) }
 }
 
 /** The book repository, the other copies of merged books, and the download states the lists show. */
