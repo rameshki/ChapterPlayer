@@ -14,7 +14,7 @@ ABS and Plex sources (both download), combined library with one entry per book a
 
 ## Decisions (Robert)
 - 2026-10-29: Android first and clean, then iOS (Stage 5). No Apple Developer account yet and no paid publishing for now. TestFlight needs the paid Program, so the iOS test route is a free one: the macOS CI job builds an unsigned `.ipa`, Robert signs it from Windows with Sideloadly (free Apple ID, 7-day expiry, 3 apps, no push/CarPlay entitlements) and installs it on his iPhone over USB. Revisit TestFlight if he decides to pay. There is no Mac available for local Xcode work.
-- 2026-10-30: the free Apple ID + Sideloadly route is fine for the first iOS builds. Robert has iPads too and said "iOS 12": it is not yet known whether his iPhone is also on iOS 12. Compose Multiplatform needs iOS 13 or newer, so a device on iOS 12 cannot run the shared UI; the iPhone model and iOS version must be confirmed before step 6 (packaging) and before the deployment target in `iosApp/project.yml` (now 16.0) is chosen. Step 1 (shared foundations) does not depend on it.
+- 2026-10-30: the free Apple ID + Sideloadly route is fine for the first iOS builds. Robert's iPhone is an iPhone 12 on the latest iOS (he reported 27.2), so the deployment target stays iOS 16 and the iPhone is the target device; his iPads (one on iOS 12) are not targets (Compose Multiplatform needs iOS 13 or newer).
 
 ## Next steps, in order
 1. Install the current main on the phone or the emulator (the emulator runs again, started from the command line with `-gpu swiftshader_indirect`) and check the stats: the page in both themes, Series finished / Series to finish, the first ABS history import and Refresh, and listening logged offline and on Plex.
