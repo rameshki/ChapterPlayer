@@ -41,8 +41,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /** How many track details a book's details read at once. */
 internal const val PLEX_DETAIL_CONCURRENCY = 4
@@ -67,8 +65,6 @@ class PlexLibrarySource(
 
     override val type: ServerSource = ServerSource.PLEX
 
-    private val sessionCount = AtomicLong()
-
     /**
      * A session this app opened (Plex has no sessions of its own): the book's tracks, the position of the last report
      * (null before the first), the tracks already scrobbled in it, and whether the book was marked finished while it was
@@ -82,8 +78,12 @@ class PlexLibrarySource(
         var markedFinished = false
     }
 
-    /** The sessions this app opened, by session id; a closed one is forgotten. */
-    private val sessions = ConcurrentHashMap<String, LiveSession>()
+    /** The sessions this app opened, by session id; a closed one is forgotten. Read and written under [sessionsLock]. */
+    private val sessions = HashMap<String, LiveSession>()
+    private var sessionCount = 0L
+    private val sessionsLock = Mutex()
+
+    private suspend fun sessionOf(sessionId: String): LiveSession? = sessionsLock.withLock { sessions[sessionId] }
 
     /**
      * Plex has no playback session to open: the app makes one from the book's tracks, read fresh ([fetchContent]).
@@ -96,8 +96,9 @@ class PlexLibrarySource(
         val content = fetchContent(server, bookId)
         val tracks = plexPlaybackTracks(server.baseUrl, content.tracks)
         val progress = plexServerProgress(content.tracks)
-        val sessionId = "plex-${plexRatingKey(bookId)}-${sessionCount.incrementAndGet()}"
-        sessions[sessionId] = LiveSession(bookId, content.tracks)
+        val sessionId = sessionsLock.withLock {
+            "plex-${plexRatingKey(bookId)}-${++sessionCount}".also { sessions[it] = LiveSession(bookId, content.tracks) }
+        }
         PlaybackSession(
             sessionId = sessionId,
             serverId = server.id,
@@ -191,12 +192,12 @@ class PlexLibrarySource(
         val albums = LinkedHashMap<String, PlexMetadataDto>()
         for (entry in entries) {
             when (plexEntryKind(entry)) {
-                PlexEntryKind.ALBUM -> albums.putIfAbsent(entry.ratingKey, entry)
+                PlexEntryKind.ALBUM -> albums.getOrPut(entry.ratingKey) { entry }
                 PlexEntryKind.ARTIST -> api.getChildren(server.baseUrl, server.token, entry.ratingKey)
                     .mediaContainer.metadata.orEmpty()
                     .filter { plexEntryKind(it) == PlexEntryKind.ALBUM }
                     // An album listed under its artist may leave out the artist's name; the artist's title is the author.
-                    .forEach { albums.putIfAbsent(it.ratingKey, if (it.author.isNullOrBlank()) it.copy(author = entry.title) else it) }
+                    .forEach { albums.getOrPut(it.ratingKey) { if (it.author.isNullOrBlank()) it.copy(author = entry.title) else it } }
                 PlexEntryKind.OTHER -> Unit
             }
         }
@@ -263,7 +264,7 @@ class PlexLibrarySource(
         durationMs: Long,
         isPlaying: Boolean,
     ) {
-        val live = sessions[sessionId] ?: error("The playback session is over")
+        val live = sessionOf(sessionId) ?: error("The playback session is over")
         signedIn(server) { report(server, live, positionMs, listenedMs, if (isPlaying) TIMELINE_PLAYING else TIMELINE_PAUSED) }
     }
 
@@ -272,7 +273,7 @@ class PlexLibrarySource(
      * session that never reported (a start rolled back) or whose book was marked finished sends nothing.
      */
     override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
-        val live = sessions.remove(sessionId) ?: return
+        val live = sessionsLock.withLock { sessions.remove(sessionId) } ?: return
         if (live.lastPositionMs == null) return
         signedIn(server) { report(server, live, positionMs, listenedMs, TIMELINE_STOPPED) }
     }
@@ -298,7 +299,7 @@ class PlexLibrarySource(
      * fails (the queue tries again later).
      */
     override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {
-        for (live in sessions.values) {
+        for (live in sessionsLock.withLock { sessions.values.toList() }) {
             if (live.bookId == bookId) live.lock.withLock { live.markedFinished = isFinished }
         }
         signedIn(server) {

@@ -1,5 +1,6 @@
 package com.chapterplayer.data.remote.abs
 
+import com.chapterplayer.data.remote.ABS_DEVICE_ID
 import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.abs.dto.AbsBookmarkDto
 import com.chapterplayer.data.remote.abs.dto.AbsBookmarkRequest
@@ -97,7 +98,7 @@ class AbsApiService(private val client: HttpClient) {
         client.post(endpoint(baseUrl, "api/items/${itemId.encodeURLPathPart()}/play")) {
             header(HttpHeaders.Authorization, bearerToken)
             contentType(ContentType.Application.Json)
-            setBody(AbsPlayRequest(AbsPlayDeviceInfo(clientName = "ChapterPlayer", deviceId = DEVICE_ID)))
+            setBody(AbsPlayRequest(AbsPlayDeviceInfo(clientName = "ChapterPlayer", deviceId = ABS_DEVICE_ID)))
         }.body()
 
     /** Ends a playback session (POST /api/session/{id}/close) with where listening stopped and how long it ran, in seconds. */
@@ -210,9 +211,6 @@ class AbsApiService(private val client: HttpClient) {
         }.body()
 
     companion object {
-        /** The app sends no per-install id at sign-in, so one constant names the Android client. */
-        private const val DEVICE_ID = "chapterplayer-android"
-
         /**
          * Where one audio file of an item downloads from (GET /api/items/{id}/file/{ino}/download).
          * The token is never part of it: it goes in the Authorization header of each request.

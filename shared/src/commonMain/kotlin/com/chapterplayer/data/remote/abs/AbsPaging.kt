@@ -25,7 +25,7 @@ internal suspend fun fetchAllAbsItems(
     for (page in 0 until maxPages) {
         val response = fetchPage(page, pageSize)
         val sizeBefore = items.size
-        response.results.forEach { items.putIfAbsent(it.id, it) }
+        response.results.forEach { items.getOrPut(it.id) { it } }
         val total = response.total
         val isLastPage = response.results.size < pageSize
         // A page with nothing new means the server ignored the page number; asking again would loop.
@@ -48,7 +48,7 @@ internal suspend fun fetchAllAbsCollections(
     for (page in 0 until maxPages) {
         val response = fetchPage(page, pageSize)
         val sizeBefore = collections.size
-        response.results.forEach { collections.putIfAbsent(it.id, it) }
+        response.results.forEach { collections.getOrPut(it.id) { it } }
         val total = response.total
         val isLastPage = response.results.size < pageSize
         val addedNothing = collections.size == sizeBefore

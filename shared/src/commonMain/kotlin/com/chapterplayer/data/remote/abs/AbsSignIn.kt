@@ -8,7 +8,7 @@ import com.chapterplayer.data.auth.AbsSignInResult
 import com.chapterplayer.data.auth.normalizeServerAddress
 import com.chapterplayer.data.remote.HttpStatusException
 import kotlinx.coroutines.CancellationException
-import java.io.IOException
+import kotlinx.io.IOException
 
 /**
  * Signs in to an Audiobookshelf server and lists its book libraries. Throws only

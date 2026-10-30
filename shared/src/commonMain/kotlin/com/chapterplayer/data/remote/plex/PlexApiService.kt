@@ -1,5 +1,6 @@
 package com.chapterplayer.data.remote.plex
 
+import com.chapterplayer.data.remote.PLEX_PLATFORM_NAME
 import com.chapterplayer.data.remote.plex.dto.PlexLibraryAllResponse
 import com.chapterplayer.data.remote.plex.dto.PlexLibrarySectionsResponse
 import io.ktor.client.HttpClient
@@ -155,7 +156,7 @@ class PlexApiService(
         header("X-Plex-Token", token)
         header(HttpHeaders.Accept, "application/json")
         header("X-Plex-Product", PRODUCT)
-        header("X-Plex-Platform", "Android")
+        header("X-Plex-Platform", PLEX_PLATFORM_NAME)
         header("X-Plex-Client-Identifier", clientIdentifier.value)
     }
 
