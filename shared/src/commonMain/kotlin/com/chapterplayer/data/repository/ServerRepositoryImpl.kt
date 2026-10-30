@@ -88,10 +88,11 @@ class ServerRepositoryImpl(
         migrationLock.withLock {
             val isNew = serverConfigDao.getById(config.id) == null
             try {
-                credentials.put(config.id, config.token)
+                // An empty value that only reflects a failed read is not written over the stored secret.
+                if (config.token.isNotEmpty() || !lastReadFailed(config.id)) credentials.put(config.id, config.token)
                 if (config.refreshToken != null) {
                     credentials.put(refreshKey(config.id), config.refreshToken)
-                } else {
+                } else if (!lastReadFailed(refreshKey(config.id))) {
                     credentials.remove(refreshKey(config.id))
                 }
                 serverConfigDao.insert(ServerConfigEntity.fromDomain(config))
@@ -155,19 +156,32 @@ class ServerRepositoryImpl(
     // A row that still holds a token (not migrated yet) wins over the store.
     private suspend fun ServerConfigEntity.withToken(excludedLibraryIds: Set<String>): ServerConfig =
         toDomain(
-            token = token.ifEmpty { credentials.get(id).orEmpty() },
+            token = token.ifEmpty { readSecret(id).orEmpty() },
             refreshToken = readRefreshToken(id),
             excludedLibraryIds = excludedLibraryIds
         )
 
     // A missing or unreadable entry means no refresh token; the user signs in again if needed.
-    private suspend fun readRefreshToken(id: String): String? =
+    private suspend fun readRefreshToken(id: String): String? = readSecret(refreshKey(id))
+
+    /**
+     * Keys whose last read failed (the store threw, e.g. the iOS Keychain while the phone is locked): they read as empty
+     * (the server shows "Sign in again" for now), and a save that only carries that empty value back leaves the stored
+     * secret alone, so a passing failure never wipes a real token. A later good read clears the mark.
+     */
+    private val unreadableLock = Mutex()
+    private val unreadable = HashSet<String>()
+
+    private suspend fun readSecret(key: String): String? =
         try {
-            credentials.get(refreshKey(id))
+            credentials.get(key).also { unreadableLock.withLock { unreadable.remove(key) } }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            unreadableLock.withLock { unreadable.add(key) }
             null
         }
+
+    private suspend fun lastReadFailed(key: String): Boolean = unreadableLock.withLock { key in unreadable }
 
     private companion object {
         // Stays under SQLite's limit on bound variables.

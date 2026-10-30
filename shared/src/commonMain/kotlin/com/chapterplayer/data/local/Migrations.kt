@@ -2,7 +2,6 @@ package com.chapterplayer.data.local
 
 import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
-import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.execSQL
 
 /**
@@ -20,10 +19,11 @@ internal val DROP_PLEX_ROWS_SQL: List<String> = listOf(
     "DELETE FROM bookmarks WHERE bookId LIKE 'plex\\_%' ESCAPE '\\'",
 )
 
-/** Version 8 to 9: the data-only clean-up described at [DROP_PLEX_ROWS_SQL]. */
-internal object Migration8To9 : Migration(8, 9) {
-    // Room calls one or the other depending on whether a driver is set; both do the same.
+/**
+ * Version 8 to 9: the data-only clean-up described at [DROP_PLEX_ROWS_SQL], through the driver connection API. iOS (a
+ * database with a SQLite driver) uses it as it is; Android's database has no driver, so Room calls the
+ * SupportSQLiteDatabase overload there, which `Migration8To9` (androidMain) adds with the same statements.
+ */
+internal open class DropPlexRowsMigration : Migration(8, 9) {
     override fun migrate(connection: SQLiteConnection) = DROP_PLEX_ROWS_SQL.forEach { connection.execSQL(it) }
-
-    override fun migrate(db: SupportSQLiteDatabase) = DROP_PLEX_ROWS_SQL.forEach { db.execSQL(it) }
 }

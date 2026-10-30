@@ -55,7 +55,7 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
         ImportedListeningItemEntity::class,
         ListeningImportEntity::class
     ],
-    // Version 9 changes no table: its migration (Migration8To9, Android) drops the Plex rows stored before albums were read.
+    // Version 9 changes no table: its migration (DropPlexRowsMigration; Migration8To9 on Android) drops the Plex rows stored before albums were read.
     // Version 10 adds book_merges (the user's corrections of merged sources).
     // Version 11 adds the listening log and the imported listening history (statistics).
     // Version 12 adds progress.mirrored (a row copied from another copy of a merged book).

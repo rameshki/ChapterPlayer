@@ -13,8 +13,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerializationException
-import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.io.IOException
+import kotlin.time.Clock
 
 /** Runs a call to an Audiobookshelf server with a valid access token. */
 interface AbsAuthorizer {
@@ -31,10 +31,14 @@ class AbsSessionManager(
     private val api: AbsApiService,
     private val servers: ServerRepository,
     /** Epoch seconds. */
-    private val clock: () -> Long = { System.currentTimeMillis() / 1000 },
+    private val clock: () -> Long = { Clock.System.now().epochSeconds },
 ) : AbsAuthorizer {
 
-    private val locks = ConcurrentHashMap<String, Mutex>()
+    // One lock per server, made on first use; the map itself is guarded by [locksGuard].
+    private val locksGuard = Mutex()
+    private val locks = HashMap<String, Mutex>()
+
+    private suspend fun lockFor(serverId: String): Mutex = locksGuard.withLock { locks.getOrPut(serverId) { Mutex() } }
 
     override suspend fun <T> authorized(server: ServerConfig, call: suspend (bearerToken: String) -> T): T {
         if (server.token.isBlank()) throw SignInRequiredException(server.name)
@@ -72,7 +76,7 @@ class AbsSessionManager(
 
     /** The server refused the sign-in for good: blank the tokens so Settings shows "Sign in again". */
     private suspend fun markSignedOut(server: ServerConfig, rejectedToken: String) {
-        locks.computeIfAbsent(server.id) { Mutex() }.withLock {
+        lockFor(server.id).withLock {
             val current = servers.getById(server.id) ?: return@withLock
             // A newer sign-in already replaced the token that was rejected: leave it alone.
             if (current.token != rejectedToken) return@withLock
@@ -100,7 +104,7 @@ class AbsSessionManager(
 
     /** Returns the access token to use after [failedToken] was found expired or refused. */
     private suspend fun refresh(server: ServerConfig, failedToken: String): String =
-        locks.computeIfAbsent(server.id) { Mutex() }.withLock {
+        lockFor(server.id).withLock {
             val current = servers.getById(server.id) ?: throw SignInRequiredException(server.name)
             if (current.token.isBlank()) throw SignInRequiredException(server.name)
             // Someone else refreshed while this call waited for the lock.
