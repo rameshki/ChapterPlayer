@@ -1,7 +1,6 @@
 package com.chapterplayer.data.remote
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpSend
 import io.ktor.client.plugins.plugin
 import io.ktor.client.request.HttpRequestBuilder
@@ -55,6 +54,6 @@ internal fun HttpClient.followRedirectsKeepingCredentialsAtHome(): HttpClient = 
     }
 }
 
-/** The client covers load with: OkHttp, with redirects followed by [followRedirectsKeepingCredentialsAtHome]. */
+/** The client covers load with: the platform engine, with redirects followed by [followRedirectsKeepingCredentialsAtHome]. */
 internal fun createImageHttpClient(): HttpClient =
-    HttpClient(OkHttp) { followRedirects = false }.followRedirectsKeepingCredentialsAtHome()
+    HttpClient(createHttpEngine()) { followRedirects = false }.followRedirectsKeepingCredentialsAtHome()

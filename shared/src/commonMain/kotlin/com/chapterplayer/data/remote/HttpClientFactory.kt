@@ -1,9 +1,7 @@
 package com.chapterplayer.data.remote
 
-import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
-import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.HttpTimeoutConfig
@@ -15,7 +13,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
-import java.io.IOException
+import kotlinx.io.IOException
 
 /** Thrown for any non-success HTTP status. The message is what people see in the sync error. */
 internal class HttpStatusException(val status: HttpStatusCode) :
@@ -31,11 +29,12 @@ internal data class HttpTimeouts(
     val socketMillis: Long = 30_000,
 )
 
-private const val LOG_TAG = "ChapterPlayerHttp"
+/** The tag debug HTTP lines are logged under (Logcat on Android). */
+internal const val LOG_TAG = "ChapterPlayerHttp"
 
-/** The one HTTP client for every server, using the OkHttp engine. */
+/** The one HTTP client for every server, on the platform engine ([createHttpEngine]: OkHttp on Android, Darwin on iOS). */
 internal fun createHttpClient(isDebuggable: Boolean): HttpClient =
-    HttpClient(OkHttp) { installApiDefaults(isDebuggable) }
+    HttpClient(createHttpEngine()) { installApiDefaults(isDebuggable) }
 
 /**
  * Settings shared by the app and its tests: JSON bodies, timeouts, errors for non-success
@@ -44,7 +43,7 @@ internal fun createHttpClient(isDebuggable: Boolean): HttpClient =
 internal fun HttpClientConfig<*>.installApiDefaults(
     isDebuggable: Boolean,
     timeouts: HttpTimeouts = HttpTimeouts(),
-    sink: (String) -> Unit = { Log.d(LOG_TAG, it) },
+    sink: (String) -> Unit = ::httpDebugLog,
 ) {
     install(ContentNegotiation) { json(ApiJson) }
 
@@ -64,7 +63,7 @@ internal fun HttpClientConfig<*>.installApiDefaults(
 
 /** The client for audio file downloads, separate from the API client: see [installDownloadDefaults]. */
 internal fun createDownloadHttpClient(isDebuggable: Boolean): HttpClient =
-    HttpClient(OkHttp) { installDownloadDefaults(isDebuggable) }
+    HttpClient(createHttpEngine()) { installDownloadDefaults(isDebuggable) }
 
 /**
  * Settings for downloads: a connect timeout only, no request or socket timeout (a file can take hours;
@@ -75,7 +74,7 @@ internal fun createDownloadHttpClient(isDebuggable: Boolean): HttpClient =
 internal fun HttpClientConfig<*>.installDownloadDefaults(
     isDebuggable: Boolean,
     connectMillis: Long = HttpTimeouts().connectMillis,
-    sink: (String) -> Unit = { Log.d(LOG_TAG, it) },
+    sink: (String) -> Unit = ::httpDebugLog,
 ) {
     followRedirects = false
     expectSuccess = false
@@ -94,13 +93,13 @@ internal const val PROBE_HTTP_TIMEOUT_MS = 5_000L
 
 /** The client that probes Plex connections: see [installProbeDefaults]. */
 internal fun createProbeHttpClient(isDebuggable: Boolean): HttpClient =
-    HttpClient(OkHttp) { installProbeDefaults(isDebuggable) }
+    HttpClient(createHttpEngine()) { installProbeDefaults(isDebuggable) }
 
 /**
  * Settings for connection probes: 5 s to connect and per read, no redirects followed (a probe that is sent elsewhere
  * failed, and its token header must not travel), statuses left to the caller, and the same safe logging.
  */
-internal fun HttpClientConfig<*>.installProbeDefaults(isDebuggable: Boolean, sink: (String) -> Unit = { Log.d(LOG_TAG, it) }) {
+internal fun HttpClientConfig<*>.installProbeDefaults(isDebuggable: Boolean, sink: (String) -> Unit = ::httpDebugLog) {
     followRedirects = false
     expectSuccess = false
     install(HttpTimeout) {

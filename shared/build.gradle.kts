@@ -52,6 +52,9 @@ kotlin {
             implementation(libs.room.runtime)
             implementation(libs.coroutines.core)
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.serialization.kotlinx.json)
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.core)
             implementation(libs.koin.compose.viewmodel)
@@ -90,13 +93,8 @@ kotlin {
             implementation(libs.koin.android)
 
 
-            // Ktor + kotlinx.serialization
-            implementation(libs.ktor.client.core)
+            // Ktor: the Android engine (the client set-up itself is common)
             implementation(libs.ktor.client.okhttp)
-            implementation(libs.ktor.client.content.negotiation)
-            implementation(libs.ktor.client.logging)
-            implementation(libs.ktor.serialization.kotlinx.json)
-            implementation(libs.kotlinx.serialization.json)
 
 
             // Coroutines
@@ -115,6 +113,11 @@ kotlin {
 
             // Glance: the home screen widgets
             implementation(libs.glance.appwidget)
+        }
+
+        iosMain.dependencies {
+            // Ktor: the iOS engine (NSURLSession)
+            implementation(libs.ktor.client.darwin)
         }
     }
 }
