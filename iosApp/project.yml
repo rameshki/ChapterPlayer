@@ -11,6 +11,19 @@ targets:
     platform: iOS
     sources:
       - ChapterPlayer
+    # XcodeGen writes this Info.plist (not committed); Xcode adds the keys its build settings generate.
+    info:
+      path: ChapterPlayer/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        # Audiobookshelf and Plex servers on the home network: iOS asks once before the app may reach them.
+        NSLocalNetworkUsageDescription: ChapterPlayer connects to your Audiobookshelf and Plex servers on your local network.
+        # Home servers are often plain http (a LAN address or a home DNS name, no certificate), so plain http is
+        # allowed everywhere. Only this key: with NSAllowsLocalNetworking beside it iOS would ignore it.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
     preBuildScripts:
       - name: Build the shared Kotlin framework
         basedOnDependencyAnalysis: false

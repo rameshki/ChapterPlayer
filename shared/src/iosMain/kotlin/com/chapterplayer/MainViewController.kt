@@ -1,25 +1,26 @@
 package com.chapterplayer
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
+import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.data.settings.ThemeMode
+import com.chapterplayer.di.initKoin
+import com.chapterplayer.navigation.IosAppNavigation
 import com.chapterplayer.ui.theme.ChapterPlayerTheme
+import org.koin.compose.koinInject
 
 /**
- * The root view controller for the iOS app. It only shows the themed app name for now:
- * the database, networking and navigation get their iOS parts in Stage 5.
+ * The root view controller of the iOS app. Koin is started once (the Swift app entry starts it too; the second call does
+ * nothing), then the app shows what works on iOS so far ([IosAppNavigation]) in the saved theme.
  */
-fun MainViewController() = ComposeUIViewController {
-    ChapterPlayerTheme {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("ChapterPlayer", style = MaterialTheme.typography.headlineLarge)
+fun MainViewController() = run {
+    initKoin()
+    ComposeUIViewController {
+        val settings = koinInject<AppSettings>()
+        val mode by settings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+        ChapterPlayerTheme(mode) {
+            IosAppNavigation()
         }
     }
 }
