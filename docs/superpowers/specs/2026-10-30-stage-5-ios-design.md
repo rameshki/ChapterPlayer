@@ -1,0 +1,47 @@
+# Stage 5 design: the iPhone app
+
+Goal: ChapterPlayer running on Robert's iPhone with the same core as Android (sign in, library, merged books, play, background audio with lock screen controls, downloads, progress sync), installed WITHOUT a paid Apple account (decision 2026-10-29: free Apple ID + Sideloadly from Windows, 7-day expiry; TestFlight only if he later pays). There is no Mac here: the macOS CI job is the only place iOS code compiles or runs, so every step must be verifiable there.
+
+## Where we start
+- `commonMain` (237 files) holds the UI (Compose Multiplatform), view models, navigation and all pure rules. It already compiles for `iosArm64`/`iosSimulatorArm64` in CI (framework link + app shell build). `iosMain` is a placeholder screen. There are no Kotlin/Native tests running yet.
+- `androidMain` (47 files) holds what is not yet shared: the HTTP client (Ktor OkHttp engine), the ABS/Plex API services and DTOs, library sources, `BookRepositoryImpl`/`ServerRepositoryImpl` (Room + DataStore + the sync glue), the credential cipher (Android Keystore), connectivity, the downloader (java.io, WorkManager), playback (Media3 service, the Android Auto callback), widgets (Glance), the Koin modules, one Room migration, notification permission.
+
+## Approach
+Move everything that is only "Ktor + Room + DataStore + coroutines" to `commonMain` (they are multiplatform libraries), and put only genuinely platform things behind small interfaces with an `androidMain` and an `iosMain` implementation. Do it in thin vertical steps, each one merged green on both CI jobs, so Android never breaks.
+
+| Area | Android today | Shared / iOS plan |
+|---|---|---|
+| HTTP | Ktor + OkHttp, `HttpClientFactory` | common client config; engine from a tiny `expect`/factory (OkHttp on Android, Darwin on iOS); redirect and logging plugins are common already or move |
+| ABS/Plex APIs, DTOs, sources | androidMain | move to commonMain unchanged (kotlinx.serialization) |
+| Database | Room KMP (schemas in commonMain) | iOS builder with `BundledSQLiteDriver`, DB in the app's documents/Library folder; `Migration8To9` becomes a common `Migration` using the connection API |
+| Settings, status, stats stores | DataStore Preferences | KMP DataStore with a file path from a platform `PathProvider` |
+| Credentials | AES-GCM + Android Keystore | iOS Keychain (kSecClassGenericPassword) behind the existing `CredentialStore` port; same JSON shape |
+| Connectivity | ConnectivityManager callback | `NWPathMonitor` implementation of `ConnectivityMonitor` |
+| Repositories, sync, merging, stats, mirroring | androidMain glue | move to commonMain (only `java.io`/`ConcurrentHashMap`/`System` uses need replacing: kotlinx-io/okio, `Mutex`-guarded maps, an injected clock) |
+| Playback | Media3 service + `AndroidPlaybackController` | new `IosPlaybackController` (Kotlin/Native over `AVPlayer`/`AVQueuePlayer` with one item per file/track on the one timeline; `AVAudioSession` playback category + background audio mode; `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` for lock screen/Control Center, skip 15/30, sleep timer in shared code); token headers through `AVURLAsset` `AVURLAssetHTTPHeaderFieldsKey` |
+| Downloads | WorkManager + FileDownloader (java.io) | shared `FileDownloader` on kotlinx-io files; iOS scheduling by an `NSURLSession` background configuration or `BGProcessingTask` resuming the same Range logic; progress notification via local notifications |
+| Images | Coil 3 (Ktor network) | same, Darwin engine |
+| Notifications permission, AppInfo | Android classes | `UNUserNotificationCenter`, bundle version |
+| Car, widgets | Media3 car tree, Glance | NOT in this stage's first TestFlight-less build (CarPlay needs an Apple entitlement; WidgetKit later in Swift) |
+| DI | Koin in androidMain `KoinModules.kt` | common modules + a platform module per target; `initKoin()` from the Swift app entry |
+
+## Steps (each = one PR, plan file, review, merge, status docs updated)
+1. **Shared foundations:** engine factory, move API services/DTOs/sources, DataStore and Room builders for iOS, common migration, path provider, `AppInfo`, Keychain credential store, `NWPathMonitor`, Koin common + iOS modules, `initKoin` from Swift; the iOS app shell starts Koin and shows the real Settings/Servers screens. Android behaviour must not change (all host tests stay green).
+2. **Repositories and sync in common:** move `BookRepositoryImpl`, `ServerRepositoryImpl`, sync, merging, stats, mirroring glue; replace JVM-only bits; the iOS app can add a server (Plex and ABS), sync, and show Library/Home/Search/Details.
+3. **Tests on Kotlin/Native:** run `:shared:iosSimulatorArm64Test` in the macOS CI job; move pure-domain tests from `androidHostTest` to `commonTest` in batches so iOS is verified by tests, not only by compiling. (This is how we verify without a Mac.)
+4. **Playback:** `IosPlaybackController`, audio session, lock screen controls, background audio, resume, speeds, sleep timer, chapters; progress sync and Plex reporting reuse the shared code.
+5. **Downloads and offline:** shared downloader on kotlinx-io, iOS background session, offline playback from files.
+6. **Packaging:** CI builds an unsigned `.ipa` artifact on every merge to main; document the Sideloadly steps (free Apple ID, USB, 7-day re-sign) in `docs/`; bundle id, icons, launch screen, Info.plist keys (background audio, local network usage text for http LAN servers, App Transport Security exception for plain http servers).
+7. **After the first working build (needs real iPhone feedback):** polish, then CarPlay/WidgetKit/TestFlight only with the paid account.
+
+## Risks and how we handle them
+- No Mac, no simulator here: only CI feedback, ~15 minutes per cycle. Keep steps small, lean on Kotlin/Native unit tests (step 3) and on code review focused on iOS behaviour.
+- Audio details (interruptions, route changes, background limits, HTTP Range streaming via AVPlayer with custom headers) cannot be tried until Robert has a build on his iPhone; step 4 will be reviewed against Apple's documented behaviour and checked on his phone.
+- Plain-http LAN servers need an ATS exception and the local-network permission prompt on iOS.
+- Free-account sideloads expire after 7 days and cap at 3 apps; background push, CarPlay and some entitlements are unavailable.
+- Compose Multiplatform for iOS matches Android closely but scrolling/gesture details (the A to Z scroller, drag handles) need a look on the device.
+
+## Questions for Robert
+1. Is "free Apple ID + Sideloadly, re-sign every 7 days" acceptable for the first builds? (Alternative: pay for the Developer Program to get TestFlight and 1-year signing.)
+2. Do you have a spare iPhone model/iOS version to name? (Deployment target is iOS 16; newer is fine.)
+3. OK to start with step 1 and to keep Android changes limited to moving code?
