@@ -244,6 +244,34 @@ class PlexConnectionsTest {
         assertFalse(isConnectionFailure(IllegalStateException("x")))
     }
 
+    /** Stands in for Ktor's Darwin engine error (iOS), which carries the NSError only in its message. */
+    private class DarwinHttpRequestException(message: String) : Exception(message)
+
+    private fun darwin(code: Int, domain: String = "NSURLErrorDomain") = DarwinHttpRequestException(
+        "Exception in http request: Error Domain=$domain Code=$code \"Some text.\" UserInfo={NSErrorFailingURLStringKey=https://host.example/identity}"
+    )
+
+    @Test
+    fun `iOS URL errors are classified by their NSURLErrorDomain code`() {
+        assertEquals(ProblemKind.UNKNOWN_HOST, classifyConnectionError(darwin(-1003)).kind)
+        assertEquals(ProblemKind.UNKNOWN_HOST, classifyConnectionError(darwin(-1006)).kind)
+        assertEquals(ProblemKind.TIMEOUT, classifyConnectionError(darwin(-1001)).kind)
+        assertEquals(ProblemKind.REFUSED, classifyConnectionError(darwin(-1004)).kind)
+        assertEquals(ProblemKind.UNREACHABLE, classifyConnectionError(darwin(-1009)).kind)
+        assertEquals(ProblemKind.UNREACHABLE, classifyConnectionError(darwin(-1005)).kind)
+        assertEquals(ProblemKind.TLS, classifyConnectionError(darwin(-1200)).kind)
+        assertEquals(ProblemKind.TLS, classifyConnectionError(darwin(-1202)).kind)
+        assertEquals(ProblemKind.UNKNOWN_HOST, classifyConnectionError(RuntimeException("wrap", darwin(-1003))).kind)
+        assertTrue(isConnectionFailure(darwin(-1001)))
+    }
+
+    @Test
+    fun `an iOS error of another domain or code is not a connection problem`() {
+        assertEquals(ProblemKind.OTHER, classifyConnectionError(darwin(-1003, domain = "NSPOSIXErrorDomain")).kind)
+        assertEquals(ProblemKind.OTHER, classifyConnectionError(darwin(-1011)).kind)
+        assertEquals(ProblemKind.OTHER, classifyConnectionError(DarwinHttpRequestException("Exception in http request")).kind)
+    }
+
     @Test
     fun `problem texts are fixed and hold no address or token`() {
         assertEquals("name not found", ConnectionProblem(ProblemKind.UNKNOWN_HOST).text)

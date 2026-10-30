@@ -259,6 +259,7 @@ fun classifyConnectionError(error: Throwable): ConnectionProblem {
             name == "ConnectException" -> ProblemKind.REFUSED
             name == "NoRouteToHostException" || name == "PortUnreachableException" -> ProblemKind.UNREACHABLE
             name.startsWith("SSL") || name.contains("Certificate") -> ProblemKind.TLS
+            name == "DarwinHttpRequestException" -> darwinProblemKind(current.message)
             else -> null
         }
         if (kind != null) return ConnectionProblem(kind)
@@ -267,6 +268,25 @@ fun classifyConnectionError(error: Throwable): ConnectionProblem {
         depth++
     }
     return ConnectionProblem(ProblemKind.OTHER)
+}
+
+private val NSURL_ERROR_CODE = Regex("""Domain=NSURLErrorDomain Code=(-?\d+)""")
+
+/**
+ * iOS: Ktor's Darwin engine reports a failed request as `DarwinHttpRequestException`, whose message holds the NSError
+ * (`Error Domain=NSURLErrorDomain Code=-1003 ...`). The URL loading system's codes say what went wrong; any other domain
+ * or code is not classified.
+ */
+private fun darwinProblemKind(message: String?): ProblemKind? {
+    val code = NSURL_ERROR_CODE.find(message ?: return null)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    return when (code) {
+        -1003, -1006 -> ProblemKind.UNKNOWN_HOST // cannot find host, DNS lookup failed
+        -1001 -> ProblemKind.TIMEOUT // timed out
+        -1004 -> ProblemKind.REFUSED // cannot connect to host
+        -1005, -1009, -1018, -1020 -> ProblemKind.UNREACHABLE // connection lost, not connected, roaming off, data not allowed
+        in -1206..-1200 -> ProblemKind.TLS // secure connection failed, certificate problems
+        else -> null
+    }
 }
 
 /** Whether [error] means the address could not be reached (so another connection may work), not a refusal by the server. */
