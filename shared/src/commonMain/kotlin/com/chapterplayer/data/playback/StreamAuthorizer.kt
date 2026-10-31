@@ -15,7 +15,9 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
 import io.ktor.http.takeFrom
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 /**
  * The request headers a player sends with every audio request of one book: the token of the server the audio is on
@@ -39,8 +41,10 @@ class StreamHeaders(val values: Map<String, String>) {
 enum class StreamCheck {
     /** The server answered with audio (or a part of it). */
     OK,
-    /** The token was refused (401/403). */
+    /** The token was refused (401): refreshed once for Audiobookshelf, "Sign in again" for Plex. */
     UNAUTHORIZED,
+    /** The server knows the account but does not let it play this (403): no refresh, no sign-in helps. */
+    FORBIDDEN,
     NOT_FOUND,
     /** The server sent the request to another address that may not have the token (or from https to http). */
     MOVED_AWAY,
@@ -54,6 +58,7 @@ enum class StreamCheck {
 fun streamCheckText(check: StreamCheck): String? = when (check) {
     StreamCheck.OK -> null
     StreamCheck.UNAUTHORIZED -> SIGN_IN_AGAIN_TEXT
+    StreamCheck.FORBIDDEN -> NOT_ALLOWED_TEXT
     StreamCheck.NOT_FOUND -> AUDIO_NOT_FOUND_TEXT
     StreamCheck.MOVED_AWAY -> AUDIO_MOVED_TEXT
     StreamCheck.UNREACHABLE -> CANNOT_REACH_TEXT
@@ -64,6 +69,7 @@ internal const val AUDIO_NOT_FOUND_TEXT = "The audio was not found on the server
 internal const val AUDIO_MOVED_TEXT = "The audio moved to another address"
 internal const val CANNOT_REACH_TEXT = "Cannot reach the server"
 internal const val PLAYBACK_FAILED_TEXT = "Playback failed"
+internal const val NOT_ALLOWED_TEXT = "The server does not let this account play this book"
 internal const val LOCAL_FILE_FAILED_TEXT = "The downloaded file could not be played"
 
 /** How many redirects one check follows (the same as Android's audio requests). */
@@ -98,7 +104,8 @@ sealed interface StreamStep {
 /** What the answer [status] (with its `Location` header) to a check of [from] means; [hop] counts redirects so far. */
 fun streamStep(status: Int, location: String?, from: String, hop: Int, withToken: Boolean): StreamStep = when {
     status in 200..299 -> StreamStep.Done(StreamCheck.OK)
-    status == 401 || status == 403 -> StreamStep.Done(StreamCheck.UNAUTHORIZED)
+    status == 401 -> StreamStep.Done(StreamCheck.UNAUTHORIZED)
+    status == 403 -> StreamStep.Done(StreamCheck.FORBIDDEN)
     status == 404 || status == 410 -> StreamStep.Done(StreamCheck.NOT_FOUND)
     status in 300..399 && !location.isNullOrBlank() ->
         streamRedirectTarget(from, location, hop + 1, withToken)?.let { StreamStep.Follow(it) }
@@ -118,12 +125,14 @@ private class StreamRefused(val check: StreamCheck) : Exception("refused")
  * fails with "The audio moved to another address". The player follows redirects itself, so this check is what keeps
  * the token from being sent elsewhere; a server that sends only later requests elsewhere is not caught (documented).
  *
- * [client] must not follow redirects (the probe client).
+ * [client] must not follow redirects (the probe client). [onPlexRefused] blanks a Plex token the server refused (as the
+ * Plex API calls do), so Settings says "Sign in again".
  */
 class StreamAuthorizer(
     private val servers: ServerRepository,
     private val authorizer: AbsAuthorizer,
     private val client: HttpClient,
+    private val onPlexRefused: suspend (ServerConfig) -> Unit = {},
 ) {
 
     /**
@@ -158,8 +167,30 @@ class StreamAuthorizer(
 
     private suspend fun plex(server: ServerConfig, url: String): StreamHeaders {
         val headers = StreamHeaders(mapOf(PLEX_TOKEN_HEADER to server.token))
-        requireOk(check(url, headers))
+        val result = check(url, headers)
+        if (result == StreamCheck.UNAUTHORIZED) {
+            withContext(NonCancellable) { onPlexRefused(server) }
+        }
+        requireOk(result)
         return headers
+    }
+
+    /**
+     * The headers for [url] as they should be now, without a check: an Audiobookshelf token close to expiry is refreshed
+     * first (through the authorizer), so items built from now on outlive it. Null when there is no server, no token or the
+     * refresh failed (the headers in use stay; a failure later rebuilds the item).
+     */
+    suspend fun currentHeaders(url: String): StreamHeaders? = try {
+        val server = streamServerFor(url, servers.observeAll().first())
+        when {
+            server == null -> null
+            server.source == ServerSource.PLEX -> StreamHeaders(mapOf(PLEX_TOKEN_HEADER to server.token))
+            else -> authorizer.authorized(server) { bearer -> StreamHeaders(mapOf(HttpHeaders.Authorization to bearer)) }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     // A refused bearer is refreshed once and checked again (the authorizer's retry); refused twice is "Sign in again".

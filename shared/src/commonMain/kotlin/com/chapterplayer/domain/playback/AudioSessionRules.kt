@@ -138,3 +138,23 @@ fun nowPlayingNeedsUpdate(shown: NowPlayingInfo?, shownAtMs: Long, next: NowPlay
     val expected = shown.elapsedSec + shown.rate * (nowMs - shownAtMs).coerceAtLeast(0L) / 1000.0
     return abs(expected - next.elapsedSec) > NOW_PLAYING_DRIFT_SEC
 }
+
+/** What a book that has stayed paused for a while does. */
+enum class IdleAction {
+    NOTHING,
+    /** Close the server session only: the book, its place and the lock screen card stay; Play opens a new session. */
+    CLOSE_SESSION,
+    /** Close the session and forget the book (Android: its service stops, the notification goes). */
+    END_ALL,
+}
+
+/**
+ * The idle rule, checked again when its timer fires (a timer that fires late, after the phone woke, must not undo a Play
+ * that came first): nothing while playing is asked for or before [limitMs] of pause; then [IdleAction.CLOSE_SESSION]
+ * where the lock screen should keep the book ([keepsBook], iOS) or [IdleAction.END_ALL].
+ */
+fun idleAction(playWhenReady: Boolean, pausedForMs: Long, limitMs: Long, keepsBook: Boolean): IdleAction = when {
+    playWhenReady || pausedForMs < limitMs -> IdleAction.NOTHING
+    keepsBook -> IdleAction.CLOSE_SESSION
+    else -> IdleAction.END_ALL
+}

@@ -187,6 +187,37 @@ class KoinModulesTest {
     }
 
     @Test
+    fun `the iOS player module verifies with the common modules and the platform module`() {
+        val dir = kotlin.io.path.createTempDirectory("koin").toFile()
+        val player = headerPlayerModule { _, _, _, _ -> NotYetOnIosPlaybackController() }
+        module { includes(commonModules + notYetOnIosModule + player + fakePlatform(dir)) }
+            .verify(extraTypes = listOf(HttpClientEngine::class, HttpClientConfig::class, LibraryView::class, String::class, SavedStateHandle::class))
+    }
+
+    @Test
+    fun `the iOS player module builds the player with the stream authorizer on the probe client`() {
+        val dir = kotlin.io.path.createTempDirectory("koin").toFile()
+        var given: com.chapterplayer.data.playback.StreamAuthorizer? = null
+        var givenFiles: LocalBookFiles? = null
+        val player = headerPlayerModule { _, streams, _, files ->
+            given = streams
+            givenFiles = files
+            NotYetOnIosPlaybackController()
+        }
+        // No database here: the server list and the book repository are fakes.
+        val noDatabase = module {
+            single<com.chapterplayer.data.repository.ServerRepository> { com.chapterplayer.testing.FakeServerList() }
+            single<BookRepository> { com.chapterplayer.testing.FakeBookRepository() }
+        }
+        val koin = koinApplication { modules(commonModules + notYetOnIosModule + fakePlatform(dir) + player + noDatabase) }.koin
+        assertTrue(koin.get<PlaybackController>() is NotYetOnIosPlaybackController)
+        assertSame(koin.get<com.chapterplayer.data.playback.StreamAuthorizer>(), given)
+        assertSame(NoLocalBookFiles, givenFiles)
+        assertSame(PlatformFeatures.IosStreaming, koin.get<PlatformFeatures>())
+        koin.close()
+    }
+
+    @Test
     fun `a missing qualified platform binding fails`() {
         val dir = kotlin.io.path.createTempDirectory("koin").toFile()
         val withoutBlockingIo = module { includes(commonModules + notYetOnIosModule + testPlayer) }

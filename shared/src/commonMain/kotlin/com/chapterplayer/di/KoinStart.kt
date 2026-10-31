@@ -12,6 +12,11 @@ import com.chapterplayer.data.downloads.NotYetOnIosDownloadController
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.permissions.NoNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
+import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.playback.StreamAuthorizer
+import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.data.repository.ServerRepository
+import kotlinx.coroutines.CoroutineScope
 import org.koin.core.Koin
 import org.koin.core.module.Module
 import org.koin.core.context.startKoin
@@ -31,6 +36,22 @@ val notYetOnIosModule = module {
     single<DownloadOverview> { RoomDownloadOverview(get(), NoLiveDownloadProgress) }
     single<LocalBookFiles> { NoLocalBookFiles }
     single<NotificationPermission> { NoNotificationPermission }
+}
+
+/**
+ * The player of a platform whose player takes fixed request headers (iOS: AVPlayer): [StreamAuthorizer] on the probe
+ * client (no redirects followed; a Plex token the stream refuses is blanked as the Plex API calls do) and the
+ * [PlaybackController] that [create] builds from the book repository, the stream authorizer, the app scope and the
+ * downloaded files. Common so its wiring is verified by the host tests; iOS passes `IosPlaybackController.create`.
+ */
+fun headerPlayerModule(
+    create: (BookRepository, StreamAuthorizer, CoroutineScope, LocalBookFiles) -> PlaybackController,
+): Module = module {
+    single {
+        val servers = get<ServerRepository>()
+        StreamAuthorizer(get(), get(), get(ProbeClientQualifier), onPlexRefused = { refused -> blankRefusedPlexToken(servers, refused) })
+    }
+    single<PlaybackController> { create(get(), get(), get(AppScopeQualifier), get()) }
 }
 
 /**

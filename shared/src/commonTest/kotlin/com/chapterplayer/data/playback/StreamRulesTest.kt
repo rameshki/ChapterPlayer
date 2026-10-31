@@ -40,7 +40,8 @@ class StreamRulesTest {
         assertEquals(StreamStep.Done(StreamCheck.OK), streamStep(206, null, "$base/a", 0, true))
         assertEquals(StreamStep.Done(StreamCheck.OK), streamStep(200, null, "$base/a", 0, true))
         assertEquals(StreamStep.Done(StreamCheck.UNAUTHORIZED), streamStep(401, null, "$base/a", 0, true))
-        assertEquals(StreamStep.Done(StreamCheck.UNAUTHORIZED), streamStep(403, null, "$base/a", 0, true))
+        // Only 401 is a token to refresh; 403 means the account may not play it.
+        assertEquals(StreamStep.Done(StreamCheck.FORBIDDEN), streamStep(403, null, "$base/a", 0, true))
         assertEquals(StreamStep.Done(StreamCheck.NOT_FOUND), streamStep(404, null, "$base/a", 0, true))
         assertEquals(StreamStep.Follow("$base/b"), streamStep(302, "/b", "$base/a", 0, true))
         assertEquals(StreamStep.Done(StreamCheck.MOVED_AWAY), streamStep(302, "https://elsewhere.example.test/b", "$base/a", 0, true))
@@ -85,10 +86,38 @@ class StreamRulesTest {
         val other = PlatformErrorCode("AVFoundationErrorDomain", -11800L)
         assertEquals(EngineFailure.UNAUTHORIZED, classifyAppleMediaError(listOf(net), 401))
         assertEquals(EngineFailure.NOT_FOUND, classifyAppleMediaError(listOf(other), 404))
+        assertEquals(EngineFailure.FORBIDDEN, classifyAppleMediaError(listOf(other), 403))
         assertEquals(EngineFailure.NETWORK, classifyAppleMediaError(listOf(other, net), null))
         assertEquals(EngineFailure.UNAUTHORIZED, classifyAppleMediaError(listOf(PlatformErrorCode("NSURLErrorDomain", -1013L)), null))
         assertEquals(EngineFailure.NOT_FOUND, classifyAppleMediaError(listOf(other, PlatformErrorCode("CoreMediaErrorDomain", -12938L)), null))
         assertEquals(EngineFailure.OTHER, classifyAppleMediaError(listOf(other), null))
         assertEquals(EngineFailure.OTHER, classifyAppleMediaError(emptyList(), 500))
+    }
+
+    private fun track(mime: String, url: String) = PlaybackTrack(0, 0L, 1_000L, mime, url)
+
+    @Test
+    fun `AVPlayer plays MP3 - M4B - FLAC and HLS but not Ogg - Opus or WebM`() {
+        assertTrue(applePlays(track("audio/mpeg", "$base/api/items/1/file/2")))
+        assertTrue(applePlays(track("audio/mp4", "$base/a/book.m4b")))
+        assertTrue(applePlays(track("audio/flac", "$base/a/book.flac")))
+        assertTrue(applePlays(track("application/vnd.apple.mpegurl", "$base/hls/s/output.m3u8")))
+        assertTrue(applePlays(track("", "$base/library/parts/1/2/file.mp3")))
+        assertFalse(applePlays(track("audio/ogg", "$base/api/items/1/file/2")))
+        assertFalse(applePlays(track("", "$base/library/parts/1/2/file.opus")))
+        assertFalse(applePlays(track("", "$base/library/parts/1/2/file.OGG?x=1")))
+        assertFalse(applePlays(track("audio/webm", "$base/a/b")))
+    }
+
+    @Test
+    fun `iOS asks Audiobookshelf without Ogg and lets it choose - Android keeps its request`() {
+        val ios = com.chapterplayer.data.remote.abs.dto.AbsPlayerProfile.Ios.request("ChapterPlayer", "d")
+        assertFalse(ios.forceDirectPlay)
+        assertFalse(ios.forceTranscode)
+        assertEquals("AVPlayer", ios.mediaPlayer)
+        assertTrue(ios.supportedMimeTypes.none { "ogg" in it || "opus" in it || "webm" in it })
+        assertTrue(ios.supportedMimeTypes.containsAll(listOf("audio/mpeg", "audio/mp4", "audio/x-m4b", "audio/aac", "audio/flac", "audio/x-wav")))
+        val android = com.chapterplayer.data.remote.abs.dto.AbsPlayerProfile.Android.request("ChapterPlayer", "d")
+        assertEquals(com.chapterplayer.data.remote.abs.dto.AbsPlayRequest(com.chapterplayer.data.remote.abs.dto.AbsPlayDeviceInfo("ChapterPlayer", "d")), android)
     }
 }

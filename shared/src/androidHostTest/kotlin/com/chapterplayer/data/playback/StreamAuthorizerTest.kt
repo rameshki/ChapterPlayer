@@ -59,14 +59,43 @@ class StreamAuthorizerTest {
     }
 
     @Test
-    fun `a Plex track whose token is refused says sign in again with no refresh`() = runTest {
+    fun `a Plex track whose token is refused says sign in again with no refresh and blanks the token`() = runTest {
         val seen = mutableListOf<Seen>()
         val absCalls = mutableListOf<String>()
-        val streams = StreamAuthorizer(FakeServerList(listOf(plex)), authorizer(absCalls), client(seen, HttpStatusCode.Unauthorized))
+        val refused = mutableListOf<String>()
+        val streams = StreamAuthorizer(
+            FakeServerList(listOf(plex)), authorizer(absCalls), client(seen, HttpStatusCode.Unauthorized),
+            onPlexRefused = { refused += it.id },
+        )
         val e = assertFailsWith<PlaybackStartException> { streams.prepare(track) }
         assertEquals(SIGN_IN_AGAIN_TEXT, e.message)
         assertEquals(1, seen.size)
         assertTrue(absCalls.isEmpty())
+        assertEquals(listOf("p"), refused)
+    }
+
+    @Test
+    fun `a 403 is not a token to refresh - it says the account may not play it`() = runTest {
+        val refused = mutableListOf<String>()
+        val abs = ServerConfig(id = "a", source = ServerSource.ABS, name = "ABS", baseUrl = "https://abs.example.test", token = "abs-token")
+        val forbidden = StreamAuthorizer(
+            FakeServerList(listOf(abs, plex)), authorizer(mutableListOf()), client(mutableListOf(), HttpStatusCode.Forbidden),
+            onPlexRefused = { refused += it.id },
+        )
+        assertEquals(NOT_ALLOWED_TEXT, assertFailsWith<PlaybackStartException> { forbidden.prepare(track) }.message)
+        assertEquals(NOT_ALLOWED_TEXT, assertFailsWith<PlaybackStartException> { forbidden.prepare("https://abs.example.test/api/items/1/file/2") }.message)
+        assertTrue(refused.isEmpty())
+    }
+
+    @Test
+    fun `the current headers come without a check - Plex token or a fresh bearer`() = runTest {
+        val seen = mutableListOf<Seen>()
+        val abs = ServerConfig(id = "a", source = ServerSource.ABS, name = "ABS", baseUrl = "https://abs.example.test", token = "abs-token")
+        val streams = StreamAuthorizer(FakeServerList(listOf(abs, plex)), authorizer(mutableListOf()), client(seen, HttpStatusCode.OK))
+        assertEquals(mapOf(PLEX_TOKEN_HEADER to "plex-token"), streams.currentHeaders(track)?.values)
+        assertEquals(mapOf(HttpHeaders.Authorization to "Bearer abs-token"), streams.currentHeaders("https://abs.example.test/x")?.values)
+        assertNull(streams.currentHeaders("https://other.example.test/x"))
+        assertTrue(seen.isEmpty())
     }
 
     @Test

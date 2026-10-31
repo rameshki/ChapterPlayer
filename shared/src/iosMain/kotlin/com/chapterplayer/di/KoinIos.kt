@@ -12,7 +12,6 @@ import com.chapterplayer.data.local.createIosDatabase
 import com.chapterplayer.data.playback.IosPlaybackController
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackProgressSaver
-import com.chapterplayer.data.playback.StreamAuthorizer
 import com.chapterplayer.data.progress.PendingProgressFlusher
 import com.chapterplayer.data.progress.ProgressMirrorPusher
 import com.chapterplayer.data.progress.ProgressSyncer
@@ -31,7 +30,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import org.koin.core.Koin
-import org.koin.dsl.module
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
@@ -61,9 +59,8 @@ val iosPlatformModule = platformModule(
  * after [StreamAuthorizer] checked the address (the probe client follows no redirects). Built on the main thread
  * ([startAppWide] asks for it first, from the app entry).
  */
-val iosPlaybackModule = module {
-    single { StreamAuthorizer(get(), get(), get(ProbeClientQualifier)) }
-    single<PlaybackController> { IosPlaybackController.create(get(), get(), get(AppScopeQualifier), get()) }
+val iosPlaybackModule = headerPlayerModule { books, streams, appScope, localFiles ->
+    IosPlaybackController.create(books, streams, appScope, localFiles)
 }
 
 /** Every module iOS starts with, besides [commonModules]: the platform's parts, the player and the download stand-ins (step 5). */

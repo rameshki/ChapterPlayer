@@ -23,7 +23,9 @@ import platform.AVFAudio.AVAudioSessionInterruptionOptionShouldResume
 import platform.AVFAudio.AVAudioSessionInterruptionTypeBegan
 import platform.AVFAudio.AVAudioSessionInterruptionTypeEnded
 import platform.AVFAudio.AVAudioSessionInterruptionTypeKey
+import platform.AVFAudio.AVAudioSessionMediaServicesWereResetNotification
 import platform.AVFAudio.AVAudioSessionModeSpokenAudio
+import platform.AVFAudio.AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
 import platform.AVFAudio.AVAudioSessionRouteChangeNotification
 import platform.AVFAudio.AVAudioSessionRouteChangeReasonKey
 import platform.AVFAudio.AVAudioSessionRouteChangeReasonNewDeviceAvailable
@@ -55,6 +57,8 @@ import platform.MediaPlayer.MPRemoteCommandEvent
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusCommandFailed
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusNoActionableNowPlayingItem
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusSuccess
+import platform.UIKit.UIApplication
+import platform.UIKit.UIBackgroundTaskInvalid
 import platform.darwin.NSObjectProtocol
 
 /**
@@ -63,11 +67,17 @@ import platform.darwin.NSObjectProtocol
  * start, so audio goes on in the background with `UIBackgroundModes: audio`), interruptions and route changes (decided by
  * the shared rules), the lock screen / Control Center / headset commands (play, pause, toggle, 30 s forward, 15 s back,
  * drag the position, next and previous chapter) and the Now Playing card (title, author, chapter, length, position,
- * speed; no artwork, as on Android, because covers need the token). Built on the main thread.
+ * speed; no artwork, as on Android, because covers need the token). After 10 minutes paused only the server session
+ * closes and the audio session is let go (other apps' audio may resume); the book, its place and the card stay, and Play
+ * (here or from the lock screen) opens a new session. A media services reset sets the session up again on a new player
+ * at the same place. Recovery from a failed item runs inside a UIKit background task. A book with Ogg/Opus parts (Plex)
+ * fails with a clear message ([applePlays]); Audiobookshelf sends such books as HLS (the iOS play request leaves them
+ * out). Built on the main thread.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosPlaybackController private constructor(
     private val core: EnginePlaybackController,
+    private val engine: AvPlayerEngine,
 ) : PlaybackController by core {
 
     private val scope = MainScope()
@@ -103,6 +113,14 @@ class IosPlaybackController private constructor(
         val queue = NSOperationQueue.mainQueue
         observers += center.addObserverForName(AVAudioSessionInterruptionNotification, null, queue) { n -> interruption(n) }
         observers += center.addObserverForName(AVAudioSessionRouteChangeNotification, null, queue) { n -> routeChange(n) }
+        observers += center.addObserverForName(AVAudioSessionMediaServicesWereResetNotification, null, queue) { _ -> mediaServicesReset() }
+    }
+
+    // Apple: after a media services reset every audio object is invalid; set the session up again and build a new player.
+    private fun mediaServicesReset() {
+        configureAudioSession()
+        engine.recreatePlayer()
+        core.onMediaServicesReset()
     }
 
     private fun interruption(n: NSNotification?) {
@@ -223,14 +241,43 @@ class IosPlaybackController private constructor(
                 fileUri = { path -> NSURL.fileURLWithPath(path).absoluteString ?: "file://$path" },
                 clock = ::monotonicMs,
                 main = Dispatchers.Main,
+                // The lock screen keeps the book after a long pause; Play opens a new session.
+                keepsBookWhenIdle = true,
+                onIdle = ::deactivateAudioSession,
+                background = UiKitBackgroundWork,
+                canPlay = ::applePlays,
             )
-            return IosPlaybackController(core)
+            return IosPlaybackController(core, engine)
         }
 
         /** Sound only comes out (and keeps coming in the background) while the session is active; asking again is harmless. */
-        private fun activateAudioSession() {
-            AVAudioSession.sharedInstance().setActive(true, null)
+        private fun activateAudioSession(): Boolean = AVAudioSession.sharedInstance().setActive(true, null)
+
+        /** Long paused or nothing left to play: other apps' audio may go on (a podcast another app paused for us). */
+        private fun deactivateAudioSession() {
+            AVAudioSession.sharedInstance().setActive(false, AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation, null)
         }
+    }
+}
+
+/** A UIKit background task: a few seconds more for a recovery that started while the app was in the background. */
+private object UiKitBackgroundWork : BackgroundWork {
+    override fun begin(onExpired: () -> Unit): () -> Unit {
+        val app = UIApplication.sharedApplication
+        var id = UIBackgroundTaskInvalid
+        var ended = false
+        val end = {
+            if (!ended && id != UIBackgroundTaskInvalid) {
+                ended = true
+                app.endBackgroundTask(id)
+            }
+        }
+        id = app.beginBackgroundTaskWithExpirationHandler {
+            // Called on the main thread when time is up: stop cleanly, then the task must end.
+            onExpired()
+            end()
+        }
+        return end
     }
 }
 

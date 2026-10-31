@@ -15,7 +15,17 @@ data class EngineItem(
 }
 
 /** Why an item stopped playing, as far as the platform player says. */
-enum class EngineFailure { NETWORK, UNAUTHORIZED, NOT_FOUND, OTHER }
+enum class EngineFailure {
+    NETWORK,
+    /** HTTP 401: the token may have expired. */
+    UNAUTHORIZED,
+    /** HTTP 403: the account may not play this. */
+    FORBIDDEN,
+    NOT_FOUND,
+    /** The phone would not give the app the audio (iOS: the audio session could not be made active). Nothing failed in the item. */
+    AUDIO_SESSION,
+    OTHER,
+}
 
 /**
  * The platform's audio player under [EnginePlaybackController] (iOS: AVQueuePlayer). It plays [EngineItem]s one after the
@@ -45,6 +55,12 @@ interface AudioEngine {
 
     /** Builds item [index] again at [offsetMs] with [headers] (after a refreshed token or a failure); plays on if it was. */
     fun reload(headers: StreamHeaders, index: Int, offsetMs: Long)
+
+    /**
+     * New headers for items built from now on (a refreshed token). The item already queued after the playing one is built
+     * again with them; the playing one keeps its own (a 401 there is rebuilt by the controller at its position).
+     */
+    fun updateHeaders(headers: StreamHeaders)
 
     /** Empties the engine. */
     fun clear()

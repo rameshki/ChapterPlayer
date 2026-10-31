@@ -144,6 +144,17 @@ class AudioSessionRulesTest {
     }
 
     @Test
+    fun `a long pause closes the session only - on iOS the book stays - and never while playing is asked for`() {
+        val limit = 600_000L
+        assertEquals(IdleAction.NOTHING, idleAction(playWhenReady = false, pausedForMs = limit - 1, limitMs = limit, keepsBook = true))
+        assertEquals(IdleAction.CLOSE_SESSION, idleAction(playWhenReady = false, pausedForMs = limit, limitMs = limit, keepsBook = true))
+        assertEquals(IdleAction.END_ALL, idleAction(playWhenReady = false, pausedForMs = limit, limitMs = limit, keepsBook = false))
+        // A timer that fires late, after a Play from the lock screen: nothing happens.
+        assertEquals(IdleAction.NOTHING, idleAction(playWhenReady = true, pausedForMs = 10 * limit, limitMs = limit, keepsBook = true))
+        assertEquals(IdleAction.NOTHING, idleAction(playWhenReady = true, pausedForMs = 10 * limit, limitMs = limit, keepsBook = false))
+    }
+
+    @Test
     fun `the card appears and is cleared when a book loads and goes`() {
         val info = nowPlayingInfo(state(), "Book", "Author")
         assertTrue(nowPlayingNeedsUpdate(null, 0L, info, 0L))

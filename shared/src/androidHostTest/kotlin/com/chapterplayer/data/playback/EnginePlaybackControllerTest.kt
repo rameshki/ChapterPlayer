@@ -60,6 +60,8 @@ class EnginePlaybackControllerTest {
         var items: List<EngineItem> = emptyList()
         var headers: StreamHeaders = StreamHeaders.None
         var reloads = 0
+        var queues = 0
+        val updatedHeaders = mutableListOf<StreamHeaders>()
         var speed = 1.0f
         override var currentIndex = 0
         override var currentOffsetMs = 0L
@@ -70,8 +72,9 @@ class EnginePlaybackControllerTest {
         override var ended = false
         override fun setListener(listener: AudioEngine.Listener?) { heard = listener }
         override fun setQueue(items: List<EngineItem>, headers: StreamHeaders, index: Int, offsetMs: Long) {
-            this.items = items; this.headers = headers; currentIndex = index; currentOffsetMs = offsetMs; ended = false
+            queues++; this.items = items; this.headers = headers; currentIndex = index; currentOffsetMs = offsetMs; ended = false
         }
+        override fun updateHeaders(headers: StreamHeaders) { updatedHeaders += headers; this.headers = headers }
         override fun reload(headers: StreamHeaders, index: Int, offsetMs: Long) {
             reloads++; this.headers = headers; currentIndex = index; currentOffsetMs = offsetMs
         }
@@ -86,9 +89,11 @@ class EnginePlaybackControllerTest {
     /** Hands out "Bearer tok", and "Bearer fresh" after a 401, like a refresh; a second 401 is sign in again. */
     private class RefreshingAuthorizer : AbsAuthorizer {
         var refreshes = 0
+        /** The token handed out first (a test changes it to act as a refresh before expiry). */
+        var current = "tok"
         override suspend fun <T> authorized(server: ServerConfig, call: suspend (bearerToken: String) -> T): T =
             try {
-                call("Bearer tok")
+                call("Bearer $current")
             } catch (e: HttpStatusException) {
                 if (e.status.value != 401) throw e
                 refreshes++
@@ -112,12 +117,30 @@ class EnginePlaybackControllerTest {
         }
     }
 
+    /** Counts background tasks; [expire] plays the system running out of time. */
+    class FakeBackground : BackgroundWork {
+        var begun = 0
+        var ended = 0
+        private var onExpired: (() -> Unit)? = null
+        override fun begin(onExpired: () -> Unit): () -> Unit {
+            begun++
+            this.onExpired = onExpired
+            var done = false
+            return { if (!done) { done = true; ended++ } }
+        }
+        fun expire() = onExpired?.invoke()
+    }
+
     private class Rig(
         scope: TestScope,
         session: PlaybackSession,
         server: ServerConfig,
         answer: (url: String, auth: String?) -> Pair<HttpStatusCode, String?> = { _, _ -> HttpStatusCode.PartialContent to null },
+        keepsBook: Boolean = false,
+        canPlay: (PlaybackTrack) -> Boolean = { true },
     ) {
+        val background = FakeBackground()
+        var idles = 0
         val engine = FakeEngine()
         val repo = Repo(session)
         val authorizer = RefreshingAuthorizer()
@@ -142,15 +165,22 @@ class EnginePlaybackControllerTest {
             fileUri = { "file://$it" },
             clock = { now },
             main = dispatcher,
+            keepsBookWhenIdle = keepsBook,
+            onIdle = { idles++ },
+            background = background,
+            canPlay = canPlay,
         )
     }
 
     /** Runs [block] with a fresh rig and releases its controller before the test ends (its ticker would run forever). */
     private fun rigTest(
         answer: (url: String, auth: String?) -> Pair<HttpStatusCode, String?> = { _, _ -> HttpStatusCode.PartialContent to null },
+        keepsBook: Boolean = false,
+        session: PlaybackSession = this.session,
+        canPlay: (PlaybackTrack) -> Boolean = { true },
         block: suspend TestScope.(Rig) -> Unit,
     ) = runTest {
-        val r = Rig(this, session, server, answer)
+        val r = Rig(this, session, server, answer, keepsBook, canPlay)
         try {
             block(r)
         } finally {
@@ -302,12 +332,78 @@ class EnginePlaybackControllerTest {
         r.controller.play()
         r.engine.currentOffsetMs = 30_000L
         r.controller.pause()
+        r.now += EnginePlaybackController.PAUSED_END_AFTER_MS + 1_000L
         advanceTimeBy(EnginePlaybackController.PAUSED_END_AFTER_MS + 1_000L)
         runCurrent()
         assertNull(r.controller.state.value.bookId)
         assertNull(r.controller.activeSession)
         assertEquals(listOf("sess" to 30_000L), r.repo.closed)
+        assertEquals(1, r.idles)
     }
+
+    @Test
+    fun `on iOS ten minutes paused closes only the session - the book and the card stay and Play opens a new one`() =
+        rigTest(keepsBook = true) { r ->
+            r.controller.load(book, 0L)
+            r.controller.play()
+            r.engine.currentOffsetMs = 30_000L
+            r.controller.pause()
+            r.now += EnginePlaybackController.PAUSED_END_AFTER_MS + 1_000L
+            advanceTimeBy(EnginePlaybackController.PAUSED_END_AFTER_MS + 1_000L)
+            runCurrent()
+            assertEquals(listOf("sess" to 30_000L), r.repo.closed)
+            assertEquals("b1", r.controller.state.value.bookId)
+            assertEquals(30_000L, r.controller.state.value.positionMs)
+            assertEquals(BookLabel(book.title, book.author), r.controller.label.value)
+            assertNull(r.controller.activeSession)
+            assertEquals(1, r.idles)
+            // The lock screen's Play: a new session, the book loaded again at its place (10 s back after the long pause).
+            assertTrue(r.controller.onRemoteCommand(RemoteCommand.Play))
+            awaitReal { r.repo.starts == 2 && r.engine.playWhenReady }
+            assertEquals(2, r.repo.starts)
+            assertEquals(20_000L, r.engine.currentOffsetMs)
+            assertTrue(r.engine.playWhenReady)
+            assertEquals(session, r.controller.activeSession)
+            // The session closed by the idle rule is not closed a second time.
+            assertEquals(listOf("sess" to 30_000L), r.repo.closed)
+        }
+
+    @Test
+    fun `an idle timer that fires late after a Play changes nothing`() = rigTest(keepsBook = true) { r ->
+        r.controller.load(book, 0L)
+        r.controller.play()
+        r.controller.pause()
+        // The phone slept: by the steady clock the pause is not long, and the listener pressed Play first anyway.
+        advanceTimeBy(EnginePlaybackController.PAUSED_END_AFTER_MS - 1_000L)
+        r.controller.play()
+        r.now += EnginePlaybackController.PAUSED_END_AFTER_MS + 1_000L
+        advanceTimeBy(EnginePlaybackController.PAUSED_END_AFTER_MS + 1_000L)
+        runCurrent()
+        assertTrue(r.repo.closed.isEmpty())
+        assertEquals(session, r.controller.activeSession)
+        assertTrue(r.engine.playWhenReady)
+    }
+
+    @Test
+    fun `a start that fails closes its session at the session's own start - never at 0`() =
+        rigTest(answer = { _, _ -> HttpStatusCode.NotFound to null }, session = session.copy(startPositionMs = 33_000L)) { r ->
+            assertFailsWith<PlaybackStartException> { r.controller.load(book, 120_000L) }
+            runCurrent()
+            assertEquals(listOf("sess" to 33_000L), r.repo.closed)
+        }
+
+    @Test
+    fun `a book in a format the phone cannot play fails clearly and leaves the server's progress alone`() =
+        rigTest(session = session.copy(startPositionMs = 5_000L), canPlay = ::applePlays) { r ->
+            r.repo.startResult = {
+                Result.success(session.copy(startPositionMs = 5_000L, tracks = session.tracks.map { it.copy(mimeType = "audio/ogg") }))
+            }
+            val e = assertFailsWith<PlaybackStartException> { r.controller.load(book, 0L) }
+            assertEquals(UNSUPPORTED_AUDIO_TEXT, e.message)
+            runCurrent()
+            assertEquals(listOf("sess" to 5_000L), r.repo.closed)
+            assertTrue(r.requests.isEmpty())
+        }
 
     @Test
     fun `loading another book closes the first session`() = rigTest { r ->
@@ -347,6 +443,83 @@ class EnginePlaybackControllerTest {
     fun `a same-server redirect is fine`() = rigTest({ url, _ -> if (url.endsWith("/file/1")) HttpStatusCode.Found to "/real/1" else HttpStatusCode.PartialContent to null }) { r ->
         r.controller.load(book, 0L)
         assertEquals(listOf("$base/api/items/b1/file/1", "$base/real/1"), r.requests.map { it.first })
+    }
+
+    @Test
+    fun `a recovery after a failure and a seek rebuilds where the engine stands now`() = rigTest { r ->
+        r.controller.load(book, 0L)
+        r.controller.play()
+        r.now += 1_000L
+        r.controller.onItemFailed(0, EngineFailure.NETWORK)
+        awaitReal { r.engine.reloads == 1 }
+        r.now += 1_000L
+        r.controller.onItemFailed(0, EngineFailure.NETWORK)
+        awaitReal { r.controller.state.value.error != null }
+        r.controller.seekTo(130_000L)
+        r.controller.play()
+        awaitReal { r.engine.reloads == 2 }
+        assertEquals(1 to 30_000L, r.engine.currentIndex to r.engine.currentOffsetMs)
+    }
+
+    @Test
+    fun `a recovery runs inside a background task that ends with it`() = rigTest { r ->
+        r.controller.load(book, 0L)
+        r.controller.play()
+        r.controller.onItemFailed(0, EngineFailure.NETWORK)
+        awaitReal { r.engine.reloads == 1 }
+        assertEquals(1, r.background.begun)
+        awaitReal { r.background.ended == 1 }
+        assertEquals(1, r.background.ended)
+    }
+
+    @Test
+    fun `when the background time runs out the recovery stops cleanly and Play tries again`() =
+        rigTest(answer = { _, _ -> Thread.sleep(300); HttpStatusCode.PartialContent to null }) { r ->
+            r.controller.load(book, 0L)
+            r.controller.play()
+            r.controller.onItemFailed(0, EngineFailure.NETWORK)
+            r.background.expire()
+            assertEquals(RECOVERY_CUT_SHORT_TEXT, r.controller.state.value.error)
+            assertFalse(r.engine.playWhenReady)
+            r.controller.play()
+            awaitReal { r.engine.reloads == 1 && r.engine.playWhenReady }
+            assertTrue(r.engine.playWhenReady)
+        }
+
+    @Test
+    fun `while playing the token is renewed and the next file gets the new headers`() = rigTest { r ->
+        r.controller.load(book, 0L)
+        r.controller.play()
+        r.authorizer.current = "renewed"
+        r.now += EnginePlaybackController.HEADER_REFRESH_MS
+        advanceTimeBy(600L)
+        awaitReal { r.engine.updatedHeaders.isNotEmpty() }
+        assertEquals(listOf(mapOf(HttpHeaders.Authorization to "Bearer renewed")), r.engine.updatedHeaders.map { it.values })
+    }
+
+    @Test
+    fun `the phone refusing the audio shows why and does not buffer for ever`() = rigTest { r ->
+        r.controller.load(book, 0L)
+        r.controller.play()
+        r.engine.playWhenReady = false
+        r.controller.onItemFailed(0, EngineFailure.AUDIO_SESSION)
+        assertEquals(AUDIO_BUSY_TEXT, r.controller.state.value.error)
+        assertFalse(r.controller.state.value.isBuffering)
+        r.controller.play()
+        assertTrue(r.engine.playWhenReady)
+        assertEquals(0, r.engine.reloads)
+    }
+
+    @Test
+    fun `after a media services reset the book is put back where it was and plays on`() = rigTest { r ->
+        r.controller.load(book, 0L)
+        r.controller.play()
+        r.engine.currentIndex = 1
+        r.engine.currentOffsetMs = 7_000L
+        r.controller.onMediaServicesReset()
+        assertEquals(2, r.engine.queues)
+        assertEquals(1 to 7_000L, r.engine.currentIndex to r.engine.currentOffsetMs)
+        assertTrue(r.engine.playWhenReady)
     }
 
     @Test

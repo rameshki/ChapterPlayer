@@ -40,9 +40,61 @@ data class AbsPlayRequest(
     @EncodeDefault val mediaPlayer: String = "exoplayer",
 )
 
-/** Names this app to the server. */
+/**
+ * Names this app to the server. [manufacturer] and [model] are left out when null (the Android request has never
+ * sent them).
+ */
 @Serializable
-data class AbsPlayDeviceInfo(val clientName: String, val deviceId: String)
+data class AbsPlayDeviceInfo(
+    val clientName: String,
+    val deviceId: String,
+    val manufacturer: String? = null,
+    val model: String? = null,
+)
+
+/**
+ * What the platform's player can play, as the play request tells Audiobookshelf. With [forceDirectPlay] off the server
+ * streams a book whose files are not in [supportedMimeTypes] as HLS (which every player here plays) instead of handing
+ * over files the player cannot read.
+ */
+class AbsPlayerProfile(
+    val forceDirectPlay: Boolean,
+    val supportedMimeTypes: List<String>,
+    val mediaPlayer: String,
+    val manufacturer: String? = null,
+    val model: String? = null,
+) {
+    /** The play request for this player. */
+    fun request(clientName: String, deviceId: String) = AbsPlayRequest(
+        deviceInfo = AbsPlayDeviceInfo(clientName, deviceId, manufacturer, model),
+        forceDirectPlay = forceDirectPlay,
+        supportedMimeTypes = supportedMimeTypes,
+        mediaPlayer = mediaPlayer,
+    )
+
+    companion object {
+        /** ExoPlayer plays every file the server has (Ogg included): always the files, as the app always asked. */
+        val Android = AbsPlayerProfile(forceDirectPlay = true, supportedMimeTypes = SUPPORTED_MIME_TYPES, mediaPlayer = "exoplayer")
+
+        /**
+         * AVPlayer: no Ogg or Opus (those books come as HLS), and the server may choose. Only formats AVFoundation is
+         * documented to play.
+         */
+        val Ios = AbsPlayerProfile(
+            forceDirectPlay = false,
+            supportedMimeTypes = IOS_SUPPORTED_MIME_TYPES,
+            mediaPlayer = "AVPlayer",
+            manufacturer = "Apple",
+            model = "iPhone",
+        )
+    }
+}
+
+/** What AVFoundation plays as files (MP3, AAC/ALAC in MP4/M4A/M4B, FLAC, WAV, AIFF). Never Ogg, Opus or WebM. */
+internal val IOS_SUPPORTED_MIME_TYPES = listOf(
+    "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/x-m4b", "audio/m4b", "audio/aac",
+    "audio/x-aac", "audio/flac", "audio/x-flac", "audio/wav", "audio/x-wav", "audio/aiff", "audio/x-aiff",
+)
 
 /** The body of the close request: where listening stopped and how long it ran, both in seconds. */
 @Serializable
