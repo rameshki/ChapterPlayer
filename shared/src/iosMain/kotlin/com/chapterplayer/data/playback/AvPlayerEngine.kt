@@ -148,8 +148,9 @@ class AvPlayerEngine(
 
     override fun seekTo(index: Int, offsetMs: Long) {
         if (index !in items.indices) return
+        // At the book's end the queue is empty (the last item was removed when it ended): build it again.
+        val item = current?.takeIf { !isEnded && player.currentItem == it }
         isEnded = false
-        val item = current
         if (index == this.index && item != null && item.status == AVPlayerItemStatusReadyToPlay) {
             seekInCurrent(offsetMs)
         } else if (index == this.index && item != null && item.status != AVPlayerItemStatusFailed) {
