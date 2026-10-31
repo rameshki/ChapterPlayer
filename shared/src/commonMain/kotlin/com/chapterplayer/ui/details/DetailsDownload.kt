@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.details
 
+import com.chapterplayer.data.downloads.DOWNLOADS_NOT_ON_IOS_TEXT
 import com.chapterplayer.data.downloads.DownloadRow
 import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.domain.downloads.formatBytes
@@ -36,21 +37,27 @@ internal const val CALCULATING_TEXT = "Calculating"
 /**
  * The control for a book whose download is [row] (null: not on the phone). Audiobookshelf and Plex books download
  * alike; a book several servers have picks its copy when Download is tapped (the source sheet or the Settings choice).
- * [knownSizeBytes] is what the server said a download fetches.
+ * [knownSizeBytes] is what the server said a download fetches. Without a downloader on this platform ([available]
+ * false: iOS until Stage 5 step 5) Download is off with [DOWNLOADS_NOT_ON_IOS_TEXT].
  */
 internal fun detailsDownload(
     row: DownloadRow?,
     online: Boolean,
     knownSizeBytes: Long?,
     confirmingRemove: Boolean,
+    available: Boolean = true,
 ): DetailsDownload {
     val percent = row?.let { (it.fraction * 100).toInt().coerceIn(0, 100) } ?: 0
     val needsStart = row == null || row.status == DownloadStatus.FAILED
-    val canStart = online
+    val canStart = online && available
     val base = DetailsDownload(
         percent = percent,
         canStart = canStart,
-        disabledReason = if (needsStart && !canStart) DOWNLOAD_NEEDS_CONNECTION_TEXT else null,
+        disabledReason = when {
+            !needsStart || canStart -> null
+            !available -> DOWNLOADS_NOT_ON_IOS_TEXT
+            else -> DOWNLOAD_NEEDS_CONNECTION_TEXT
+        },
     )
     if (row == null) {
         val size = knownSizeBytes?.takeIf { it > 0L }

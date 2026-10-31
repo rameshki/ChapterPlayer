@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.chapterplayer.domain.browse.BrowseQuery
 import com.chapterplayer.domain.browse.BrowseSort
 import com.chapterplayer.domain.browse.DownloadFilter
+import com.chapterplayer.ui.components.LocalPlatformFeatures
 import com.chapterplayer.domain.browse.ProgressFilter
 import com.chapterplayer.domain.browse.ServerFilterOption
 import com.chapterplayer.ui.theme.AmberGold
@@ -93,7 +94,10 @@ fun FilterSheet(
                 TextButton(onClick = onReset) { Text("Reset", color = AmberGold) }
             }
             if (serverOptions.isNotEmpty()) ServerGroup(serverOptions, onServerToggled)
-            OptionGroup("Download", DownloadFilter.entries, query.download, DownloadFilter::label, onDownloadSelected)
+            // No downloads on this platform (iOS for now): nothing to filter by.
+            if (LocalPlatformFeatures.current.downloads) {
+                OptionGroup("Download", DownloadFilter.entries, query.download, DownloadFilter::label, onDownloadSelected)
+            }
             OptionGroup("Progress", ProgressFilter.entries, query.progress, ProgressFilter::label, onProgressSelected)
             OptionGroup("Sort", BrowseSort.entries, query.sort, BrowseSort::label, onSortSelected)
         }

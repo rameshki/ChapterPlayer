@@ -54,6 +54,11 @@ jobs:
       - name: Link the shared framework for the simulator
         run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
 
+      - name: Run the shared tests on the iOS simulator
+        # commonTest (the pure rules and the iOS stand-ins) on Kotlin/Native. The Kotlin plugin picks Xcode's default
+        # test simulator and boots it. The same tests also run on the JVM in the build job (testAndroidHostTest).
+        run: ./gradlew :shared:iosSimulatorArm64Test --stacktrace
+
       - name: Generate the Xcode project
         run: |
           brew install xcodegen

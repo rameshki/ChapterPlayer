@@ -1,10 +1,7 @@
 package com.chapterplayer.di
 
 import androidx.room.Room
-import androidx.room.immediateTransaction
-import androidx.room.useWriterConnection
-import com.chapterplayer.data.DownloadStates
-import com.chapterplayer.data.RoomDownloadStates
+import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.connectivity.AndroidConnectivityMonitor
 import com.chapterplayer.data.permissions.AndroidNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
@@ -35,78 +32,34 @@ import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.playback.AndroidPlaybackController
 import com.chapterplayer.data.playback.PlaybackController
-import com.chapterplayer.data.playback.PlaybackProgressSaver
-import com.chapterplayer.data.bookmarks.BookmarkSyncer
-import com.chapterplayer.data.bookmarks.HistoryRecorder
 import com.chapterplayer.data.stats.AndroidListeningClock
-import com.chapterplayer.data.stats.BookOwner
-import com.chapterplayer.data.stats.BookOwners
 import com.chapterplayer.data.stats.ListeningClock
-import com.chapterplayer.data.stats.ListeningImport
-import com.chapterplayer.data.stats.ListeningLog
-import com.chapterplayer.data.stats.ListeningStatsImporter
-import com.chapterplayer.data.stats.ListeningRecorder
-import com.chapterplayer.data.stats.RoomListeningLog
 import com.chapterplayer.data.stats.SystemDayZone
 import com.chapterplayer.data.local.dao.BookDao
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.stats.DayZone
-import com.chapterplayer.data.progress.PendingProgressFlusher
-import com.chapterplayer.data.progress.ProgressSyncer
-import com.chapterplayer.data.progress.ProgressMirrorPusher
-import com.chapterplayer.data.progress.ServerProgressRefresher
-import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.local.Migration8To9
 import com.chapterplayer.data.remote.createDownloadHttpClient
 import com.chapterplayer.data.sync.PlexConnectionManager
 import com.chapterplayer.data.remote.plex.AndroidPlexClientIdentifier
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
-import com.chapterplayer.data.merge.BookMergeRepository
-import com.chapterplayer.data.merge.AppSourceMerging
-import com.chapterplayer.data.merge.SourceMerging
-import com.chapterplayer.data.merge.MergedProgressPeers
-import com.chapterplayer.data.merge.ProgressMirrorPeers
-import com.chapterplayer.data.repository.BookRepository
-import com.chapterplayer.data.repository.BookRepositoryImpl
-import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.security.AesGcmTokenCipher
 import com.chapterplayer.data.security.AndroidKeystoreKey
 import com.chapterplayer.data.security.CredentialStore
 import com.chapterplayer.data.security.DataStoreCredentialStore
 import com.chapterplayer.data.security.TokenCipher
 import com.chapterplayer.data.settings.AppSettings
-import com.chapterplayer.data.source.LibrarySource
-import com.chapterplayer.domain.browse.BrowseQueryStore
-import com.chapterplayer.ui.home.HomeViewModel
-import com.chapterplayer.ui.details.BookDetailsViewModel
-import com.chapterplayer.ui.library.GroupDetailViewModel
-import com.chapterplayer.ui.library.LibrariesViewModel
-import com.chapterplayer.ui.library.LibraryView
-import com.chapterplayer.ui.library.LibraryViewModel
-import com.chapterplayer.ui.player.PlayerMenuViewModel
-import com.chapterplayer.ui.player.PlayerViewModel
-import com.chapterplayer.domain.playback.OpenPlayerRequest
-import com.chapterplayer.ui.search.SearchViewModel
-import com.chapterplayer.ui.stats.StatsViewModel
-import com.chapterplayer.ui.downloads.DownloadsViewModel
-import com.chapterplayer.ui.settings.SettingsViewModel
 import com.chapterplayer.data.widgets.WidgetActions
 import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.data.widgets.WidgetHost
 import com.chapterplayer.data.widgets.WidgetResumer
 import com.chapterplayer.ui.widgets.GlanceWidgetHost
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
-import org.koin.core.module.dsl.viewModel
-import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
 import org.koin.dsl.binds
 import org.koin.dsl.module
@@ -147,84 +100,23 @@ val sourceModule = module {
 }
 
 val repositoryModule = module {
-    includes(commonServerModule)
+    includes(commonServerModule, commonRepositoryModule)
     // Blocking I/O (Plex probes, plex.tv reads) for the common classes.
     single<CoroutineDispatcher>(BlockingIoQualifier) { Dispatchers.IO }
-    single<BookRepository> { BookRepositoryImpl(
-            get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(), bookmarkDao = get(), historyDao = get(),
-            inTransaction = { block ->
-                get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
-            },
-            onQueued = { get<PendingProgressFlusher>().kick() },
-            // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
-            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
-            // A save of one copy of a merged book moves the other copies' local rows (Settings switch, on by default).
-            mirrorPeers = get(),
-            // Looked up when a mirror is written, not when this is built (the player is in the playback module).
-            loadedBookId = { get<PlaybackController>().state.value.bookId }
-        ) }
-    // The other copies of a merged book, grouped like the lists (the user's corrections included).
-    single<ProgressMirrorPeers> {
-        MergedProgressPeers(
-            get<BookDao>().observeAll().map { rows -> rows.map { it.toDomain(emptyList()) } },
-            get<BookMergeRepository>().overrides,
-            get<AppSettings>().mirrorProgress,
-            get(AppScopeQualifier),
-        )
-    }
-    single<DownloadStates> { RoomDownloadStates(get()) }
     // A downloaded book's files, for playing it from the phone (playback and the downloads share it).
     single<LocalBookFiles> { RoomLocalBookFiles(get(), AndroidLocalDisk, Dispatchers.IO, nowMs = System::currentTimeMillis) }
 }
 
 val browseModule = module {
-    // The filters shared by Home, Library and Search; in memory only. A deleted server drops out of the server choice.
-    single {
-        BrowseQueryStore().also { store ->
-            val serverIds = get<ServerRepository>().observeAll()
-                .map { list -> list.mapTo(mutableSetOf()) { it.id } }
-                .catch { e -> if (e is CancellationException) throw e }
-            store.followServers(serverIds, get(AppScopeQualifier))
-        }
-    }
-    // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).
-    single<SourceMerging> { AppSourceMerging(get(), get(), get(), get(), get()) }
+    includes(commonBrowseModule)
 }
 
 val playbackModule = module {
+    includes(commonPlaybackModule)
     // One controller for the app; the service itself finds its parts through Koin too.
     single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier), get()) }
-    // Saves listening progress whichever screen is open; the application starts it.
-    single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
-    // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
-    single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
-    single {
-        PendingProgressFlusher(get(), get(), get(AppScopeQualifier), peers = get(), loadedBookId = { get<PlaybackController>().state.value.bookId })
-    }
-    // The other copies of a merged book: their servers hear the mapped position through the queue (throttled).
-    single {
-        ProgressMirrorPusher(get(), get(), get(), statusStore = get(), scope = get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() })
-    }
-    single { ServerProgressRefresher(get(), get(), get(), get(AppScopeQualifier)) }
-    single { BookmarkSyncer(get(), get(), get(), get(AppScopeQualifier)) }
-    single { HistoryRecorder(get(), get(), get(AppScopeQualifier)) }
-    // Listening time per day and book for the statistics page, from every source, online or not.
     single<DayZone> { SystemDayZone }
-    single<ListeningLog> {
-        RoomListeningLog(get(), inTransaction = { block -> get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } } })
-    }
-    single<BookOwners> {
-        val bookDao = get<BookDao>()
-        BookOwners { id -> bookDao.getById(id)?.let { book -> BookOwner(book.serverId, ServerSource.entries.firstOrNull { it.name == book.source } ?: ServerSource.ABS) } }
-    }
     single<ListeningClock> { AndroidListeningClock }
-    single { ListeningRecorder(get(), get(), get(), get(AppScopeQualifier), get(), get()) }
-    // Audiobookshelf's own listening history, imported once per server (and again from the stats page).
-    single<ListeningImport> { ListeningStatsImporter(get(), getAll<LibrarySource>(), get(), get(), get(AppScopeQualifier), get()) }
-    // Starts a book (position, saved speed, play) for details, Home and the player.
-    singleOf(::PlaybackStarter)
-    // A tapped notification asks the navigation host to open the player once.
-    single { OpenPlayerRequest() }
 }
 
 val downloadModule = module {
@@ -266,32 +158,13 @@ val deviceModule = module {
     single<ConnectivityMonitor> { AndroidConnectivityMonitor(androidContext()) }
     // The main activity lends it its permission launcher; the details screen asks before the first download.
     single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
+    // Android has every feature (iOS: browsing only for now).
+    single { PlatformFeatures.Full }
 }
 
 val viewModelModule = module {
-    // The Servers pages and the offline state (shared with iOS).
+    // Every screen's view model (shared with iOS).
     includes(commonViewModelModule)
-    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get()) }
-    viewModelOf(::LibrariesViewModel)
-    // Built with parametersOf(kind, groupKey) by the group detail screen.
-    viewModel { params ->
-        GroupDetailViewModel(
-            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()
-        )
-    }
-    // Built with parametersOf(bookId) by the book details screen.
-    viewModel { params -> BookDetailsViewModel(
-            params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
-            merging = get(), merges = get(), servers = get()
-        ) }
-    viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
-    viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
-    // The statistics page; its figures are worked out off the main thread.
-    viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
-    viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
-    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
 }
 
 val widgetModule = module {

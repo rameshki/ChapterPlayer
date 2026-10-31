@@ -37,7 +37,7 @@ class ChapterPlayerApp : Application() {
             modules(sharedModules + appModule)
         }
         // Covers on a Plex server get the token in a header (it is never part of a stored address).
-        installCoverImageLoader(this, GlobalContext.get().get<PlexImageServers>())
+        installCoverImageLoader(GlobalContext.get().get<PlexImageServers>())
         // Progress is saved for any playing book, whichever screen is open.
         GlobalContext.get().get<PlaybackProgressSaver>().start()
         // The server hears about it too, and what it missed (offline, errors) is delivered later.

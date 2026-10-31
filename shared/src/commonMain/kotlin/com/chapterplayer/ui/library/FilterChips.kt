@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.domain.browse.FilterChip
+import com.chapterplayer.domain.browse.offeredChips
+import com.chapterplayer.ui.components.LocalPlatformFeatures
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.theme.TextSecondary
@@ -57,6 +59,8 @@ fun FilterChipRow(
     serverChip: String? = null,
     onClearServers: () -> Unit = {}
 ) {
+    // No Downloaded chip on a platform without downloads (iOS for now).
+    val chips = offeredChips(LocalPlatformFeatures.current.downloads)
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -70,7 +74,7 @@ fun FilterChipRow(
             if (serverChip != null) {
                 item(key = "server") { ServerChip(serverChip, onOpen = onOpenSheet, onClear = onClearServers) }
             }
-            items(FilterChip.entries, key = { it.name }) { chip ->
+            items(chips, key = { it.name }) { chip ->
                 ChipItem(label = chip.label(), selected = chip == selected, onClick = { onSelected(chip) })
             }
         }

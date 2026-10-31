@@ -1,6 +1,51 @@
 package com.chapterplayer.di
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
+import com.chapterplayer.data.DownloadStates
+import com.chapterplayer.data.RoomDownloadStates
 import com.chapterplayer.data.auth.AbsSignInPort
+import com.chapterplayer.data.bookmarks.BookmarkSyncer
+import com.chapterplayer.data.bookmarks.HistoryRecorder
+import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.merge.AppSourceMerging
+import com.chapterplayer.data.merge.MergedProgressPeers
+import com.chapterplayer.data.merge.ProgressMirrorPeers
+import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.playback.PlaybackProgressSaver
+import com.chapterplayer.data.playback.PlaybackStarter
+import com.chapterplayer.data.progress.PendingProgressFlusher
+import com.chapterplayer.data.progress.ProgressMirrorPusher
+import com.chapterplayer.data.progress.ProgressSyncer
+import com.chapterplayer.data.progress.ServerProgressRefresher
+import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.data.repository.BookRepositoryImpl
+import com.chapterplayer.data.stats.BookOwner
+import com.chapterplayer.data.stats.BookOwners
+import com.chapterplayer.data.stats.ListeningImport
+import com.chapterplayer.data.stats.ListeningLog
+import com.chapterplayer.data.stats.ListeningRecorder
+import com.chapterplayer.data.stats.ListeningStatsImporter
+import com.chapterplayer.data.stats.RoomListeningLog
+import com.chapterplayer.domain.browse.BrowseQueryStore
+import com.chapterplayer.domain.playback.OpenPlayerRequest
+import com.chapterplayer.ui.details.BookDetailsViewModel
+import com.chapterplayer.ui.downloads.DownloadsViewModel
+import com.chapterplayer.ui.home.HomeViewModel
+import com.chapterplayer.ui.library.GroupDetailViewModel
+import com.chapterplayer.ui.library.LibrariesViewModel
+import com.chapterplayer.ui.library.LibraryView
+import com.chapterplayer.ui.library.LibraryViewModel
+import com.chapterplayer.ui.player.PlayerMenuViewModel
+import com.chapterplayer.ui.player.PlayerViewModel
+import com.chapterplayer.ui.search.SearchViewModel
+import com.chapterplayer.ui.settings.SettingsViewModel
+import com.chapterplayer.ui.stats.StatsViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.merge.BookMergeRepository
@@ -26,6 +71,8 @@ import com.chapterplayer.data.source.AbsLibrarySource
 import com.chapterplayer.data.source.LibrarySource
 import com.chapterplayer.data.source.PlexLibrarySource
 import com.chapterplayer.data.sync.DataStoreServerStatusStore
+import com.chapterplayer.data.sync.ForegroundSync
+import com.chapterplayer.data.sync.SyncAllServers
 import com.chapterplayer.data.sync.LibrarySync
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.data.sync.NoPlexSectionLengths
@@ -55,9 +102,10 @@ import org.koin.dsl.module
  * The bindings every platform shares. Each platform adds a module with what only it can make: the database
  * (ChapterPlayerDatabase), the DataStores named by SettingsStoreQualifier and ServerStatusStoreQualifier, the
  * CredentialStore, the PlexClientIdentifier, the ConnectivityMonitor, the AppInfo, the debug flag (DebuggableQualifier),
- * the blocking I/O dispatcher (BlockingIoQualifier) and a BookRepository (Android: the real one; iOS: a stand-in until
- * the repositories are shared). Android's modules (androidMain KoinModules.kt) include these; iOS starts them with
- * initKoin (iosMain KoinIos.kt).
+ * the blocking I/O dispatcher (BlockingIoQualifier), the DayZone and the ListeningClock, and the player and download
+ * parts: PlaybackController, LocalBookFiles, DownloadController, DownloadStorage, DownloadOverview, NotificationPermission
+ * and PlatformFeatures (Android: the real ones; iOS: the stand-ins of notYetOnIosModule until Stage 5 steps 4 and 5).
+ * Android's modules (androidMain KoinModules.kt) include these; iOS starts them with initKoin (iosMain KoinIos.kt).
  */
 
 /** The debug flag. The shared module has no BuildConfig, so the app (Android) or the platform module (iOS) provides it. */
@@ -157,16 +205,122 @@ val commonServerModule = module {
     // The Plex servers the cover loader adds the token header for.
     single { PlexImageServers(get(), get(AppScopeQualifier)) }
     single<LibrarySync> { get<LibrarySyncCoordinator>() }
+    // iOS only (no background sync there yet): every server syncs at start, on becoming active and on a network change.
+    single<SyncAllServers> { get<LibrarySyncCoordinator>() }
+    single { ForegroundSync(get(), get(), get(AppScopeQualifier)) }
 }
 
-/** The view models of the screens that need no platform-only binding: the Servers pages and the offline state. */
+/** The book repository, the other copies of merged books, and the download states the lists show. */
+val commonRepositoryModule = module {
+    single<BookRepository> { BookRepositoryImpl(
+            get(), get(), get(), get(), get(), getAll<LibrarySource>(), pendingDao = get(), bookmarkDao = get(), historyDao = get(),
+            inTransaction = { block ->
+                get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } }
+            },
+            onQueued = { get<PendingProgressFlusher>().kick() },
+            // A Plex start that cannot reach the cached address re-probes and retries once on the new one.
+            onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
+            // A save of one copy of a merged book moves the other copies' local rows (Settings switch, on by default).
+            mirrorPeers = get(),
+            // Looked up when a mirror is written, not when this is built (the player is in the platform's module).
+            loadedBookId = { get<PlaybackController>().state.value.bookId }
+        ) }
+    // The other copies of a merged book, grouped like the lists (the user's corrections included).
+    single<ProgressMirrorPeers> {
+        MergedProgressPeers(
+            get<BookDao>().observeAll().map { rows -> rows.map { it.toDomain(emptyList()) } },
+            get<BookMergeRepository>().overrides,
+            get<AppSettings>().mirrorProgress,
+            get(AppScopeQualifier),
+        )
+    }
+    single<DownloadStates> { RoomDownloadStates(get()) }
+}
+
+/** The filters shared by Home, Library and Search, and the merging of books several servers have. */
+val commonBrowseModule = module {
+    // In memory only. A deleted server drops out of the server choice.
+    single {
+        BrowseQueryStore().also { store ->
+            val serverIds = get<ServerRepository>().observeAll()
+                .map { list -> list.mapTo(mutableSetOf()) { it.id } }
+                .catch { e -> if (e is CancellationException) throw e }
+            store.followServers(serverIds, get(AppScopeQualifier))
+        }
+    }
+    // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).
+    single<SourceMerging> { AppSourceMerging(get(), get(), get(), get(), get()) }
+}
+
+/**
+ * What follows the player whichever screen is open (progress saves, server sync and its queue, mirrors, bookmarks,
+ * history, listening time) and the one way to start a book. The platform gives the PlaybackController (iOS: a stand-in
+ * until step 4), the LocalBookFiles, the DayZone and the ListeningClock.
+ */
+val commonPlaybackModule = module {
+    // Saves listening progress whichever screen is open; the application starts it.
+    single { PlaybackProgressSaver(get(), get(), get(AppScopeQualifier)) }
+    // Tells the server where listening is, and queues what it did not get; the flusher delivers the queue.
+    single { ProgressSyncer(get(), get(), get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() }) }
+    single {
+        PendingProgressFlusher(get(), get(), get(AppScopeQualifier), peers = get(), loadedBookId = { get<PlaybackController>().state.value.bookId })
+    }
+    // The other copies of a merged book: their servers hear the mapped position through the queue (throttled).
+    single {
+        ProgressMirrorPusher(get(), get(), get(), statusStore = get(), scope = get(AppScopeQualifier), onQueued = { get<PendingProgressFlusher>().kick() })
+    }
+    single { ServerProgressRefresher(get(), get(), get(), get(AppScopeQualifier)) }
+    single { BookmarkSyncer(get(), get(), get(), get(AppScopeQualifier)) }
+    single { HistoryRecorder(get(), get(), get(AppScopeQualifier)) }
+    // Listening time per day and book for the statistics page, from every source, online or not.
+    single<ListeningLog> {
+        RoomListeningLog(get(), inTransaction = { block -> get<ChapterPlayerDatabase>().useWriterConnection { it.immediateTransaction { block() } } })
+    }
+    single<BookOwners> {
+        val bookDao = get<BookDao>()
+        BookOwners { id -> bookDao.getById(id)?.let { book -> BookOwner(book.serverId, ServerSource.entries.firstOrNull { it.name == book.source } ?: ServerSource.ABS) } }
+    }
+    single { ListeningRecorder(get(), get(), get(), get(AppScopeQualifier), get(), get()) }
+    // Audiobookshelf's own listening history, imported once per server (and again from the stats page).
+    single<ListeningImport> { ListeningStatsImporter(get(), getAll<LibrarySource>(), get(), get(), get(AppScopeQualifier), get()) }
+    // Starts a book (position, saved speed, play) for details, Home and the player.
+    singleOf(::PlaybackStarter)
+    // A tapped notification asks the navigation host to open the player once.
+    single { OpenPlayerRequest() }
+}
+
+/** Every screen's view model. */
 val commonViewModelModule = module {
     // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
     viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
     viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
     viewModelOf(::OfflineStateViewModel)
+    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get()) }
+    viewModelOf(::LibrariesViewModel)
+    // Built with parametersOf(kind, groupKey) by the group detail screen.
+    viewModel { params ->
+        GroupDetailViewModel(
+            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()
+        )
+    }
+    // Built with parametersOf(bookId) by the book details screen.
+    viewModel { params -> BookDetailsViewModel(
+            params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
+            merging = get(), merges = get(), servers = get(), features = get()
+        ) }
+    viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
+    viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
+    // The statistics page; its figures are worked out off the main thread.
+    viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
+    viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
+    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
 }
 
 /** Every common module; a platform adds its own (Android: `sharedModules` includes these; iOS: `initKoin`). */
 val commonModules: List<Module> =
-    listOf(commonDaoModule, commonNetworkModule, commonStoreModule, commonSourceModule, commonServerModule, commonViewModelModule)
+    listOf(
+        commonDaoModule, commonNetworkModule, commonStoreModule, commonSourceModule, commonServerModule, commonRepositoryModule,
+        commonBrowseModule, commonPlaybackModule, commonViewModelModule,
+    )

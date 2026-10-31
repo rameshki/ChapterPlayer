@@ -1,5 +1,6 @@
 package com.chapterplayer.data.playback
 
+import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.downloads.LocalBookFiles
 import com.chapterplayer.data.downloads.LocalFile
@@ -35,6 +36,8 @@ class PlaybackStarter(
     private val localFiles: LocalBookFiles,
     /** The other copies of a merged book (none with mirroring off): their progress counts at the start too. */
     private val peers: ProgressMirrorPeers = ProgressMirrorPeers.None,
+    /** Without playback on this platform (iOS until Stage 5 step 4) every start fails at once, asking no server. */
+    private val features: PlatformFeatures = PlatformFeatures.Full,
 ) {
 
     /**
@@ -48,6 +51,7 @@ class PlaybackStarter(
      * does not follow that setting).
      */
     suspend fun start(book: AudioBook, atMs: Long? = null, ignoreDownloadedOnly: Boolean = false): Result<Unit> = try {
+        if (!features.playback) throw PlaybackStartException(PLAYBACK_NOT_ON_IOS_TEXT)
         if (atMs == null && controller.state.value.let { it.bookId == book.id && it.error == null }) {
             // Already loaded: carry on from the live position. A reload would restart from the last saved one.
             continueLoaded()

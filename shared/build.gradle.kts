@@ -66,6 +66,12 @@ kotlin {
             implementation(libs.datastore.preferences)
         }
 
+        // Tests of pure shared code: they run on the JVM (with the host tests) and on iOS (iosSimulatorArm64Test).
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.coroutines.test)
+        }
+
         getByName("androidHostTest").dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
