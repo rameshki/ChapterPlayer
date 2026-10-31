@@ -207,7 +207,7 @@ val commonServerModule = module {
     single<LibrarySync> { get<LibrarySyncCoordinator>() }
     // iOS only (no background sync there yet): every server syncs at start, on becoming active and on a network change.
     single<SyncAllServers> { get<LibrarySyncCoordinator>() }
-    single { ForegroundSync(get(), get(AppScopeQualifier)) }
+    single { ForegroundSync(get(), get(), get(AppScopeQualifier)) }
 }
 
 /** The book repository, the other copies of merged books, and the download states the lists show. */

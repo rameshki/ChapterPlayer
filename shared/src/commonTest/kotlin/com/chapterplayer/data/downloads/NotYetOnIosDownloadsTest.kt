@@ -20,12 +20,24 @@ class NotYetOnIosDownloadsTest {
     }
 
     @Test
-    fun `pause and cancel and remove and the Wi-Fi setting do nothing`() = runTest {
+    fun `starting fails as an unsupported operation the details control swallows`() = runTest {
+        val error = runCatching { NotYetOnIosDownloadController().enqueue("b1") }.exceptionOrNull()
+        assertTrue(error is UnsupportedOperationException)
+        assertEquals(DOWNLOADS_NOT_ON_IOS_TEXT, error.message)
+    }
+
+    @Test
+    fun `pause and cancel and remove and the Wi-Fi setting succeed and leave nothing behind`() = runTest {
         val controller = NotYetOnIosDownloadController()
-        controller.pause("b1")
-        controller.cancel("b1")
-        controller.remove("b1")
-        controller.reapplyWifiSetting()
+        assertTrue(runCatching { controller.pause("b1") }.isSuccess)
+        assertTrue(runCatching { controller.cancel("b1") }.isSuccess)
+        assertTrue(runCatching { controller.remove("b1") }.isSuccess)
+        assertTrue(runCatching { controller.reapplyWifiSetting() }.isSuccess)
+        // Nothing was queued or kept by them: a start still fails, and the book still has no files.
+        assertFailsWith<DownloadsNotAvailableException> { controller.enqueue("b1") }
+        assertFailsWith<DownloadsNotAvailableException> { controller.resume("b1") }
+        assertNull(NoLocalBookFiles.complete("b1"))
+        assertTrue(NoLiveDownloadProgress.observeAll().first().isEmpty())
     }
 
     @Test

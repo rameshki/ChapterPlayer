@@ -3,6 +3,10 @@ package com.chapterplayer.domain.browse
 /** The quick filters under the Library views. Each stands for one combination of the two filters. */
 enum class FilterChip { ALL, DOWNLOADED, IN_PROGRESS, NOT_STARTED, FINISHED }
 
+/** The chips offered: without downloads on this platform (iOS for now) there is no Downloaded chip. */
+fun offeredChips(downloads: Boolean): List<FilterChip> =
+    FilterChip.entries.filter { downloads || it != FilterChip.DOWNLOADED }
+
 /** The chip that stands for [query], or null when the Filter sheet made a combination no chip represents. The sort never matters. */
 fun chipFor(query: BrowseQuery): FilterChip? = when {
     query.progress == ProgressFilter.ALL && query.download == DownloadFilter.ALL -> FilterChip.ALL

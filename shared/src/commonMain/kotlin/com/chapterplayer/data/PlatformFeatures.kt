@@ -14,6 +14,9 @@ data class PlatformFeatures(
     companion object {
         val Full = PlatformFeatures()
 
+        /** No player, downloads or car: what a screen assumes when nobody said (fails closed). */
+        val None = PlatformFeatures(playback = false, downloads = false, car = false)
+
         /** The iPhone build of Stage 5 step 2: browsing and sync only. */
         val IosBrowsingOnly = PlatformFeatures(playback = false, downloads = false, car = false)
     }

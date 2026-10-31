@@ -32,6 +32,7 @@ import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.koin.test.verify.verify
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -76,8 +77,8 @@ class KoinModulesTest {
 
     @Test
     fun `the repository module resolves`() {
-        // Repositories need the DAOs and API services, which other modules declare.
-        module { includes(databaseModule, networkModule, securityModule, repositoryModule) }.verify(extraTypes = providedByApp)
+        // Repositories need the DAOs and API services, which other modules declare; the foreground sync reads connectivity.
+        module { includes(databaseModule, networkModule, securityModule, deviceModule, repositoryModule) }.verify(extraTypes = providedByApp)
     }
 
     @Test
@@ -205,9 +206,16 @@ class KoinModulesTest {
     fun `the book repository is the shared one on every platform`() {
         val name = BookRepository::class.qualifiedName!!
         assertTrue(commonRepositoryModule.mappings.keys.any { name in it })
-        // Neither iOS's stand-ins nor Android's own modules bind another one.
+        // Neither iOS's stand-ins nor Android's own modules bind another one (an included module counts once, from common).
         assertTrue(notYetOnIosModule.mappings.keys.none { name in it })
-        assertTrue(listOf(databaseModule, networkModule, securityModule, deviceModule, downloadModule, widgetModule).none { m -> m.mappings.keys.any { name in it } })
+        val androidOwn = listOf(
+            databaseModule, networkModule, securityModule, sourceModule, repositoryModule, deviceModule, playbackModule,
+            downloadModule, browseModule, viewModelModule, widgetModule,
+        )
+        assertTrue(androidOwn.none { m -> m.mappings.keys.any { name in it } })
+        // In the whole Android graph there is exactly one, and it is the common one.
+        val all = sharedModules.flatMap { it.includedModules + it }.toSet()
+        assertEquals(listOf(commonRepositoryModule), all.filter { m -> m.mappings.keys.any { name in it } })
     }
 
     @Test
