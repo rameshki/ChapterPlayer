@@ -12,8 +12,6 @@ import com.chapterplayer.data.downloads.NotYetOnIosDownloadController
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.permissions.NoNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
-import com.chapterplayer.data.playback.NotYetOnIosPlaybackController
-import com.chapterplayer.data.playback.PlaybackController
 import org.koin.core.Koin
 import org.koin.core.module.Module
 import org.koin.core.context.startKoin
@@ -21,14 +19,13 @@ import org.koin.dsl.module
 import org.koin.mp.KoinPlatformTools
 
 /**
- * The bindings iOS cannot make for real yet (Stage 5 step 2): no player until step 4 and no downloader until step 5.
- * Nothing ever loads in the player (a start fails with "Playback is not available on iOS yet"), downloads cannot start
- * ("Downloads are not available on iOS yet"), there are no downloaded files, no download storage and no notification
- * prompt; the download overview reads the (empty) download tables. [PlatformFeatures.IosBrowsingOnly] tells the screens.
+ * The bindings iOS cannot make for real yet: no downloader until Stage 5 step 5. Downloads cannot start ("Downloads
+ * are not available on iOS yet"), there are no downloaded files, no download storage and no notification prompt; the
+ * download overview reads the (empty) download tables. [PlatformFeatures.IosStreaming] tells the screens. The player
+ * itself is iOS's own (`iosPlaybackModule`, AVPlayer) since step 4.
  */
 val notYetOnIosModule = module {
-    single<PlatformFeatures> { PlatformFeatures.IosBrowsingOnly }
-    single<PlaybackController> { NotYetOnIosPlaybackController() }
+    single<PlatformFeatures> { PlatformFeatures.IosStreaming }
     single<DownloadController> { NotYetOnIosDownloadController() }
     single<DownloadStorage> { NoDownloadStorage }
     single<DownloadOverview> { RoomDownloadOverview(get(), NoLiveDownloadProgress) }
