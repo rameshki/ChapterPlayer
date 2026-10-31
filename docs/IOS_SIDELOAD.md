@@ -1,6 +1,6 @@
 # Installing ChapterPlayer on an iPhone without a paid Apple account
 
-The macOS CI job builds an UNSIGNED `ChapterPlayer-unsigned.ipa` on every pull request and every merge to `main` (artifact name `ChapterPlayer-unsigned-ipa`, kept 14 days). You sign it yourself with a free Apple ID and install it over USB from Windows.
+The macOS CI job builds an UNSIGNED `ChapterPlayer-unsigned.ipa` on every merge to `main` (about 20 extra minutes, so not on pull requests) and on a manual run (Actions, Android CI, Run workflow) (artifact name `ChapterPlayer-unsigned-ipa`, kept 14 days). You sign it yourself with a free Apple ID and install it over USB from Windows.
 
 ## What you need (once)
 - A Windows PC with iTunes (the Apple installer version, not the Microsoft Store one) so the PC can talk to the iPhone, and the iPhone connected by USB and trusted ("Trust this computer").
@@ -9,7 +9,7 @@ The macOS CI job builds an UNSIGNED `ChapterPlayer-unsigned.ipa` on every pull r
 - On the iPhone: Settings, Privacy & Security, turn on **Developer Mode** (iOS 16 and later; the phone restarts once). After the first install, open Settings, General, VPN & Device Management, tap the Apple ID shown, and **Trust** it.
 
 ## Each install or re-sign (every 7 days)
-1. On GitHub, open the latest run of "Android CI" on `main` (or the pull request), download the artifact `ChapterPlayer-unsigned-ipa`, and unzip it to get `ChapterPlayer-unsigned.ipa`.
+1. On GitHub, open the latest run of "Android CI" on `main`, download the artifact `ChapterPlayer-unsigned-ipa`, and unzip it to get `ChapterPlayer-unsigned.ipa`.
 2. Open Sideloadly, plug in the iPhone, drag the `.ipa` onto it, enter the Apple ID and press Start. The first time it asks for an app-specific password or two-factor code.
 3. The app appears on the home screen. It stops opening after 7 days: repeat step 2 (your data stays) to renew it.
 
