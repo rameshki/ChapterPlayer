@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,7 +41,7 @@ jobs:
   ios:
     name: iOS framework & app shell
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
 
@@ -69,3 +70,21 @@ jobs:
           xcodebuild -project iosApp/ChapterPlayer.xcodeproj -scheme ChapterPlayer \
             -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+
+      - name: Build the unsigned iOS app for devices and package an .ipa
+        # About 20 minutes: only on merges to main and manual runs, so pull request checks stay quick.
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        # Sideloadly (Windows) signs this .ipa with a free Apple ID and installs it over USB. See docs/IOS_SIDELOAD.md.
+        run: |
+          xcodebuild -project iosApp/ChapterPlayer.xcodeproj -scheme ChapterPlayer             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS'             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             -derivedDataPath build/ios build
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/ChapterPlayer.app build/ipa/Payload/
+          (cd build/ipa && zip -qry ../ChapterPlayer-unsigned.ipa Payload)
+          ls -la build/ChapterPlayer-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        with:
+          name: ChapterPlayer-unsigned-ipa
+          path: build/ChapterPlayer-unsigned.ipa
+          retention-days: 14
