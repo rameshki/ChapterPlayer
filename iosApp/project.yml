@@ -28,6 +28,9 @@ targets:
         # sideloaded build; an App Store build would need a narrower exception.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        # Books keep playing with the screen locked or another app in front; the lock screen and Control Center show them.
+        UIBackgroundModes:
+          - audio
     preBuildScripts:
       - name: Build the shared Kotlin framework
         basedOnDependencyAnalysis: false
@@ -46,4 +49,5 @@ targets:
         # The shared framework is built for Apple-silicon simulators only.
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
         FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
-        OTHER_LDFLAGS: "-framework Shared"
+        # The shared framework is static: the system frameworks its player uses are linked here.
+        OTHER_LDFLAGS: "-framework Shared -framework AVFoundation -framework MediaPlayer"

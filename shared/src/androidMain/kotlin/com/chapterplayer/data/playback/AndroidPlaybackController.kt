@@ -140,7 +140,8 @@ class AndroidPlaybackController(
             is AudioOrigin.Phone -> fromPhone(book, origin)
         }
         if (started.tracks.isEmpty()) {
-            started.session?.let { closeSession(it, 0L) }
+            // A start that does not happen leaves the server's progress where it was: close at the session's own start.
+            started.session?.let { closeSession(it, it.startPositionMs) }
             throw PlaybackStartException("This book has no audio to play")
         }
 
@@ -169,11 +170,11 @@ class AndroidPlaybackController(
                 player.setMediaItems(specs.map(::toMediaItem), target?.trackIndex ?: 0, target?.offsetMs ?: 0L)
                 player.prepare()
                 // Only now does the controller name the new book, so no state mixes the two.
-                loaded.begin(started, newSpans)
+                loaded.begin(started, newSpans, startAt)
             } catch (e: Exception) {
                 loaded.end()
                 try { player.clearMediaItems() } catch (_: Exception) { }
-                started.session?.let { closeSession(it, 0L) }
+                started.session?.let { closeSession(it, it.startPositionMs) }
                 throw e
             }
         }

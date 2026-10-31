@@ -210,15 +210,3 @@ internal fun <T> openAuthorized(
         }
     }
 }
-
-/** Whether two addresses have the same scheme, host and port (case-insensitive). */
-internal fun sameHost(a: String, b: String): Boolean = originOf(a) == originOf(b)
-
-private fun originOf(address: String): String {
-    val trimmed = address.trim()
-    val schemeEnd = trimmed.indexOf("://")
-    if (schemeEnd < 0) return trimmed.lowercase()
-    var end = schemeEnd + 3
-    while (end < trimmed.length && trimmed[end] !in "/?#") end++
-    return trimmed.substring(0, end).lowercase()
-}

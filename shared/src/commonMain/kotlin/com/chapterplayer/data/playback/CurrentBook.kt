@@ -24,10 +24,11 @@ class CurrentBook {
 
     val isLoaded: Boolean get() = book != null
 
-    fun begin(book: PlayableBook, spans: List<TrackSpan>) {
+    /** Starts [book]; until a position is seen, [lastPositionMs] is [startPositionMs] (where it was loaded). */
+    fun begin(book: PlayableBook, spans: List<TrackSpan>, startPositionMs: Long = 0L) {
         this.book = book
         this.spans = spans
-        lastPositionMs = 0L
+        lastPositionMs = startPositionMs
     }
 
     /** Notes the position of the loaded book; ignored when nothing is loaded. */
