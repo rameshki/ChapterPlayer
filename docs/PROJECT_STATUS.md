@@ -24,6 +24,8 @@ ABS and Plex sources (both download), combined library with one entry per book a
 
 - 2026-11-01: Robert's iPhone is managed (Intune MDM), so sideloading the unsigned .ipa is expected to be blocked (Developer Mode / trusting a developer certificate are normally restricted) and we do not try to work around a work device's management. iPhone testing is blocked until there is an unmanaged iPhone or iPad on iOS 16 or newer (his iPads: one is on iOS 12, too old; others not yet asked). No new iOS feature work is started; the iOS code stays compile- and CI-checked (the macOS job links, runs the iOS simulator tests and builds the .ipa on every merge to main) and is kept healthy. Android is the product until a test device exists.
 
+- 2026-11-01: a book on several servers now ASKS which copy to play or download from by default ("When a book is on several servers: Always ask" in Settings, Downloads and offline; the earlier default "prefer the downloaded copy, then Audiobookshelf" never asked). Found on his phone: Play and Download did not ask.
+
 ## Next steps, in order
 1. Install the current main on the phone or the emulator (the emulator runs again, started from the command line with `-gpu swiftshader_indirect`) and check the stats: the page in both themes, Series finished / Series to finish, the first ABS history import and Refresh, and listening logged offline and on Plex.
 2. Check **Merged sources Phase 2** (merged, #49) on the phone with a book on both servers: listen on one copy, the other copy's tile and its server follow; open the other copy and it starts at the mapped place; Mark as finished on both; "Not the same book" stops it.

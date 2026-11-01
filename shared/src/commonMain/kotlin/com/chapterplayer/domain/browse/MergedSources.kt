@@ -19,10 +19,11 @@ import kotlin.math.max
  * on a tie a copy's own row wins over a mirrored one, see `mirroredProgress`).
  */
 
-/** What to do when a book is on several servers. The default prefers the downloaded copy, then Audiobookshelf. */
+/** What to do when a book is on several servers. The default asks which copy to use. */
 enum class SourcePreference { ASK, PREFER_ABS, PREFER_PLEX, PREFER_DOWNLOADED }
 
-val DEFAULT_SOURCE_PREFERENCE = SourcePreference.PREFER_DOWNLOADED
+/** Robert asked for it: a book several servers have asks which copy to play or download from. */
+val DEFAULT_SOURCE_PREFERENCE = SourcePreference.ASK
 
 /** The Settings name of [preference]. */
 fun sourcePreferenceLabel(preference: SourcePreference): String = when (preference) {
