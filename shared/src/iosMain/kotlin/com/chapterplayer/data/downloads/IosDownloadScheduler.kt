@@ -19,12 +19,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import platform.BackgroundTasks.BGContinuedProcessingTask
 import platform.BackgroundTasks.BGContinuedProcessingTaskRequest
 import platform.BackgroundTasks.BGContinuedProcessingTaskRequestSubmissionStrategy
@@ -134,11 +132,11 @@ class IosDownloadScheduler(
 
     private fun beginBackgroundTime() {
         backgroundTime = UIApplication.sharedApplication.beginBackgroundTaskWithName("Downloads") {
-            // iOS takes the time away: stop cleanly (each job saves its bytes), then give the time back.
-            scope.launch {
-                withTimeoutOrNull(STOP_GRACE_MS) { jobs.stopAll() }
-                withContext(Dispatchers.Main) { endBackgroundTime() }
-            }
+            // iOS takes the time away: every job stops (each saves its bytes, its book goes back to QUEUED) and the time
+            // is given back at once, as iOS requires; a stop that the suspension interrupts finishes when the app runs
+            // again, and Room never claims more than the `.part` file holds.
+            scope.launch { jobs.stopAll() }
+            endBackgroundTime()
         }
     }
 
@@ -226,10 +224,13 @@ class IosDownloadScheduler(
 
         private fun launched(task: BGContinuedProcessingTask) {
             task.expirationHandler = {
-                scope.launch {
-                    withTimeoutOrNull(STOP_GRACE_MS) { jobs.stopAll() }
-                    end(task, success = false)
+                // Like the end of background time: stop every job and hand the task back at once.
+                scope.launch { jobs.stopAll() }
+                if (running) {
+                    running = false
+                    task.setTaskCompletedWithSuccess(false)
                 }
+                watch?.cancel()
             }
             task.progress.totalUnitCount = 1000
             watch?.cancel()
@@ -265,8 +266,7 @@ class IosDownloadScheduler(
     }
 
     private companion object {
-        /** How long a stop may take to save before the background time is given back anyway. */
-        const val STOP_GRACE_MS = 3_000L
+        /** No download transferring for this long ends the continued processing task. */
         const val IDLE_END_MS = 5_000L
     }
 }
