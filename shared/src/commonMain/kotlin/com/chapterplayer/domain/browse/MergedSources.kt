@@ -19,25 +19,26 @@ import kotlin.math.max
  * on a tie a copy's own row wins over a mirrored one, see `mirroredProgress`).
  */
 
-/** What to do when a book is on several servers. The default prefers the downloaded copy, then Audiobookshelf. */
+/** What to do when a book is on several servers. The default asks which copy to use. */
 enum class SourcePreference { ASK, PREFER_ABS, PREFER_PLEX, PREFER_DOWNLOADED }
 
-val DEFAULT_SOURCE_PREFERENCE = SourcePreference.PREFER_DOWNLOADED
+/** Robert asked for it: a book several servers have asks which copy to play or download from. */
+val DEFAULT_SOURCE_PREFERENCE = SourcePreference.ASK
 
 /** The Settings name of [preference]. */
 fun sourcePreferenceLabel(preference: SourcePreference): String = when (preference) {
-    SourcePreference.ASK -> "Always ask"
-    SourcePreference.PREFER_ABS -> "Prefer Audiobookshelf"
-    SourcePreference.PREFER_PLEX -> "Prefer Plex"
-    SourcePreference.PREFER_DOWNLOADED -> "Prefer the downloaded copy"
+    SourcePreference.ASK -> "Always ask which copy"
+    SourcePreference.PREFER_ABS -> "Default: Audiobookshelf"
+    SourcePreference.PREFER_PLEX -> "Default: Plex"
+    SourcePreference.PREFER_DOWNLOADED -> "Default: the downloaded copy"
 }
 
 /** The line under each choice in Settings. */
 fun sourcePreferenceDetail(preference: SourcePreference): String = when (preference) {
     SourcePreference.ASK -> "Play and Download always ask which copy to use."
-    SourcePreference.PREFER_ABS -> "Uses Audiobookshelf when it can play; asks otherwise."
-    SourcePreference.PREFER_PLEX -> "Uses Plex when it can play; asks otherwise."
-    SourcePreference.PREFER_DOWNLOADED -> "The copy on the phone, otherwise Audiobookshelf; asks otherwise."
+    SourcePreference.PREFER_ABS -> "Plays and downloads from Audiobookshelf without asking; asks only when it cannot."
+    SourcePreference.PREFER_PLEX -> "Plays from Plex without asking; asks only when it cannot play."
+    SourcePreference.PREFER_DOWNLOADED -> "The copy on the phone, otherwise Audiobookshelf, without asking."
 }
 
 /**
