@@ -68,6 +68,7 @@ fun SettingsHubScreen(
     val downloadWifiOnly by viewModel.downloadWifiOnly.collectAsStateWithLifecycle()
     val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
     val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
+    val sourceChoices by viewModel.sourceChoiceCards.collectAsStateWithLifecycle()
 
     // A card may have been put in or taken out since the hub was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
@@ -87,7 +88,7 @@ fun SettingsHubScreen(
             HubRow(
                 Icons.Default.Download,
                 "Downloads and offline",
-                downloadsSummary(downloadWifiOnly, locationLabel, downloadStorageLimit, available = features.downloads),
+                downloadsSummary(downloadWifiOnly, locationLabel, downloadStorageLimit, available = features.downloads, choices = sourceChoices.summary(features.downloads)),
                 onOpenDownloads
             )
         }

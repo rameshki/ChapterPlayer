@@ -44,6 +44,10 @@ data class BookDetailsUiState(
     val download: DetailsDownload = DetailsDownload(),
     /** The copy the download control is about (another server's copy of a merged book can be the one). */
     val downloadBookId: String = "",
+    /** "Plex · Home Plex" over the main control when a merged book's copy has a download; null otherwise. */
+    val downloadCopyLabel: String? = null,
+    /** A control for every other copy of a merged book that has a download (paused, failed, done...). */
+    val otherCopyDownloads: List<CopyDownloadUi> = emptyList(),
     /** The copies of a book several servers have, downloaded first; empty for a book on one server. */
     val sources: List<SourceRow> = emptyList(),
     /** "available from Audiobookshelf and Plex"; null for one server. */

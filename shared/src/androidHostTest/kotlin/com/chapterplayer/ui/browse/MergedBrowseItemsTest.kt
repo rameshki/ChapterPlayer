@@ -11,7 +11,7 @@ import com.chapterplayer.data.sync.NoServerStatusStore
 import com.chapterplayer.data.sync.ServerStatusRecord
 import com.chapterplayer.domain.browse.MergeContext
 import com.chapterplayer.domain.browse.MergeOverrides
-import com.chapterplayer.domain.browse.SourcePreference
+import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.domain.browse.reachableServerIds
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
@@ -45,7 +45,7 @@ class MergedBrowseItemsTest {
     }
 
     @Test
-    fun `the app merging follows the corrections, the preference and the network`() = runTest {
+    fun `the app merging follows the corrections, the play choice and the network`() = runTest {
         val books = FakeBookRepository(listOf(abs("a"), plex("p")))
         val overrides = MutableStateFlow(MergeOverrides())
         val merges = object : BookMergeRepository {
@@ -65,13 +65,37 @@ class MergedBrowseItemsTest {
         val flow = observeBrowseItems(books, FakeDownloadStates(), merging)
 
         assertEquals("a", flow.first().single().book.id)
-        settings.sourcePreferenceFlow.value = SourcePreference.PREFER_PLEX
+        settings.playChoiceFlow.value = SourceChoice.OfType(ServerSource.PLEX)
         assertEquals("p", flow.first().single().book.id)
+        settings.downloadChoiceFlow.value = SourceChoice.OfServer("abs1")
+        assertEquals(SourceChoice.OfServer("abs1"), merging.context.first()?.downloadChoice)
+        assertEquals(SourceChoice.OfType(ServerSource.PLEX), merging.context.first()?.playChoice)
         assertEquals(setOf("abs1", "plex1"), merging.context.first()?.onlineServerIds)
         online.value = false
         assertEquals(emptySet(), merging.context.first()?.onlineServerIds)
         overrides.value = MergeOverrides(splits = setOf("a" to "p"))
         assertEquals(2, flow.first().size)
+    }
+
+    @Test
+    fun `a choice of a server that was removed reads as ask`() = runTest {
+        val merges = object : BookMergeRepository {
+            override val overrides: Flow<MergeOverrides> = MutableStateFlow(MergeOverrides())
+            override suspend fun split(bookId: String, otherIds: Collection<String>) {}
+            override suspend fun merge(bookId: String, otherId: String, group: Collection<String>, otherGroup: Collection<String>) {}
+            override suspend fun forgetBooks(bookIds: Collection<String>) {}
+        }
+        val monitor = object : ConnectivityMonitor { override val isOnline: Flow<Boolean> = MutableStateFlow(true) }
+        val settings = FakeAppSettings()
+        settings.playChoiceFlow.value = SourceChoice.OfServer("plex2")
+        settings.downloadChoiceFlow.value = SourceChoice.OfServer("plex2")
+        val servers = FakeServerList(listOf(
+            ServerConfig("abs1", ServerSource.ABS, "A", "http://a", "t"),
+            ServerConfig("plex1", ServerSource.PLEX, "P", "http://p", "t"),
+        ))
+        val context = AppSourceMerging(merges, settings, monitor, servers, NoServerStatusStore).context.first()
+        assertEquals(SourceChoice.Ask, context?.playChoice)
+        assertEquals(SourceChoice.Ask, context?.downloadChoice)
     }
 
     @Test

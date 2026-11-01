@@ -26,7 +26,12 @@ data class DetailsDownload(
     val confirmingRemove: Boolean = false,
     /** A line under the start button; null when there is nothing to add. */
     val note: String? = null,
+    /** A copy of a book on several servers is on the phone and another one could be fetched too ("Download another copy"). */
+    val canDownloadAnotherCopy: Boolean = false,
 )
+
+/** The download control of one more copy of a book several servers have, with its type and server. */
+data class CopyDownloadUi(val bookId: String, val label: String, val download: DetailsDownload)
 
 internal const val DOWNLOAD_LABEL = "Download"
 internal const val TRY_AGAIN_LABEL = "Try again"

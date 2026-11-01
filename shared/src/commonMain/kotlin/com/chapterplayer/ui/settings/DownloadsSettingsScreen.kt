@@ -25,7 +25,7 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
     val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
     val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
     val storageUsed by viewModel.downloadStorageUsed.collectAsStateWithLifecycle()
-    val sourcePreference by viewModel.sourcePreference.collectAsStateWithLifecycle()
+    val sourceChoices by viewModel.sourceChoiceCards.collectAsStateWithLifecycle()
     val mirrorProgress by viewModel.mirrorProgress.collectAsStateWithLifecycle()
     // A card may have been put in or taken out since the screen was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
@@ -47,8 +47,15 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
         }
 
         SectionTitle("Books on several servers")
-        SourcePreferenceCard(sourcePreference, viewModel::setSourcePreference)
-        Spacer(Modifier.height(8.dp))
+        // The choices only apply with two or more servers; "Download from" only where books can download.
+        if (sourceChoices.apply) {
+            if (features.downloads) {
+                SourceChoiceCardView(sourceChoices.download, viewModel::setDownloadSourceChoice)
+                Spacer(Modifier.height(8.dp))
+            }
+            SourceChoiceCardView(sourceChoices.play, viewModel::setPlaySourceChoice)
+            Spacer(Modifier.height(8.dp))
+        }
         SwitchCard(
             title = "Keep progress in sync between copies",
             description = "Listening to one copy moves the others to the same place, on this phone and on their servers.",

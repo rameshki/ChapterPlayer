@@ -104,7 +104,19 @@ fun BookDetailsScreen(
                 onCancel = viewModel::onCancelDownloadClicked,
                 onRemove = viewModel::onRemoveDownloadClicked,
                 onRemoveConfirmed = viewModel::onRemoveDownloadConfirmed,
-                onRemoveDismissed = viewModel::onRemoveDownloadDismissed
+                onRemoveDismissed = viewModel::onRemoveDownloadDismissed,
+                onDownloadAnotherCopy = viewModel::onDownloadAnotherCopyClicked,
+                forCopy = { id ->
+                    DownloadActions(
+                        onDownload = { viewModel.onCopyRetryClicked(id) },
+                        onPause = { viewModel.onCopyPauseClicked(id) },
+                        onResume = { viewModel.onCopyResumeClicked(id) },
+                        onCancel = { viewModel.onCopyCancelClicked(id) },
+                        onRemove = { viewModel.onCopyRemoveClicked(id) },
+                        onRemoveConfirmed = viewModel::onRemoveDownloadConfirmed,
+                        onRemoveDismissed = viewModel::onRemoveDownloadDismissed,
+                    )
+                }
             )
         )
     }
@@ -293,7 +305,7 @@ private fun DetailsHeader(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             ) { Text("Open player", color = AmberGold, style = MaterialTheme.typography.titleSmall) }
         }
-        DownloadControl(state.download, downloadActions)
+        CopyDownloadControls(state.downloadCopyLabel, state.download, downloadActions, state.otherCopyDownloads, downloadActions.forCopy)
         SourcesSection(state.sources, state.sourcesDescription)
         Spacer(Modifier.height(8.dp))
     }

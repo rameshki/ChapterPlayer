@@ -9,8 +9,10 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE
-import com.chapterplayer.domain.browse.SourcePreference
+import com.chapterplayer.domain.browse.SourceChoice
+import com.chapterplayer.domain.browse.migratedSourceChoice
+import com.chapterplayer.domain.browse.parseSourceChoice
+import com.chapterplayer.domain.browse.stored
 import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
 import com.chapterplayer.domain.playback.MIN_PLAYBACK_SPEED
 import kotlinx.coroutines.flow.Flow
@@ -51,9 +53,13 @@ interface AppSettings {
     /** Saves [speed], clamped to 0.5..3.0. */
     suspend fun setPlaybackSpeed(speed: Float)
 
-    /** Which copy plays when a book is on several servers; by default the downloaded one, then Audiobookshelf. */
-    val sourcePreference: Flow<SourcePreference>
-    suspend fun setSourcePreference(preference: SourcePreference)
+    /** Which copy Download fetches when a book is on several servers; Ask by default. */
+    val downloadSourceChoice: Flow<SourceChoice>
+    suspend fun setDownloadSourceChoice(choice: SourceChoice)
+
+    /** Which copy plays when a book is on several servers and none is downloaded (a downloaded copy always plays first); Ask by default. */
+    val playSourceChoice: Flow<SourceChoice>
+    suspend fun setPlaySourceChoice(choice: SourceChoice)
 
     /** Whether the copies of a book on several servers keep their progress in step (on by default). */
     val mirrorProgress: Flow<Boolean>
@@ -71,7 +77,10 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val downloadWifiOnly = booleanPreferencesKey("download_wifi_only")
         val downloadLimit = longPreferencesKey("download_storage_limit_bytes")
         val downloadLocation = stringPreferencesKey("download_location_id")
-        val sourcePreference = stringPreferencesKey("source_preference")
+        /** The old single several-servers setting; read only to migrate it into the two choices below. */
+        val oldSourcePreference = stringPreferencesKey("source_preference")
+        val downloadSourceChoice = stringPreferencesKey("download_source_choice")
+        val playSourceChoice = stringPreferencesKey("play_source_choice")
         val mirrorProgress = booleanPreferencesKey("mirror_progress")
     }
 
@@ -100,9 +109,13 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val playbackSpeed: Flow<Float> = prefs.map { (it[Keys.playbackSpeed] ?: 1.0f).coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
 
-    override val sourcePreference: Flow<SourcePreference> = prefs.map { p ->
-        p[Keys.sourcePreference]?.let { name -> SourcePreference.entries.firstOrNull { it.name == name } } ?: DEFAULT_SOURCE_PREFERENCE
-    }
+    // Until a choice is saved it is what the old single setting migrates to.
+    private fun choiceOf(p: Preferences, key: Preferences.Key<String>): SourceChoice =
+        p[key]?.let(::parseSourceChoice) ?: migratedSourceChoice(p[Keys.oldSourcePreference])
+
+    override val downloadSourceChoice: Flow<SourceChoice> = prefs.map { choiceOf(it, Keys.downloadSourceChoice) }
+
+    override val playSourceChoice: Flow<SourceChoice> = prefs.map { choiceOf(it, Keys.playSourceChoice) }
 
     override val mirrorProgress: Flow<Boolean> = prefs.map { it[Keys.mirrorProgress] ?: true }
 
@@ -121,6 +134,18 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         if (speed.isNaN()) return
         store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
     }
-    override suspend fun setSourcePreference(preference: SourcePreference) { store.edit { it[Keys.sourcePreference] = preference.name } }
+    override suspend fun setDownloadSourceChoice(choice: SourceChoice) = setChoice(Keys.downloadSourceChoice, choice)
+    override suspend fun setPlaySourceChoice(choice: SourceChoice) = setChoice(Keys.playSourceChoice, choice)
+
+    // The first save migrates the old setting once: both choices are written, then the old key goes.
+    private suspend fun setChoice(key: Preferences.Key<String>, choice: SourceChoice) {
+        store.edit { p ->
+            val old = migratedSourceChoice(p[Keys.oldSourcePreference]).stored()
+            if (p[Keys.downloadSourceChoice] == null) p[Keys.downloadSourceChoice] = old
+            if (p[Keys.playSourceChoice] == null) p[Keys.playSourceChoice] = old
+            p[key] = choice.stored()
+            p.remove(Keys.oldSourcePreference)
+        }
+    }
     override suspend fun setMirrorProgress(enabled: Boolean) { store.edit { it[Keys.mirrorProgress] = enabled } }
 }

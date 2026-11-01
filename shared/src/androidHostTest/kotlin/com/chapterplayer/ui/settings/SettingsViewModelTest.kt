@@ -22,6 +22,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.domain.browse.SourceChoice
+import com.chapterplayer.testing.FakeServerList
 import com.chapterplayer.domain.downloads.DownloadVolume
 import com.chapterplayer.domain.downloads.GIGABYTE
 import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
@@ -82,14 +86,61 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `the several-servers choice shows the saved one and saves a new one`() = runTest {
+    fun `the two several-servers choices show the saved ones and save new ones separately`() = runTest {
         val settings = FakeAppSettings()
         val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
-        assertEquals(com.chapterplayer.domain.browse.SourcePreference.ASK, vm.sourcePreference.value)
+        assertEquals(SourceChoice.Ask, vm.downloadSourceChoice.value)
+        assertEquals(SourceChoice.Ask, vm.playSourceChoice.value)
 
-        vm.setSourcePreference(com.chapterplayer.domain.browse.SourcePreference.PREFER_PLEX)
-        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_PLEX, settings.sourcePreferenceFlow.value)
-        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_PLEX, vm.sourcePreference.value)
+        vm.setPlaySourceChoice(SourceChoice.OfType(ServerSource.PLEX))
+        assertEquals(SourceChoice.OfType(ServerSource.PLEX), settings.playChoiceFlow.value)
+        assertEquals(SourceChoice.OfType(ServerSource.PLEX), vm.playSourceChoice.value)
+        assertEquals(SourceChoice.Ask, vm.downloadSourceChoice.value)
+
+        vm.setDownloadSourceChoice(SourceChoice.OfServer("a2"))
+        assertEquals(SourceChoice.OfServer("a2"), settings.downloadChoiceFlow.value)
+        assertEquals(SourceChoice.OfType(ServerSource.PLEX), settings.playChoiceFlow.value)
+    }
+
+    @Test
+    fun `the several-servers cards follow the servers`() = runTest {
+        val settings = FakeAppSettings()
+        settings.downloadChoiceFlow.value = SourceChoice.OfServer("a2")
+        settings.playChoiceFlow.value = SourceChoice.OfServer("gone")
+        val servers = FakeServerList(listOf(
+            ServerConfig("a1", ServerSource.ABS, "Home ABS", "http://a", "t"),
+            ServerConfig("a2", ServerSource.ABS, "Work ABS", "http://b", "t"),
+            ServerConfig("p1", ServerSource.PLEX, "Home Plex", "http://p", "t"),
+        ))
+        val vm = SettingsViewModel(servers, settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+        val cards = vm.sourceChoiceCards.value
+        assertEquals("Download from", cards.download.title)
+        assertEquals("Audiobookshelf: Work ABS", cards.download.label)
+        assertEquals(5, cards.download.lines.size)
+        assertEquals("Play from (when not downloaded)", cards.play.title)
+        assertEquals("Ask every time", cards.play.label)
+        assertNotNull(cards.play.removedNote)
+        assertEquals(true, cards.apply)
+        assertEquals("Download from Work ABS, play asks", cards.summary(downloads = true))
+        assertEquals(null, cards.summary(downloads = false))
+    }
+
+    @Test
+    fun `with one server the several-servers cards do not apply`() = runTest {
+        val servers = FakeServerList(listOf(ServerConfig("a1", ServerSource.ABS, "Home ABS", "http://a", "t")))
+        val vm = SettingsViewModel(servers, FakeAppSettings(), FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+        assertEquals(false, vm.sourceChoiceCards.value.apply)
+        assertEquals(null, vm.sourceChoiceCards.value.summary(downloads = true))
+    }
+
+    @Test
+    fun `a choice that cannot be saved leaves the saved one`() = runTest {
+        val settings = FakeAppSettings(failOnSet = true)
+        val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+        vm.setDownloadSourceChoice(SourceChoice.OfType(ServerSource.ABS))
+        vm.setPlaySourceChoice(SourceChoice.OfType(ServerSource.ABS))
+        assertEquals(SourceChoice.Ask, vm.downloadSourceChoice.value)
+        assertEquals(SourceChoice.Ask, vm.playSourceChoice.value)
     }
 
     @Test

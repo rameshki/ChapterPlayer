@@ -3,6 +3,7 @@ package com.chapterplayer.testing
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.LibraryLayout
 import com.chapterplayer.data.settings.ThemeMode
+import com.chapterplayer.domain.browse.SourceChoice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -47,9 +48,18 @@ class FakeAppSettings(
     val speed = MutableStateFlow(1.0f)
     override val playbackSpeed: Flow<Float> = speed
     override suspend fun setPlaybackSpeed(speed: Float) { this.speed.value = speed }
-    val sourcePreferenceFlow = MutableStateFlow(com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE)
-    override val sourcePreference: Flow<com.chapterplayer.domain.browse.SourcePreference> = sourcePreferenceFlow
-    override suspend fun setSourcePreference(preference: com.chapterplayer.domain.browse.SourcePreference) { sourcePreferenceFlow.value = preference }
+    val downloadChoiceFlow = MutableStateFlow<SourceChoice>(SourceChoice.Ask)
+    override val downloadSourceChoice: Flow<SourceChoice> = downloadChoiceFlow
+    override suspend fun setDownloadSourceChoice(choice: SourceChoice) {
+        if (failOnSet) error("storage unavailable")
+        downloadChoiceFlow.value = choice
+    }
+    val playChoiceFlow = MutableStateFlow<SourceChoice>(SourceChoice.Ask)
+    override val playSourceChoice: Flow<SourceChoice> = playChoiceFlow
+    override suspend fun setPlaySourceChoice(choice: SourceChoice) {
+        if (failOnSet) error("storage unavailable")
+        playChoiceFlow.value = choice
+    }
     val mirrorProgressFlow = MutableStateFlow(true)
     override val mirrorProgress: Flow<Boolean> = mirrorProgressFlow
     override suspend fun setMirrorProgress(enabled: Boolean) {

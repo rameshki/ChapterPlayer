@@ -6,7 +6,7 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.MergeOverrides
-import com.chapterplayer.domain.browse.SourcePreference
+import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.domain.browse.mergeDuplicates
 import com.chapterplayer.domain.browse.resumeCandidate
 import com.chapterplayer.domain.widgets.ContinueWidgetState
@@ -35,7 +35,7 @@ class MergedEntryPointsTest {
     private fun items(state: DownloadState = DownloadState.NOT_DOWNLOADED, online: Set<String> = setOf("abs1", "plex1")) =
         mergeDuplicates(
             listOf(copy("a", "abs1", lastPlayedAt = 100L, state = state), copy("p", "plex1", lastPlayedAt = 500L)),
-            MergeOverrides(), SourcePreference.PREFER_DOWNLOADED, online,
+            MergeOverrides(), SourceChoice.Ask, online,
         )
 
     private fun started(r: CarPlay) = (r as? CarPlay.Start)?.book?.id
@@ -91,6 +91,16 @@ class MergedEntryPointsTest {
         assertTrue(widgetMayResume(items(), online = true, downloadedOnly = false, bookId = "p"))
         // Drawn earlier with the other copy: still accepted.
         assertTrue(widgetMayResume(items(), online = true, downloadedOnly = false, bookId = "a"))
+    }
+
+    @Test
+    fun `online a downloaded copy is resumed instead of streaming the copy played last`() {
+        // a (abs1) is downloaded, p (plex1) was played last: Home, the car and the widget resume a from the phone.
+        val withDownload = items(state = DownloadState.DOWNLOADED)
+        assertEquals("a", resumeCandidate(withDownload)?.item?.book?.id)
+        assertEquals("a", started(resumeLast(withDownload, online = true, nowPlaying = null)))
+        val state = continueWidgetState(withDownload, online = true, downloadedOnly = false)
+        assertEquals("a", (state as ContinueWidgetState.Book).bookId)
     }
 
     @Test

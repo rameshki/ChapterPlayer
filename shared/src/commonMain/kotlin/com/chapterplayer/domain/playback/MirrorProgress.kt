@@ -5,7 +5,7 @@ import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.sync.ServerStatusRecord
 import com.chapterplayer.domain.browse.BrowseItem
-import com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE
+import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.domain.browse.MergeOverrides
 import com.chapterplayer.domain.browse.mergeDuplicates
 import kotlin.math.abs
@@ -136,7 +136,7 @@ fun mirroredProgress(source: ReadingProgress, targetBookId: String, targetDurati
 fun mirrorGroups(books: List<AudioBook>, overrides: MergeOverrides): Map<String, List<String>> {
     val items = books.map { BrowseItem(it, null, DownloadState.NOT_DOWNLOADED) }
     val result = HashMap<String, List<String>>()
-    for (entry in mergeDuplicates(items, overrides, DEFAULT_SOURCE_PREFERENCE, emptySet())) {
+    for (entry in mergeDuplicates(items, overrides, SourceChoice.Ask, emptySet())) {
         if (!entry.isMerged) continue
         val ids = entry.sources.map { it.book.id }.sorted()
         for (id in ids) result[id] = ids.filter { it != id }
