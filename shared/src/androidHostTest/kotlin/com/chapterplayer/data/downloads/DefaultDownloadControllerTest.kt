@@ -59,7 +59,7 @@ class DefaultDownloadControllerTest {
         val settings = FakeAppSettings()
         val scheduler = FakeScheduler()
         val location = object : DownloadLocation {
-            override suspend fun rootDir() = currentRoot
+            override suspend fun rootDir() = currentRoot.path
             override suspend fun freeBytes() = Long.MAX_VALUE
         }
         /** Books the player was told to let go of, with the files still on disk at that moment. */
@@ -250,7 +250,7 @@ class DefaultDownloadControllerTest {
         val dao = InMemoryDownloadDao(listOf(row(DownloadStatus.QUEUED, "q"), row(DownloadStatus.DOWNLOADING, "d")))
         val settings = FakeAppSettings()
         val location = object : DownloadLocation {
-            override suspend fun rootDir() = root
+            override suspend fun rootDir() = root.path
             override suspend fun freeBytes() = Long.MAX_VALUE
         }
         val controller = DefaultDownloadController(dao, FakeBookDao(book()), settings, location, slow, FakeJobs(mutableListOf()), removal = {})

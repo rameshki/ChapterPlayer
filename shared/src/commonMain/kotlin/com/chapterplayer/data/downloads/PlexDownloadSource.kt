@@ -23,7 +23,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.IOException
+import kotlinx.io.IOException
 
 /** The server's address is plain http and not verified on this network: nothing is sent with the token (tried later). */
 class PlexAddressNotVerifiedException : IOException("The server's address is not verified on this network")

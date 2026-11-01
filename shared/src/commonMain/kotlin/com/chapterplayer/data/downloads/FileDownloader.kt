@@ -16,6 +16,8 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.URLBuilder
+import io.ktor.http.takeFrom
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -23,14 +25,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.BufferedOutputStream
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.io.RandomAccessFile
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
+import kotlinx.io.IOException
+import kotlin.time.Clock
 
 /**
  * One audio file to fetch into [directory]: the file [ino] (the server's file id) of the app's book [bookId], asked for
@@ -42,15 +38,16 @@ class FileRequest(
     val bookId: String,
     val ino: String,
     val fileName: String?,
-    val directory: File,
+    /** The book folder (a path of [FileDownloader.files]). */
+    val directory: String,
     val totalBytes: Long,
     /** What Room says was written; checked against the `.part` file before resuming. */
     val recordedDoneBytes: Long,
 )
 
 sealed interface FileResult {
-    /** The file is complete at [file]. */
-    data class Done(val file: File) : FileResult
+    /** The file is complete at [path]. */
+    data class Done(val path: String) : FileResult
 
     /** Try again later (network, server error, stall, body cut short); [doneBytes] are safely in the `.part` file. */
     data class Retry(val doneBytes: Long) : FileResult
@@ -63,16 +60,19 @@ sealed interface FileResult {
 }
 
 /** Where a file is written while downloading and where it ends up. Both are always inside the book folder. */
-internal class DownloadTargets(val part: File, val final: File)
+internal class DownloadTargets(val part: String, val final: String)
 
-internal fun targetsFor(directory: File, ino: String, fileName: String?): DownloadTargets {
+internal fun DownloadFiles.targetsFor(directory: String, ino: String, fileName: String?): DownloadTargets {
     val ext = fileExtension(fileName)
-    val part = File(directory, partFileName(ino, ext))
-    val final = File(directory, finalFileName(ino, ext))
-    val folder = directory.canonicalFile
-    check(part.canonicalFile.parentFile == folder && final.canonicalFile.parentFile == folder) { "Unsafe file name" }
-    return DownloadTargets(part, final)
+    val partName = partFileName(ino, ext)
+    val finalName = finalFileName(ino, ext)
+    check(isPlainFileName(partName) && isPlainFileName(finalName)) { "Unsafe file name" }
+    return DownloadTargets(child(directory, partName), child(directory, finalName))
 }
+
+/** A name that stays in its folder: no separator, not empty, not "." or "..", no control characters. */
+internal fun isPlainFileName(name: String): Boolean =
+    name.isNotEmpty() && name != "." && name != ".." && '/' !in name && '\\' !in name && name.none { it.code < 32 }
 
 /**
  * Downloads one file with `Range` resume into a `.part` file, then renames it. No overall timeout:
@@ -86,9 +86,9 @@ class FileDownloader(
     private val client: HttpClient,
     private val stallMs: Long = 60_000,
     private val progressIntervalMs: Long = 500,
-    private val nowMs: () -> Long = System::currentTimeMillis,
-    /** Opens the `.part` file for appending; tests pass one that fails like a full disk. */
-    private val openPart: (File) -> FileOutputStream = { FileOutputStream(it, true) },
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** The phone's files; tests pass one that fails like a full disk. */
+    val files: DownloadFiles = platformDownloadFiles(),
 ) {
 
     /** [onProgress] gets the bytes in the file so far, at most every [progressIntervalMs] and at the end of each request. */
@@ -96,23 +96,23 @@ class FileDownloader(
         val total = request.totalBytes
         if (total <= 0L) return FileResult.Failed(WRONG_SIZE)
         val targets = try {
-            targetsFor(request.directory, request.ino, request.fileName)
+            files.targetsFor(request.directory, request.ino, request.fileName)
         } catch (_: IllegalStateException) {
             return FileResult.Failed(UNSAFE_NAME)
         }
         val part = targets.part
-        if (targets.final.isFile && targets.final.length() == total) {
+        if (files.length(targets.final) == total) {
             onProgress(total)
             return FileResult.Done(targets.final)
         }
-        if (!request.directory.isDirectory && !request.directory.mkdirs()) return FileResult.Failed(NO_FOLDER)
+        if (!files.makeDirectories(request.directory)) return FileResult.Failed(NO_FOLDER)
 
         var server = request.server
         var recorded = request.recordedDoneBytes
         var restarts = 0
         var switches = 0
         while (true) {
-            val offset = validResumeOffset(if (part.isFile) part.length() else 0L, recorded, total)
+            val offset = validResumeOffset(currentLength(part), recorded, total)
             var used: ServerConfig? = null
             val outcome = if (offset == total) {
                 Outcome.Complete
@@ -156,12 +156,12 @@ class FileDownloader(
                 }
                 Outcome.Again -> return FileResult.Retry(currentLength(part))
                 Outcome.Restart -> {
-                    part.delete()
+                    files.delete(part)
                     recorded = 0L
                     if (++restarts > MAX_RESTARTS) return FileResult.Retry(0L)
                 }
                 Outcome.WrongSize -> {
-                    part.delete()
+                    files.delete(part)
                     return FileResult.Failed(WRONG_SIZE, replan = true)
                 }
                 is Outcome.Refused -> return FileResult.Failed(outcome.message, replan = outcome.replan)
@@ -195,7 +195,7 @@ class FileDownloader(
 
     /** One request (plus same-server redirects). Throws [HttpStatusException] 401 so the source refreshes or gives up. */
     private suspend fun fetch(
-        request: FileFetch, part: File, offset: Long, total: Long, onProgress: (Long) -> Unit,
+        request: FileFetch, part: String, offset: Long, total: Long, onProgress: (Long) -> Unit,
     ): Outcome {
         val firstUrl = request.url
         var url = firstUrl
@@ -220,7 +220,7 @@ class FileDownloader(
     private open class Step(val outcome: Outcome?)
     private class Redirect(val location: String) : Step(null)
 
-    private suspend fun answer(response: HttpResponse, part: File, offset: Long, total: Long, onProgress: (Long) -> Unit): Step {
+    private suspend fun answer(response: HttpResponse, part: String, offset: Long, total: Long, onProgress: (Long) -> Unit): Step {
         val status = response.status
         return when {
             status == HttpStatusCode.PartialContent -> {
@@ -237,7 +237,7 @@ class FileDownloader(
                 else Step(receive(response, part, startAt = 0L, total, onProgress)) // Range ignored: from zero, never appended
             }
             status == HttpStatusCode.RequestedRangeNotSatisfiable ->
-                Step(if (part.isFile && part.length() == total) Outcome.Complete else Outcome.Restart)
+                Step(if (currentLength(part) == total) Outcome.Complete else Outcome.Restart)
             status == HttpStatusCode.Unauthorized -> throw HttpStatusException(status)
             status.value in 300..399 -> {
                 val location = response.headers[HttpHeaders.Location]
@@ -255,16 +255,12 @@ class FileDownloader(
      * Writes the body into [part] from [startAt] (the file is cut there first). A failed read is the network
      * (an IOException, retried); a failed write is the storage (a [StorageException], never retried).
      */
-    private suspend fun receive(response: HttpResponse, part: File, startAt: Long, total: Long, onProgress: (Long) -> Unit): Outcome {
-        val stream = disk {
-            RandomAccessFile(part, "rw").use { it.setLength(startAt) }
-            openPart(part)
-        }
+    private suspend fun receive(response: HttpResponse, part: String, startAt: Long, total: Long, onProgress: (Long) -> Unit): Outcome {
+        val out = disk { files.openAppend(part, startAt) }
         val channel = response.bodyAsChannel()
         var done = startAt
         var lastReport = nowMs()
         val buffer = ByteArray(BUFFER_BYTES)
-        val out = BufferedOutputStream(stream, BUFFER_BYTES)
         try {
             try {
                 while (true) {
@@ -281,8 +277,7 @@ class FileDownloader(
                     }
                 }
                 disk {
-                    out.flush()
-                    if (done == total) stream.fd.sync()
+                    if (done == total) out.sync() else out.flush()
                 }
             } finally {
                 try {
@@ -304,16 +299,12 @@ class FileDownloader(
 
     private fun finish(targets: DownloadTargets, total: Long, onProgress: (Long) -> Unit): FileResult {
         val part = targets.part
-        if (!part.isFile || part.length() != total) {
-            part.delete()
+        if (files.length(part) != total) {
+            files.delete(part)
             return FileResult.Failed(WRONG_SIZE)
         }
-        FileOutputStream(part, true).use { it.fd.sync() }
-        try {
-            Files.move(part.toPath(), targets.final.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } catch (_: AtomicMoveNotSupportedException) {
-            Files.move(part.toPath(), targets.final.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
+        files.sync(part)
+        files.moveReplacing(part, targets.final)
         onProgress(total)
         return FileResult.Done(targets.final)
     }
@@ -322,9 +313,10 @@ class FileDownloader(
      * Fetches a small file (the cover) whole into [target], replacing it only when complete. Best effort:
      * false on any failure. [url] must be on [server] (as [source] gives it now); redirects are not followed.
      */
-    suspend fun downloadSmall(source: DownloadSource, server: ServerConfig, url: String, target: File, maxBytes: Long = MAX_SMALL_BYTES): Boolean {
+    suspend fun downloadSmall(source: DownloadSource, server: ServerConfig, url: String, target: String, maxBytes: Long = MAX_SMALL_BYTES): Boolean {
         if (!sameHost(server.baseUrl, url)) return false
-        val temp = File(target.parentFile, target.name + PART_SUFFIX_SMALL)
+        val folder = files.parent(target) ?: return false
+        val temp = files.child(folder, files.name(target) + PART_SUFFIX_SMALL)
         return try {
             val ok = source.authorizedSmall(server, url) { fetch ->
                 // The credential only goes to the server's own address as it is now.
@@ -336,7 +328,8 @@ class FileDownloader(
                     val channel = response.bodyAsChannel()
                     val buffer = ByteArray(BUFFER_BYTES)
                     var done = 0L
-                    FileOutputStream(temp).use { out ->
+                    val out = files.openAppend(temp, 0L)
+                    try {
                         while (true) {
                             val read = withTimeoutOrNull(stallMs) { channel.readAvailable(buffer, 0, buffer.size) } ?: return@execute false
                             if (read < 0) break
@@ -344,19 +337,21 @@ class FileDownloader(
                             if (done > maxBytes) return@execute false
                             out.write(buffer, 0, read)
                         }
-                        out.fd.sync()
+                        out.sync()
+                    } finally {
+                        out.close()
                     }
                     done > 0L
                 } } ?: false
             }
-            if (ok) Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            if (ok) files.moveReplacing(temp, target)
             ok
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             false
         } finally {
-            temp.delete()
+            files.delete(temp)
         }
     }
 
@@ -383,7 +378,7 @@ class FileDownloader(
         }
     }
 
-    private fun currentLength(part: File) = if (part.isFile) part.length() else 0L
+    private fun currentLength(part: String) = files.length(part) ?: 0L
 
     private companion object {
         const val BUFFER_BYTES = 64 * 1024
@@ -429,8 +424,9 @@ internal fun parseContentRange(header: String?): Pair<Long, Long?>? {
 /** [location] against [base]: absolute, server-relative ("/x") or path-relative. Null when it cannot be read. */
 internal fun resolve(base: String, location: String): String? {
     val loc = location.trim()
+    if (loc.isEmpty()) return null
     return try {
-        java.net.URI(base).resolve(loc).toString()
+        URLBuilder(base).takeFrom(loc).buildString()
     } catch (_: Exception) {
         null
     }

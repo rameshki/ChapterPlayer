@@ -14,7 +14,6 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -40,17 +39,17 @@ class FileDownloaderTest {
     private fun request(recorded: Long = 0, total: Long = body.size.toLong(), ino: String = "77", fileName: String? = "Part 1.mp3") =
         FileRequest(
             source = absSource, server = testServer(), bookId = "abs_li_1", ino = ino, fileName = fileName,
-            directory = dir, totalBytes = total, recordedDoneBytes = recorded
+            directory = dir.path, totalBytes = total, recordedDoneBytes = recorded
         )
 
     private fun downloader(
         fake: FakeAbs,
         stallMs: Long = 60_000,
         clock: () -> Long = System::currentTimeMillis,
-        openPart: (File) -> FileOutputStream = { FileOutputStream(it, true) },
+        files: DownloadFiles = AndroidDownloadFiles,
     ): FileDownloader {
         absSource = AbsDownloadSource(fake.api, fake.authorizer(FakeServers(testServer())))
-        return FileDownloader(fake.downloadClient, stallMs = stallMs, nowMs = clock, openPart = openPart)
+        return FileDownloader(fake.downloadClient, stallMs = stallMs, nowMs = clock, files = files)
     }
 
     /** The source the requests go through; set by [downloader] for its fake server. */
@@ -66,7 +65,7 @@ class FileDownloaderTest {
 
         val result = downloader(fake).download(request()) { progress += it }
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         assertContentEquals(body, final.readBytes())
         assertFalse(part.exists())
         val sent = fake.fileRequests.single()
@@ -84,7 +83,7 @@ class FileDownloaderTest {
 
         val result = downloader(fake).download(request(recorded = 4_000)) {}
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         assertEquals("bytes=4000-", fake.fileRequests.single().headers[HttpHeaders.Range])
         assertContentEquals(body, final.readBytes())
     }
@@ -99,7 +98,7 @@ class FileDownloaderTest {
 
         val result = downloader(fake).download(request(recorded = 3_000)) {}
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         assertEquals("bytes=3000-", fake.fileRequests.single().headers[HttpHeaders.Range])
         assertContentEquals(body, final.readBytes()) // not appended after the 3000 bytes
     }
@@ -117,7 +116,7 @@ class FileDownloaderTest {
 
         val result = downloader(fake).download(request(recorded = 3_000)) {}
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         assertNull(fake.fileRequests.last().headers[HttpHeaders.Range])
         assertContentEquals(body, final.readBytes())
     }
@@ -131,7 +130,7 @@ class FileDownloaderTest {
         // The record is behind the disk, so a range is asked for and the server says there is nothing left.
         val result = downloader(fake).download(request(recorded = body.size.toLong() - 1)) {}
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         assertContentEquals(body, final.readBytes())
     }
 
@@ -145,7 +144,7 @@ class FileDownloaderTest {
 
         val result = downloader(fake).download(request(recorded = 5_000)) {}
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         assertEquals(listOf("bytes=5000-", null), fake.fileRequests.map { it.headers[HttpHeaders.Range] })
         assertContentEquals(body, final.readBytes())
     }
@@ -162,7 +161,7 @@ class FileDownloaderTest {
 
         cut = false
         val second = downloader(fake).download(request(recorded = 4_321)) {}
-        assertEquals(FileResult.Done(final), second)
+        assertEquals(FileResult.Done(final.path), second)
         assertEquals("bytes=4321-", fake.fileRequests.last().headers[HttpHeaders.Range])
         assertContentEquals(body, final.readBytes())
     }
@@ -215,7 +214,7 @@ class FileDownloaderTest {
 
         val result = downloader(fake).download(request()) {}
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         assertEquals(1, fake.refreshes)
         assertEquals(listOf("Bearer access-old", "Bearer access-new"), fake.fileRequests.map { it.headers[HttpHeaders.Authorization] })
     }
@@ -254,7 +253,7 @@ class FileDownloaderTest {
 
         val result = downloader(fake).download(request()) {}
 
-        assertEquals(FileResult.Done(final), result)
+        assertEquals(FileResult.Done(final.path), result)
         val followed = fake.fileRequests.last()
         assertEquals("http://abs.test/files/77", followed.url.toString())
         assertEquals("Bearer access-old", followed.headers[HttpHeaders.Authorization])
@@ -288,8 +287,8 @@ class FileDownloaderTest {
         val result = downloader(fake).download(request(ino = "../../../escape", fileName = "../../x.mp3")) {}
 
         val done = assertIs<FileResult.Done>(result)
-        assertEquals(dir.canonicalFile, done.file.canonicalFile.parentFile)
-        assertEquals("escape.mp3", done.file.name)
+        assertEquals(dir.canonicalFile, File(done.path).canonicalFile.parentFile)
+        assertEquals("escape.mp3", File(done.path).name)
         assertFalse(File(root, "escape.mp3").exists())
     }
 
@@ -299,7 +298,7 @@ class FileDownloaderTest {
         final.writeBytes(body)
         val fake = FakeAbs { serve(body, it) }
 
-        assertEquals(FileResult.Done(final), downloader(fake).download(request()) {})
+        assertEquals(FileResult.Done(final.path), downloader(fake).download(request()) {})
         assertTrue(fake.requests.isEmpty())
     }
 
@@ -340,7 +339,7 @@ class FileDownloaderTest {
         dir.mkdirs()
 
         val ok = withTimeout(10_000) {
-            downloader(fake, stallMs = 300).downloadSmall(absSource, testServer(), "http://abs.test/api/items/li_1/cover", File(dir, "cover.jpg"))
+            downloader(fake, stallMs = 300).downloadSmall(absSource, testServer(), "http://abs.test/api/items/li_1/cover", File(dir, "cover.jpg").path)
         }
 
         assertFalse(ok)
@@ -364,13 +363,16 @@ class FileDownloaderTest {
     @Test
     fun `a full disk fails with not enough space instead of retrying`() = runBlocking {
         val fake = FakeAbs { serve(body, it) }
-        val full: (File) -> FileOutputStream = { file ->
-            object : FileOutputStream(file, true) {
-                override fun write(b: ByteArray, off: Int, len: Int) = throw IOException("write failed: ENOSPC (No space left on device)")
+        val full = object : DownloadFiles by AndroidDownloadFiles {
+            override fun openAppend(path: String, at: Long): DownloadSink {
+                val real = AndroidDownloadFiles.openAppend(path, at)
+                return object : DownloadSink by real {
+                    override fun write(bytes: ByteArray, offset: Int, length: Int) = throw IOException("write failed: ENOSPC (No space left on device)")
+                }
             }
         }
 
-        val result = downloader(fake, openPart = full).download(request()) {}
+        val result = downloader(fake, files = full).download(request()) {}
 
         assertEquals(FileResult.Failed("Not enough space"), result)
     }
