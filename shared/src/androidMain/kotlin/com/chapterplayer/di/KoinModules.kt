@@ -136,14 +136,14 @@ val downloadModule = module {
     } bind DownloadSource::class
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
     single {
-        BookDownloader(get(), get(), get(), getAll<DownloadSource>(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() })
+        BookDownloader(get(), get(), get(), getAll<DownloadSource>(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() }, io = Dispatchers.IO)
     } bind DownloadJobs::class
     single<LiveDownloadProgress> { get<BookDownloader>() }
     single<DownloadOverview> { RoomDownloadOverview(get(), get()) }
     single<DownloadScheduler> { WorkManagerDownloadScheduler(androidContext()) }
     // The player is looked up when a download is removed, not when this is built.
     single<DownloadRemovalListener> { DownloadRemovalListener { bookId -> get<PlaybackController>().releaseLocalFiles(bookId) } }
-    single { DefaultDownloadController(get(), get(), get(), get(), get(), get(), get()) }
+    single { DefaultDownloadController(get(), get(), get(), get(), get(), get(), get(), io = Dispatchers.IO) }
     single<DownloadController> { get<DefaultDownloadController>() }
     // The application starts it: whenever the phone comes online, fills in the file lengths older downloads lack.
     single {

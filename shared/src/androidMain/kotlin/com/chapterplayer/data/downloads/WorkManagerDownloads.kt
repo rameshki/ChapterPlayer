@@ -226,18 +226,3 @@ class DownloadActionReceiver : BroadcastReceiver(), KoinComponent {
         const val EXTRA_BOOK_ID = "bookId"
     }
 }
-
-/** On app start, schedules again the downloads that were waiting or running (reboot, process death). */
-class DownloadQueueRestorer(private val controller: DefaultDownloadController, private val scope: CoroutineScope) {
-    fun start() {
-        scope.launch {
-            try {
-                controller.restoreQueue()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // Best effort: the next start tries again.
-            }
-        }
-    }
-}

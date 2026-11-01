@@ -110,7 +110,7 @@ class PlexBookDownloadTest {
             sources = listOf(PlexDownloadSource(plex, servers, downloadClient, onConnectionFailure, prepare)),
             files = FileDownloader(downloadClient),
             location = object : DownloadLocation {
-                override suspend fun rootDir(): File = root
+                override suspend fun rootDir(): String = root.path
                 override suspend fun freeBytes(): Long = 10L * 1024 * 1024 * 1024
             },
             sleep = {}, maxAttempts = 2,

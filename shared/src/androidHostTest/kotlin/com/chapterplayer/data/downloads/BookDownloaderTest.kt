@@ -109,7 +109,7 @@ class BookDownloaderTest {
         val authorizer = fake.authorizer(servers)
         val sleeps = CopyOnWriteArrayList<Long>()
         val location = object : DownloadLocation {
-            override suspend fun rootDir(): File = rootDir()
+            override suspend fun rootDir(): String = rootDir().path
             override suspend fun freeBytes(): Long = freeBytes
         }
         val downloader = BookDownloader(

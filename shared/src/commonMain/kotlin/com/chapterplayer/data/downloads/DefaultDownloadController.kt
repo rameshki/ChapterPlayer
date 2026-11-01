@@ -12,17 +12,24 @@ import com.chapterplayer.domain.downloads.resumesOnStart
 import com.chapterplayer.domain.downloads.safeFileName
 import com.chapterplayer.domain.downloads.statusOnEnqueue
 import com.chapterplayer.domain.downloads.statusOnResume
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
+import kotlin.time.Clock
 
-/** Runs one book's download job in the background; WorkManager on the phone, a fake in tests. */
+/** Runs one book's download job in the background; WorkManager on Android, in the app process on iOS, a fake in tests. */
 interface DownloadScheduler {
     /** Schedules the job unless one is already waiting or running; [replace] replaces it instead. */
     suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean)
+
+    /**
+     * Like [schedule] (never replacing), for a download the user just started or resumed in the app. iOS asks for its
+     * continued processing task only then; the default (Android) is a plain [schedule].
+     */
+    suspend fun scheduleByUser(bookId: String, wifiOnly: Boolean) = schedule(bookId, wifiOnly, replace = false)
 
     /** Stops the job (it saves its progress as it stops; [DownloadJobs.whileIdle] waits for that). */
     suspend fun cancel(bookId: String)
@@ -46,7 +53,10 @@ class DefaultDownloadController(
     private val scheduler: DownloadScheduler,
     private val jobs: DownloadJobs,
     private val removal: DownloadRemovalListener,
-    private val nowMs: () -> Long = System::currentTimeMillis,
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val files: DownloadFiles = platformDownloadFiles(),
+    /** Where the folders are deleted (Android: Dispatchers.IO). */
+    private val io: CoroutineDispatcher = Dispatchers.Default,
 ) : DownloadController {
 
     override suspend fun enqueue(bookId: String) {
@@ -58,7 +68,7 @@ class DefaultDownloadController(
         } else if (!move(bookId, existing.status, next)) {
             return
         }
-        scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = false)
+        scheduler.scheduleByUser(bookId, settings.downloadWifiOnly.first())
     }
 
     override suspend fun pause(bookId: String) {
@@ -73,7 +83,7 @@ class DefaultDownloadController(
         val next = statusOnResume(downloadStatusOf(existing.status)) ?: return
         if (!move(bookId, existing.status, next)) return
         // A job that is still stopping keeps the book until it has saved; the new one waits for it.
-        scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = false)
+        scheduler.scheduleByUser(bookId, settings.downloadWifiOnly.first())
     }
 
     override suspend fun cancel(bookId: String) = delete(bookId)
@@ -122,16 +132,19 @@ class DefaultDownloadController(
             // The files stay where they were downloaded, so their recorded paths say which folder to delete; the
             // current location's folder is cleared too, for anything written before the file rows were.
             val folders = bookFolders(bookId, dao.getFiles(bookId).map { it.path }) +
-                listOfNotNull(serverId?.let { bookDirectory(location.rootDir(), it, bookId) })
-            withContext(Dispatchers.IO) { folders.distinct().forEach { it.deleteRecursively() } }
+                listOfNotNull(serverId?.let { files.bookDirectory(location.rootDir(), it, bookId) })
+            withContext(io) { folders.distinct().forEach { files.deleteRecursively(it) } }
             dao.deleteBook(bookId)
         }
     }
 
     /** The folders that hold [paths]; only a book's own folder (named after the book) is ever returned. */
-    private fun bookFolders(bookId: String, paths: List<String>): List<File> =
-        paths.mapNotNull { File(it).absoluteFile.parentFile }
-            .filter { it.name == safeFileName(bookId) && it.parentFile?.parentFile?.name == DOWNLOADS_FOLDER }
+    private fun bookFolders(bookId: String, paths: List<String>): List<String> =
+        paths.mapNotNull { files.parent(it) }
+            .filter { folder ->
+                files.name(folder) == safeFileName(bookId) &&
+                    files.parent(folder)?.let(files::parent)?.let(files::name) == DOWNLOADS_FOLDER
+            }
 
     private suspend fun move(bookId: String, from: String, to: DownloadStatus): Boolean =
         dao.updateStatusIf(bookId, listOf(from), to.name, null, nowMs()) > 0

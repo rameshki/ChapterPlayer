@@ -19,6 +19,8 @@ import com.chapterplayer.domain.downloads.RoomCheck
 import com.chapterplayer.domain.downloads.roomCheck
 import com.chapterplayer.domain.downloads.nextFileIndex
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -37,9 +39,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.File
-import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.io.IOException
+import kotlin.concurrent.Volatile
+import kotlin.time.Clock
 
 sealed interface BookResult {
     data object Done : BookResult
@@ -86,11 +88,15 @@ class BookDownloader(
     private val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
     private val persistIntervalMs: Long = 2_000,
     private val persistEveryBytes: Long = 1L shl 20,
-    private val nowMs: () -> Long = System::currentTimeMillis,
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** Where folder listings and deletions run (Android: Dispatchers.IO). */
+    private val io: CoroutineDispatcher = Dispatchers.Default,
 ) : DownloadJobs, LiveDownloadProgress {
     private val progressByBook = MutableStateFlow<Map<String, BookProgress>>(emptyMap())
-    private val bookLocks = ConcurrentHashMap<String, Mutex>()
+    private val bookLocks = HashMap<String, Mutex>()
+    private val bookLocksGuard = Mutex()
     private val downloadSlot = Semaphore(1)
+    private val disk: DownloadFiles get() = files.files
 
     /** The live progress of a book while (and after) this process downloads it; null before. */
     fun progress(bookId: String): Flow<BookProgress?> = progressByBook.map { it[bookId] }.distinctUntilChanged()
@@ -99,7 +105,7 @@ class BookDownloader(
 
     override suspend fun <T> whileIdle(bookId: String, block: suspend () -> T): T = lockOf(bookId).withLock { block() }
 
-    private fun lockOf(bookId: String) = bookLocks.computeIfAbsent(bookId) { Mutex() }
+    private suspend fun lockOf(bookId: String) = bookLocksGuard.withLock { bookLocks.getOrPut(bookId) { Mutex() } }
 
     /** [onStart] runs once this book has the download slot, right before any transfer (the worker goes foreground then). */
     suspend fun run(bookId: String, onStart: suspend () -> Unit = {}): BookResult =
@@ -130,7 +136,7 @@ class BookDownloader(
             if (bookDao.getById(bookId) == null) return fail(bookId, BOOK_GONE)
             val source = sources.forServer(server) ?: return fail(bookId, CANNOT_DOWNLOAD)
             onStart()
-            val current = Job(bookId, server, source, bookDirectory(location.rootDir(), server.id, bookId))
+            val current = Job(bookId, server, source, disk.bookDirectory(location.rootDir(), server.id, bookId))
             job = current
             var attempt = 0
             while (true) {
@@ -176,8 +182,8 @@ class BookDownloader(
      * [newDir] is where a book not planned yet goes (the location chosen now). A planned book stays in the folder
      * its file rows name, so changing the location in Settings never moves or splits a download.
      */
-    private inner class Job(val bookId: String, val server: ServerConfig, val source: DownloadSource, private val newDir: File) {
-        var dir: File = newDir
+    private inner class Job(val bookId: String, val server: ServerConfig, val source: DownloadSource, private val newDir: String) {
+        var dir: String = newDir
             private set
         private val speed = SpeedTracker()
         private var rows: List<DownloadFileEntity> = emptyList()
@@ -192,7 +198,7 @@ class BookDownloader(
 
         suspend fun attempt(): Step {
             rows = dao.getFiles(bookId)
-            dir = rows.firstOrNull()?.let { File(it.path).parentFile } ?: dir
+            dir = rows.firstOrNull()?.let { disk.parent(it.path) } ?: dir
             if (rows.isEmpty()) {
                 val planned = try {
                     plan()
@@ -259,7 +265,7 @@ class BookDownloader(
             rows = planned.map { p ->
                 DownloadFileEntity(
                     bookId = bookId, ino = p.ino, fileName = p.fileName,
-                    path = targetsFor(dir, p.ino, p.fileName).final.path,
+                    path = disk.targetsFor(dir, p.ino, p.fileName).final,
                     totalBytes = p.totalBytes, doneBytes = 0L, sortOrder = p.sortOrder,
                     durationMs = p.durationMs, mimeType = p.mimeType
                 )
@@ -279,18 +285,18 @@ class BookDownloader(
         /** The server's file list changed: forget the plan and the partial files, so the next run plans again. */
         private suspend fun dropPlan() {
             dao.deleteFiles(bookId)
-            withContext(kotlinx.coroutines.Dispatchers.IO) {
-                dir.listFiles { f -> f.name.endsWith(PART_SUFFIX) }?.forEach { it.delete() }
+            withContext(io) {
+                disk.list(dir).filter { it.endsWith(PART_SUFFIX) }.forEach { disk.delete(disk.child(dir, it)) }
             }
             rows = emptyList()
             current = null
         }
 
         private suspend fun saveCoverIfMissing() {
-            val cover = File(dir, COVER_FILE)
-            if (cover.isFile && cover.length() > 0L) return
+            val cover = disk.child(dir, COVER_FILE)
+            if ((disk.length(cover) ?: 0L) > 0L) return
             val url = bookDao.getById(bookId)?.coverUrl ?: return
-            dir.mkdirs()
+            disk.makeDirectories(dir)
             files.downloadSmall(source, server, url, cover)
         }
 
@@ -344,8 +350,8 @@ class BookDownloader(
         /** Saves what is in the current `.part` file (everything written is on disk once the writer closed). */
         suspend fun saveOnStop() {
             val file = current ?: return
-            val part = targetsFor(dir, file.ino, file.fileName).part
-            val done = (if (part.isFile) part.length() else currentDone).coerceIn(0L, file.totalBytes)
+            val part = disk.targetsFor(dir, file.ino, file.fileName).part
+            val done = (disk.length(part) ?: currentDone).coerceIn(0L, file.totalBytes)
             dao.updateFileProgress(bookId, file.ino, done)
         }
     }

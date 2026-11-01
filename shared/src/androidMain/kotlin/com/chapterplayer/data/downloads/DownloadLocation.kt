@@ -6,20 +6,10 @@ import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.downloads.DownloadVolume
 import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
 import com.chapterplayer.domain.downloads.externalVolumeLabels
-import com.chapterplayer.domain.downloads.safeFileName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
-
-/** Where NEW downloads go. A download already planned stays in the folder its file rows name. */
-interface DownloadLocation {
-    /** The folder that holds `downloads/`. */
-    suspend fun rootDir(): File
-
-    /** Free bytes on the volume of [rootDir]. */
-    suspend fun freeBytes(): Long
-}
 
 /**
  * The location chosen in Settings: the app's files folder in internal storage (the default), or the app's own
@@ -31,14 +21,16 @@ class SettingsDownloadLocation(
     private val settings: AppSettings,
 ) : DownloadLocation, DownloadStorage {
 
-    override suspend fun rootDir(): File {
+    override suspend fun rootDir(): String = rootFolder().path
+
+    private suspend fun rootFolder(): File {
         val chosen = settings.downloadLocationId.first()
         if (chosen == null || chosen == INTERNAL_VOLUME_ID) return context.filesDir
         return withContext(Dispatchers.IO) { externalDirs().firstOrNull { idOf(it) == chosen } } ?: context.filesDir
     }
 
     override suspend fun freeBytes(): Long {
-        val root = rootDir()
+        val root = rootFolder()
         return withContext(Dispatchers.IO) { root.usableSpace }
     }
 
@@ -71,9 +63,3 @@ class SettingsDownloadLocation(
         const val EXTERNAL_PREFIX = "external:"
     }
 }
-
-/** `<root>/downloads/<serverId>/<bookId>/`, each part made safe so it cannot leave the folder. */
-fun bookDirectory(root: File, serverId: String, bookId: String): File =
-    File(File(File(root, DOWNLOADS_FOLDER), safeFileName(serverId)), safeFileName(bookId))
-
-internal const val DOWNLOADS_FOLDER = "downloads"

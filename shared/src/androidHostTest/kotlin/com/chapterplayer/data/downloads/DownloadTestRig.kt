@@ -20,7 +20,12 @@ import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
+
+/** A book's download folder under [root], as the downloader names it on Android. */
+internal fun bookDirectory(root: File, serverId: String, bookId: String): File =
+    File(AndroidDownloadFiles.bookDirectory(root.path, serverId, bookId))
 
 /** Synthetic server and tokens for the downloader tests. Never real data. */
 internal fun testServer(token: String = "access-old", refreshToken: String? = "refresh-old") = ServerConfig(
