@@ -238,7 +238,11 @@ class IosPlaybackController private constructor(
                 streams = streams,
                 appScope = appScope,
                 localFiles = localFiles,
-                fileUri = { path -> NSURL.fileURLWithPath(path).absoluteString ?: "file://$path" },
+                // A stored path may name the app container of an earlier launch: read it in the current one.
+                fileUri = { stored ->
+                    val path = com.chapterplayer.data.downloads.IosDownloadFiles.current(stored)
+                    NSURL.fileURLWithPath(path).absoluteString ?: "file://$path"
+                },
                 clock = ::monotonicMs,
                 main = Dispatchers.Main,
                 // The lock screen keeps the book after a long pause; Play opens a new session.

@@ -11,6 +11,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
+import com.chapterplayer.domain.downloads.pathInContainer
 import kotlinx.io.IOException
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSError
@@ -46,6 +47,10 @@ import kotlinx.cinterop.toKString
  * Downloads live in `<Application Support>/downloads` ([downloadsRoot]): never purged by iOS (unlike Caches) and
  * excluded from iCloud and computer backups (`NSURLIsExcludedFromBackupKey`), set again whenever a folder under it is
  * created, so a recreated `downloads` folder is excluded too.
+ *
+ * iOS may move the app's data container between launches (an update, a reinstall over the old one), so a path stored
+ * in Room can name an old container: every path is read through [current] ([pathInContainer]), which moves it into
+ * the container in use now.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 object IosDownloadFiles : DownloadFiles {
@@ -67,34 +72,38 @@ object IosDownloadFiles : DownloadFiles {
     /** The folder every download is in. */
     val downloadsRoot: String get() = child(applicationSupport, DOWNLOADS_FOLDER)
 
+    /** [path] in the app's container as it is now (a stored path may name the container of an earlier launch). */
+    fun current(path: String): String = pathInContainer(path, applicationSupport)
+
     override fun length(path: String): Long? {
-        val attributes = manager.attributesOfItemAtPath(path, error = null) ?: return null
+        val attributes = manager.attributesOfItemAtPath(current(path), error = null) ?: return null
         if (attributes[NSFileType] != NSFileTypeRegular) return null
         return (attributes[NSFileSize] as? NSNumber)?.longLongValue
     }
 
     override fun isDirectory(path: String): Boolean = memScoped {
         val folder = alloc<BooleanVar>()
-        manager.fileExistsAtPath(path, isDirectory = folder.ptr) && folder.value
+        manager.fileExistsAtPath(current(path), isDirectory = folder.ptr) && folder.value
     }
 
     override fun makeDirectories(path: String): Boolean {
-        if (!isDirectory(path)) {
-            manager.createDirectoryAtPath(path, withIntermediateDirectories = true, attributes = null, error = null)
+        val here = current(path)
+        if (!isDirectory(here)) {
+            manager.createDirectoryAtPath(here, withIntermediateDirectories = true, attributes = null, error = null)
         }
-        val exists = isDirectory(path)
-        if (exists && isUnder(path, downloadsRoot)) excludeFromBackup(downloadsRoot)
+        val exists = isDirectory(here)
+        if (exists && isUnder(here, downloadsRoot)) excludeFromBackup(downloadsRoot)
         return exists
     }
 
     /** Marks the `downloads` folder (and so everything in it) as not to be backed up; best effort, true when set. */
     fun excludeFromBackup(path: String): Boolean {
         if (!isDirectory(path)) return false
-        return NSURL.fileURLWithPath(path).setResourceValue(NSNumber(bool = true), forKey = NSURLIsExcludedFromBackupKey, error = null)
+        return NSURL.fileURLWithPath(current(path)).setResourceValue(NSNumber(bool = true), forKey = NSURLIsExcludedFromBackupKey, error = null)
     }
 
     override fun openAppend(path: String, at: Long): DownloadSink {
-        val fd = open(path, O_WRONLY or O_CREAT, 0x1A4) // rw-r--r--
+        val fd = open(current(path), O_WRONLY or O_CREAT, 0x1A4) // rw-r--r--
         if (fd < 0) throw posixError("open")
         if (ftruncate(fd, at) != 0 || lseek(fd, 0, SEEK_END) < 0) {
             val error = posixError("truncate")
@@ -105,7 +114,7 @@ object IosDownloadFiles : DownloadFiles {
     }
 
     override fun sync(path: String) {
-        val fd = open(path, O_WRONLY)
+        val fd = open(current(path), O_WRONLY)
         if (fd < 0) throw posixError("open")
         val ok = fsync(fd) == 0
         val error = if (ok) null else posixError("fsync")
@@ -114,29 +123,30 @@ object IosDownloadFiles : DownloadFiles {
     }
 
     override fun moveReplacing(from: String, to: String) {
-        if (rename(from, to) != 0) throw posixError("rename")
+        if (rename(current(from), current(to)) != 0) throw posixError("rename")
     }
 
     override fun delete(path: String): Boolean {
         if (length(path) == null) return false
-        return manager.removeItemAtPath(path, error = null)
+        return manager.removeItemAtPath(current(path), error = null)
     }
 
     override fun deleteRecursively(path: String) {
-        if (manager.fileExistsAtPath(path)) manager.removeItemAtPath(path, error = null)
+        val here = current(path)
+        if (manager.fileExistsAtPath(here)) manager.removeItemAtPath(here, error = null)
     }
 
     override fun list(path: String): List<String> =
-        manager.contentsOfDirectoryAtPath(path, error = null)?.mapNotNull { it as? String }.orEmpty()
+        manager.contentsOfDirectoryAtPath(current(path), error = null)?.mapNotNull { it as? String }.orEmpty()
 
     override fun freeBytes(path: String): Long {
         // What iOS would free for an important download (purgeable space included), else the plain free size.
         memScoped {
             val error = alloc<ObjCObjectVar<NSError?>>()
-            val values = NSURL.fileURLWithPath(path).resourceValuesForKeys(listOf(NSURLVolumeAvailableCapacityForImportantUsageKey), error.ptr)
+            val values = NSURL.fileURLWithPath(current(path)).resourceValuesForKeys(listOf(NSURLVolumeAvailableCapacityForImportantUsageKey), error.ptr)
             (values?.get(NSURLVolumeAvailableCapacityForImportantUsageKey) as? NSNumber)?.longLongValue?.let { if (it > 0L) return it }
         }
-        val attributes = manager.attributesOfFileSystemForPath(path, error = null) ?: return 0L
+        val attributes = manager.attributesOfFileSystemForPath(current(path), error = null) ?: return 0L
         return (attributes[NSFileSystemFreeSize] as? NSNumber)?.longLongValue ?: 0L
     }
 

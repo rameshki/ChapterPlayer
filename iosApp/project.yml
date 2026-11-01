@@ -29,8 +29,15 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         # Books keep playing with the screen locked or another app in front; the lock screen and Control Center show them.
+        # processing: downloads carry on in the background (iOS 26+ continued processing task; see below).
         UIBackgroundModes:
           - audio
+          - processing
+        # The continued processing task a download the user starts asks for (iOS 26+, BGContinuedProcessingTask). The app
+        # only uses it when this list holds "<its bundle id>.downloads", so a re-signed build with another id falls back
+        # to plain background time instead of stopping.
+        BGTaskSchedulerPermittedIdentifiers:
+          - $(PRODUCT_BUNDLE_IDENTIFIER).downloads
     preBuildScripts:
       - name: Build the shared Kotlin framework
         basedOnDependencyAnalysis: false
@@ -49,5 +56,6 @@ targets:
         # The shared framework is built for Apple-silicon simulators only.
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
         FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
-        # The shared framework is static: the system frameworks its player uses are linked here.
-        OTHER_LDFLAGS: "-framework Shared -framework AVFoundation -framework MediaPlayer"
+        # The shared framework is static: the system frameworks its player and downloads use are linked here.
+        # BackgroundTasks is weak: its continued processing task exists from iOS 26 only (the app checks before use).
+        OTHER_LDFLAGS: "-framework Shared -framework AVFoundation -framework MediaPlayer -framework UserNotifications -framework Network -weak_framework BackgroundTasks"

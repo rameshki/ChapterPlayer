@@ -1,14 +1,25 @@
 package com.chapterplayer.di
 
 import com.chapterplayer.data.IosAppInfo
+import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.IosPathProvider
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.connectivity.IosConnectivityMonitor
+import com.chapterplayer.data.downloads.BookDownloader
+import com.chapterplayer.data.downloads.DefaultDownloadController
+import com.chapterplayer.data.downloads.DownloadLengthFiller
+import com.chapterplayer.data.downloads.DownloadQueueRestorer
+import com.chapterplayer.data.downloads.DownloadScheduler
+import com.chapterplayer.data.downloads.IosDownloadFiles
+import com.chapterplayer.data.downloads.IosDownloadPlace
+import com.chapterplayer.data.downloads.IosDownloadScheduler
 import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.images.installCoverImageLoader
 import com.chapterplayer.data.local.createIosDatabase
+import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.permissions.IosNotificationPermission
 import com.chapterplayer.data.playback.IosPlaybackController
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackProgressSaver
@@ -30,6 +41,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import org.koin.core.Koin
+import org.koin.dsl.module
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
@@ -63,8 +75,37 @@ val iosPlaybackModule = headerPlayerModule { books, streams, appScope, localFile
     IosPlaybackController.create(books, streams, appScope, localFiles)
 }
 
-/** Every module iOS starts with, besides [commonModules]: the platform's parts, the player and the download stand-ins (step 5). */
-val iosModules = listOf(iosPlatformModule, iosPlaybackModule, notYetOnIosModule)
+/**
+ * The iPhone's downloads (Stage 5 step 5): the shared downloader into `<Application Support>/downloads` (not backed
+ * up), run in the app's process by [IosDownloadScheduler] (background time, iOS 26+ continued processing, notices),
+ * with offline playback from the files. No download location choice and no car ([PlatformFeatures.IosFull]).
+ */
+val iosDownloadModule = module {
+    single { IosNotificationPermission() }
+    includes(
+        inAppDownloadModule(
+            features = PlatformFeatures.IosFull,
+            files = { IosDownloadFiles },
+            place = { IosDownloadPlace(io = Dispatchers.IO) },
+            scheduler = {
+                val bookDao = get<BookDao>()
+                IosDownloadScheduler(
+                    scope = get(AppScopeQualifier),
+                    downloader = get<BookDownloader>(),
+                    connectivity = get(),
+                    titleOf = { id -> bookDao.getById(id)?.title },
+                    // Looked up when it runs: the controller itself needs this scheduler.
+                    restore = { get<DefaultDownloadController>().restoreQueue() },
+                    notifications = get(),
+                )
+            },
+            notifications = { get<IosNotificationPermission>() },
+        )
+    )
+}
+
+/** Every module iOS starts with, besides [commonModules]: the platform's parts, the player and the downloads. */
+val iosModules = listOf(iosPlatformModule, iosPlaybackModule, iosDownloadModule)
 
 /** Kept so the observer lives as long as the app (the notification centre does not keep block observers alive for us). */
 private var becameActiveObserver: NSObjectProtocol? = null
@@ -83,12 +124,18 @@ fun initKoin() = initKoin(iosModules) { koin -> startAppWide(koin) }
  * and the listening history import run as on Android. Since Stage 5 step 4 the player is built here (so the lock screen
  * commands are registered at launch) and what follows it starts as on Android: progress saves, the live sync through the
  * server session (Plex timeline and scrobble included), mirrors to the other copies, jump history and listening time.
+ * Since step 5 the downloads start too: the scheduler follows the app's state, unfinished downloads are scheduled again
+ * (as after a reboot on Android) and older downloads get their file lengths when the network is there.
  */
 private fun startAppWide(koin: Koin) {
     val scope = koin.get<CoroutineScope>(AppScopeQualifier)
     val network = koin.get<ConnectivityMonitor>().currentNetwork
     installCoverImageLoader(koin.get<PlexImageServers>())
     koin.get<PlaybackController>()
+    // Built here, on the main thread (UIKit state); it registers the continued processing task before launch ends.
+    (koin.get<DownloadScheduler>() as? IosDownloadScheduler)?.start()
+    koin.get<DownloadQueueRestorer>().start()
+    koin.get<DownloadLengthFiller>().start()
     koin.get<PlaybackProgressSaver>().start()
     koin.get<ProgressSyncer>().start()
     koin.get<ProgressMirrorPusher>().start()

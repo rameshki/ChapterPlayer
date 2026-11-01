@@ -33,9 +33,9 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
     val features = LocalPlatformFeatures.current
     SettingsPage(title = "Downloads and offline", onBack = onBack) {
         if (features.downloads) {
-            DownloadOptions(viewModel, downloadWifiOnly, downloadLocations, downloadStorageLimit, storageUsed, downloadedOnly)
+            DownloadOptions(viewModel, downloadWifiOnly, downloadLocations, downloadStorageLimit, storageUsed, downloadedOnly, features.downloadLocation)
         } else {
-            // iOS until Stage 5 step 5: no downloader, so only the several-servers choices below apply.
+            // A build without a downloader: only the several-servers choices below apply.
             SectionTitle("Downloads")
             Text(
                 text = DOWNLOADS_NOT_ON_IOS_TEXT,
@@ -67,6 +67,8 @@ private fun DownloadOptions(
     downloadStorageLimit: Long?,
     storageUsed: Long,
     downloadedOnly: Boolean,
+    /** Whether this platform offers a choice of place (Android: internal storage or an SD card; iOS has one). */
+    locationChoice: Boolean,
 ) {
     SectionTitle("Network")
     SwitchCard(
@@ -77,14 +79,16 @@ private fun DownloadOptions(
     )
     Spacer(Modifier.height(16.dp))
 
-    SectionTitle("Where files go")
-    DownloadLocationCard(downloadLocations, viewModel::setDownloadLocation)
-    Spacer(Modifier.height(16.dp))
+    if (locationChoice) {
+        SectionTitle("Where files go")
+        DownloadLocationCard(downloadLocations, viewModel::setDownloadLocation)
+        Spacer(Modifier.height(16.dp))
+    }
 
     SectionTitle("Storage")
     StorageLimitCard(downloadStorageLimit, viewModel::setDownloadStorageLimit)
     Text(
-        text = "Used by downloads: ${formatBytes(storageUsed)}",
+        text = storageLine(storageUsed, if (locationChoice) null else downloadLocations),
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -99,4 +103,14 @@ private fun DownloadOptions(
         onChange = viewModel::setDownloadedOnly
     )
     Spacer(Modifier.height(16.dp))
+}
+
+/**
+ * "Used by downloads: 1.2 GB", followed by the free space of the one place downloads go when there is no location
+ * choice to show it ([single], iOS): "Used by downloads: 1.2 GB · This iPhone: 20 GB free".
+ */
+internal fun storageLine(usedBytes: Long, single: DownloadLocationsUi?): String {
+    val used = "Used by downloads: ${formatBytes(usedBytes)}"
+    val place = single?.options?.firstOrNull() ?: return used
+    return "$used · ${place.label}: ${place.detail}"
 }

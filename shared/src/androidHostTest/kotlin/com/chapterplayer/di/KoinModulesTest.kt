@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import com.chapterplayer.data.AppInfo
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.connectivity.downloadAllowed
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.repository.BookRepository
@@ -214,6 +215,56 @@ class KoinModulesTest {
         assertSame(koin.get<com.chapterplayer.data.playback.StreamAuthorizer>(), given)
         assertSame(NoLocalBookFiles, givenFiles)
         assertSame(PlatformFeatures.IosStreaming, koin.get<PlatformFeatures>())
+        koin.close()
+    }
+
+    /** iOS's download module (iosDownloadModule) with host stand-ins for its iOS-only parts: files, place, scheduler, notices. */
+    private fun testDownloads() = inAppDownloadModule(
+        features = PlatformFeatures.IosFull,
+        files = { com.chapterplayer.data.downloads.AndroidDownloadFiles },
+        place = {
+            object : DownloadPlace {
+                override suspend fun rootDir() = "unused"
+                override suspend fun freeBytes() = 0L
+                override suspend fun volumes() = emptyList<com.chapterplayer.domain.downloads.DownloadVolume>()
+            }
+        },
+        scheduler = {
+            com.chapterplayer.data.downloads.InProcessDownloadScheduler(
+                get(AppScopeQualifier),
+                run = { id -> get<com.chapterplayer.data.downloads.BookDownloader>().run(id) },
+                allowed = { wifiOnly -> get<ConnectivityMonitor>().downloadAllowed(wifiOnly) },
+            )
+        },
+        notifications = { NoNotificationPermission },
+    )
+
+    @Test
+    fun `the iOS download module verifies with the common modules - the player and the platform module`() {
+        val dir = kotlin.io.path.createTempDirectory("koin").toFile()
+        val player = headerPlayerModule { _, _, _, _ -> NotYetOnIosPlaybackController() }
+        module { includes(commonModules + testDownloads() + player + fakePlatform(dir)) }
+            .verify(extraTypes = listOf(HttpClientEngine::class, HttpClientConfig::class, LibraryView::class, String::class, SavedStateHandle::class))
+    }
+
+    @Test
+    fun `the iOS download module builds its qualified parts and offers downloads without a location choice`() {
+        val dir = kotlin.io.path.createTempDirectory("koin").toFile()
+        val noDatabase = module {
+            single<com.chapterplayer.data.repository.ServerRepository> { com.chapterplayer.testing.FakeServerList() }
+            single<BookRepository> { com.chapterplayer.testing.FakeBookRepository() }
+        }
+        val koin = koinApplication { modules(commonModules + testDownloads() + testPlayer + fakePlatform(dir) + noDatabase) }.koin
+        assertNotNull(koin.get<io.ktor.client.HttpClient>(DownloadClientQualifier))
+        assertNotNull(koin.get<com.chapterplayer.data.downloads.FileDownloader>())
+        assertNotNull(koin.get<com.chapterplayer.data.downloads.DownloadScheduler>())
+        assertSame(koin.get<DownloadPlace>(), koin.get<DownloadStorage>())
+        assertSame(koin.get<DownloadPlace>(), koin.get<com.chapterplayer.data.downloads.DownloadLocation>())
+        assertSame(NoNotificationPermission, koin.get<NotificationPermission>())
+        val features = koin.get<PlatformFeatures>()
+        assertSame(PlatformFeatures.IosFull, features)
+        assertTrue(features.playback && features.downloads)
+        assertTrue(!features.car && !features.downloadLocation)
         koin.close()
     }
 
