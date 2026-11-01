@@ -6,6 +6,7 @@ import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.domain.settings.SourceChoiceCard
 import com.chapterplayer.domain.settings.SourcePurpose
 import com.chapterplayer.domain.settings.sourceChoiceCard
+import com.chapterplayer.domain.settings.sourceChoicesApply
 import com.chapterplayer.domain.settings.sourceChoicesSummary
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -60,12 +61,19 @@ data class SettingsUiState(
     val servers: List<ServerConfig> = emptyList()
 )
 
-/** The "Books on several servers" cards; [summary] is the hub's part, null with fewer than two servers. */
+/**
+ * The "Books on several servers" cards. [apply] is false with fewer than two servers (no book can be on several, so
+ * the cards are hidden). The hub's part of the Downloads summary, for a platform with and without a downloader.
+ */
 data class SourceChoiceCards(
     val download: SourceChoiceCard = sourceChoiceCard(SourceChoice.Ask, emptyList(), SourcePurpose.DOWNLOAD),
     val play: SourceChoiceCard = sourceChoiceCard(SourceChoice.Ask, emptyList(), SourcePurpose.PLAY),
-    val summary: String? = null,
-)
+    val apply: Boolean = false,
+    val summaryWithDownloads: String? = null,
+    val summaryWithoutDownloads: String? = null,
+) {
+    fun summary(downloads: Boolean): String? = if (downloads) summaryWithDownloads else summaryWithoutDownloads
+}
 
 /** A place downloads can go, as the Settings list shows it: "SD card", "100 GB free". */
 data class LocationOption(val id: String, val label: String, val detail: String)
@@ -224,7 +232,9 @@ class SettingsViewModel(
             SourceChoiceCards(
                 download = sourceChoiceCard(download, servers, SourcePurpose.DOWNLOAD),
                 play = sourceChoiceCard(play, servers, SourcePurpose.PLAY),
-                summary = sourceChoicesSummary(download, play, servers),
+                apply = sourceChoicesApply(servers),
+                summaryWithDownloads = sourceChoicesSummary(download, play, servers, downloads = true),
+                summaryWithoutDownloads = sourceChoicesSummary(download, play, servers, downloads = false),
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, SourceChoiceCards())
 

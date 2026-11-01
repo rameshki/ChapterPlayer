@@ -76,24 +76,60 @@ class SourceChoiceTextTest {
     }
 
     @Test
-    fun `the hub summary names both choices briefly - only with several servers`() {
-        assertEquals("Download: ask · Play: ask", sourceChoicesSummary(SourceChoice.Ask, SourceChoice.Ask, onePerType))
+    fun `a type without servers is not offered unless it is the saved choice`() {
+        val twoPlexOnly = listOf(plex("p1", "Home Plex"), plex("p2", "Work Plex"))
+        val card = sourceChoiceCard(SourceChoice.Ask, twoPlexOnly, SourcePurpose.PLAY)
+        assertEquals(listOf("Ask every time", "Plex", "Plex: Home Plex", "Plex: Work Plex"), card.lines.map { it.label })
+        val saved = sourceChoiceCard(SourceChoice.OfType(ServerSource.ABS), twoPlexOnly, SourcePurpose.PLAY)
+        assertEquals("Audiobookshelf", saved.lines.single { it.selected }.label)
+    }
+
+    @Test
+    fun `servers with the same or no name are told apart`() {
+        val same = listOf(
+            ServerConfig("a1", ServerSource.ABS, "Home", "https://one.example", "t"),
+            ServerConfig("a2", ServerSource.ABS, "Home", "https://two.example", "t"),
+            ServerConfig("a3", ServerSource.ABS, "", "https://three.example", "t"),
+        )
+        val labels = sourceChoiceCard(SourceChoice.Ask, same, SourcePurpose.DOWNLOAD).lines.map { it.label }
         assertEquals(
-            "Download: Work ABS · Play: Plex",
+            listOf("Ask every time", "Audiobookshelf", "Audiobookshelf: Home (one.example)", "Audiobookshelf: Home (two.example)", "Audiobookshelf: Audiobookshelf"),
+            labels,
+        )
+    }
+
+    @Test
+    fun `the choices apply only with two or more servers`() {
+        assertTrue(sourceChoicesApply(onePerType))
+        assertFalse(sourceChoicesApply(listOf(abs("a1", "Home ABS"))))
+        assertFalse(sourceChoicesApply(emptyList()))
+    }
+
+    @Test
+    fun `the hub summary is one short phrase - and nothing when both ask`() {
+        assertNull(sourceChoicesSummary(SourceChoice.Ask, SourceChoice.Ask, onePerType))
+        assertEquals("Download and play from Plex", sourceChoicesSummary(SourceChoice.OfType(ServerSource.PLEX), SourceChoice.OfType(ServerSource.PLEX), onePerType))
+        assertEquals(
+            "Download from Work ABS, play from Plex",
             sourceChoicesSummary(SourceChoice.OfServer("a2"), SourceChoice.OfType(ServerSource.PLEX), twoAbs),
         )
-        assertEquals("Download: ABS · Play: ask", sourceChoicesSummary(SourceChoice.OfType(ServerSource.ABS), SourceChoice.OfServer("gone"), twoAbs))
-        assertNull(sourceChoicesSummary(SourceChoice.Ask, SourceChoice.Ask, listOf(abs("a1", "Home ABS"))))
-        assertNull(sourceChoicesSummary(SourceChoice.Ask, SourceChoice.Ask, emptyList()))
+        assertEquals("Download from ABS, play asks", sourceChoicesSummary(SourceChoice.OfType(ServerSource.ABS), SourceChoice.OfServer("gone"), twoAbs))
+        assertEquals("Play from Plex, download asks", sourceChoicesSummary(SourceChoice.Ask, SourceChoice.OfType(ServerSource.PLEX), twoAbs))
+        assertEquals("Play from Plex", sourceChoicesSummary(SourceChoice.OfType(ServerSource.ABS), SourceChoice.OfType(ServerSource.PLEX), twoAbs, downloads = false))
+        assertNull(sourceChoicesSummary(SourceChoice.OfType(ServerSource.ABS), SourceChoice.Ask, twoAbs, downloads = false))
+        assertNull(sourceChoicesSummary(SourceChoice.OfType(ServerSource.ABS), SourceChoice.OfType(ServerSource.ABS), listOf(abs("a1", "Home ABS"))))
+        for (summary in listOf(sourceChoicesSummary(SourceChoice.OfServer("a2"), SourceChoice.OfType(ServerSource.PLEX), twoAbs)!!)) {
+            assertFalse(summary.contains(" · "))
+        }
     }
 
     @Test
     fun `the downloads summary carries the choices`() {
         assertEquals(
-            "Wi-Fi only · Internal storage · No limit · Download: ask · Play: Plex",
-            downloadsSummary(true, null, null, choices = "Download: ask · Play: Plex"),
+            "Wi-Fi only · Internal storage · No limit · Download and play from Plex",
+            downloadsSummary(true, null, null, choices = "Download and play from Plex"),
         )
-        assertEquals("Not available on iOS yet", downloadsSummary(true, null, null, available = false, choices = "Download: ask · Play: ask"))
+        assertEquals("Not available on iOS yet", downloadsSummary(true, null, null, available = false, choices = "Play from Plex"))
         assertFalse(downloadsSummary(true, null, null).contains("Play"))
     }
 }

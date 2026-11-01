@@ -14,8 +14,8 @@ import kotlin.math.max
  * Everything is sorted by book id before grouping, so the groups do not depend on the input order.
  *
  * The members are ordered (and the first is the primary, the one the lists show) by: a downloaded copy first, then a
- * copy the play choice names ([SourceChoice]), a reachable server before an unreachable one, then Audiobookshelf, then
- * the book id. The entry's progress is the member progress with the newest `lastPlayedAt` (the copy listened to last;
+ * reachable copy the play choice names ([SourceChoice]), then any reachable copy, then the chosen copy that does not
+ * answer, then Audiobookshelf, then the book id. The entry's progress is the member progress with the newest `lastPlayedAt` (the copy listened to last;
  * on a tie a copy's own row wins over a mirrored one, see `mirroredProgress`).
  */
 
@@ -198,8 +198,9 @@ fun mergeDuplicates(
 private fun memberOrder(playChoice: SourceChoice, onlineServerIds: Set<String>): Comparator<BrowseItem> =
     compareBy<BrowseItem>(
         { if (it.downloadState == DownloadState.DOWNLOADED) 0 else 1 },
-        { if (playChoice.names(it)) 0 else 1 },
+        { if (playChoice.names(it) && it.book.serverId in onlineServerIds) 0 else 1 },
         { if (it.book.serverId in onlineServerIds) 0 else 1 },
+        { if (playChoice.names(it)) 0 else 1 },
         { if (it.book.source == ServerSource.ABS) 0 else 1 },
         { it.book.id },
     )
@@ -249,13 +250,16 @@ val BrowseItem.seriesServerId: String
     }
 
 /**
- * The copy to resume: the copy played last (the one the entry's progress belongs to) when [canPlay] allows it,
- * otherwise the first member that can play in member order (a downloaded copy, then the play choice's copy, then a
- * reachable one), otherwise the copy played last. A book on one server is itself. Home's Resume, the widget and the
- * car resume this copy; with "Ask every time" too, since only the details page asks.
+ * The copy to resume. A downloaded copy always plays first: when one [canPlay] allows, it is resumed (of several, the
+ * one played last), never a stream of another copy; its position follows the other copies through the mirrored
+ * progress. Otherwise the copy played last (the one the entry's progress belongs to) when [canPlay] allows it, else the
+ * first member that can play in member order, else the copy played last. A book on one server is itself. Home's
+ * Resume, the widget and the car resume this copy; with "Ask every time" too, since only the details page asks.
  */
 fun resumeCopy(entry: BrowseItem, canPlay: (BrowseItem) -> Boolean = { true }): BrowseItem {
     if (!entry.isMerged) return entry
+    val downloaded = entry.sources.filter { it.downloadState == DownloadState.DOWNLOADED && canPlay(it) }
+    if (downloaded.isNotEmpty()) return playedLastOf(downloaded) ?: downloaded.first()
     val played = entry.sources.firstOrNull { it.book.id == entry.progress?.bookId } ?: entry.sources.first()
     if (canPlay(played)) return played
     return entry.sources.firstOrNull(canPlay) ?: played

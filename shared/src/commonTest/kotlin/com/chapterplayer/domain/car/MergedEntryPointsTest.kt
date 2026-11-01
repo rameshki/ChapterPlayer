@@ -94,6 +94,16 @@ class MergedEntryPointsTest {
     }
 
     @Test
+    fun `online a downloaded copy is resumed instead of streaming the copy played last`() {
+        // a (abs1) is downloaded, p (plex1) was played last: Home, the car and the widget resume a from the phone.
+        val withDownload = items(state = DownloadState.DOWNLOADED)
+        assertEquals("a", resumeCandidate(withDownload)?.item?.book?.id)
+        assertEquals("a", started(resumeLast(withDownload, online = true, nowPlaying = null)))
+        val state = continueWidgetState(withDownload, online = true, downloadedOnly = false)
+        assertEquals("a", (state as ContinueWidgetState.Book).bookId)
+    }
+
+    @Test
     fun `offline the widget offers the downloaded copy`() {
         val offline = items(state = DownloadState.DOWNLOADED, online = emptySet())
         val state = continueWidgetState(offline, online = false, downloadedOnly = false)

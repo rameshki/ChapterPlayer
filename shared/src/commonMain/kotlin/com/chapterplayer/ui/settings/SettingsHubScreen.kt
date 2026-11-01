@@ -88,7 +88,7 @@ fun SettingsHubScreen(
             HubRow(
                 Icons.Default.Download,
                 "Downloads and offline",
-                downloadsSummary(downloadWifiOnly, locationLabel, downloadStorageLimit, available = features.downloads, choices = sourceChoices.summary),
+                downloadsSummary(downloadWifiOnly, locationLabel, downloadStorageLimit, available = features.downloads, choices = sourceChoices.summary(features.downloads)),
                 onOpenDownloads
             )
         }

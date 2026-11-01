@@ -120,7 +120,17 @@ class SettingsViewModelTest {
         assertEquals("Play from (when not downloaded)", cards.play.title)
         assertEquals("Ask every time", cards.play.label)
         assertNotNull(cards.play.removedNote)
-        assertEquals("Download: Work ABS · Play: ask", cards.summary)
+        assertEquals(true, cards.apply)
+        assertEquals("Download from Work ABS, play asks", cards.summary(downloads = true))
+        assertEquals(null, cards.summary(downloads = false))
+    }
+
+    @Test
+    fun `with one server the several-servers cards do not apply`() = runTest {
+        val servers = FakeServerList(listOf(ServerConfig("a1", ServerSource.ABS, "Home ABS", "http://a", "t")))
+        val vm = SettingsViewModel(servers, FakeAppSettings(), FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+        assertEquals(false, vm.sourceChoiceCards.value.apply)
+        assertEquals(null, vm.sourceChoiceCards.value.summary(downloads = true))
     }
 
     @Test

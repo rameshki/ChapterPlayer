@@ -43,7 +43,40 @@ class DownloadActions(
     val onRemoveDismissed: () -> Unit,
     /** "Download another copy" of a book on several servers. */
     val onDownloadAnotherCopy: () -> Unit = {},
+    /** The buttons of another copy's control (a merged book with several downloads); by default these. */
+    val forCopy: (bookId: String) -> DownloadActions = { _ -> DownloadActions(onDownload, onPause, onResume, onCancel, onRemove, onRemoveConfirmed, onRemoveDismissed) },
 )
+
+/**
+ * The main control, then one per other copy of a merged book that has a download, each under its type and server
+ * ("Plex · Home Plex"); every copy's buttons act on that copy only.
+ */
+@Composable
+internal fun CopyDownloadControls(
+    mainLabel: String?,
+    main: DetailsDownload,
+    mainActions: DownloadActions,
+    others: List<CopyDownloadUi>,
+    actionsFor: (bookId: String) -> DownloadActions,
+) {
+    if (mainLabel != null && main.phase != DetailsDownloadPhase.HIDDEN) CopyLabel(mainLabel)
+    DownloadControl(main, mainActions)
+    others.forEach { copy ->
+        CopyLabel(copy.label)
+        DownloadControl(copy.download, actionsFor(copy.bookId))
+    }
+}
+
+@Composable
+private fun CopyLabel(text: String) {
+    if (text.isBlank()) return
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = TextSecondary,
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+    )
+}
 
 /** Download, its progress with Pause / Resume / Cancel, or Remove download once it is on the phone. */
 @Composable
@@ -88,11 +121,11 @@ internal fun DownloadControl(download: DetailsDownload, actions: DownloadActions
                         Text("Remove download", color = MaterialTheme.colorScheme.error)
                     }
                 }
-                if (download.canDownloadAnotherCopy) {
-                    SmallAction("Download another copy", AmberGold, actions.onDownloadAnotherCopy)
-                }
             }
             DetailsDownloadPhase.HIDDEN -> Unit
+        }
+        if (download.canDownloadAnotherCopy) {
+            SmallAction("Download another copy", AmberGold, actions.onDownloadAnotherCopy)
         }
     }
     if (download.confirmingRemove) {

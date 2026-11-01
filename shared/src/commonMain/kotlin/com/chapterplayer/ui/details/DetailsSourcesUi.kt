@@ -53,6 +53,7 @@ private fun rowText(row: SourceRow): String = if (row.serverName.isBlank()) row.
 
 private fun rowDetail(row: SourceRow): String? = when {
     row.downloaded -> "Downloaded"
+    row.reason != null && row.hint != null -> "${row.hint} · ${row.reason}"
     row.reason != null -> row.reason
     else -> listOfNotNull(row.hint, row.sizeText).joinToString(" · ").ifEmpty { null }
 }

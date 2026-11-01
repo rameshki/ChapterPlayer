@@ -29,8 +29,9 @@ class SourceChoiceTest {
 
     private val everyServer = setOf("abs1", "abs2", "plex1", "plex2")
 
-    private fun entry(vararg items: BrowseItem, online: Set<String> = everyServer): BrowseItem =
-        mergeDuplicates(items.toList(), MergeOverrides(), SourceChoice.Ask, online).single()
+    // The entry as the app builds it: merged with the same play choice and servers the selection is asked with.
+    private fun entry(vararg items: BrowseItem, online: Set<String> = everyServer, choice: SourceChoice = SourceChoice.Ask): BrowseItem =
+        mergeDuplicates(items.toList(), MergeOverrides(), choice, online).single()
 
     // ---- stored form ----
 
@@ -76,8 +77,10 @@ class SourceChoiceTest {
     fun `a downloaded copy always plays first whatever the choice`() {
         val choices = listOf(SourceChoice.Ask, SourceChoice.OfType(ServerSource.ABS), SourceChoice.OfServer("abs1"))
         for (online in listOf(everyServer, emptySet())) {
-            val e = entry(item("a", "abs1"), item("p", "plex1", download = DownloadState.DOWNLOADED), online = online)
-            for (choice in choices) assertEquals("p", chosenPlaySource(e, choice, online)?.book?.id, "$choice $online")
+                for (choice in choices) {
+                val e = entry(item("a", "abs1"), item("p", "plex1", download = DownloadState.DOWNLOADED), online = online, choice = choice)
+                assertEquals("p", chosenPlaySource(e, choice, online)?.book?.id, "$choice $online")
+            }
         }
     }
 
@@ -88,8 +91,15 @@ class SourceChoiceTest {
             item("p", "plex1", download = DownloadState.DOWNLOADED, lastPlayedAt = 9L),
         )
         assertEquals("p", chosenPlaySource(played, SourceChoice.OfType(ServerSource.ABS), everyServer)?.book?.id)
-        val never = entry(item("a", "abs1", download = DownloadState.DOWNLOADED), item("p", "plex1", download = DownloadState.DOWNLOADED))
-        assertEquals(never.sources.first().book.id, chosenPlaySource(never, SourceChoice.Ask, everyServer)?.book?.id)
+        // Never played: the first in member order (both downloaded and reachable, so Audiobookshelf), whatever the input order.
+        val never = entry(item("p", "plex1", download = DownloadState.DOWNLOADED), item("a", "abs1", download = DownloadState.DOWNLOADED))
+        assertEquals("a", chosenPlaySource(never, SourceChoice.Ask, everyServer)?.book?.id)
+        // With a play choice the choice's copy comes first among them.
+        val chosen = entry(
+            item("a", "abs1", download = DownloadState.DOWNLOADED), item("p", "plex1", download = DownloadState.DOWNLOADED),
+            choice = SourceChoice.OfType(ServerSource.PLEX),
+        )
+        assertEquals("p", chosenPlaySource(chosen, SourceChoice.OfType(ServerSource.PLEX), everyServer)?.book?.id)
         // A mirrored row as new as the copy really played does not win.
         val mirrored = item("a", "abs1", download = DownloadState.DOWNLOADED, lastPlayedAt = 9L)
             .let { it.copy(progress = it.progress!!.copy(mirrored = true)) }
@@ -117,24 +127,28 @@ class SourceChoiceTest {
             Row("Plex only", twoPlex, everyServer, ask = null, abs = null, plex = "p", abs2 = null),
         )
         for (row in table) {
-            val e = entry(*row.items.toTypedArray(), online = row.online)
             val expected = mapOf(
                 SourceChoice.Ask to row.ask,
                 SourceChoice.OfType(ServerSource.ABS) to row.abs,
                 SourceChoice.OfType(ServerSource.PLEX) to row.plex,
                 SourceChoice.OfServer("abs2") to row.abs2,
             )
-            for ((choice, id) in expected) assertEquals(id, chosenPlaySource(e, choice, row.online)?.book?.id, "${row.name}: $choice")
+            for ((choice, id) in expected) {
+                val e = entry(*row.items.toTypedArray(), online = row.online, choice = choice)
+                assertEquals(id, chosenPlaySource(e, choice, row.online)?.book?.id, "${row.name}: $choice")
+            }
         }
     }
 
     @Test
     fun `a choice of one server plays that server's copy`() {
-        val e = entry(item("p", "plex1"), item("q", "plex2"))
-        assertEquals("q", chosenPlaySource(e, SourceChoice.OfServer("plex2"), everyServer)?.book?.id)
-        assertEquals("p", chosenPlaySource(e, SourceChoice.OfServer("plex1"), everyServer)?.book?.id)
+        for ((server, id) in listOf("plex2" to "q", "plex1" to "p")) {
+            val choice = SourceChoice.OfServer(server)
+            assertEquals(id, chosenPlaySource(entry(item("p", "plex1"), item("q", "plex2"), choice = choice), choice, everyServer)?.book?.id)
+        }
         // A server the book is not on: ask.
-        assertNull(chosenPlaySource(e, SourceChoice.OfServer("abs1"), everyServer))
+        val elsewhere = SourceChoice.OfServer("abs1")
+        assertNull(chosenPlaySource(entry(item("p", "plex1"), item("q", "plex2"), choice = elsewhere), elsewhere, everyServer))
     }
 
     @Test
@@ -169,13 +183,14 @@ class SourceChoiceTest {
                 ask = null, abs = null, plex = "p", abs2 = null),
         )
         for (row in table) {
-            val e = entry(*row.items.toTypedArray(), online = row.online)
             val expected = mapOf(
                 SourceChoice.Ask to row.ask,
                 SourceChoice.OfType(ServerSource.ABS) to row.abs,
                 SourceChoice.OfType(ServerSource.PLEX) to row.plex,
                 SourceChoice.OfServer("abs2") to row.abs2,
             )
+            // The list is merged with the play choice (Ask here); the download choice only picks a member.
+            val e = entry(*row.items.toTypedArray(), online = row.online)
             for ((choice, id) in expected) assertEquals(id, chosenDownloadSource(e, choice, row.online)?.book?.id, "${row.name}: $choice")
         }
     }
@@ -183,7 +198,7 @@ class SourceChoiceTest {
     // ---- primary copy ----
 
     @Test
-    fun `the primary is downloaded first - then the play choice - then reachable - then Audiobookshelf`() {
+    fun `the primary is downloaded first - then the reachable chosen copy - then reachable - then the choice - then Audiobookshelf`() {
         val plexChoice = SourceChoice.OfType(ServerSource.PLEX)
         fun primary(items: List<BrowseItem>, choice: SourceChoice, online: Set<String> = everyServer) =
             mergeDuplicates(items, MergeOverrides(), choice, online).single().book.id
@@ -199,12 +214,40 @@ class SourceChoiceTest {
     }
 
     @Test
+    fun `a chosen copy whose server does not answer gives way to a reachable one`() {
+        fun primary(items: List<BrowseItem>, choice: SourceChoice, online: Set<String>) =
+            mergeDuplicates(items, MergeOverrides(), choice, online).single().book.id
+        val pair = listOf(item("a", "abs1"), item("p", "plex1"))
+        assertEquals("p", primary(pair, SourceChoice.OfType(ServerSource.ABS), setOf("plex1")))
+        assertEquals("a", primary(pair, SourceChoice.OfType(ServerSource.PLEX), setOf("abs1")))
+        // Nothing answers: the chosen copy still comes first.
+        assertEquals("p", primary(pair, SourceChoice.OfType(ServerSource.PLEX), emptySet()))
+        // Of two unreachable copies behind a reachable one, the chosen one is next.
+        val three = listOf(item("a", "abs1"), item("b", "abs2"), item("p", "plex1"))
+        val entry = mergeDuplicates(three, MergeOverrides(), SourceChoice.OfServer("abs2"), setOf("plex1")).single()
+        assertEquals(listOf("p", "b", "a"), entry.sources.map { it.book.id })
+    }
+
+    @Test
+    fun `resume takes a downloaded copy over streaming the copy played last`() {
+        val e = mergeDuplicates(
+            listOf(item("a", "abs1", lastPlayedAt = 9L), item("p", "plex1", download = DownloadState.DOWNLOADED, lastPlayedAt = 2L)),
+            MergeOverrides(), SourceChoice.Ask, everyServer,
+        ).single()
+        assertEquals("a", e.progress?.bookId)
+        assertEquals("p", resumeCopy(e).book.id)
+        // A downloaded copy that cannot play now (its files are gone) does not count.
+        assertEquals("a", resumeCopy(e) { it.book.id != "p" }.book.id)
+    }
+
+    @Test
     fun `resume falls back by the same rule when the copy played last cannot play`() {
         val e = mergeDuplicates(
             listOf(item("a", "abs1", lastPlayedAt = 9L), item("p", "plex1"), item("q", "plex2", download = DownloadState.DOWNLOADED)),
             MergeOverrides(), SourceChoice.OfServer("plex1"), everyServer,
         ).single()
-        assertEquals("a", resumeCopy(e).book.id)
+        // A downloaded copy that can play is resumed rather than streaming the copy played last.
+        assertEquals("q", resumeCopy(e).book.id)
         // The copy played last cannot play: the downloaded one, then the chosen one.
         assertEquals("q", resumeCopy(e) { it.book.id != "a" }.book.id)
         assertEquals("p", resumeCopy(e) { it.book.id == "p" || it.book.id == "b" }.book.id)

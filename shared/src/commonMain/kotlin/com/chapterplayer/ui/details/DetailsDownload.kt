@@ -30,6 +30,9 @@ data class DetailsDownload(
     val canDownloadAnotherCopy: Boolean = false,
 )
 
+/** The download control of one more copy of a book several servers have, with its type and server. */
+data class CopyDownloadUi(val bookId: String, val label: String, val download: DetailsDownload)
+
 internal const val DOWNLOAD_LABEL = "Download"
 internal const val TRY_AGAIN_LABEL = "Try again"
 internal const val DOWNLOAD_NEEDS_CONNECTION_TEXT = "Needs a connection to download"

@@ -47,10 +47,15 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
         }
 
         SectionTitle("Books on several servers")
-        SourceChoiceCardView(sourceChoices.download, viewModel::setDownloadSourceChoice)
-        Spacer(Modifier.height(8.dp))
-        SourceChoiceCardView(sourceChoices.play, viewModel::setPlaySourceChoice)
-        Spacer(Modifier.height(8.dp))
+        // The choices only apply with two or more servers; "Download from" only where books can download.
+        if (sourceChoices.apply) {
+            if (features.downloads) {
+                SourceChoiceCardView(sourceChoices.download, viewModel::setDownloadSourceChoice)
+                Spacer(Modifier.height(8.dp))
+            }
+            SourceChoiceCardView(sourceChoices.play, viewModel::setPlaySourceChoice)
+            Spacer(Modifier.height(8.dp))
+        }
         SwitchCard(
             title = "Keep progress in sync between copies",
             description = "Listening to one copy moves the others to the same place, on this phone and on their servers.",

@@ -237,8 +237,8 @@ class MergedSourcesTest {
             Row("p", setOf("abs1", "plex1"), ask = "p", abs = "p", plex = "p"),
             Row(null, setOf("abs1", "plex1"), ask = "a", abs = "a", plex = "p"),
             Row("a", emptySet(), ask = "a", abs = "a", plex = "a"),
-            // The chosen type's copy comes before a reachable one, even when it cannot play now.
-            Row(null, setOf("plex1"), ask = "p", abs = "a", plex = "p"),
+            // A reachable copy comes before the chosen type's copy that cannot play now.
+            Row(null, setOf("plex1"), ask = "p", abs = "p", plex = "p"),
             Row(null, emptySet(), ask = "a", abs = "a", plex = "p"),
         )
         for (row in table) {

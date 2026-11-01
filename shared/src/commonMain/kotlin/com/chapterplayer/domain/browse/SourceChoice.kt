@@ -59,6 +59,11 @@ fun SourceChoice.names(member: BrowseItem): Boolean = when (this) {
 
 private fun BrowseItem.isDownloaded() = downloadState == DownloadState.DOWNLOADED
 
+/** The member of [members] played last (a copy's own row beats a mirrored one of the same time); null when none was played. */
+internal fun playedLastOf(members: List<BrowseItem>): BrowseItem? = members.filter { it.progress != null }.sortedWith(
+    compareByDescending<BrowseItem> { it.progress!!.lastPlayedAt }.thenBy { it.progress!!.mirrored }
+).firstOrNull()
+
 /**
  * The copy to play without asking, or null when the user has to choose. (1) A downloaded copy plays at once: of several,
  * the one played last (a copy's own row beats a mirrored one of the same time), else the first. (2) Otherwise the copy
@@ -69,12 +74,7 @@ fun chosenPlaySource(item: BrowseItem, choice: SourceChoice, onlineServerIds: Se
     if (!item.isMerged) return item
     val members = item.sources
     val downloaded = members.filter { it.isDownloaded() }
-    if (downloaded.isNotEmpty()) {
-        val played = downloaded.filter { it.progress != null }.sortedWith(
-            compareByDescending<BrowseItem> { it.progress!!.lastPlayedAt }.thenBy { it.progress!!.mirrored }
-        ).firstOrNull()
-        return played ?: downloaded.first()
-    }
+    if (downloaded.isNotEmpty()) return playedLastOf(downloaded) ?: downloaded.first()
     return members.firstOrNull { choice.names(it) && it.book.serverId in onlineServerIds }
 }
 

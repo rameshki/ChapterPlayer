@@ -90,6 +90,7 @@ class BookDetailsMergeTest {
         val connectivity = FakeConnectivity()
         val downloads = FakeDownloadController()
         val merges = FakeMerges()
+        val overview = FakeDownloadOverview(rows.values.toList())
         val servers = FakeServerList(listOf(
             ServerConfig("abs1", ServerSource.ABS, "Home ABS", "http://a", "t"),
             ServerConfig("abs2", ServerSource.ABS, "Work ABS", "http://b", "t"),
@@ -98,7 +99,7 @@ class BookDetailsMergeTest {
         val vm = BookDetailsViewModel(
             id, repo, FakeDownloadStates(downloadStates), controller,
             PlaybackStarter(controller, repo, settings, connectivity, FakeLocalBookFiles()), connectivity, settings, Dispatchers.Main,
-            FakeDownloadOverview(rows.values.toList()), downloads, FakeNotificationPermission(),
+            overview, downloads, FakeNotificationPermission(),
             // The corrections flow into the merging, as AppSourceMerging does.
             merging = object : com.chapterplayer.data.merge.SourceMerging {
                 override val context = merges.flow.map { MergeContext(it, download, play, online, deviceOnline) }
@@ -363,6 +364,117 @@ class BookDetailsMergeTest {
         assertFalse(state().download.canDownloadAnotherCopy)
         s.vm.onDownloadAnotherCopyClicked()
         assertNull(state().sourceSheet)
+    }
+
+    // RoomDownloadStates reads every download that is not finished as DOWNLOADING; the rows say what it really is.
+    private fun statesOf(rows: Map<String, com.chapterplayer.data.downloads.DownloadRow>) =
+        rows.mapValues { (_, row) -> if (row.status == DownloadStatus.DONE) DownloadState.DOWNLOADED else DownloadState.DOWNLOADING }
+
+    @Test
+    fun `every copy with a download has its own control and buttons`() = runTest {
+        val rows = mapOf(
+            "a" to downloadRow("a", DownloadStatus.DONE, totalBytes = 5_000_000),
+            "p" to downloadRow("p", DownloadStatus.DOWNLOADING, fraction = 0.4f),
+        )
+        val s = Setup(listOf(abs("a"), plex("p")), "a", rows = rows, downloadStates = statesOf(rows))
+        val state = collect(s)
+        assertEquals("a", state().downloadBookId)
+        assertEquals("ABS · Home ABS", state().downloadCopyLabel)
+        assertEquals(DetailsDownloadPhase.DONE, state().download.phase)
+        val other = state().otherCopyDownloads.single()
+        assertEquals("p", other.bookId)
+        assertEquals("Plex · Home Plex", other.label)
+        assertEquals(DetailsDownloadPhase.DOWNLOADING, other.download.phase)
+        assertEquals(40, other.download.percent)
+        s.vm.onCopyPauseClicked("p")
+        s.vm.onCopyCancelClicked("p")
+        assertEquals(listOf("pause p", "cancel p"), s.downloads.calls)
+    }
+
+    @Test
+    fun `a failed copy and a finished copy both show - and Remove removes the copy it is shown for`() = runTest {
+        val rows = mapOf(
+            "a" to downloadRow("a", DownloadStatus.FAILED, error = "Disk full"),
+            "p" to downloadRow("p", DownloadStatus.DONE, totalBytes = 5_000_000),
+        )
+        val s = Setup(listOf(abs("a"), plex("p")), "a", rows = rows, downloadStates = statesOf(rows))
+        val state = collect(s)
+        assertEquals(DetailsDownloadPhase.FAILED, state().download.phase)
+        assertEquals(DetailsDownloadPhase.DONE, state().otherCopyDownloads.single().download.phase)
+        s.vm.onCopyRemoveClicked("p")
+        assertTrue(state().otherCopyDownloads.single().download.confirmingRemove)
+        assertFalse(state().download.confirmingRemove)
+        s.vm.onRemoveDownloadConfirmed()
+        assertEquals(listOf("remove p"), s.downloads.calls)
+        // Try again on the failed copy is the main control's.
+        s.vm.onDownloadClicked()
+        assertEquals(listOf("remove p", "resume a"), s.downloads.calls)
+    }
+
+    @Test
+    fun `the other copy's failed download can be tried again from its own control`() = runTest {
+        val rows = mapOf(
+            "p" to downloadRow("p", DownloadStatus.DONE, totalBytes = 5_000_000),
+            "a" to downloadRow("a", DownloadStatus.PAUSED),
+        )
+        val s = Setup(listOf(abs("a"), plex("p")), "p", rows = rows, downloadStates = statesOf(rows))
+        val state = collect(s)
+        assertEquals("p", state().downloadBookId)
+        assertEquals(DetailsDownloadPhase.PAUSED, state().otherCopyDownloads.single().download.phase)
+        s.vm.onCopyResumeClicked("a")
+        s.vm.onCopyRemoveClicked("a")
+        assertNull(state().otherCopyDownloads.single().download.takeIf { it.confirmingRemove })
+        assertEquals(listOf("resume a"), s.downloads.calls)
+        s.overview.rows.value = listOf(rows.getValue("p"), downloadRow("a", DownloadStatus.FAILED))
+        s.vm.onCopyRetryClicked("a")
+        assertEquals(listOf("resume a", "resume a"), s.downloads.calls)
+    }
+
+    @Test
+    fun `download another copy stays offered while a copy with no download has a server that answers`() = runTest {
+        val rows = mapOf(
+            "a" to downloadRow("a", DownloadStatus.DONE, totalBytes = 5_000_000),
+            "p" to downloadRow("p", DownloadStatus.DOWNLOADING),
+        )
+        val three = listOf(abs("a"), plex("p"), abs("b", "abs2"))
+        val reachable = Setup(three, "a", rows = rows, downloadStates = statesOf(rows))
+        assertTrue(collect(reachable)().download.canDownloadAnotherCopy)
+        val unreachable = Setup(three, "a", rows = rows, downloadStates = statesOf(rows), online = setOf("abs1", "plex1"))
+        assertFalse(collect(unreachable)().download.canDownloadAnotherCopy)
+        // Only Plex has no download, and Plex does not answer: nothing is offered.
+        val onePhone = mapOf("a" to downloadRow("a", DownloadStatus.DONE, totalBytes = 5_000_000))
+        val plexDown = Setup(listOf(abs("a"), plex("p")), "a", rows = onePhone, downloadStates = statesOf(onePhone), online = setOf("abs1"))
+        val state = collect(plexDown)
+        assertFalse(state().download.canDownloadAnotherCopy)
+        plexDown.vm.onDownloadAnotherCopyClicked()
+        assertNull(state().sourceSheet)
+    }
+
+    @Test
+    fun `the download sheet shows each copy's real state and goes on with a paused or failed one`() = runTest {
+        val rows = mapOf(
+            "a" to downloadRow("a", DownloadStatus.DONE, totalBytes = 5_000_000),
+            "p" to downloadRow("p", DownloadStatus.FAILED),
+            "b" to downloadRow("b", DownloadStatus.PAUSED),
+            "q" to downloadRow("q", DownloadStatus.QUEUED),
+        )
+        val books = listOf(abs("a"), plex("p"), abs("b", "abs2"), abs("q", "abs3"), plex("r").copy(serverId = "plex2"))
+        val s = Setup(books, "a", rows = rows, downloadStates = statesOf(rows), online = setOf("abs1", "abs2", "abs3", "plex1", "plex2"))
+        val state = collect(s)
+        s.vm.onDownloadAnotherCopyClicked()
+        val sheet = assertNotNull(state().sourceSheet).rows.associateBy { it.bookId }
+        assertTrue(sheet.getValue("a").downloaded)
+        assertFalse(sheet.getValue("a").enabled)
+        assertEquals("Failed: Try again", sheet.getValue("p").hint)
+        assertTrue(sheet.getValue("p").enabled)
+        assertEquals("Paused: Resume", sheet.getValue("b").hint)
+        assertTrue(sheet.getValue("b").enabled)
+        assertEquals("Queued", sheet.getValue("q").reason)
+        assertFalse(sheet.getValue("q").enabled)
+        assertEquals("Download this copy too", sheet.getValue("r").hint)
+        assertTrue(sheet.getValue("r").enabled)
+        s.vm.onSourceChosen("p")
+        assertEquals(listOf("resume p"), s.downloads.calls)
     }
 
     @Test
