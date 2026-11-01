@@ -26,12 +26,22 @@ fun appearanceSummary(mode: ThemeMode): String = when (mode) {
     ThemeMode.SYSTEM -> "Follow system"
 }
 
-/** [locationLabel] is the chosen download location's name; null while the volumes are not read yet. */
-fun downloadsSummary(wifiOnly: Boolean, locationLabel: String?, limitBytes: Long?, available: Boolean = true): String =
-    if (!available) DOWNLOADS_UNAVAILABLE_SUMMARY else listOf(
+/**
+ * [locationLabel] is the chosen download location's name; null while the volumes are not read yet. [choices] is the
+ * several-servers part ([sourceChoicesSummary]), null when there is only one server.
+ */
+fun downloadsSummary(
+    wifiOnly: Boolean,
+    locationLabel: String?,
+    limitBytes: Long?,
+    available: Boolean = true,
+    choices: String? = null,
+): String =
+    if (!available) DOWNLOADS_UNAVAILABLE_SUMMARY else listOfNotNull(
         if (wifiOnly) "Wi-Fi only" else "Any network",
         locationLabel ?: "Internal storage",
-        storageLimitLabel(limitBytes)
+        storageLimitLabel(limitBytes),
+        choices,
     ).joinToString(SEPARATOR)
 
 /**

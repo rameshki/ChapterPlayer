@@ -2,8 +2,11 @@
 
 package com.chapterplayer.ui.settings
 
-import com.chapterplayer.domain.browse.DEFAULT_SOURCE_PREFERENCE
-import com.chapterplayer.domain.browse.SourcePreference
+import com.chapterplayer.domain.browse.SourceChoice
+import com.chapterplayer.domain.settings.SourceChoiceCard
+import com.chapterplayer.domain.settings.SourcePurpose
+import com.chapterplayer.domain.settings.sourceChoiceCard
+import com.chapterplayer.domain.settings.sourceChoicesSummary
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.auth.AbsSignInPort
@@ -55,6 +58,13 @@ import kotlin.uuid.Uuid
 
 data class SettingsUiState(
     val servers: List<ServerConfig> = emptyList()
+)
+
+/** The "Books on several servers" cards; [summary] is the hub's part, null with fewer than two servers. */
+data class SourceChoiceCards(
+    val download: SourceChoiceCard = sourceChoiceCard(SourceChoice.Ask, emptyList(), SourcePurpose.DOWNLOAD),
+    val play: SourceChoiceCard = sourceChoiceCard(SourceChoice.Ask, emptyList(), SourcePurpose.PLAY),
+    val summary: String? = null,
 )
 
 /** A place downloads can go, as the Settings list shows it: "SD card", "100 GB free". */
@@ -200,18 +210,32 @@ class SettingsViewModel(
         }
     }
 
-    /** Which copy plays when a book is on several servers. */
-    val sourcePreference: StateFlow<SourcePreference> =
-        appSettings.sourcePreference.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = DEFAULT_SOURCE_PREFERENCE
-        )
+    /** The saved "Download from" choice for a book on several servers. */
+    val downloadSourceChoice: StateFlow<SourceChoice> =
+        appSettings.downloadSourceChoice.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = SourceChoice.Ask)
 
-    fun setSourcePreference(preference: SourcePreference) {
+    /** The saved "Play from (when not downloaded)" choice. */
+    val playSourceChoice: StateFlow<SourceChoice> =
+        appSettings.playSourceChoice.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = SourceChoice.Ask)
+
+    /** The two cards of "Books on several servers", worded with the servers there are now. */
+    val sourceChoiceCards: StateFlow<SourceChoiceCards> =
+        combine(downloadSourceChoice, playSourceChoice, serverRepository.observeAll()) { download, play, servers ->
+            SourceChoiceCards(
+                download = sourceChoiceCard(download, servers, SourcePurpose.DOWNLOAD),
+                play = sourceChoiceCard(play, servers, SourcePurpose.PLAY),
+                summary = sourceChoicesSummary(download, play, servers),
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, SourceChoiceCards())
+
+    fun setDownloadSourceChoice(choice: SourceChoice) = saveChoice { appSettings.setDownloadSourceChoice(choice) }
+
+    fun setPlaySourceChoice(choice: SourceChoice) = saveChoice { appSettings.setPlaySourceChoice(choice) }
+
+    private fun saveChoice(save: suspend () -> Unit) {
         viewModelScope.launch {
             try {
-                appSettings.setSourcePreference(preference)
+                save()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // The choice is not saved; the screen keeps showing the saved one.

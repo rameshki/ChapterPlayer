@@ -54,7 +54,7 @@ private fun rowText(row: SourceRow): String = if (row.serverName.isBlank()) row.
 private fun rowDetail(row: SourceRow): String? = when {
     row.downloaded -> "Downloaded"
     row.reason != null -> row.reason
-    else -> row.sizeText
+    else -> listOfNotNull(row.hint, row.sizeText).joinToString(" · ").ifEmpty { null }
 }
 
 /** The Sources section of a merged book: each copy with its type, server and state. */

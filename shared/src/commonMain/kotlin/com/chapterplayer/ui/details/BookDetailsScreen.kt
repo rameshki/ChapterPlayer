@@ -104,7 +104,8 @@ fun BookDetailsScreen(
                 onCancel = viewModel::onCancelDownloadClicked,
                 onRemove = viewModel::onRemoveDownloadClicked,
                 onRemoveConfirmed = viewModel::onRemoveDownloadConfirmed,
-                onRemoveDismissed = viewModel::onRemoveDownloadDismissed
+                onRemoveDismissed = viewModel::onRemoveDownloadDismissed,
+                onDownloadAnotherCopy = viewModel::onDownloadAnotherCopyClicked
             )
         )
     }

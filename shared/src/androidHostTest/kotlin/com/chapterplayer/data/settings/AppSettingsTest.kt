@@ -10,6 +10,9 @@ import com.chapterplayer.testing.InMemoryPreferencesDataStore
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.domain.browse.SourceChoice
 
 class AppSettingsTest {
 
@@ -155,13 +158,49 @@ class AppSettingsTest {
         assertEquals(1.1f, settings.playbackSpeed.first())
     }
     @Test
-    fun `the source preference defaults to asking and is saved`() = runTest {
+    fun `both source choices default to asking and are saved separately`() = runTest {
         val store = InMemoryPreferencesDataStore()
         val settings = DataStoreAppSettings(store)
-        assertEquals(com.chapterplayer.domain.browse.SourcePreference.ASK, settings.sourcePreference.first())
-        settings.setSourcePreference(com.chapterplayer.domain.browse.SourcePreference.PREFER_DOWNLOADED)
-        assertEquals(com.chapterplayer.domain.browse.SourcePreference.PREFER_DOWNLOADED, DataStoreAppSettings(store).sourcePreference.first())
-        store.edit { it[stringPreferencesKey("source_preference")] = "SOMETHING_ELSE" }
-        assertEquals(com.chapterplayer.domain.browse.SourcePreference.ASK, settings.sourcePreference.first())
+        assertEquals(SourceChoice.Ask, settings.downloadSourceChoice.first())
+        assertEquals(SourceChoice.Ask, settings.playSourceChoice.first())
+        settings.setDownloadSourceChoice(SourceChoice.OfServer("abs-2"))
+        assertEquals(SourceChoice.OfServer("abs-2"), DataStoreAppSettings(store).downloadSourceChoice.first())
+        assertEquals(SourceChoice.Ask, DataStoreAppSettings(store).playSourceChoice.first())
+        settings.setPlaySourceChoice(SourceChoice.OfType(ServerSource.PLEX))
+        assertEquals(SourceChoice.OfType(ServerSource.PLEX), settings.playSourceChoice.first())
+        assertEquals(SourceChoice.OfServer("abs-2"), settings.downloadSourceChoice.first())
+        store.edit { it[stringPreferencesKey("play_source_choice")] = "SOMETHING_ELSE" }
+        assertEquals(SourceChoice.Ask, settings.playSourceChoice.first())
+    }
+
+    @Test
+    fun `the old single setting migrates to both choices`() = runTest {
+        val expected = mapOf(
+            "ASK" to SourceChoice.Ask,
+            "PREFER_ABS" to SourceChoice.OfType(ServerSource.ABS),
+            "PREFER_PLEX" to SourceChoice.OfType(ServerSource.PLEX),
+            "PREFER_DOWNLOADED" to SourceChoice.Ask,
+        )
+        for ((old, choice) in expected) {
+            val store = InMemoryPreferencesDataStore()
+            store.edit { it[stringPreferencesKey("source_preference")] = old }
+            val settings = DataStoreAppSettings(store)
+            assertEquals(choice, settings.downloadSourceChoice.first(), old)
+            assertEquals(choice, settings.playSourceChoice.first(), old)
+        }
+    }
+
+    @Test
+    fun `saving one choice keeps the other's migrated value and drops the old key`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        store.edit { it[stringPreferencesKey("source_preference")] = "PREFER_PLEX" }
+        val settings = DataStoreAppSettings(store)
+        settings.setDownloadSourceChoice(SourceChoice.Ask)
+        assertEquals(SourceChoice.Ask, settings.downloadSourceChoice.first())
+        assertEquals(SourceChoice.OfType(ServerSource.PLEX), settings.playSourceChoice.first())
+        assertNull(store.data.first()[stringPreferencesKey("source_preference")])
+        // The migration happens once: an old value written again later is ignored.
+        store.edit { it[stringPreferencesKey("source_preference")] = "PREFER_ABS" }
+        assertEquals(SourceChoice.OfType(ServerSource.PLEX), settings.playSourceChoice.first())
     }
 }

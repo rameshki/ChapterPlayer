@@ -13,41 +13,21 @@ import kotlin.math.max
  * a split keeps a pair apart (also through a third member), a manual merge joins a pair whatever the titles say.
  * Everything is sorted by book id before grouping, so the groups do not depend on the input order.
  *
- * The members are ordered (and the first is the primary, the one the lists show) by: a downloaded copy first, a
- * reachable server before an unreachable one, then the server type the preference names, then Audiobookshelf, then
+ * The members are ordered (and the first is the primary, the one the lists show) by: a downloaded copy first, then a
+ * copy the play choice names ([SourceChoice]), a reachable server before an unreachable one, then Audiobookshelf, then
  * the book id. The entry's progress is the member progress with the newest `lastPlayedAt` (the copy listened to last;
  * on a tie a copy's own row wins over a mirrored one, see `mirroredProgress`).
  */
 
-/** What to do when a book is on several servers. The default asks which copy to use. */
-enum class SourcePreference { ASK, PREFER_ABS, PREFER_PLEX, PREFER_DOWNLOADED }
-
-/** Robert asked for it: a book several servers have asks which copy to play or download from. */
-val DEFAULT_SOURCE_PREFERENCE = SourcePreference.ASK
-
-/** The Settings name of [preference]. */
-fun sourcePreferenceLabel(preference: SourcePreference): String = when (preference) {
-    SourcePreference.ASK -> "Always ask which copy"
-    SourcePreference.PREFER_ABS -> "Default: Audiobookshelf"
-    SourcePreference.PREFER_PLEX -> "Default: Plex"
-    SourcePreference.PREFER_DOWNLOADED -> "Default: the downloaded copy"
-}
-
-/** The line under each choice in Settings. */
-fun sourcePreferenceDetail(preference: SourcePreference): String = when (preference) {
-    SourcePreference.ASK -> "Play and Download always ask which copy to use."
-    SourcePreference.PREFER_ABS -> "Plays and downloads from Audiobookshelf without asking; asks only when it cannot."
-    SourcePreference.PREFER_PLEX -> "Plays from Plex without asking; asks only when it cannot play."
-    SourcePreference.PREFER_DOWNLOADED -> "The copy on the phone, otherwise Audiobookshelf, without asking."
-}
-
 /**
- * Everything the merging needs besides the books: the user's corrections, the Settings choice, the servers that can
- * stream now ([onlineServerIds]) and whether the phone has a network at all (for the reason a source cannot play).
+ * Everything the merging needs besides the books: the user's corrections, the Settings choices (which copy downloads,
+ * which plays when none is downloaded; a removed server's choice already reads as Ask), the servers that can stream now
+ * ([onlineServerIds]) and whether the phone has a network at all (for the reason a source cannot play).
  */
 data class MergeContext(
     val overrides: MergeOverrides = MergeOverrides(),
-    val preference: SourcePreference = DEFAULT_SOURCE_PREFERENCE,
+    val downloadChoice: SourceChoice = SourceChoice.Ask,
+    val playChoice: SourceChoice = SourceChoice.Ask,
     val onlineServerIds: Set<String> = emptySet(),
     val deviceOnline: Boolean = true,
 )
@@ -73,7 +53,7 @@ fun reachableServerIds(
 
 /** [mergeDuplicates] with everything from [context]. */
 fun mergeDuplicates(items: List<BrowseItem>, context: MergeContext): List<BrowseItem> =
-    mergeDuplicates(items, context.overrides, context.preference, context.onlineServerIds)
+    mergeDuplicates(items, context.overrides, context.playChoice, context.onlineServerIds)
 
 /** The user's corrections, as pairs of book ids (either order). */
 data class MergeOverrides(
@@ -139,7 +119,7 @@ private fun pairKey(a: String, b: String): Pair<String, String> = if (a <= b) a 
 fun mergeDuplicates(
     items: List<BrowseItem>,
     overrides: MergeOverrides,
-    preference: SourcePreference,
+    playChoice: SourceChoice,
     onlineServerIds: Set<String>,
 ): List<BrowseItem> {
     if (items.size < 2) return items
@@ -210,34 +190,29 @@ fun mergeDuplicates(
         val group = members[root]
         if (group.size < 2) { result += item; continue }
         if (!emitted.add(root)) continue
-        result += entryOf(group.map { byId.getValue(it) }, preference, onlineServerIds)
+        result += entryOf(group.map { byId.getValue(it) }, playChoice, onlineServerIds)
     }
     return result
 }
 
-private fun preferredSource(preference: SourcePreference): ServerSource =
-    if (preference == SourcePreference.PREFER_PLEX) ServerSource.PLEX else ServerSource.ABS
-
-private fun memberOrder(preference: SourcePreference, onlineServerIds: Set<String>): Comparator<BrowseItem> {
-    val preferred = preferredSource(preference)
-    return compareBy<BrowseItem>(
+private fun memberOrder(playChoice: SourceChoice, onlineServerIds: Set<String>): Comparator<BrowseItem> =
+    compareBy<BrowseItem>(
         { if (it.downloadState == DownloadState.DOWNLOADED) 0 else 1 },
+        { if (playChoice.names(it)) 0 else 1 },
         { if (it.book.serverId in onlineServerIds) 0 else 1 },
-        { if (it.book.source == preferred) 0 else 1 },
         { if (it.book.source == ServerSource.ABS) 0 else 1 },
         { it.book.id },
     )
-}
 
 /** The entry for [members] (each as it is on its own server): the first by the member order, newest progress. */
 /*
- * The primary is the copy [chosenSource] picks when the preference decides, so the lists and the details page agree;
- * with "Always ask" (or when nothing decides) it is the first in member order.
+ * The primary is the copy [chosenPlaySource] picks when it decides (a downloaded copy, or the play choice's copy that
+ * can play), so the lists and the details page agree; when it asks, it is the first in member order.
  */
-private fun entryOf(members: List<BrowseItem>, preference: SourcePreference, onlineServerIds: Set<String>): BrowseItem {
-    val ordered = members.map { it.copy(sources = emptyList()) }.sortedWith(memberOrder(preference, onlineServerIds))
+private fun entryOf(members: List<BrowseItem>, playChoice: SourceChoice, onlineServerIds: Set<String>): BrowseItem {
+    val ordered = members.map { it.copy(sources = emptyList()) }.sortedWith(memberOrder(playChoice, onlineServerIds))
     val ranked = withPrimary(ordered.first(), ordered)
-    val chosen = chosenSource(ranked, preference, onlineServerIds) ?: return ranked
+    val chosen = chosenPlaySource(ranked, playChoice, onlineServerIds) ?: return ranked
     return withPrimary(chosen, ordered)
 }
 
@@ -275,8 +250,9 @@ val BrowseItem.seriesServerId: String
 
 /**
  * The copy to resume: the copy played last (the one the entry's progress belongs to) when [canPlay] allows it,
- * otherwise the first member that can play, otherwise the copy played last. A book on one server is itself.
- * Home's Resume, the widget and the car resume this copy; with "Always ask" too, since only the details page asks.
+ * otherwise the first member that can play in member order (a downloaded copy, then the play choice's copy, then a
+ * reachable one), otherwise the copy played last. A book on one server is itself. Home's Resume, the widget and the
+ * car resume this copy; with "Ask every time" too, since only the details page asks.
  */
 fun resumeCopy(entry: BrowseItem, canPlay: (BrowseItem) -> Boolean = { true }): BrowseItem {
     if (!entry.isMerged) return entry
@@ -308,26 +284,6 @@ val BrowseItem.serverIds: Set<String> get() = allSources.mapTo(LinkedHashSet()) 
 
 private fun canPlay(member: BrowseItem, onlineServerIds: Set<String>): Boolean =
     member.downloadState == DownloadState.DOWNLOADED || member.book.serverId in onlineServerIds
-
-/**
- * The member to play without asking, or null when the user has to choose. A book on one server is always itself.
- * Prefer downloaded: the downloaded copy, otherwise a reachable Audiobookshelf copy. Prefer Audiobookshelf or Plex:
- * the first copy of that type that can play (downloaded or reachable). For these three, when the preferred copy
- * cannot play but exactly one other copy can, that one plays (only Plex reachable: Plex). Always ask: null.
- */
-fun chosenSource(item: BrowseItem, preference: SourcePreference, onlineServerIds: Set<String>): BrowseItem? {
-    if (!item.isMerged) return item
-    val members = item.sources
-    val preferred = when (preference) {
-        SourcePreference.ASK -> return null
-        SourcePreference.PREFER_DOWNLOADED ->
-            members.firstOrNull { it.downloadState == DownloadState.DOWNLOADED }
-                ?: members.firstOrNull { it.book.source == ServerSource.ABS && it.book.serverId in onlineServerIds }
-        SourcePreference.PREFER_ABS -> members.firstOrNull { it.book.source == ServerSource.ABS && canPlay(it, onlineServerIds) }
-        SourcePreference.PREFER_PLEX -> members.firstOrNull { it.book.source == ServerSource.PLEX && canPlay(it, onlineServerIds) }
-    }
-    return preferred ?: members.filter { canPlay(it, onlineServerIds) }.singleOrNull()
-}
 
 /** One row of the source sheet. */
 data class SourceOption(val item: BrowseItem, val downloaded: Boolean, val playable: Boolean, val unavailableReason: String?)

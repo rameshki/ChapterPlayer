@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.details
 
+import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.SourceOption
 import com.chapterplayer.domain.browse.shortLabel
@@ -18,6 +19,8 @@ data class SourceRow(
     val reason: String?,
     /** What downloading this copy fetches ("1.2 GB"), in the "Download from" sheet when the server said; null otherwise. */
     val sizeText: String? = null,
+    /** "Download this copy too" in the "Download from" sheet when another copy is on the phone already; null otherwise. */
+    val hint: String? = null,
 )
 
 /** What the source sheet is choosing a copy for. */
@@ -58,12 +61,16 @@ internal fun candidateRow(entry: BrowseItem, serverNames: Map<String, String>): 
     memberIds = entry.allSources.map { it.book.id },
 )
 
+internal const val DOWNLOAD_TOO_TEXT = "Download this copy too"
+internal const val DOWNLOADING_TEXT = "Downloading"
+
 /** The copies a download can come from: every copy (Audiobookshelf and Plex download alike). */
 internal fun downloadableMembers(entry: BrowseItem): List<BrowseItem> = entry.allSources
 
 /**
- * The rows of the "Download from" sheet: each copy, usable only when its server answers, with its size when known
- * ([sizes] by book id: what the server said a download fetches).
+ * The rows of the "Download from" sheet: each copy, usable only when its server answers and it is not on the phone or
+ * on its way already (a downloaded copy shows as downloaded), with its size when known ([sizes] by book id: what the
+ * server said a download fetches). When a copy is on the phone, the others say "Download this copy too".
  */
 internal fun downloadRows(
     entry: BrowseItem,
@@ -72,12 +79,21 @@ internal fun downloadRows(
     sizes: Map<String, Long> = emptyMap(),
 ): List<SourceRow> {
     val copies = downloadableMembers(entry).associateBy { it.book.id }
+    val oneOnPhone = copies.values.any { it.downloadState == DownloadState.DOWNLOADED }
     return rows.filter { it.bookId in copies }.map { row ->
-        val reachable = copies.getValue(row.bookId).book.serverId in context.onlineServerIds
+        val copy = copies.getValue(row.bookId)
+        val reachable = copy.book.serverId in context.onlineServerIds
+        val state = copy.downloadState
         row.copy(
-            enabled = reachable,
-            reason = if (reachable) null else row.reason ?: "Server not reachable",
+            enabled = reachable && state == DownloadState.NOT_DOWNLOADED,
+            reason = when {
+                state == DownloadState.DOWNLOADED -> null
+                state == DownloadState.DOWNLOADING -> DOWNLOADING_TEXT
+                reachable -> null
+                else -> row.reason ?: "Server not reachable"
+            },
             sizeText = sizes[row.bookId]?.takeIf { it > 0L }?.let(::formatBytes),
+            hint = if (oneOnPhone && state == DownloadState.NOT_DOWNLOADED && reachable) DOWNLOAD_TOO_TEXT else null,
         )
     }
 }

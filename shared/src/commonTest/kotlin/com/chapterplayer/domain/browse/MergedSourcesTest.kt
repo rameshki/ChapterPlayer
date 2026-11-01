@@ -37,9 +37,9 @@ class MergedSourcesTest {
     private fun merge(
         items: List<BrowseItem>,
         overrides: MergeOverrides = MergeOverrides(),
-        preference: SourcePreference = SourcePreference.PREFER_DOWNLOADED,
+        choice: SourceChoice = SourceChoice.Ask,
         online: Set<String> = everyServer,
-    ) = mergeDuplicates(items, overrides, preference, online)
+    ) = mergeDuplicates(items, overrides, choice, online)
 
     private fun groups(result: List<BrowseItem>): Set<Set<String>> =
         result.map { entry -> entry.allSources.map { it.book.id }.toSet() }.toSet()
@@ -143,7 +143,7 @@ class MergedSourcesTest {
 
     @Test
     fun `a merged book shows the known length when its primary has none`() {
-        val entry = merge(listOf(item("a", "abs1"), item("p", "plex1", durationMs = 0)), preference = SourcePreference.PREFER_PLEX).single()
+        val entry = merge(listOf(item("a", "abs1"), item("p", "plex1", durationMs = 0)), choice = SourceChoice.OfType(ServerSource.PLEX)).single()
         assertEquals("p", entry.book.id)
         assertEquals(45 * hour, entry.book.durationMs)
         assertEquals(0L, entry.sources.first().book.durationMs)
@@ -229,15 +229,17 @@ class MergedSourcesTest {
     // ---- primary choice ----
 
     @Test
-    fun `the primary is the copy the preference plays - the member order when nothing decides`() {
-        // Rows: which copy is downloaded, which servers answer; then the primary for ASK, DOWNLOADED, ABS, PLEX.
-        data class Row(val downloaded: String?, val online: Set<String>, val ask: String, val downloaded1: String, val abs: String, val plex: String)
+    fun `the primary is the copy the play choice plays - the member order when nothing decides`() {
+        // Rows: which copy is downloaded, which servers answer; then the primary for Ask, Audiobookshelf, Plex.
+        data class Row(val downloaded: String?, val online: Set<String>, val ask: String, val abs: String, val plex: String)
         val table = listOf(
-            Row("p", setOf("abs1", "plex1"), ask = "p", downloaded1 = "p", abs = "a", plex = "p"),
-            Row(null, setOf("abs1", "plex1"), ask = "a", downloaded1 = "a", abs = "a", plex = "p"),
-            Row("a", emptySet(), ask = "a", downloaded1 = "a", abs = "a", plex = "a"),
-            Row(null, setOf("plex1"), ask = "p", downloaded1 = "p", abs = "p", plex = "p"),
-            Row(null, emptySet(), ask = "a", downloaded1 = "a", abs = "a", plex = "p"),
+            // A downloaded copy always comes first.
+            Row("p", setOf("abs1", "plex1"), ask = "p", abs = "p", plex = "p"),
+            Row(null, setOf("abs1", "plex1"), ask = "a", abs = "a", plex = "p"),
+            Row("a", emptySet(), ask = "a", abs = "a", plex = "a"),
+            // The chosen type's copy comes before a reachable one, even when it cannot play now.
+            Row(null, setOf("plex1"), ask = "p", abs = "a", plex = "p"),
+            Row(null, emptySet(), ask = "a", abs = "a", plex = "p"),
         )
         for (row in table) {
             val items = listOf(
@@ -245,14 +247,15 @@ class MergedSourcesTest {
                 item("p", "plex1", download = if (row.downloaded == "p") DownloadState.DOWNLOADED else DownloadState.NOT_DOWNLOADED),
             )
             val expected = mapOf(
-                SourcePreference.ASK to row.ask, SourcePreference.PREFER_DOWNLOADED to row.downloaded1,
-                SourcePreference.PREFER_ABS to row.abs, SourcePreference.PREFER_PLEX to row.plex,
+                SourceChoice.Ask to row.ask,
+                SourceChoice.OfType(ServerSource.ABS) to row.abs,
+                SourceChoice.OfType(ServerSource.PLEX) to row.plex,
             )
-            for ((preference, id) in expected) {
-                val entry = merge(items, preference = preference, online = row.online).single()
-                assertEquals(id, entry.book.id, "$preference $row")
-                // The lists and the details page agree: when the preference decides, the primary is its choice.
-                chosenSource(entry, preference, row.online)?.let { assertEquals(it.book.id, entry.book.id, "$preference $row") }
+            for ((choice, id) in expected) {
+                val entry = merge(items, choice = choice, online = row.online).single()
+                assertEquals(id, entry.book.id, "$choice $row")
+                // The lists and the details page agree: when the choice decides, the primary is its copy.
+                chosenPlaySource(entry, choice, row.online)?.let { assertEquals(it.book.id, entry.book.id, "$choice $row") }
             }
         }
     }
@@ -264,19 +267,19 @@ class MergedSourcesTest {
     }
 
     @Test
-    fun `then the preference decides - and Audiobookshelf otherwise`() {
+    fun `then the play choice decides - and Audiobookshelf otherwise`() {
         val pair = listOf(item("p", "plex1"), item("a", "abs1"))
-        assertEquals("p", merge(pair, preference = SourcePreference.PREFER_PLEX).single().book.id)
-        assertEquals("a", merge(pair, preference = SourcePreference.PREFER_ABS).single().book.id)
-        assertEquals("a", merge(pair, preference = SourcePreference.PREFER_DOWNLOADED).single().book.id)
-        assertEquals("a", merge(pair, preference = SourcePreference.ASK).single().book.id)
+        assertEquals("p", merge(pair, choice = SourceChoice.OfType(ServerSource.PLEX)).single().book.id)
+        assertEquals("a", merge(pair, choice = SourceChoice.OfType(ServerSource.ABS)).single().book.id)
+        assertEquals("p", merge(pair, choice = SourceChoice.OfServer("plex1")).single().book.id)
+        assertEquals("a", merge(pair, choice = SourceChoice.Ask).single().book.id)
     }
 
     @Test
     fun `downloaded Audiobookshelf offline beats Plex`() {
         val result = merge(
             listOf(item("p", "plex1"), item("a", "abs1", download = DownloadState.DOWNLOADED)),
-            preference = SourcePreference.PREFER_PLEX,
+            choice = SourceChoice.OfType(ServerSource.PLEX),
             online = emptySet(),
         )
         assertEquals("a", result.single().book.id)
@@ -300,41 +303,7 @@ class MergedSourcesTest {
         assertEquals(5L, result.single().progress?.lastPlayedAt)
     }
 
-    // ---- choosing a source to play ----
-
-    @Test
-    fun `the default prefers the downloaded copy - then Audiobookshelf - then asks`() {
-        val downloaded = merge(listOf(item("a", "abs1"), item("p", "plex1", download = DownloadState.DOWNLOADED))).single()
-        assertEquals("p", chosenSource(downloaded, SourcePreference.PREFER_DOWNLOADED, everyServer)?.book?.id)
-        val neither = merge(listOf(item("a", "abs1"), item("p", "plex1"))).single()
-        assertEquals("a", chosenSource(neither, SourcePreference.PREFER_DOWNLOADED, everyServer)?.book?.id)
-        // Only Plex reachable: the one copy that can play.
-        assertEquals("p", chosenSource(neither, SourcePreference.PREFER_DOWNLOADED, setOf("plex1"))?.book?.id)
-        // Nothing can play: ask (the sheet says why).
-        assertNull(chosenSource(neither, SourcePreference.PREFER_DOWNLOADED, emptySet()))
-        // Two Plex copies, no Audiobookshelf: ask.
-        val twoPlex = merge(listOf(item("p", "plex1"), item("q", "plex2"))).single()
-        assertNull(chosenSource(twoPlex, SourcePreference.PREFER_DOWNLOADED, everyServer))
-    }
-
-    @Test
-    fun `prefer a server type uses it when it can play - otherwise asks`() {
-        val entry = merge(listOf(item("a", "abs1"), item("p", "plex1"))).single()
-        assertEquals("p", chosenSource(entry, SourcePreference.PREFER_PLEX, everyServer)?.book?.id)
-        assertEquals("a", chosenSource(entry, SourcePreference.PREFER_ABS, everyServer)?.book?.id)
-        // Plex cannot play but Audiobookshelf can: the one copy that can play.
-        assertEquals("a", chosenSource(entry, SourcePreference.PREFER_PLEX, setOf("abs1"))?.book?.id)
-        val three = merge(listOf(item("a", "abs1"), item("b", "abs2"), item("p", "plex1"))).single()
-        assertNull(chosenSource(three, SourcePreference.PREFER_PLEX, setOf("abs1", "abs2")))
-    }
-
-    @Test
-    fun `always ask asks - and a single source never asks`() {
-        val entry = merge(listOf(item("a", "abs1"), item("p", "plex1"))).single()
-        assertNull(chosenSource(entry, SourcePreference.ASK, everyServer))
-        val single = item("a", "abs1")
-        for (preference in SourcePreference.entries) assertEquals(single, chosenSource(single, preference, emptySet()))
-    }
+    // ---- the source sheet (the choices themselves: SourceChoiceTest) ----
 
     @Test
     fun `source options list downloaded first and say why one cannot play`() {
@@ -452,7 +421,7 @@ class MergedSourcesTest {
         val absCopy = item("a", "abs1").let { it.copy(book = it.book.copy(seriesName = "Stormlight", seriesSequence = "1", narrator = "Kate Reading")) }
         val plexCopy = item("p", "plex1")
         val other = item("b", "abs1", title = "Words of Radiance").let { it.copy(book = it.book.copy(seriesName = "Stormlight", seriesSequence = "2")) }
-        val all = merge(listOf(absCopy, plexCopy, other), preference = SourcePreference.PREFER_PLEX)
+        val all = merge(listOf(absCopy, plexCopy, other), choice = SourceChoice.OfType(ServerSource.PLEX))
         val entry = all.first { it.isMerged }
         assertEquals("p", entry.book.id)
         assertEquals("Stormlight", entry.book.seriesName)

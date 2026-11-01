@@ -11,7 +11,7 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.domain.browse.MergeContext
 import com.chapterplayer.domain.browse.MergeOverrides
-import com.chapterplayer.domain.browse.SourcePreference
+import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeConnectivity
@@ -70,7 +70,9 @@ class BookDetailsMergeTest {
     private class Setup(
         books: List<AudioBook>,
         id: String,
-        preference: SourcePreference = SourcePreference.PREFER_DOWNLOADED,
+        /** "Play from (when not downloaded)" and "Download from". */
+        play: SourceChoice = SourceChoice.Ask,
+        download: SourceChoice = SourceChoice.Ask,
         online: Set<String> = setOf("abs1", "abs2", "plex1"),
         downloadStates: Map<String, DownloadState> = emptyMap(),
         deviceOnline: Boolean = true,
@@ -99,7 +101,7 @@ class BookDetailsMergeTest {
             FakeDownloadOverview(rows.values.toList()), downloads, FakeNotificationPermission(),
             // The corrections flow into the merging, as AppSourceMerging does.
             merging = object : com.chapterplayer.data.merge.SourceMerging {
-                override val context = merges.flow.map { MergeContext(it, preference, online, deviceOnline) }
+                override val context = merges.flow.map { MergeContext(it, download, play, online, deviceOnline) }
             },
             merges = merges,
             servers = servers,
@@ -143,8 +145,8 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `the preference decides which copy plays`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.PREFER_PLEX)
+    fun `the play choice decides which copy plays`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", play = SourceChoice.OfType(ServerSource.PLEX))
         val state = collect(s)
         s.vm.onResumeClicked()
         assertNull(state().sourceSheet)
@@ -153,7 +155,7 @@ class BookDetailsMergeTest {
 
     @Test
     fun `always ask opens the sheet and the chosen copy plays`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK)
+        val s = Setup(listOf(abs("a"), plex("p")), "a")
         val state = collect(s)
         s.vm.onResumeClicked()
         val sheet = assertNotNull(state().sourceSheet)
@@ -166,7 +168,7 @@ class BookDetailsMergeTest {
 
     @Test
     fun `the sheet greys an unreachable copy and will not play it`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK, online = setOf("abs1"))
+        val s = Setup(listOf(abs("a"), plex("p")), "a", online = setOf("abs1"))
         val state = collect(s)
         s.vm.onResumeClicked()
         val plexRow = state().sourceSheet!!.rows.first { it.bookId == "p" }
@@ -181,7 +183,7 @@ class BookDetailsMergeTest {
     fun `downloaded Audiobookshelf offline plays from the phone, not Plex`() = runTest {
         val s = Setup(
             listOf(abs("a"), plex("p")), "p",
-            preference = SourcePreference.PREFER_DOWNLOADED, online = emptySet(),
+            online = emptySet(),
             downloadStates = mapOf("a" to DownloadState.DOWNLOADED), deviceOnline = false
         )
         s.connectivity.online.value = false
@@ -194,7 +196,7 @@ class BookDetailsMergeTest {
 
     @Test
     fun `two Audiobookshelf copies ask where to download from when the choice is ask`() = runTest {
-        val s = Setup(listOf(abs("a"), abs("b", "abs2")), "a", preference = SourcePreference.ASK)
+        val s = Setup(listOf(abs("a"), abs("b", "abs2")), "a")
         val state = collect(s)
         s.vm.onDownloadClicked()
         assertEquals(SourceAction.DOWNLOAD, state().sourceSheet?.action)
@@ -203,8 +205,8 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `prefer downloaded with nothing downloaded takes the reachable Audiobookshelf copy, also from the Plex page`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "p")
+    fun `download from Audiobookshelf takes the Audiobookshelf copy, also from the Plex page`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "p", download = SourceChoice.OfType(ServerSource.ABS))
         val state = collect(s)
         assertEquals("p", state().downloadBookId)
         assertEquals(DetailsDownloadPhase.IDLE, state().download.phase)
@@ -215,16 +217,65 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `prefer downloaded takes the Plex copy when only Plex answers`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", online = setOf("plex1"))
-        collect(s)
+    fun `download from Audiobookshelf asks when only Plex answers`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", online = setOf("plex1"), download = SourceChoice.OfType(ServerSource.ABS))
+        val state = collect(s)
         s.vm.onDownloadClicked()
-        assertEquals(listOf("enqueue p"), s.downloads.calls)
+        assertTrue(s.downloads.calls.isEmpty())
+        val sheet = assertNotNull(state().sourceSheet)
+        assertEquals(SourceAction.DOWNLOAD, sheet.action)
+        assertEquals(mapOf("a" to false, "p" to true), sheet.rows.associate { it.bookId to it.enabled })
     }
 
     @Test
-    fun `prefer Plex downloads the Plex copy`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.PREFER_PLEX)
+    fun `download from one server takes that server's copy`() = runTest {
+        val s = Setup(listOf(abs("a"), abs("b", "abs2"), plex("p")), "a", download = SourceChoice.OfServer("abs2"))
+        val state = collect(s)
+        s.vm.onDownloadClicked()
+        assertNull(state().sourceSheet)
+        assertEquals(listOf("enqueue b"), s.downloads.calls)
+    }
+
+    @Test
+    fun `the download choice does not decide what plays`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", download = SourceChoice.OfType(ServerSource.PLEX))
+        val state = collect(s)
+        s.vm.onResumeClicked()
+        assertEquals(SourceAction.PLAY, state().sourceSheet?.action)
+        assertTrue(s.controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `play from one server plays that server's copy`() = runTest {
+        val s = Setup(listOf(abs("a"), abs("b", "abs2"), plex("p")), "a", play = SourceChoice.OfServer("abs2"))
+        val state = collect(s)
+        s.vm.onResumeClicked()
+        assertNull(state().sourceSheet)
+        assertEquals("b", s.controller.loads.single().first)
+    }
+
+    @Test
+    fun `play from Plex asks when Plex does not answer - it does not fall back by itself`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", online = setOf("abs1"), play = SourceChoice.OfType(ServerSource.PLEX))
+        val state = collect(s)
+        s.vm.onResumeClicked()
+        val sheet = assertNotNull(state().sourceSheet)
+        assertEquals("Server not reachable", sheet.rows.single { it.bookId == "p" }.reason)
+        assertTrue(s.controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `a downloaded copy plays at once even when the choice is ask`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", downloadStates = mapOf("p" to DownloadState.DOWNLOADED))
+        val state = collect(s)
+        s.vm.onResumeClicked()
+        assertNull(state().sourceSheet)
+        assertEquals("p", s.controller.loads.single().first)
+    }
+
+    @Test
+    fun `download from Plex downloads the Plex copy`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", download = SourceChoice.OfType(ServerSource.PLEX))
         val state = collect(s)
         s.vm.onDownloadClicked()
         assertNull(state().sourceSheet)
@@ -234,7 +285,7 @@ class BookDetailsMergeTest {
     @Test
     fun `always ask offers both copies to download from, with the sizes their servers give`() = runTest {
         val s = Setup(
-            listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK,
+            listOf(abs("a"), plex("p")), "a",
             sizes = mapOf("a" to 1_240_000_000L, "p" to 980_000_000L),
         )
         val state = collect(s)
@@ -252,7 +303,7 @@ class BookDetailsMergeTest {
 
     @Test
     fun `the download sheet greys a copy whose server does not answer`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK, online = setOf("abs1"))
+        val s = Setup(listOf(abs("a"), plex("p")), "a", online = setOf("abs1"))
         val state = collect(s)
         s.vm.onDownloadClicked()
         val plexRow = state().sourceSheet!!.rows.single { it.bookId == "p" }
@@ -263,13 +314,55 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `a copy already downloaded is what the control shows, so nothing more is offered`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", rows = mapOf("p" to downloadRow("p", DownloadStatus.DONE, totalBytes = 5_000_000)))
+    fun `a copy already downloaded is what the control shows, so nothing more is downloaded by itself`() = runTest {
+        val s = Setup(
+            listOf(abs("a"), plex("p")), "a", download = SourceChoice.OfType(ServerSource.ABS),
+            rows = mapOf("p" to downloadRow("p", DownloadStatus.DONE, totalBytes = 5_000_000)),
+            downloadStates = mapOf("p" to DownloadState.DOWNLOADED),
+        )
         val state = collect(s)
         assertEquals("p", state().downloadBookId)
         assertEquals(DetailsDownloadPhase.DONE, state().download.phase)
         s.vm.onDownloadClicked()
         assertTrue(s.downloads.calls.isEmpty())
+        assertNull(state().sourceSheet)
+        assertTrue(state().download.canDownloadAnotherCopy)
+    }
+
+    @Test
+    fun `download another copy shows the copy on the phone as downloaded and fetches the one chosen`() = runTest {
+        val s = Setup(
+            listOf(abs("a"), plex("p")), "a",
+            rows = mapOf("p" to downloadRow("p", DownloadStatus.DONE, totalBytes = 5_000_000)),
+            downloadStates = mapOf("p" to DownloadState.DOWNLOADED),
+        )
+        val state = collect(s)
+        s.vm.onDownloadAnotherCopyClicked()
+        val sheet = assertNotNull(state().sourceSheet)
+        assertEquals(SourceAction.DOWNLOAD, sheet.action)
+        val onPhone = sheet.rows.single { it.bookId == "p" }
+        assertTrue(onPhone.downloaded)
+        assertFalse(onPhone.enabled)
+        val other = sheet.rows.single { it.bookId == "a" }
+        assertTrue(other.enabled)
+        assertEquals("Download this copy too", other.hint)
+        s.vm.onSourceChosen("p")
+        assertTrue(s.downloads.calls.isEmpty())
+        s.vm.onSourceChosen("a")
+        assertEquals(listOf("enqueue a"), s.downloads.calls)
+    }
+
+    @Test
+    fun `with every copy on the phone no other copy is offered`() = runTest {
+        val s = Setup(
+            listOf(abs("a"), plex("p")), "a",
+            rows = mapOf("p" to downloadRow("p", DownloadStatus.DONE, totalBytes = 5_000_000)),
+            downloadStates = mapOf("p" to DownloadState.DOWNLOADED, "a" to DownloadState.DOWNLOADED),
+        )
+        val state = collect(s)
+        assertFalse(state().download.canDownloadAnotherCopy)
+        s.vm.onDownloadAnotherCopyClicked()
+        assertNull(state().sourceSheet)
     }
 
     @Test
@@ -312,7 +405,7 @@ class BookDetailsMergeTest {
 
     @Test
     fun `with no copy able to play, Play says so instead of opening the sheet`() = runTest {
-        val s = Setup(listOf(abs("a"), plex("p")), "a", preference = SourcePreference.ASK, online = emptySet())
+        val s = Setup(listOf(abs("a"), plex("p")), "a", online = emptySet())
         val state = collect(s)
         s.vm.onResumeClicked()
         assertNull(state().sourceSheet)
@@ -333,10 +426,10 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `a chapter tap with nothing playing starts the copy the preference picks`() = runTest {
+    fun `a chapter tap with nothing playing starts the copy the play choice picks`() = runTest {
         val s = Setup(
             listOf(abs("a").copy(chapters = listOf(com.chapterplayer.data.model.Chapter(0, "One", 0L, 1_000L), com.chapterplayer.data.model.Chapter(1, "Two", 1_000L, 2_000L))), plex("p")),
-            "a", preference = SourcePreference.PREFER_PLEX
+            "a", play = SourceChoice.OfType(ServerSource.PLEX)
         )
         val state = collect(s)
         s.vm.onChapterClicked(1)

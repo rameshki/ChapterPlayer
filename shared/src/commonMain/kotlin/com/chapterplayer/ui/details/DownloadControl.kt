@@ -41,6 +41,8 @@ class DownloadActions(
     val onRemove: () -> Unit,
     val onRemoveConfirmed: () -> Unit,
     val onRemoveDismissed: () -> Unit,
+    /** "Download another copy" of a book on several servers. */
+    val onDownloadAnotherCopy: () -> Unit = {},
 )
 
 /** Download, its progress with Pause / Resume / Cancel, or Remove download once it is on the phone. */
@@ -85,6 +87,9 @@ internal fun DownloadControl(download: DetailsDownload, actions: DownloadActions
                     TextButton(onClick = actions.onRemove, modifier = Modifier.heightIn(min = 48.dp)) {
                         Text("Remove download", color = MaterialTheme.colorScheme.error)
                     }
+                }
+                if (download.canDownloadAnotherCopy) {
+                    SmallAction("Download another copy", AmberGold, actions.onDownloadAnotherCopy)
                 }
             }
             DetailsDownloadPhase.HIDDEN -> Unit

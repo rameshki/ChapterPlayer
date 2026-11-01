@@ -26,7 +26,8 @@ import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.MergeContext
-import com.chapterplayer.domain.browse.chosenSource
+import com.chapterplayer.domain.browse.chosenDownloadSource
+import com.chapterplayer.domain.browse.chosenPlaySource
 import com.chapterplayer.domain.browse.entryContaining
 import com.chapterplayer.domain.browse.mergeCandidates
 import com.chapterplayer.domain.browse.sourceOptions
@@ -257,7 +258,12 @@ class BookDetailsViewModel(
                         ?: live.details?.downloadSizeBytes?.takeIf { env.downloadBookId == bookId },
                     confirmingRemove = env.confirmingRemove,
                     available = features.downloads,
-                ),
+                ).let { d ->
+                    // One copy is on the phone: another copy is fetched only when the person asks for it.
+                    val another = merged && d.phase == DetailsDownloadPhase.DONE && env.online &&
+                        entry!!.allSources.any { it.downloadState == DownloadState.NOT_DOWNLOADED }
+                    if (another) d.copy(canDownloadAnotherCopy = true) else d
+                },
                 downloadBookId = env.downloadBookId,
                 sources = rows,
                 sourcesDescription = if (merged) sourcesDescription(entry!!) else null,
@@ -310,12 +316,12 @@ class BookDetailsViewModel(
         }
     }
 
-    // A merged book plays the copy the Settings choice picks, or asks with the source sheet.
+    // A merged book plays a downloaded copy, else the copy the "Play from" choice picks, or asks with the source sheet.
     private fun playChosenCopy(state: BookDetailsUiState, book: AudioBook) {
         val entry = state.entry
         val context = state.mergeContext
         if (entry == null || context == null) return start(book, state.resumePositionMs)
-        val chosen = chosenSource(entry, context.preference, context.onlineServerIds)
+        val chosen = chosenPlaySource(entry, context.playChoice, context.onlineServerIds)
         when {
             chosen != null -> playCopy(state, chosen.book.id)
             // No copy can play: say why instead of a sheet of greyed rows.
@@ -330,7 +336,7 @@ class BookDetailsViewModel(
     }
 
     /*
-     * A chapter tap with nothing playing: this page's chapters, started in the copy the Settings choice picks, else
+     * A chapter tap with nothing playing: this page's chapters, started in the copy Play would pick, else
      * this page's copy, else any copy that can play (the copies' lengths agree within 2%).
      */
     private fun startAtChapter(state: BookDetailsUiState, book: AudioBook, startMs: Long) {
@@ -338,7 +344,7 @@ class BookDetailsViewModel(
         val context = state.mergeContext
         if (entry == null || context == null) return start(book, startMs)
         val usable = state.sources.filter { it.enabled }.map { it.bookId }
-        val target = chosenSource(entry, context.preference, context.onlineServerIds)
+        val target = chosenPlaySource(entry, context.playChoice, context.onlineServerIds)
             ?: entry.member(bookId)?.takeIf { it.book.id in usable }
             ?: entry.sources.firstOrNull { it.book.id in usable }
         if (target == null) local.value = Local(error = noCopyText(state)) else start(target.book, startMs)
@@ -473,9 +479,8 @@ class BookDetailsViewModel(
     }
 
     /*
-     * A merged book downloads the copy the Settings choice picks (Prefer downloaded: none is downloaded yet, so a
-     * reachable Audiobookshelf copy, else the only reachable one), or asks with the "Download from" sheet, which shows
-     * each copy's size once its server says.
+     * A merged book downloads the copy the "Download from" choice picks (when its server answers), or asks with the
+     * "Download from" sheet, which shows each copy's size once its server says.
      */
     private fun startDownload() {
         val state = uiState.value
@@ -486,13 +491,21 @@ class BookDetailsViewModel(
             downloadAction(askNotifications = true) { downloadController.enqueue(downloadBookId()) }
             return
         }
-        val chosen = chosenSource(entry.copy(sources = copies), context.preference, context.onlineServerIds)
-        if (chosen == null) {
-            sourceSheet.value = SourceAction.DOWNLOAD
-            loadCopySizes(copies.map { it.book.id } - bookId)
-        } else {
-            downloadAction(askNotifications = true) { downloadController.enqueue(chosen.book.id) }
-        }
+        val chosen = chosenDownloadSource(entry.copy(sources = copies), context.downloadChoice, context.onlineServerIds)
+        if (chosen == null) openDownloadSheet(copies) else downloadAction(askNotifications = true) { downloadController.enqueue(chosen.book.id) }
+    }
+
+    private fun openDownloadSheet(copies: List<BrowseItem>) {
+        sourceSheet.value = SourceAction.DOWNLOAD
+        loadCopySizes(copies.map { it.book.id } - bookId)
+    }
+
+    /** "Download another copy" next to a finished download: the sheet, with the copy on the phone shown as downloaded. */
+    fun onDownloadAnotherCopyClicked() {
+        val state = uiState.value
+        if (!state.download.canDownloadAnotherCopy) return
+        val copies = state.entry?.let(::downloadableMembers).orEmpty()
+        if (copies.size >= 2) openDownloadSheet(copies)
     }
 
     // The other copies' sizes for the "Download from" sheet; best effort, a copy whose server does not answer shows none.

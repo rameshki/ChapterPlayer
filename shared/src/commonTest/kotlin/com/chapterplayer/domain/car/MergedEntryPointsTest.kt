@@ -6,7 +6,7 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.MergeOverrides
-import com.chapterplayer.domain.browse.SourcePreference
+import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.domain.browse.mergeDuplicates
 import com.chapterplayer.domain.browse.resumeCandidate
 import com.chapterplayer.domain.widgets.ContinueWidgetState
@@ -35,7 +35,7 @@ class MergedEntryPointsTest {
     private fun items(state: DownloadState = DownloadState.NOT_DOWNLOADED, online: Set<String> = setOf("abs1", "plex1")) =
         mergeDuplicates(
             listOf(copy("a", "abs1", lastPlayedAt = 100L, state = state), copy("p", "plex1", lastPlayedAt = 500L)),
-            MergeOverrides(), SourcePreference.PREFER_DOWNLOADED, online,
+            MergeOverrides(), SourceChoice.Ask, online,
         )
 
     private fun started(r: CarPlay) = (r as? CarPlay.Start)?.book?.id
