@@ -24,6 +24,15 @@ ABS and Plex sources (both download), combined library with one entry per book a
 
 - 2026-11-01: Robert's iPhone is managed (Intune MDM), so sideloading the unsigned .ipa is expected to be blocked (Developer Mode / trusting a developer certificate are normally restricted) and we do not try to work around a work device's management. iPhone testing is blocked until there is an unmanaged iPhone or iPad on iOS 16 or newer (his iPads: one is on iOS 12, too old; others not yet asked). No new iOS feature work is started; the iOS code stays compile- and CI-checked (the macOS job links, runs the iOS simulator tests and builds the .ipa on every merge to main) and is kept healthy. Android is the product until a test device exists.
 
+## Device session checklist (Robert's Android phone, wireless debugging, debug build `com.chapterplayer.debug`)
+Run in this order; tell Claude what you see after each. Claude reads `adb logcat` (tokens are redacted) and checks the Room database copy when useful.
+1. Stats: open Library > chart icon; tap Refresh (imports the ABS history once); check Week/Month/Year/All time, Series finished / Series to finish, dark theme.
+2. Merged books: a book on both servers is one tile ("2 sources"); open it; Play asks which copy (or follows the preference); Download from sheet.
+3. Progress between copies: listen ~1 min on one copy, pause, open the other copy: it should start at the mapped place; check both servers (web page / Plex app) show the position; Mark as finished from the player menu finishes both; "Not the same book" stops it.
+4. Plex position: after step 3 look in a Plex app whether the track shows the resume point (viewOffset sticks?). If not, switch to `/:/progress`.
+5. Plex download: download a Plex book on Wi-Fi, switch to mobile data mid-file (watch it resume with the right Range), play it offline in airplane mode.
+6. Notification/lock screen/Android Auto basics; the Continue Listening widget; reboot with a download running.
+
 ## Next steps, in order
 1. Install the current main on the phone or the emulator (the emulator runs again, started from the command line with `-gpu swiftshader_indirect`) and check the stats: the page in both themes, Series finished / Series to finish, the first ABS history import and Refresh, and listening logged offline and on Plex.
 2. Check **Merged sources Phase 2** (merged, #49) on the phone with a book on both servers: listen on one copy, the other copy's tile and its server follow; open the other copy and it starts at the mapped place; Mark as finished on both; "Not the same book" stops it.
