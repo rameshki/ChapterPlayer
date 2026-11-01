@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.domain.browse.SourcePreference
 import com.chapterplayer.domain.browse.sourcePreferenceDetail
+import com.chapterplayer.domain.browse.sourcePreferenceDetail
 import com.chapterplayer.domain.browse.sourcePreferenceLabel
 import com.chapterplayer.domain.downloads.STORAGE_LIMIT_OPTIONS
 import com.chapterplayer.domain.downloads.storageLimitLabel
@@ -132,6 +133,7 @@ internal fun SourcePreferenceCard(preference: SourcePreference, onSelect: (Sourc
         ) {
             Text("When a book is on several servers", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             Text(text = sourcePreferenceLabel(preference), style = MaterialTheme.typography.bodySmall, color = AmberGold)
+            Text(text = sourcePreferenceDetail(preference), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
     }
     if (choosing) {
