@@ -51,12 +51,17 @@ class SourceActions(
 
 private fun rowText(row: SourceRow): String = if (row.serverName.isBlank()) row.typeLabel else "${row.typeLabel} · ${row.serverName}"
 
-private fun rowDetail(row: SourceRow): String? = when {
-    row.downloaded -> "Downloaded"
-    row.reason != null && row.hint != null -> "${row.hint} · ${row.reason}"
-    row.reason != null -> row.reason
-    else -> listOfNotNull(row.hint, row.sizeText).joinToString(" · ").ifEmpty { null }
+private fun rowDetail(row: SourceRow): String? {
+    val state = when {
+        row.downloaded -> "Downloaded"
+        row.reason != null && row.hint != null -> "${row.hint} · ${row.reason}"
+        row.reason != null -> row.reason
+        else -> listOfNotNull(row.hint, row.sizeText).joinToString(" · ").ifEmpty { null }
+    }
+    return listOfNotNull(LAST_PLAYED_TEXT.takeIf { row.lastPlayed }, state).joinToString(" · ").ifEmpty { null }
 }
+
+internal const val LAST_PLAYED_TEXT = "Last played"
 
 /** The Sources section of a merged book: each copy with its type, server and state. */
 @Composable

@@ -443,31 +443,127 @@ class HomeViewModelTest {
         assertFalse(state().serverFilterOn)
         assertEquals(listOf("a"), state().recentlyAdded.map { it.book.id })
     }
-    @Test
-    fun `a book on two servers resumes the copy played last and is not on the shelf twice`() = runTest {
+    // A book on abs1 and plex1; the Plex copy was played last.
+    private class MergedSetup(
+        play: com.chapterplayer.domain.browse.SourceChoice = com.chapterplayer.domain.browse.SourceChoice.Ask,
+        online: Set<String> = setOf("abs1", "plex1"),
+        downloadStates: Map<String, DownloadState> = emptyMap(),
+    ) {
         val a = com.chapterplayer.testing.testBook("a", title = "Same Book").copy(serverId = "abs1", durationMs = 3_600_000L)
         val p = a.copy(id = "p", serverId = "plex1", source = com.chapterplayer.data.model.ServerSource.PLEX)
-        val books = FakeBookRepository(listOf(a, p))
-        books.progress.value = listOf(
-            ReadingProgress("a", 1_000L, 3_600_000L, 100L),
-            ReadingProgress("p", 2_000L, 3_600_000L, 500L),
-        )
-        val servers = FakeServerList(listOf(testServer("abs1"), testServer("plex1")))
+        val books = FakeBookRepository(listOf(a, p)).also {
+            it.progress.value = listOf(
+                ReadingProgress("a", 1_000L, 3_600_000L, 100L),
+                ReadingProgress("p", 2_000L, 3_600_000L, 500L),
+            )
+        }
+        val servers = FakeServerList(listOf(
+            ServerConfig("abs1", com.chapterplayer.data.model.ServerSource.ABS, "Home ABS", "http://a", "t"),
+            ServerConfig("plex1", com.chapterplayer.data.model.ServerSource.PLEX, "Home Plex", "http://p", "t"),
+        ))
         val monitor = FakeMonitor()
         val settings = FakeAppSettings()
         val controller = FakePlaybackController()
         val vm = HomeViewModel(
-            books, servers, FakeDownloadStates(), BrowseQueryStore(), monitor, settings,
+            books, servers, FakeDownloadStates(downloadStates), BrowseQueryStore(), monitor, settings,
             LibrarySyncCoordinator(books, servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher())),
             PlaybackStarter(controller, books, settings, monitor, FakeLocalBookFiles()), Dispatchers.Main,
             merging = com.chapterplayer.data.merge.FixedSourceMerging(
-                com.chapterplayer.domain.browse.MergeContext(onlineServerIds = setOf("abs1", "plex1"))
+                com.chapterplayer.domain.browse.MergeContext(playChoice = play, onlineServerIds = online)
             )
         )
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
-        assertEquals("p", vm.uiState.value.resume?.item?.book?.id)
-        assertTrue(vm.uiState.value.inProgress.isEmpty())
-        vm.resume(vm.uiState.value.resume!!.item.book)
-        assertEquals("p", controller.loads.single().first)
+    }
+
+    private fun TestScope.collect(s: MergedSetup): () -> HomeUiState {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.vm.uiState.collect {} }
+        return { s.vm.uiState.value }
+    }
+
+    @Test
+    fun `a book on two servers shows once - and Resume asks which copy with ask`() = runTest {
+        val s = MergedSetup()
+        val state = collect(s)
+        assertEquals("p", state().resume?.item?.book?.id)
+        assertTrue(state().inProgress.isEmpty())
+        var opened = 0
+        s.vm.resume(state().resume!!.item.book) { opened++ }
+        assertTrue(s.controller.loads.isEmpty())
+        val sheet = assertNotNull(state().sourceSheet)
+        assertEquals("Play from", sheet.title)
+        val rows = sheet.rows.associateBy { it.bookId }
+        assertEquals(setOf("a", "p"), rows.keys)
+        assertTrue(rows.getValue("p").lastPlayed)
+        assertFalse(rows.getValue("a").lastPlayed)
+        assertEquals("Home Plex", rows.getValue("p").serverName)
+        s.vm.onSourceChosen("a")
+        assertNull(state().sourceSheet)
+        assertEquals("a", s.controller.loads.single().first)
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun `dismissing the sheet starts nothing`() = runTest {
+        val s = MergedSetup()
+        val state = collect(s)
+        s.vm.resume(state().resume!!.item.book)
+        s.vm.onSourceSheetDismissed()
+        assertNull(state().sourceSheet)
+        assertTrue(s.controller.loads.isEmpty())
+    }
+
+    @Test
+    fun `a downloaded copy resumes at once`() = runTest {
+        val s = MergedSetup(downloadStates = mapOf("a" to DownloadState.DOWNLOADED))
+        val state = collect(s)
+        s.vm.resume(state().resume!!.item.book)
+        assertNull(state().sourceSheet)
+        assertEquals("a", s.controller.loads.single().first)
+    }
+
+    @Test
+    fun `a chosen type that can play resumes at once`() = runTest {
+        val s = MergedSetup(play = com.chapterplayer.domain.browse.SourceChoice.OfType(com.chapterplayer.data.model.ServerSource.ABS))
+        val state = collect(s)
+        s.vm.resume(state().resume!!.item.book)
+        assertNull(state().sourceSheet)
+        assertEquals("a", s.controller.loads.single().first)
+    }
+
+    @Test
+    fun `a chosen type that cannot play asks`() = runTest {
+        val s = MergedSetup(
+            play = com.chapterplayer.domain.browse.SourceChoice.OfType(com.chapterplayer.data.model.ServerSource.ABS),
+            online = setOf("plex1"),
+        )
+        val state = collect(s)
+        s.vm.resume(state().resume!!.item.book)
+        val sheet = assertNotNull(state().sourceSheet)
+        val abs = sheet.rows.single { it.bookId == "a" }
+        assertFalse(abs.enabled)
+        assertEquals("Server not reachable", abs.reason)
+        s.vm.onSourceChosen("a")
+        assertTrue(s.controller.loads.isEmpty())
+        s.vm.onSourceChosen("p")
+        assertEquals("p", s.controller.loads.single().first)
+    }
+
+    @Test
+    fun `with no copy able to play Resume says so instead of asking`() = runTest {
+        val s = MergedSetup(online = emptySet())
+        val state = collect(s)
+        s.vm.resume(state().resume!!.item.book)
+        assertNull(state().sourceSheet)
+        assertTrue(s.controller.loads.isEmpty())
+        assertEquals("No copy of this book can play now (Server not reachable)", state().playError)
+    }
+
+    @Test
+    fun `a book on one server resumes at once`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("solo"))))
+        s.books.progress.value = listOf(progress("solo"))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.vm.uiState.collect {} }
+        s.vm.resume(s.vm.uiState.value.resume!!.item.book)
+        assertNull(s.vm.uiState.value.sourceSheet)
+        assertEquals("solo", s.controller.loads.single().first)
     }
 }

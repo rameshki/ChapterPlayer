@@ -1,5 +1,7 @@
 package com.chapterplayer.ui.home
 
+import com.chapterplayer.ui.details.SourceActions
+import com.chapterplayer.ui.details.SourceSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -155,6 +157,17 @@ fun HomeScreen(
 
             else -> HomeShelves(state, onBookClick, onResume = { viewModel.resume(it, openPlayerAfterStart) })
         }
+    }
+    // Resume on a book several servers have asks like the details page's Play: the same "Play from" sheet.
+    state.sourceSheet?.let { sheet ->
+        val actions = remember(viewModel) {
+            SourceActions(
+                onSourceChosen = viewModel::onSourceChosen,
+                onSourceSheetDismissed = viewModel::onSourceSheetDismissed,
+                onNotSameBook = {}, onMergeWith = {}, onMergeQueryChanged = {}, onMergeCandidateChosen = {}, onMergeSheetDismissed = {},
+            )
+        }
+        SourceSheet(sheet, actions)
     }
 }
 

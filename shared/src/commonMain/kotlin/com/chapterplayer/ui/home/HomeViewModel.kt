@@ -24,6 +24,15 @@ import com.chapterplayer.domain.browse.chipFor
 import com.chapterplayer.domain.browse.applyQuery
 import com.chapterplayer.domain.browse.pruneServerFilter
 import com.chapterplayer.domain.browse.isDimmed
+import com.chapterplayer.domain.browse.MergeContext
+import com.chapterplayer.domain.browse.chosenPlaySource
+import com.chapterplayer.domain.browse.hasCopy
+import com.chapterplayer.domain.browse.serverDisplayNames
+import com.chapterplayer.domain.browse.sourceOptions
+import com.chapterplayer.ui.details.SourceAction
+import com.chapterplayer.ui.details.SourceSheetUi
+import com.chapterplayer.ui.details.noCopyText
+import com.chapterplayer.ui.details.sourceRow
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -61,7 +70,11 @@ data class HomeUiState(
     val downloadedOnly: Boolean = false,
     val isSyncing: Boolean = false,
     /** The Library's server filter hides some books here too; Home says so and offers to clear it. */
-    val serverFilterOn: Boolean = false
+    val serverFilterOn: Boolean = false,
+    /** The "Play from" sheet Resume opened for a book on several servers; null when closed. */
+    val sourceSheet: SourceSheetUi? = null,
+    /** The merging inputs (null without merging), for Resume's choice of copy. */
+    val mergeContext: MergeContext? = null,
 ) {
     /** Whether this book cannot play now (offline or Downloaded only, and not on the phone). */
     fun dimmed(item: BrowseItem): Boolean = isDimmed(item.downloadState, online, downloadedOnly)
@@ -83,6 +96,11 @@ class HomeViewModel(
     private class Local(val starting: Boolean = false, val error: String? = null)
 
     private val local = MutableStateFlow(Local())
+    private val sheetOpen = MutableStateFlow(false)
+    // What runs once the copy picked in the sheet has started (opening the player).
+    private var afterSheetStart: () -> Unit = {}
+
+    private class Extras(val local: Local, val context: MergeContext?, val sheetOpen: Boolean)
 
     val uiState: StateFlow<HomeUiState> = combine(
         observeBrowseItems(books, downloads, merging),
@@ -91,13 +109,25 @@ class HomeViewModel(
         combine(connectivity.isOnline, settings.downloadedOnly, syncCoordinator.state) { online, downloadedOnly, sync ->
             Triple(online, downloadedOnly, sync.isSyncing)
         },
-        local
-    ) { items, serverList, rawQuery, (online, downloadedOnly, syncing), local ->
+        combine(local, merging.context, sheetOpen) { local, context, open -> Extras(local, context, open) }
+    ) { items, serverList, rawQuery, (online, downloadedOnly, syncing), extras ->
+        val local = extras.local
+        val context = extras.context
         val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
         // The card and the series shelf come from every book, so a saved filter never hides them.
         val resume = resumeCandidate(items)
         // The entry's id: the card resumes one copy, but the shelves list the entry.
         val resumeId = resume?.entry?.book?.id
+        val entry = resume?.entry?.takeIf { it.isMerged }
+        // The sheet marks the copy played last; the position is the same in every copy (progress is mirrored).
+        val sheet = if (extras.sheetOpen && entry != null && context != null) {
+            val names = serverDisplayNames(serverList)
+            SourceSheetUi(
+                SourceAction.PLAY,
+                sourceOptions(entry, context.onlineServerIds, context.deviceOnline)
+                    .map { sourceRow(it, names, lastPlayedId = entry.progress?.bookId) },
+            )
+        } else null
         HomeUiState(
             resume = resume,
             continueSeries = continueSeries(items, excludeBookId = resumeId),
@@ -112,16 +142,50 @@ class HomeViewModel(
             online = online,
             downloadedOnly = downloadedOnly,
             isSyncing = syncing,
-            serverFilterOn = query.serverIds.isNotEmpty()
+            serverFilterOn = query.serverIds.isNotEmpty(),
+            sourceSheet = sheet,
+            mergeContext = context,
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     /**
-     * Starts [book] where this phone left off. [onStarted] runs when playback began, so the caller can
-     * open the player; a failure shows as [HomeUiState.playError] with a safe message.
+     * Resume on the card for [book]. A book on one server starts at once. A book on several servers follows the Play
+     * rule of the details page: a downloaded copy starts at once, else the "Play from" choice's copy when it can play,
+     * else the "Play from" sheet asks (with no copy able to play, the error says why). [onStarted] runs when playback
+     * began, so the caller can open the player; a failure shows as [HomeUiState.playError] with a safe message.
      */
     fun resume(book: AudioBook, onStarted: () -> Unit = {}) {
         if (local.value.starting) return
+        val state = uiState.value
+        val entry = state.resume?.entry?.takeIf { it.isMerged && it.hasCopy(book.id) }
+        val context = state.mergeContext
+        if (entry == null || context == null) return start(book, onStarted)
+        val chosen = chosenPlaySource(entry, context.playChoice, context.onlineServerIds)
+        if (chosen != null) return start(chosen.book, onStarted)
+        val options = sourceOptions(entry, context.onlineServerIds, context.deviceOnline)
+        if (options.none { it.playable }) {
+            local.value = Local(error = noCopyText(options.firstNotNullOfOrNull { it.unavailableReason }))
+            return
+        }
+        afterSheetStart = onStarted
+        sheetOpen.value = true
+    }
+
+    /** A row of the "Play from" sheet was chosen: that copy starts where the book was left. */
+    fun onSourceChosen(copyId: String) {
+        val sheet = uiState.value.sourceSheet ?: return
+        val row = sheet.rows.firstOrNull { it.bookId == copyId } ?: return
+        if (!row.enabled || local.value.starting) return
+        val copy = uiState.value.resume?.entry?.allSources?.firstOrNull { it.book.id == copyId } ?: return
+        sheetOpen.value = false
+        start(copy.book, afterSheetStart)
+    }
+
+    fun onSourceSheetDismissed() {
+        sheetOpen.value = false
+    }
+
+    private fun start(book: AudioBook, onStarted: () -> Unit) {
         local.value = Local(starting = true)
         viewModelScope.launch {
             val result = try {

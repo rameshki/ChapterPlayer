@@ -235,7 +235,7 @@ class BookDetailsViewModel(
                 val name = extras.serverNames[copy.book.serverId]
                 copy.book.source.shortLabel() + (if (name.isNullOrBlank()) "" else " · $name")
             }
-            val rows = options.map { sourceRow(it, extras.serverNames) }
+            val rows = options.map { sourceRow(it, extras.serverNames, lastPlayedId = entry?.progress?.bookId) }
             // While this book is loaded in the player the highlight follows the live position.
             val shown = if (thisLoaded) ReadingProgress(bookId, env.player.positionMs, book.durationMs, 0L) else progress
             // No local progress: let the server say where; a book finished here starts over.
@@ -359,10 +359,7 @@ class BookDetailsViewModel(
         }
     }
 
-    private fun noCopyText(state: BookDetailsUiState): String {
-        val reason = state.sources.firstNotNullOfOrNull { it.reason }
-        return if (reason == null) NO_COPY_TEXT else "$NO_COPY_TEXT ($reason)"
-    }
+    private fun noCopyText(state: BookDetailsUiState): String = noCopyText(state.sources.firstNotNullOfOrNull { it.reason })
 
     /*
      * A chapter tap with nothing playing: this page's chapters, started in the copy Play would pick, else
@@ -674,7 +671,6 @@ class BookDetailsViewModel(
 
     private companion object {
         const val MERGE_WAIT_MS = 2_000L
-        const val NO_COPY_TEXT = "No copy of this book can play now"
         const val MERGE_FAILED_TEXT = "These books could not be shown as one"
     }
 }

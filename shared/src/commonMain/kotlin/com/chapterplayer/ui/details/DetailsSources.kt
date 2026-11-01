@@ -24,6 +24,8 @@ data class SourceRow(
     val hint: String? = null,
     /** Choosing it in the "Download from" sheet resumes the copy's paused or failed download instead of a new one. */
     val resumes: Boolean = false,
+    /** The copy listened to last ("Last played" in the "Play from" sheet). */
+    val lastPlayed: Boolean = false,
 )
 
 /** What the source sheet is choosing a copy for. */
@@ -46,13 +48,19 @@ data class MergeCandidateRow(
 
 data class MergeSheetUi(val query: String = "", val candidates: List<MergeCandidateRow> = emptyList())
 
-internal fun sourceRow(option: SourceOption, serverNames: Map<String, String>): SourceRow = SourceRow(
+/** "No copy of this book can play now", with the first copy's [reason] when there is one. */
+internal fun noCopyText(reason: String?): String = if (reason == null) NO_COPY_TEXT else "$NO_COPY_TEXT ($reason)"
+
+internal const val NO_COPY_TEXT = "No copy of this book can play now"
+
+internal fun sourceRow(option: SourceOption, serverNames: Map<String, String>, lastPlayedId: String? = null): SourceRow = SourceRow(
     bookId = option.item.book.id,
     typeLabel = option.item.book.source.shortLabel(),
     serverName = serverNames[option.item.book.serverId].orEmpty(),
     downloaded = option.downloaded,
     enabled = option.playable,
     reason = option.unavailableReason,
+    lastPlayed = lastPlayedId != null && option.item.book.id == lastPlayedId,
 )
 
 internal fun candidateRow(entry: BrowseItem, serverNames: Map<String, String>): MergeCandidateRow = MergeCandidateRow(
