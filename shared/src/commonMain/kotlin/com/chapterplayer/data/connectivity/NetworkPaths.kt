@@ -4,7 +4,7 @@ package com.chapterplayer.data.connectivity
  * One report from a platform that describes the network as a path (iOS `NWPathMonitor`): whether it can carry
  * traffic, and the names of the interfaces it uses ("en0" for Wi-Fi, "pdp_ip0" for mobile data).
  */
-data class NetworkPath(val satisfied: Boolean, val interfaces: List<String>)
+data class NetworkPath(val satisfied: Boolean, val interfaces: List<String>, val metered: Boolean = false)
 
 /**
  * Names the network in use for [ConnectivityMonitor.currentNetwork] when the platform gives no network handle (iOS):

@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.onStart
 import platform.Network.nw_interface_get_name
 import platform.Network.nw_path_enumerate_interfaces
 import platform.Network.nw_path_get_status
+import platform.Network.nw_path_is_constrained
+import platform.Network.nw_path_is_expensive
 import platform.Network.nw_path_monitor_cancel
 import platform.Network.nw_path_monitor_create
 import platform.Network.nw_path_monitor_set_queue
@@ -37,7 +39,9 @@ class IosConnectivityMonitor : ConnectivityMonitor {
                 nw_interface_get_name(iface)?.toKString()?.let { names += it }
                 true
             }
-            trySend(NetworkPath(satisfied = nw_path_get_status(path) == nw_path_status_satisfied, interfaces = names))
+            // Expensive: mobile data or a personal hotspot; constrained: Low Data Mode. Both count as metered for Wi-Fi only.
+            val metered = nw_path_is_expensive(path) || nw_path_is_constrained(path)
+            trySend(NetworkPath(satisfied = nw_path_get_status(path) == nw_path_status_satisfied, interfaces = names, metered = metered))
         }
         nw_path_monitor_set_queue(monitor, dispatch_queue_create("com.chapterplayer.network", null))
         nw_path_monitor_start(monitor)
@@ -45,6 +49,9 @@ class IosConnectivityMonitor : ConnectivityMonitor {
     }
 
     override val isOnline: Flow<Boolean> = paths.map { it.satisfied }.onStart { emit(true) }.distinctUntilChanged()
+
+    /** From the monitor's own first report (no optimistic start), so a download never starts on a guess. */
+    override val networkState: Flow<NetworkState> = paths.map { NetworkState(online = it.satisfied, metered = it.metered) }.distinctUntilChanged()
 
     override val currentNetwork: Flow<String?> = flow {
         val tracker = NetworkPathTracker()
