@@ -36,12 +36,33 @@ class BackgroundDownloadsTest {
     }
 
     @Test
-    fun `a continued task is asked for only for a new job started in front with the api there`() {
-        assertTrue(shouldRequestContinuedTask(appActive = true, newJob = true, apiAvailable = true, taskRunning = false))
-        assertFalse(shouldRequestContinuedTask(appActive = false, newJob = true, apiAvailable = true, taskRunning = false))
-        assertFalse(shouldRequestContinuedTask(appActive = true, newJob = false, apiAvailable = true, taskRunning = false))
-        assertFalse(shouldRequestContinuedTask(appActive = true, newJob = true, apiAvailable = false, taskRunning = false))
-        assertFalse(shouldRequestContinuedTask(appActive = true, newJob = true, apiAvailable = true, taskRunning = true))
+    fun `a continued task is asked for only when the user starts a download in front with the api there`() {
+        assertTrue(shouldRequestContinuedTask(appActive = true, userStarted = true, apiAvailable = true, taskRunning = false))
+        assertFalse(shouldRequestContinuedTask(appActive = false, userStarted = true, apiAvailable = true, taskRunning = false))
+        assertFalse(shouldRequestContinuedTask(appActive = true, userStarted = false, apiAvailable = true, taskRunning = false))
+        assertFalse(shouldRequestContinuedTask(appActive = true, userStarted = true, apiAvailable = false, taskRunning = false))
+        assertFalse(shouldRequestContinuedTask(appActive = true, userStarted = true, apiAvailable = true, taskRunning = true))
+    }
+
+    @Test
+    fun `no background time is begun under a continued task or after it expired until the app was in front`() {
+        assertEquals(BackgroundTimeStep.NONE, backgroundTimeStep(inBackground = true, downloading = true, holding = false, continuedRunning = true))
+        assertEquals(BackgroundTimeStep.NONE, backgroundTimeStep(inBackground = true, downloading = true, holding = false, expiredUntilForeground = true))
+        assertEquals(BackgroundTimeStep.BEGIN, backgroundTimeStep(inBackground = true, downloading = true, holding = false, continuedRunning = false, expiredUntilForeground = false))
+        // Held time is still given back when it is no longer needed.
+        assertEquals(BackgroundTimeStep.END, backgroundTimeStep(inBackground = false, downloading = true, holding = true, continuedRunning = true))
+    }
+
+    @Test
+    fun `the end of background time stops the downloads only without a continued task`() {
+        assertTrue(stopOnBackgroundTimeExpiry(continuedRunning = false))
+        assertFalse(stopOnBackgroundTimeExpiry(continuedRunning = true))
+    }
+
+    @Test
+    fun `a continued task ending in front leaves the downloads running and in the background stops them`() {
+        assertEquals(ContinuedTaskEnd.KEEP_RUNNING, continuedTaskEnd(appActive = true))
+        assertEquals(ContinuedTaskEnd.STOP_ALL, continuedTaskEnd(appActive = false))
     }
 
     @Test

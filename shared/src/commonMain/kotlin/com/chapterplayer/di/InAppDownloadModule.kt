@@ -23,14 +23,16 @@ import com.chapterplayer.data.downloads.PlexDownloadSource
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.RoomLocalBookFiles
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.permissions.DownloadNotices
 import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.remote.createDownloadHttpClient
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.sync.PlexConnectionManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import org.koin.core.module.Module
-import org.koin.core.scope.Scope
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import kotlin.time.Clock
@@ -39,17 +41,32 @@ import kotlin.time.Clock
 interface DownloadPlace : DownloadLocation, DownloadStorage
 
 /**
+ * What an in-process scheduler (iOS: `IosDownloadScheduler`) is built from, all resolved by [inAppDownloadModule] so the
+ * host tests check them: the app scope, the downloader, connectivity, a book's title, the controller's queue restore
+ * (looked up when it runs: the controller itself needs the scheduler) and the notices.
+ */
+class DownloadSchedulerParts(
+    val scope: CoroutineScope,
+    val downloader: BookDownloader,
+    val connectivity: ConnectivityMonitor,
+    val titleOf: suspend (bookId: String) -> String?,
+    val restore: suspend () -> Unit,
+    val notices: DownloadNotices,
+)
+
+/**
  * The downloads of a platform that runs them in the app's own process (iOS): the same downloader, sources, controller,
  * length filler and local files as Android's `downloadModule`, over the platform's [files], [place], [scheduler] and
- * [notifications]. Common so the host tests verify every binding (KoinModulesTest); iOS passes its own parts.
+ * [notifications]. Common so the host tests verify every binding and resolve the scheduler's parts (KoinModulesTest);
+ * iOS passes only constructors of its own classes, which are compile-checked (they cannot be built off an iPhone).
  * [features] is what the screens may offer on this build.
  */
 fun inAppDownloadModule(
     features: PlatformFeatures,
     files: () -> DownloadFiles,
     place: () -> DownloadPlace,
-    scheduler: Scope.() -> DownloadScheduler,
-    notifications: Scope.() -> NotificationPermission,
+    scheduler: (DownloadSchedulerParts) -> DownloadScheduler,
+    notifications: () -> DownloadNotices,
 ): Module = module {
     single<PlatformFeatures> { features }
     single(DownloadClientQualifier) { createDownloadHttpClient(get<Boolean>(DebuggableQualifier)) }
@@ -75,7 +92,18 @@ fun inAppDownloadModule(
     } bind DownloadJobs::class
     single<LiveDownloadProgress> { get<BookDownloader>() }
     single<DownloadOverview> { RoomDownloadOverview(get(), get()) }
-    single<DownloadScheduler> { scheduler() }
+    single<DownloadScheduler> {
+        scheduler(
+            DownloadSchedulerParts(
+                scope = get(AppScopeQualifier),
+                downloader = get(),
+                connectivity = get(),
+                titleOf = { id -> get<BookDao>().getById(id)?.title },
+                restore = { get<DefaultDownloadController>().restoreQueue() },
+                notices = get(),
+            )
+        )
+    }
     // The player is looked up when a download is removed, not when this is built.
     single<DownloadRemovalListener> { DownloadRemovalListener { bookId -> get<PlaybackController>().releaseLocalFiles(bookId) } }
     single { DefaultDownloadController(get(), get(), get(), get(), get(), get(), get(), files = get(), io = get(BlockingIoQualifier)) }
@@ -89,5 +117,6 @@ fun inAppDownloadModule(
     single<LocalBookFiles> {
         RoomLocalBookFiles(get(), DownloadFilesLocalDisk(get()), get(BlockingIoQualifier), nowMs = { Clock.System.now().toEpochMilliseconds() })
     }
-    single<NotificationPermission> { notifications() }
+    single<DownloadNotices> { notifications() }
+    single<NotificationPermission> { get<DownloadNotices>() }
 }

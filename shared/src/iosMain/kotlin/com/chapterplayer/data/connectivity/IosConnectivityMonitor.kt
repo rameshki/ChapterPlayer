@@ -2,7 +2,12 @@ package com.chapterplayer.data.connectivity
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.toKString
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -24,12 +29,16 @@ import platform.Network.nw_path_status_satisfied
 import platform.darwin.dispatch_queue_create
 
 /**
- * Follows the device's network with `NWPathMonitor` (one monitor per collector, cancelled when collection stops).
+ * Follows the device's network with `NWPathMonitor` (one monitor shared by all collectors, cancelled when the last
+ * stops; a new collector gets the latest report at once, and nothing stale after everyone stopped).
  * Online means a satisfied path; the network's name comes from [NetworkPathTracker]. Like Android, it starts as online
  * until the first report, which the monitor sends as soon as it starts.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosConnectivityMonitor : ConnectivityMonitor {
+
+    /** One monitor for every collector (the network state, the network name, downloads), while anyone collects. */
+    private val shared = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val paths: Flow<NetworkPath> = callbackFlow {
         val monitor = nw_path_monitor_create()
@@ -46,7 +55,7 @@ class IosConnectivityMonitor : ConnectivityMonitor {
         nw_path_monitor_set_queue(monitor, dispatch_queue_create("com.chapterplayer.network", null))
         nw_path_monitor_start(monitor)
         awaitClose { nw_path_monitor_cancel(monitor) }
-    }
+    }.shareIn(shared, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), replay = 1)
 
     override val isOnline: Flow<Boolean> = paths.map { it.satisfied }.onStart { emit(true) }.distinctUntilChanged()
 

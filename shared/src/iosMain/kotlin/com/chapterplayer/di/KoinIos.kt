@@ -7,8 +7,6 @@ import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.connectivity.IosConnectivityMonitor
-import com.chapterplayer.data.downloads.BookDownloader
-import com.chapterplayer.data.downloads.DefaultDownloadController
 import com.chapterplayer.data.downloads.DownloadLengthFiller
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
 import com.chapterplayer.data.downloads.DownloadScheduler
@@ -18,7 +16,6 @@ import com.chapterplayer.data.downloads.IosDownloadScheduler
 import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.images.installCoverImageLoader
 import com.chapterplayer.data.local.createIosDatabase
-import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.permissions.IosNotificationPermission
 import com.chapterplayer.data.playback.IosPlaybackController
 import com.chapterplayer.data.playback.PlaybackController
@@ -41,7 +38,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import org.koin.core.Koin
-import org.koin.dsl.module
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
@@ -80,29 +76,13 @@ val iosPlaybackModule = headerPlayerModule { books, streams, appScope, localFile
  * up), run in the app's process by [IosDownloadScheduler] (background time, iOS 26+ continued processing, notices),
  * with offline playback from the files. No download location choice and no car ([PlatformFeatures.IosFull]).
  */
-val iosDownloadModule = module {
-    single { IosNotificationPermission() }
-    includes(
-        inAppDownloadModule(
-            features = PlatformFeatures.IosFull,
-            files = { IosDownloadFiles },
-            place = { IosDownloadPlace(io = Dispatchers.IO) },
-            scheduler = {
-                val bookDao = get<BookDao>()
-                IosDownloadScheduler(
-                    scope = get(AppScopeQualifier),
-                    downloader = get<BookDownloader>(),
-                    connectivity = get(),
-                    titleOf = { id -> bookDao.getById(id)?.title },
-                    // Looked up when it runs: the controller itself needs this scheduler.
-                    restore = { get<DefaultDownloadController>().restoreQueue() },
-                    notifications = get(),
-                )
-            },
-            notifications = { get<IosNotificationPermission>() },
-        )
-    )
-}
+val iosDownloadModule = inAppDownloadModule(
+    features = PlatformFeatures.IosFull,
+    files = { IosDownloadFiles },
+    place = { IosDownloadPlace(io = Dispatchers.IO) },
+    scheduler = { parts -> IosDownloadScheduler(parts) },
+    notifications = { IosNotificationPermission() },
+)
 
 /** Every module iOS starts with, besides [commonModules]: the platform's parts, the player and the downloads. */
 val iosModules = listOf(iosPlatformModule, iosPlaybackModule, iosDownloadModule)

@@ -15,7 +15,7 @@ import kotlin.coroutines.resume
  * shows a notice (a download that finished or failed while the app was in the background); it does nothing without
  * permission. Progress is not a notification on iOS: the app and the continued processing task show it.
  */
-class IosNotificationPermission : NotificationPermission {
+class IosNotificationPermission : DownloadNotices {
 
     private val center get() = UNUserNotificationCenter.currentNotificationCenter()
 
@@ -25,8 +25,7 @@ class IosNotificationPermission : NotificationPermission {
         }
     }
 
-    /** Shows [notice] now; [id] replaces an earlier notice of the same book. */
-    fun post(id: String, notice: DownloadNotice) {
+    override fun post(id: String, notice: DownloadNotice) {
         val content = UNMutableNotificationContent().apply {
             setTitle(notice.title)
             setBody(notice.body)

@@ -54,15 +54,19 @@ class InProcessDownloadScheduler(
     suspend fun isScheduled(bookId: String): Boolean = guard.withLock { jobs[bookId]?.isActive == true }
 
     /** True when the job was new (nothing was waiting or running for this book), false when one was kept or replaced. */
-    suspend fun scheduleNew(bookId: String, wifiOnly: Boolean, replace: Boolean): Boolean = guard.withLock {
-        val existing = jobs[bookId]?.takeIf { it.isActive }
-        if (existing != null && !replace) return@withLock false
-        // A replaced job stops and saves; BookDownloader's book lock keeps the new one waiting until it has.
-        existing?.cancel()
-        val job = scope.launch(start = CoroutineStart.LAZY) { loop(bookId, wifiOnly) }
-        jobs[bookId] = job
+    suspend fun scheduleNew(bookId: String, wifiOnly: Boolean, replace: Boolean): Boolean {
+        val (job, new) = guard.withLock {
+            val existing = jobs[bookId]?.takeIf { it.isActive }
+            if (existing != null && !replace) return false
+            // A replaced job stops and saves; BookDownloader's book lock keeps the new one waiting until it has.
+            existing?.cancel()
+            val job = scope.launch(start = CoroutineStart.LAZY) { loop(bookId, wifiOnly) }
+            jobs[bookId] = job
+            job to (existing == null)
+        }
+        // Started after the lock is let go: the job's own clean-up takes the same lock.
         job.start()
-        existing == null
+        return new
     }
 
     override suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean) {

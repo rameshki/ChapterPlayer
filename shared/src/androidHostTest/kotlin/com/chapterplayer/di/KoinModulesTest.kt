@@ -16,6 +16,7 @@ import com.chapterplayer.data.downloads.LocalBookFiles
 import com.chapterplayer.data.downloads.NoDownloadStorage
 import com.chapterplayer.data.downloads.NoLocalBookFiles
 import com.chapterplayer.data.downloads.NotYetOnIosDownloadController
+import com.chapterplayer.data.permissions.NoDownloadNotices
 import com.chapterplayer.data.permissions.NoNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.playback.NotYetOnIosPlaybackController
@@ -218,8 +219,11 @@ class KoinModulesTest {
         koin.close()
     }
 
-    /** iOS's download module (iosDownloadModule) with host stand-ins for its iOS-only parts: files, place, scheduler, notices. */
-    private fun testDownloads() = inAppDownloadModule(
+    /**
+     * iOS's download module is `inAppDownloadModule` with iOS constructors (iosDownloadModule); here the same function
+     * gets host stand-ins for them: files, place, the scheduler built from the resolved parts, and the notices.
+     */
+    private fun testDownloads(onParts: (DownloadSchedulerParts) -> Unit = {}) = inAppDownloadModule(
         features = PlatformFeatures.IosFull,
         files = { com.chapterplayer.data.downloads.AndroidDownloadFiles },
         place = {
@@ -229,14 +233,15 @@ class KoinModulesTest {
                 override suspend fun volumes() = emptyList<com.chapterplayer.domain.downloads.DownloadVolume>()
             }
         },
-        scheduler = {
+        scheduler = { parts ->
+            onParts(parts)
             com.chapterplayer.data.downloads.InProcessDownloadScheduler(
-                get(AppScopeQualifier),
-                run = { id -> get<com.chapterplayer.data.downloads.BookDownloader>().run(id) },
-                allowed = { wifiOnly -> get<ConnectivityMonitor>().downloadAllowed(wifiOnly) },
+                parts.scope,
+                run = { id -> parts.downloader.run(id) },
+                allowed = { wifiOnly -> parts.connectivity.downloadAllowed(wifiOnly) },
             )
         },
-        notifications = { NoNotificationPermission },
+        notifications = { NoDownloadNotices },
     )
 
     @Test
@@ -248,19 +253,36 @@ class KoinModulesTest {
     }
 
     @Test
-    fun `the iOS download module builds its qualified parts and offers downloads without a location choice`() {
+    fun `the iOS download module resolves the scheduler's parts and offers downloads without a location choice`() = kotlinx.coroutines.runBlocking {
         val dir = kotlin.io.path.createTempDirectory("koin").toFile()
+        // No database here: the DAOs the downloads read and the server list are in-memory fakes.
         val noDatabase = module {
             single<com.chapterplayer.data.repository.ServerRepository> { com.chapterplayer.testing.FakeServerList() }
             single<BookRepository> { com.chapterplayer.testing.FakeBookRepository() }
+            single<com.chapterplayer.data.local.dao.DownloadDao> { com.chapterplayer.data.repository.InMemoryDownloadDao() }
+            single<com.chapterplayer.data.local.dao.BookDao> { com.chapterplayer.data.downloads.FakeBookDao() }
         }
-        val koin = koinApplication { modules(commonModules + testDownloads() + testPlayer + fakePlatform(dir) + noDatabase) }.koin
+        var parts: DownloadSchedulerParts? = null
+        val koin = koinApplication {
+            allowOverride(true)
+            modules(commonModules + testDownloads { parts = it } + testPlayer + fakePlatform(dir) + noDatabase)
+        }.koin
+        val scheduler = koin.get<com.chapterplayer.data.downloads.DownloadScheduler>()
+        val given = assertNotNull(parts)
+        assertSame(koin.get<com.chapterplayer.data.downloads.BookDownloader>(), given.downloader)
+        assertSame(koin.get<CoroutineScope>(AppScopeQualifier), given.scope)
+        assertSame(koin.get<ConnectivityMonitor>(), given.connectivity)
+        assertSame(NoDownloadNotices, given.notices)
+        assertNull(given.titleOf("unknown"))
+        // The restore reaches the real controller, which schedules through the same scheduler.
+        given.restore()
+        assertTrue(scheduler is com.chapterplayer.data.downloads.InProcessDownloadScheduler)
         assertNotNull(koin.get<io.ktor.client.HttpClient>(DownloadClientQualifier))
         assertNotNull(koin.get<com.chapterplayer.data.downloads.FileDownloader>())
-        assertNotNull(koin.get<com.chapterplayer.data.downloads.DownloadScheduler>())
+        assertNotNull(koin.get<LocalBookFiles>())
         assertSame(koin.get<DownloadPlace>(), koin.get<DownloadStorage>())
         assertSame(koin.get<DownloadPlace>(), koin.get<com.chapterplayer.data.downloads.DownloadLocation>())
-        assertSame(NoNotificationPermission, koin.get<NotificationPermission>())
+        assertSame<NotificationPermission>(NoDownloadNotices, koin.get<NotificationPermission>())
         val features = koin.get<PlatformFeatures>()
         assertSame(PlatformFeatures.IosFull, features)
         assertTrue(features.playback && features.downloads)

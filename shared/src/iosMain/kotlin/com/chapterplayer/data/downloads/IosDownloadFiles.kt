@@ -26,6 +26,8 @@ import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSURLVolumeAvailableCapacityForImportantUsageKey
 import platform.Foundation.NSUserDomainMask
 import platform.posix.EINTR
+import platform.posix.F_FULLFSYNC
+import platform.posix.fcntl
 import platform.posix.ENOSPC
 import platform.posix.O_CREAT
 import platform.posix.O_WRONLY
@@ -116,7 +118,7 @@ object IosDownloadFiles : DownloadFiles {
     override fun sync(path: String) {
         val fd = open(current(path), O_WRONLY)
         if (fd < 0) throw posixError("open")
-        val ok = fsync(fd) == 0
+        val ok = fullSync(fd)
         val error = if (ok) null else posixError("fsync")
         platform.posix.close(fd)
         if (error != null) throw error
@@ -188,7 +190,7 @@ object IosDownloadFiles : DownloadFiles {
 
         override fun sync() {
             if (fd < 0) return
-            if (fsync(fd) != 0) throw posixError("fsync")
+            if (!fullSync(fd)) throw posixError("fsync")
         }
 
         override fun close() {
@@ -199,6 +201,13 @@ object IosDownloadFiles : DownloadFiles {
         }
     }
 }
+
+/**
+ * Forces the file's bytes onto the storage itself: `F_FULLFSYNC` (plain `fsync` on Apple systems only hands them to the
+ * drive, which may still reorder or hold them), falling back to `fsync` where the file system does not support it.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun fullSync(fd: Int): Boolean = fcntl(fd, F_FULLFSYNC) != -1 || fsync(fd) == 0
 
 /** The last POSIX error as an [IOException]; a full disk says "ENOSPC". Never names a path. */
 @OptIn(ExperimentalForeignApi::class)

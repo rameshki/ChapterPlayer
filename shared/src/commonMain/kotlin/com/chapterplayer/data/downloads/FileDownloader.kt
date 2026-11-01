@@ -16,8 +16,6 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.URLBuilder
-import io.ktor.http.takeFrom
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -421,13 +419,92 @@ internal fun parseContentRange(header: String?): Pair<Long, Long?>? {
     return match.groupValues[1].toLong() to match.groupValues[3].toLongOrNull()
 }
 
-/** [location] against [base]: absolute, server-relative ("/x") or path-relative. Null when it cannot be read. */
+/**
+ * [location] (a redirect's `Location`) against [base], by RFC 3986 section 5.2: absolute, network-path ("//host/x"),
+ * absolute-path ("/x"), relative ("x", "../x"), query-only ("?q") or fragment-only ("#f"); dot segments are removed.
+ * Null when either cannot be read (a character that is not allowed in a URI, as java.net.URI refused, or a base that
+ * is not absolute). Same results as the earlier java.net.URI.resolve except where that one departs from the RFC: a
+ * query-only reference keeps the base's last segment, and dot segments in an absolute reference are removed. Only the
+ * origin decides whether the request may follow (the caller checks it), and neither difference can change the origin.
+ */
 internal fun resolve(base: String, location: String): String? {
     val loc = location.trim()
-    if (loc.isEmpty()) return null
-    return try {
-        URLBuilder(base).takeFrom(loc).buildString()
-    } catch (_: Exception) {
-        null
+    if (loc.isEmpty() || !loc.all(::uriChar) || !base.all(::uriChar)) return null
+    val b = UriParts.parse(base) ?: return null
+    if (b.scheme == null) return null
+    val r = UriParts.parse(loc) ?: return null
+    val out = when {
+        r.scheme != null -> r.copy(path = removeDotSegments(r.path))
+        r.authority != null -> r.copy(scheme = b.scheme, path = removeDotSegments(r.path))
+        r.path.isEmpty() -> b.copy(query = r.query ?: b.query, fragment = r.fragment)
+        r.path.startsWith("/") -> b.copy(path = removeDotSegments(r.path), query = r.query, fragment = r.fragment)
+        else -> b.copy(path = removeDotSegments(merge(b, r.path)), query = r.query, fragment = r.fragment)
+    }
+    return out.toString()
+}
+
+private data class UriParts(val scheme: String?, val authority: String?, val path: String, val query: String?, val fragment: String?) {
+    override fun toString(): String = buildString {
+        if (scheme != null) append(scheme).append(':')
+        if (authority != null) append("//").append(authority)
+        append(path)
+        if (query != null) append('?').append(query)
+        if (fragment != null) append('#').append(fragment)
+    }
+
+    companion object {
+        private val PATTERN = Regex("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?$")
+
+        fun parse(text: String): UriParts? {
+            val m = PATTERN.matchEntire(text) ?: return null
+            val g = m.groups
+            return UriParts(
+                scheme = g[2]?.value,
+                authority = g[4]?.value,
+                path = g[5]?.value.orEmpty(),
+                query = g[7]?.value,
+                fragment = g[9]?.value,
+            )
+        }
     }
 }
+
+/** RFC 3986 5.2.3: the base's path up to its last "/", then the reference ("/" + it when the base has a host and no path). */
+private fun merge(base: UriParts, relative: String): String = when {
+    base.authority != null && base.path.isEmpty() -> "/$relative"
+    '/' in base.path -> base.path.substringBeforeLast('/') + "/" + relative
+    else -> relative
+}
+
+/** RFC 3986 5.2.4: removes "." and ".." segments. */
+internal fun removeDotSegments(path: String): String {
+    var input = path
+    val output = StringBuilder()
+    while (input.isNotEmpty()) {
+        when {
+            input.startsWith("../") -> input = input.substring(3)
+            input.startsWith("./") -> input = input.substring(2)
+            input.startsWith("/./") -> input = input.substring(2)
+            input == "/." -> input = "/"
+            input.startsWith("/../") || input == "/.." -> {
+                input = if (input == "/..") "/" else input.substring(3)
+                val cut = output.lastIndexOf("/")
+                output.setLength(if (cut < 0) 0 else cut)
+            }
+            input == "." || input == ".." -> input = ""
+            else -> {
+                val start = if (input.startsWith("/")) 1 else 0
+                val next = input.indexOf('/', start)
+                val end = if (next < 0) input.length else next
+                output.append(input, 0, end)
+                input = input.substring(end)
+            }
+        }
+    }
+    return output.toString()
+}
+
+/** A character java.net.URI accepts in a URI: unreserved, reserved, '%' (escapes), or a non-ASCII letter that is not a space or control. */
+private fun uriChar(c: Char): Boolean =
+    c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c in "-._~:/?#[]@!$&'()*+,;=%" ||
+        (c.code > 127 && !c.isWhitespace() && !c.isISOControl())

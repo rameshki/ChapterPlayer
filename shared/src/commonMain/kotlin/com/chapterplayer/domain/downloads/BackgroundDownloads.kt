@@ -27,20 +27,51 @@ enum class BackgroundTimeStep { BEGIN, END, NONE }
 /**
  * Whether to begin or end the app's background time (`UIApplication.beginBackgroundTask`). It is held only while the
  * app is in the background with a download transferring; it ends as soon as either stops, so iOS never cuts it short
- * for nothing.
+ * for nothing. It is never begun while a continued processing task holds the app ([continuedRunning]: that task keeps
+ * the downloads going, and the short background time would only expire under it), nor again after iOS took it away
+ * until the app has been in front ([expiredUntilForeground]).
  */
-fun backgroundTimeStep(inBackground: Boolean, downloading: Boolean, holding: Boolean): BackgroundTimeStep = when {
-    !holding && inBackground && downloading -> BackgroundTimeStep.BEGIN
+fun backgroundTimeStep(
+    inBackground: Boolean,
+    downloading: Boolean,
+    holding: Boolean,
+    continuedRunning: Boolean = false,
+    expiredUntilForeground: Boolean = false,
+): BackgroundTimeStep = when {
+    !holding && inBackground && downloading && !continuedRunning && !expiredUntilForeground -> BackgroundTimeStep.BEGIN
     holding && (!inBackground || !downloading) -> BackgroundTimeStep.END
     else -> BackgroundTimeStep.NONE
 }
 
 /**
- * Whether to ask for a continued processing task (iOS 26+) now: only for a download the user just started or resumed
- * while the app is in front (iOS allows it only then), when the system offers the API and no such task already runs.
+ * Whether the downloads stop when iOS takes the UIKit background time away: not while a continued processing task
+ * still holds the app (the downloads carry on under it; only the background time is given back).
  */
-fun shouldRequestContinuedTask(appActive: Boolean, newJob: Boolean, apiAvailable: Boolean, taskRunning: Boolean): Boolean =
-    appActive && newJob && apiAvailable && !taskRunning
+fun stopOnBackgroundTimeExpiry(continuedRunning: Boolean): Boolean = !continuedRunning
+
+/** What happens to the downloads when a continued processing task ends early (iOS expired it or the user cancelled it). */
+enum class ContinuedTaskEnd {
+    /** The app is in front: the downloads keep running as any download in front does (nothing is left waiting). */
+    KEEP_RUNNING,
+
+    /** The app is in the background: every job stops and saves; they carry on when the app comes to the front. */
+    STOP_ALL,
+}
+
+/** The task covers every download at once (one task for the queue), so a cancel cannot name a single book. */
+fun continuedTaskEnd(appActive: Boolean): ContinuedTaskEnd =
+    if (appActive) ContinuedTaskEnd.KEEP_RUNNING else ContinuedTaskEnd.STOP_ALL
+
+/**
+ * Whether to ask for a continued processing task (iOS 26+) now: only when the user starts or resumes a download in the
+ * app ([userStarted]; not for the queue restored when the app comes to the front) while it is in front (iOS allows it
+ * only then), when the system offers the API and no such task already runs.
+ */
+fun shouldRequestContinuedTask(appActive: Boolean, userStarted: Boolean, apiAvailable: Boolean, taskRunning: Boolean): Boolean =
+    appActive && userStarted && apiAvailable && !taskRunning
+
+/** How long an accepted continued processing task may take to be launched before the app stops waiting for it. */
+const val CONTINUED_LAUNCH_TIMEOUT_MS = 30_000L
 
 /** What the continued processing task shows: a title, a subtitle and the progress in thousandths. */
 data class ContinuedTaskText(val title: String, val subtitle: String, val completedPerMille: Long)

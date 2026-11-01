@@ -25,6 +25,12 @@ interface DownloadScheduler {
     /** Schedules the job unless one is already waiting or running; [replace] replaces it instead. */
     suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean)
 
+    /**
+     * Like [schedule] (never replacing), for a download the user just started or resumed in the app. iOS asks for its
+     * continued processing task only then; the default (Android) is a plain [schedule].
+     */
+    suspend fun scheduleByUser(bookId: String, wifiOnly: Boolean) = schedule(bookId, wifiOnly, replace = false)
+
     /** Stops the job (it saves its progress as it stops; [DownloadJobs.whileIdle] waits for that). */
     suspend fun cancel(bookId: String)
 }
@@ -62,7 +68,7 @@ class DefaultDownloadController(
         } else if (!move(bookId, existing.status, next)) {
             return
         }
-        scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = false)
+        scheduler.scheduleByUser(bookId, settings.downloadWifiOnly.first())
     }
 
     override suspend fun pause(bookId: String) {
@@ -77,7 +83,7 @@ class DefaultDownloadController(
         val next = statusOnResume(downloadStatusOf(existing.status)) ?: return
         if (!move(bookId, existing.status, next)) return
         // A job that is still stopping keeps the book until it has saved; the new one waits for it.
-        scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = false)
+        scheduler.scheduleByUser(bookId, settings.downloadWifiOnly.first())
     }
 
     override suspend fun cancel(bookId: String) = delete(bookId)

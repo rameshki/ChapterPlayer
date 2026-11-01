@@ -34,6 +34,12 @@ class DefaultDownloadControllerTest {
             log += "schedule $bookId wifiOnly=$wifiOnly replace=$replace"
         }
         override suspend fun cancel(bookId: String) { log += "cancel $bookId" }
+        /** Books scheduled because the user started or resumed them (iOS asks for its continued task only then). */
+        val byUser = mutableListOf<String>()
+        override suspend fun scheduleByUser(bookId: String, wifiOnly: Boolean) {
+            byUser += bookId
+            super.scheduleByUser(bookId, wifiOnly)
+        }
     }
 
     private class FakeJobs(val log: MutableList<String>) : DownloadJobs {
@@ -266,6 +272,19 @@ class DefaultDownloadControllerTest {
         second.join()
 
         assertEquals(listOf("q wifiOnly=false", "d wifiOnly=false", "q wifiOnly=true", "d wifiOnly=true"), log)
+    }
+
+    @Test
+    fun `only a start or resume by the user counts as user started - the restore does not`() = runTest {
+        val rig = Rig(listOf(row(DownloadStatus.PAUSED)))
+        rig.controller.resume(bookId)
+        assertEquals(listOf(bookId), rig.scheduler.byUser)
+        rig.controller.restoreQueue()
+        rig.controller.reapplyWifiSetting()
+        assertEquals(listOf(bookId), rig.scheduler.byUser)
+        val fresh = Rig()
+        fresh.controller.enqueue(bookId)
+        assertEquals(listOf(bookId), fresh.scheduler.byUser)
     }
 
     @Test
