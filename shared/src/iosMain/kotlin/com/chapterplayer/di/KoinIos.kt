@@ -3,18 +3,25 @@ package com.chapterplayer.di
 import com.chapterplayer.data.IosAppInfo
 import com.chapterplayer.data.IosPathProvider
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
+import com.chapterplayer.data.bookmarks.HistoryRecorder
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.connectivity.IosConnectivityMonitor
 import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.images.installCoverImageLoader
 import com.chapterplayer.data.local.createIosDatabase
+import com.chapterplayer.data.playback.IosPlaybackController
+import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.playback.PlaybackProgressSaver
 import com.chapterplayer.data.progress.PendingProgressFlusher
+import com.chapterplayer.data.progress.ProgressMirrorPusher
+import com.chapterplayer.data.progress.ProgressSyncer
 import com.chapterplayer.data.progress.ServerProgressRefresher
 import com.chapterplayer.data.remote.plex.IosPlexClientIdentifier
 import com.chapterplayer.data.security.KeychainCredentialStore
 import com.chapterplayer.data.stats.IosDayZone
 import com.chapterplayer.data.stats.IosListeningClock
 import com.chapterplayer.data.stats.ListeningImport
+import com.chapterplayer.data.stats.ListeningRecorder
 import com.chapterplayer.data.sync.ForegroundSync
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.data.sync.PlexConnectionManager
@@ -47,8 +54,17 @@ val iosPlatformModule = platformModule(
     )
 )
 
-/** Every module iOS starts with, besides [commonModules]: the platform's parts and the stand-ins for steps 4 and 5. */
-val iosModules = listOf(iosPlatformModule, notYetOnIosModule)
+/**
+ * The iPhone's player (Stage 5 step 4): AVPlayer through [IosPlaybackController], with the token in fixed request headers
+ * after [StreamAuthorizer] checked the address (the probe client follows no redirects). Built on the main thread
+ * ([startAppWide] asks for it first, from the app entry).
+ */
+val iosPlaybackModule = headerPlayerModule { books, streams, appScope, localFiles ->
+    IosPlaybackController.create(books, streams, appScope, localFiles)
+}
+
+/** Every module iOS starts with, besides [commonModules]: the platform's parts, the player and the download stand-ins (step 5). */
+val iosModules = listOf(iosPlatformModule, iosPlaybackModule, notYetOnIosModule)
 
 /** Kept so the observer lives as long as the app (the notification centre does not keep block observers alive for us). */
 private var becameActiveObserver: NSObjectProtocol? = null
@@ -64,13 +80,20 @@ fun initKoin() = initKoin(iosModules) { koin -> startAppWide(koin) }
  * The app-wide work of the iOS build: covers load with the Plex token header (never in a URL), Plex servers are
  * re-probed when the network changes, the library syncs while the app is in front (at start, when it becomes active
  * again, on a network change; no background sync yet), and the ABS progress refresh, the queued progress, bookmarks
- * and the listening history import run as on Android. What follows the player (progress saves, live sync, mirrors,
- * history, listening time) is not started: nothing plays on iOS until Stage 5 step 4.
+ * and the listening history import run as on Android. Since Stage 5 step 4 the player is built here (so the lock screen
+ * commands are registered at launch) and what follows it starts as on Android: progress saves, the live sync through the
+ * server session (Plex timeline and scrobble included), mirrors to the other copies, jump history and listening time.
  */
 private fun startAppWide(koin: Koin) {
     val scope = koin.get<CoroutineScope>(AppScopeQualifier)
     val network = koin.get<ConnectivityMonitor>().currentNetwork
     installCoverImageLoader(koin.get<PlexImageServers>())
+    koin.get<PlaybackController>()
+    koin.get<PlaybackProgressSaver>().start()
+    koin.get<ProgressSyncer>().start()
+    koin.get<ProgressMirrorPusher>().start()
+    koin.get<HistoryRecorder>().start()
+    koin.get<ListeningRecorder>().start()
     koin.get<PlexConnectionManager>().watchNetwork(scope, network)
     koin.get<LibrarySyncCoordinator>().start()
     koin.get<ServerProgressRefresher>().start()

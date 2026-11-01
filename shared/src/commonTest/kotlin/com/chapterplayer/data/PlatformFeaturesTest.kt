@@ -42,6 +42,14 @@ class PlatformFeaturesTest {
     }
 
     @Test
+    fun `the streaming iPhone build plays but still offers no download and no car`() {
+        assertTrue(PlatformFeatures.IosStreaming.playback)
+        assertFalse(PlatformFeatures.IosStreaming.car)
+        assertFalse(offersDownloads(PlatformFeatures.IosStreaming))
+        assertEquals(listOf("Home", "Library", "Search"), visibleTabs(PlatformFeatures.IosStreaming).map { it.label })
+    }
+
+    @Test
     fun `a screen outside the provider fails closed - no downloads - no player - no car`() {
         assertFalse(offersDownloads(DEFAULT_PLATFORM_FEATURES))
         assertFalse(DEFAULT_PLATFORM_FEATURES.playback)

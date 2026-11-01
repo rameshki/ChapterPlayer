@@ -100,6 +100,15 @@ class BookDetailsViewModelTest {
     }
 
     @Test
+    fun `the streaming iPhone build can play a cached book but not download it`() = runTest {
+        val state = collect(Setup(DetailsRepo(listOf(cachedBook())), "a", features = PlatformFeatures.IosStreaming))
+        assertTrue(state().canPlay)
+        assertNull(state().cannotPlayReason)
+        assertFalse(state().download.canStart)
+        assertEquals("Downloads are not available on iOS yet", state().download.disabledReason)
+    }
+
+    @Test
     fun `with every feature a cached book can play and download`() = runTest {
         val state = collect(Setup(DetailsRepo(listOf(cachedBook())), "a"))
         assertTrue(state().canPlay)

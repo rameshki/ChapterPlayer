@@ -6,11 +6,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** What a start says on iOS until the iOS player exists (Stage 5 step 4). */
+/** What a start says on a build without a player ([com.chapterplayer.data.PlatformFeatures.playback] off). */
 const val PLAYBACK_NOT_ON_IOS_TEXT = "Playback is not available on iOS yet"
 
 /**
- * The iOS stand-in for [PlaybackController] until the AVPlayer controller exists (Stage 5 step 4): nothing is ever
+ * A [PlaybackController] for a build without a player (the iOS stand-in of Stage 5 step 2, kept for tests): nothing is ever
  * loaded (the mini player stays hidden), every [load] fails with [PLAYBACK_NOT_ON_IOS_TEXT] (shown as it is), and the
  * transport calls do nothing. The sleep timer is kept as set, so the sheet shows what was chosen.
  */

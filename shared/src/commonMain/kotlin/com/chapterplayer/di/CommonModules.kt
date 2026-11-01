@@ -148,7 +148,8 @@ val commonDaoModule = module {
 val commonNetworkModule = module {
     // One HTTP client for every server. Debug builds log requests with auth headers hidden.
     single { createHttpClient(get<Boolean>(DebuggableQualifier)) }
-    singleOf(::AbsApiService)
+    // The play request names this platform's player (AbsApiService's default, platformAbsPlayer).
+    single { AbsApiService(get()) }
     singleOf(::AbsSignIn) { bind<AbsSignInPort>() }
     // The playback reports name this installation to the server.
     single { PlexApiService(get(), get<PlexClientIdentifier>()) }
@@ -172,11 +173,14 @@ val commonSourceModule = module {
     // A refused Plex token cannot be refreshed: it is blanked (if it is still the one that was refused), so Settings says "Sign in again".
     single {
         val servers = get<ServerRepository>()
-        PlexLibrarySource(get()) { refused ->
-            val current = servers.getById(refused.id)
-            if (current != null && current.token.isNotBlank() && current.token == refused.token) servers.save(current.copy(token = ""))
-        }
+        PlexLibrarySource(get()) { refused -> blankRefusedPlexToken(servers, refused) }
     } bind LibrarySource::class
+}
+
+/** Blanks [refused]'s Plex token if it is still the one the server refused, so Settings says "Sign in again". */
+internal suspend fun blankRefusedPlexToken(servers: ServerRepository, refused: com.chapterplayer.data.model.ServerConfig) {
+    val current = servers.getById(refused.id)
+    if (current != null && current.token.isNotBlank() && current.token == refused.token) servers.save(current.copy(token = ""))
 }
 
 /** The server list, sign-in, connection choice and sync, with the app scope and the dispatcher they run on. */

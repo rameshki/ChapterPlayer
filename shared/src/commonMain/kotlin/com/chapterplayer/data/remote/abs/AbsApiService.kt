@@ -17,8 +17,7 @@ import com.chapterplayer.data.remote.abs.dto.AbsPatchProgressRequest
 import com.chapterplayer.data.remote.abs.dto.AbsProgressDto
 import com.chapterplayer.data.remote.abs.dto.AbsSyncSessionRequest
 import com.chapterplayer.data.remote.abs.dto.AbsLoginResponseDto
-import com.chapterplayer.data.remote.abs.dto.AbsPlayDeviceInfo
-import com.chapterplayer.data.remote.abs.dto.AbsPlayRequest
+import com.chapterplayer.data.remote.abs.dto.AbsPlayerProfile
 import com.chapterplayer.data.remote.abs.dto.AbsPlaySessionDto
 import com.chapterplayer.data.remote.abs.dto.AbsStatusDto
 import io.ktor.client.HttpClient
@@ -42,7 +41,11 @@ import io.ktor.http.encodeURLPathPart
  * Auth: Bearer token in the Authorization header. Every call takes the server's base URL,
  * because each configured server has its own address.
  */
-class AbsApiService(private val client: HttpClient) {
+class AbsApiService(
+    private val client: HttpClient,
+    /** What this platform's player plays, for the play request (Android: ExoPlayer, iOS: AVPlayer). */
+    private val player: AbsPlayerProfile = platformAbsPlayer,
+) {
 
     /**
      * Fetch all libraries on this ABS server.
@@ -98,7 +101,7 @@ class AbsApiService(private val client: HttpClient) {
         client.post(endpoint(baseUrl, "api/items/${itemId.encodeURLPathPart()}/play")) {
             header(HttpHeaders.Authorization, bearerToken)
             contentType(ContentType.Application.Json)
-            setBody(AbsPlayRequest(AbsPlayDeviceInfo(clientName = "ChapterPlayer", deviceId = ABS_DEVICE_ID)))
+            setBody(player.request(clientName = "ChapterPlayer", deviceId = ABS_DEVICE_ID))
         }.body()
 
     /** Ends a playback session (POST /api/session/{id}/close) with where listening stopped and how long it ran, in seconds. */
