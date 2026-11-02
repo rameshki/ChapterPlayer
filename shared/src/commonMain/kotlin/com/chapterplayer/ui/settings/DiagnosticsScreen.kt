@@ -46,7 +46,7 @@ fun DiagnosticsScreen(onBack: () -> Unit, viewModel: DiagnosticsViewModel = koin
         val report = state.report
         if (report == null) {
             Text(
-                text = "Shows what this phone and each server hold for one book. Nothing here changes any data; tokens, addresses and ids are left out.",
+                text = "Shows what this phone and each server hold for one book. Nothing here changes any data and no sign-in is refreshed or cleared; tokens, addresses and ids are left out.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 modifier = Modifier.padding(bottom = 12.dp)

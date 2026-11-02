@@ -163,4 +163,28 @@ class DiagnosticsReportTest {
         assertTrue(showDiagnosticsRow(true))
         assertFalse(showDiagnosticsRow(false))
     }
+    @Test fun `the row and the entries exist only in a debuggable build`() {
+        assertEquals(listOf(AboutEntry.DIAGNOSTICS), aboutEntries(true))
+        assertTrue(aboutEntries(false).isEmpty())
+        assertEquals(listOf("settings/diagnostics"), com.chapterplayer.navigation.debugOnlyRoutes(true))
+        assertTrue(com.chapterplayer.navigation.debugOnlyRoutes(false).isEmpty())
+    }
+
+    @Test fun `long file names are shortened the same way`() {
+        assertEquals("short.mp3", shortName("short.mp3"))
+        val long = "Chapter 01 - The Very Long Title Of A Chapter In A Book That Goes On.mp3"
+        val short = shortName(long)
+        assertEquals(40, short.length)
+        assertTrue(short.endsWith(".mp3"))
+        assertTrue(short.contains("~"))
+    }
+
+    @Test fun `log text is cut into pieces at line ends`() {
+        val text = (1..10).joinToString("\n") { "line number $it with some text" }
+        val pieces = chunkText(text, 100)
+        assertTrue(pieces.all { it.length <= 100 })
+        assertEquals(text, pieces.joinToString("\n"))
+        val longLine = "x".repeat(250)
+        assertEquals(listOf(100, 100, 50), chunkText(longLine, 100).map { it.length })
+    }
 }

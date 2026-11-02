@@ -48,3 +48,34 @@ private fun two(n: Int): String = if (n < 10) "0$n" else "$n"
 
 /** The last [n] characters of a Plex rating key, so a track can be told apart without the whole key. */
 fun keySuffix(key: String, n: Int = 3): String = "..." + key.takeLast(n)
+
+/** A file name of at most [max] characters: a longer one keeps its start and its end (the extension) around a "~". */
+fun shortName(name: String, max: Int = 40): String {
+    if (name.length <= max) return name
+    val tail = (max - 1) / 2
+    return name.take(max - 1 - tail) + "~" + name.takeLast(tail)
+}
+
+/** [text] cut at line ends into pieces of at most [max] characters (a longer line is cut inside), for logs that truncate long entries. */
+fun chunkText(text: String, max: Int = 1000): List<String> {
+    val chunks = ArrayList<String>()
+    val current = StringBuilder()
+    fun flush() {
+        if (current.isNotEmpty()) chunks += current.toString().trimEnd('\n')
+        current.clear()
+    }
+    for (line in text.lines()) {
+        for (piece in line.chunked(max).ifEmpty { listOf("") }) {
+            if (current.length + piece.length + 1 > max) flush()
+            current.append(piece).append('\n')
+        }
+    }
+    flush()
+    return chunks
+}
+
+/** The entries the About page offers beyond its own text. */
+enum class AboutEntry { DIAGNOSTICS }
+
+/** The extra About entries for this build: Diagnostics only in a debuggable build. */
+fun aboutEntries(debuggable: Boolean): List<AboutEntry> = if (showDiagnosticsRow(debuggable)) listOf(AboutEntry.DIAGNOSTICS) else emptyList()

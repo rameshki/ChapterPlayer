@@ -14,7 +14,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.data.AppInfo
 import com.chapterplayer.di.DebuggableQualifier
-import com.chapterplayer.domain.diagnostics.showDiagnosticsRow
+import com.chapterplayer.domain.diagnostics.AboutEntry
+import com.chapterplayer.domain.diagnostics.aboutEntries
 import com.chapterplayer.domain.settings.aboutSummary
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
@@ -54,7 +55,7 @@ fun AboutSettingsScreen(
             }
         }
         // Developer tools: only in a debuggable build, never in a release build.
-        if (showDiagnosticsRow(debuggable)) {
+        if (AboutEntry.DIAGNOSTICS in aboutEntries(debuggable)) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)

@@ -50,3 +50,7 @@ sealed class Screen(val route: String) {
         fun createRoute(serverId: String = NEW_SERVER) = "server_setup/$serverId"
     }
 }
+
+/** Routes that exist only in a debuggable build. */
+fun debugOnlyRoutes(debuggable: Boolean): List<String> =
+    if (debuggable) listOf(Screen.SettingsDiagnostics.route) else emptyList()

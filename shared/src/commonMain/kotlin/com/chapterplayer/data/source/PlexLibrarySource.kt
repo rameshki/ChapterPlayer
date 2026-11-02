@@ -14,6 +14,7 @@ import com.chapterplayer.data.remote.plex.dto.PlexSectionDto
 import com.chapterplayer.data.remote.plex.fetchAllPlexItems
 import com.chapterplayer.data.remote.plex.dto.PlexMetadataDto
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.data.diagnostics.ReadRefusedException
 import com.chapterplayer.domain.diagnostics.PlexTrackProgress
 import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.playback.ServerProgress
@@ -320,12 +321,17 @@ class PlexLibrarySource(
         signedIn(server) { plexServerProgress(tracksOf(server, bookId)) }
 
     override suspend fun fetchProgressReading(server: ServerConfig, bookId: String): ServerProgressReading =
-        signedIn(server) {
+        // Not through signedIn: a refused token must not blank the server's sign-in from a read-only page.
+        try {
+            if (server.token.isBlank()) throw SignInRequiredException(server.name)
             val tracks = tracksOf(server, bookId)
             ServerProgressReading(
                 plexServerProgress(tracks),
                 tracks.map { PlexTrackProgress(it.ratingKey, it.durationMs, it.viewOffsetMs, it.viewCount, it.lastViewedAtSec) }
             )
+        } catch (e: HttpStatusException) {
+            if (e.status.value == 401) throw ReadRefusedException()
+            throw e
         }
 
     /** The book's tracks in play order with their listening state, from the track list alone (no chapters). */

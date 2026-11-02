@@ -1,5 +1,6 @@
 package com.chapterplayer.data.source
 
+import com.chapterplayer.data.diagnostics.ReadRefusedException
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.HttpStatusException
@@ -170,6 +171,7 @@ class AbsLibraryProgressTest {
         val refreshes: () -> Int,
         val oldToken: String,
         val newToken: String,
+        val stored: MutableStateFlow<ServerConfig>,
     )
 
     private fun refreshing(respondOk: (HttpRequestData) -> String): Refreshing {
@@ -203,7 +205,7 @@ class AbsLibraryProgressTest {
                 }
             }) { installApiDefaults(isDebuggable = false) }
         )
-        return Refreshing(AbsLibrarySource(api, AbsSessionManager(api, servers) { now }), stored.value, seen, { refreshes }, oldToken, newToken)
+        return Refreshing(AbsLibrarySource(api, AbsSessionManager(api, servers) { now }), stored.value, seen, { refreshes }, oldToken, newToken, stored)
     }
 
     @Test
@@ -224,6 +226,27 @@ class AbsLibraryProgressTest {
 
         assertEquals(1, r.refreshes())
         assertEquals(listOf("Bearer ${r.oldToken}", "Bearer ${r.newToken}"), r.seen.map { it.headers[HttpHeaders.Authorization] })
+    }
+
+    @Test
+    fun `the diagnostics read sends the stored token and reads the progress`() = runTest {
+        val reading = source(body = { fixture("abs/progress.json") }).fetchProgressReading(server, "abs_li_fixture01")
+
+        assertEquals("Bearer tok", requests.single().headers[HttpHeaders.Authorization])
+        assertEquals(ServerProgress(1_735_250L, 5_400_500L, false, 1760000000123L), reading.progress)
+        assertTrue(reading.tracks.isEmpty())
+    }
+
+    @Test
+    fun `the diagnostics read of a refused token neither refreshes nor writes the server row`() = runTest {
+        val r = refreshing { fixture("abs/progress.json") }
+        val before = r.stored.value
+
+        assertFailsWith<ReadRefusedException> { r.source.fetchProgressReading(r.server, "abs_li_fixture01") }
+
+        assertEquals(0, r.refreshes())
+        assertEquals(before, r.stored.value)
+        assertEquals(listOf("Bearer ${r.oldToken}"), r.seen.map { it.headers[HttpHeaders.Authorization] })
     }
 
     @Test

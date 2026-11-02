@@ -51,7 +51,11 @@ class DiagnosticsViewModelTest {
     private class Data : DiagnosticsData {
         val pendingRows = mutableMapOf<String, List<PendingProgress>>()
         val downloads = mutableMapOf<String, DiagDownload>()
-        override suspend fun pending(bookId: String) = pendingRows[bookId].orEmpty()
+        var failPending = false
+        override suspend fun pending(bookId: String): List<PendingProgress> {
+            if (failPending) throw IllegalStateException("database is locked /data/user/0/app/databases/x")
+            return pendingRows[bookId].orEmpty()
+        }
         override suspend fun download(bookId: String) = downloads[bookId]
     }
 
@@ -66,8 +70,10 @@ class DiagnosticsViewModelTest {
     private val plexBook = testBook("plex_48213", title = "The Long Way", author = "A Writer")
         .copy(serverId = "s2", source = ServerSource.PLEX)
 
+    private val otherBook = testBook("li_other0000000000000001", title = "Another Story", author = "Someone Else")
+
     private inner class Setup(online: Boolean = true) {
-        val repo = FakeBookRepository(listOf(absBook, plexBook))
+        val repo = FakeBookRepository(listOf(absBook, plexBook, otherBook))
         val data = Data()
         val monitor = Monitor(online)
         val vm = DiagnosticsViewModel(
@@ -82,9 +88,8 @@ class DiagnosticsViewModelTest {
     @Test fun `the picker lists the merged book once with its copies`() = runTest {
         val s = Setup(); collect(s); runCurrent()
         val choices = s.vm.uiState.value.choices
-        assertEquals(1, choices.size)
-        assertEquals("The Long Way", choices[0].title)
-        assertEquals("Home ABS (Audiobookshelf), Den Plex (Plex)", choices[0].detail)
+        assertEquals(listOf("Another Story", "The Long Way"), choices.map { it.title })
+        assertEquals("Home ABS (Audiobookshelf), Den Plex (Plex)", choices[1].detail)
         s.vm.onQueryChange("long"); runCurrent()
         assertEquals(1, s.vm.uiState.value.choices.size)
         s.vm.onQueryChange("zzz"); runCurrent()
@@ -168,6 +173,73 @@ class DiagnosticsViewModelTest {
         s.vm.clearSelection(); runCurrent()
         assertNull(s.vm.uiState.value.report)
         assertNull(s.vm.uiState.value.selectedKey)
+    }
+
+    @Test fun `an unclassified error shows its type name and a fixed sentence never its message`() = runTest {
+        val s = Setup(); collect(s); runCurrent()
+        s.repo.onFetchServerProgress = { Result.failure(IllegalArgumentException("secret path /data/x token=zzq9w8e7r6t5 host nas.example.org")) }
+        s.vm.select(absBook.id); runCurrent()
+        s.vm.readFromServer(); runCurrent()
+        val report = assertNotNull(s.vm.uiState.value.report)
+        assertTrue(report.contains("The read failed (IllegalArgumentException); details are not shown"))
+        assertFalse(report.contains("zzq9w8e7r6t5"), report)
+        assertFalse(report.contains("nas.example.org"))
+        assertFalse(report.contains("/data/x"))
+    }
+
+    @Test fun `a refused token is reported as such`() = runTest {
+        val s = Setup(); collect(s); runCurrent()
+        s.repo.onFetchServerProgress = { Result.failure(com.chapterplayer.data.diagnostics.ReadRefusedException()) }
+        s.vm.select(absBook.id); runCurrent()
+        s.vm.readFromServer(); runCurrent()
+        assertTrue(assertNotNull(s.vm.uiState.value.report).contains("The server refused the stored token"))
+    }
+
+    @Test fun `a double tap reads once`() = runTest {
+        val s = Setup(); collect(s); runCurrent()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        s.repo.onFetchServerProgress = { gate.await(); Result.success(null) }
+        s.vm.select(absBook.id); runCurrent()
+        s.vm.readFromServer(); s.vm.readFromServer(); runCurrent()
+        gate.complete(Unit); runCurrent()
+        assertEquals(listOf(absBook.id, plexBook.id), s.repo.fetchedProgress)
+        assertEquals(1, logged.size)
+    }
+
+    @Test fun `a read finishing after another book was chosen is dropped but its own report is logged`() = runTest {
+        val s = Setup(); collect(s); runCurrent()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        s.repo.onFetchServerProgress = { gate.await(); Result.success(ServerProgress(1_000L, 2_000L, false, 1L)) }
+        s.vm.select(absBook.id); runCurrent()
+        s.vm.readFromServer(); runCurrent()
+        s.vm.select(otherBook.id); runCurrent()
+        gate.complete(Unit); runCurrent()
+        val shown = assertNotNull(s.vm.uiState.value.report)
+        assertTrue(shown.contains("Another Story"))
+        assertFalse(shown.contains("Server progress (read"))
+        assertEquals(1, logged.size)
+        assertTrue(logged[0].contains("The Long Way"))
+        assertTrue(logged[0].contains("Server progress (read"))
+        assertFalse(s.vm.uiState.value.reading)
+    }
+
+    @Test fun `a table that cannot be read shows a notice and the page stays up`() = runTest {
+        val s = Setup(); collect(s); runCurrent()
+        s.data.failPending = true
+        s.vm.select(absBook.id); runCurrent()
+        assertNotNull(s.vm.uiState.value.report)
+        val notice = assertNotNull(s.vm.uiState.value.notice)
+        assertTrue(notice.contains("IllegalStateException"))
+        assertFalse(notice.contains("database is locked"))
+    }
+
+    @Test fun `another books progress ticks do not rebuild the report`() = runTest {
+        val s = Setup(); collect(s); runCurrent()
+        s.vm.select(absBook.id); runCurrent()
+        val before = s.vm.uiState.value.report
+        s.repo.progress.value = listOf(ReadingProgress(otherBook.id, 5_000L, 1_000L, 1_793_628_000_000L))
+        runCurrent()
+        assertTrue(before === s.vm.uiState.value.report)
     }
 
     @Test fun `the folder name is the books folder only`() {

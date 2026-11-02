@@ -80,4 +80,40 @@ class RedactionTest {
         assertEquals(text, redact(text))
         assertEquals("Title: The Long Way Home by A. N. Author", redact("Title: The Long Way Home by A. N. Author"))
     }
+    @Test fun `file system paths are removed`() {
+        assertEquals("folder [path] gone", redact("folder /data/user/0/com.app/files/downloads/s1/li_abc/01.mp3 gone"))
+        assertEquals("at [path]", redact("""at C:\Users\Someone\downloads\x.mp3"""))
+        assertEquals("li_1 / li_9 and AC/DC", redact("li_1 / li_9 and AC/DC"))
+    }
+
+    @Test fun `token keys may carry a prefix`() {
+        assertGone("accessToken=abcdef123456", "abcdef123456")
+        assertGone("""{"refreshToken": "r3fr3sh-value-9"}""", "r3fr3sh-value-9")
+        assertGone("authToken: q9w8e7r6", "q9w8e7r6")
+        assertGone("csrf_token=zz11yy22", "zz11yy22")
+        assertEquals("Design: bold", redact("Design: bold"))
+    }
+
+    @Test fun `opaque ids with dashes and underscores are removed`() {
+        assertGone("id aB3-dE6_gH9-jK2_mN5-pQ8 here", "aB3-dE6_gH9-jK2_mN5-pQ8")
+        assertEquals("plain-words-and-more-words here", redact("plain-words-and-more-words here"))
+    }
+
+    @Test fun `a host written as a single label with a port is removed`() {
+        assertGone("could not connect to nas:32400", "nas")
+        assertGone("plexbox:443 refused", "plexbox")
+        assertEquals("position 1:02:03 and 12:30", redact("position 1:02:03 and 12:30"))
+    }
+
+    @Test fun `dotted titles and file names are not taken for hosts`() {
+        for (name in listOf("chapter.one.mp3", "book.webm", "part.aax", "cover.pdf", "x.opus", "a.wav", "t.flac", "m.m4a", "n.m4b", "r.mka", "app.js")) {
+            assertEquals("file $name ok", redact("file $name ok"))
+        }
+        assertEquals("Title: Vol. 2. The End.", redact("Title: Vol. 2. The End."))
+        assertGone("host my.nas.example.com:443 down", "example.com")
+    }
+
+    @Test fun `long snake case file names stay`() {
+        assertEquals("01_the_beginning_of_everything.mp3", redact("01_the_beginning_of_everything.mp3"))
+    }
 }

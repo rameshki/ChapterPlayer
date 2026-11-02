@@ -151,7 +151,7 @@ private fun StringBuilder.appendPending(copy: DiagCopy) {
 
 private fun downloadLine(d: DiagDownload?): String {
     if (d == null) return "Download: none"
-    val files = if (d.fileNames.isEmpty()) "none" else d.fileNames.joinToString(", ")
+    val files = if (d.fileNames.isEmpty()) "none" else d.fileNames.joinToString(", ") { shortName(it) }
     return "Download: ${d.status}, ${formatBytes(d.doneBytes)} of ${formatBytes(d.totalBytes)}, folder ${d.folder ?: "unknown"}, " +
         "files ${d.fileNames.size}: $files" + (d.error?.let { ", error: $it" } ?: "")
 }

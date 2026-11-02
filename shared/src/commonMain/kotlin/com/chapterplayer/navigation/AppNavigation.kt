@@ -54,7 +54,6 @@ import com.chapterplayer.ui.components.LocalHaptics
 import com.chapterplayer.ui.components.LocalTextClipboard
 import com.chapterplayer.ui.components.rememberComposeTextClipboard
 import com.chapterplayer.di.DebuggableQualifier
-import com.chapterplayer.domain.diagnostics.showDiagnosticsRow
 import com.chapterplayer.ui.settings.DiagnosticsScreen
 import com.chapterplayer.ui.components.rememberComposeHaptics
 import com.chapterplayer.ui.player.PlayerViewModel
@@ -324,7 +323,7 @@ fun AppNavigation() {
                     }
 
                     // Not even reachable in a release build: the route exists only when the build is debuggable.
-                    if (showDiagnosticsRow(debuggable)) {
+                    if (Screen.SettingsDiagnostics.route in debugOnlyRoutes(debuggable)) {
                         composable(Screen.SettingsDiagnostics.route) {
                             DiagnosticsScreen(onBack = { navController.popBackStack() })
                         }
