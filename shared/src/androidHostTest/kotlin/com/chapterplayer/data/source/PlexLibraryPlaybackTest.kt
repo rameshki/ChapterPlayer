@@ -152,6 +152,18 @@ class PlexLibraryPlaybackTest {
     }
 
     @Test
+    fun `the diagnostics reading carries the same progress with the track states and one call`() = runTest {
+        val src = source(fixture("plex/album-tracks-progress.json"))
+        val reading = src.fetchProgressReading(server, "plex_1101")
+
+        assertEquals(src.fetchProgress(server, "plex_1101"), reading.progress)
+        assertEquals(true, reading.tracks.isNotEmpty())
+        assertEquals(true, reading.tracks.any { (it.viewOffsetMs ?: 0L) > 0L || it.viewCount > 0 })
+        // Reading only: the track list, nothing else (the second request is the plain fetchProgress above).
+        assertEquals(setOf("/library/metadata/1101/children"), requests.map { it.url.encodedPath }.toSet())
+    }
+
+    @Test
     fun `a book never played has no server progress`() = runTest {
         assertNull(source().fetchProgress(server, "plex_1101"))
     }

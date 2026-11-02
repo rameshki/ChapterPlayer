@@ -7,6 +7,7 @@ import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.MarkOutcome
@@ -76,6 +77,13 @@ interface BookRepository {
 
     /** The server's progress for [bookId]: success with null when it has none. A failure (including an unknown book or server) is returned; cancellation propagates. */
     suspend fun fetchServerProgress(bookId: String): Result<ServerProgress?>
+
+    /**
+     * Like [fetchServerProgress] but with the detail behind it (for Plex the track list), for the Diagnostics page. Read only;
+     * a failure is returned, cancellation propagates.
+     */
+    suspend fun readServerProgress(bookId: String): Result<ServerProgressReading> =
+        fetchServerProgress(bookId).map { ServerProgressReading(it) }
 
     /** Queues [pending] for later delivery: one row per book, merged with the stored row by `coalescePending` in one transaction. */
     suspend fun queueProgress(pending: PendingProgress)

@@ -14,6 +14,8 @@ import com.chapterplayer.data.remote.plex.dto.PlexSectionDto
 import com.chapterplayer.data.remote.plex.fetchAllPlexItems
 import com.chapterplayer.data.remote.plex.dto.PlexMetadataDto
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.domain.diagnostics.PlexTrackProgress
+import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.plex.PlexBookContent
 import com.chapterplayer.domain.plex.PLEX_NO_MUSIC_LIBRARY_TEXT
@@ -316,6 +318,15 @@ class PlexLibrarySource(
      */
     override suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? =
         signedIn(server) { plexServerProgress(tracksOf(server, bookId)) }
+
+    override suspend fun fetchProgressReading(server: ServerConfig, bookId: String): ServerProgressReading =
+        signedIn(server) {
+            val tracks = tracksOf(server, bookId)
+            ServerProgressReading(
+                plexServerProgress(tracks),
+                tracks.map { PlexTrackProgress(it.ratingKey, it.durationMs, it.viewOffsetMs, it.viewCount, it.lastViewedAtSec) }
+            )
+        }
 
     /** The book's tracks in play order with their listening state, from the track list alone (no chapters). */
     private suspend fun tracksOf(server: ServerConfig, bookId: String): List<PlexTrack> =
