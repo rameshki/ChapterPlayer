@@ -51,6 +51,11 @@ import org.koin.compose.viewmodel.koinViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.player.MiniPlayer
 import com.chapterplayer.ui.components.LocalHaptics
+import com.chapterplayer.ui.components.LocalTextClipboard
+import com.chapterplayer.ui.components.rememberComposeTextClipboard
+import com.chapterplayer.di.DebuggableQualifier
+import com.chapterplayer.domain.diagnostics.showDiagnosticsRow
+import com.chapterplayer.ui.settings.DiagnosticsScreen
 import com.chapterplayer.ui.components.rememberComposeHaptics
 import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
@@ -99,6 +104,7 @@ fun AppNavigation() {
     val navController = rememberNavController()
     // What this platform can do (iOS: no player, downloads or car yet); the screens hide or disable the rest.
     val features = koinInject<PlatformFeatures>()
+    val debuggable = koinInject<Boolean>(DebuggableQualifier)
     val tabs = visibleTabs(features)
 
     // Starts the app-wide library sync once, so a new install fills in whichever tab is open.
@@ -153,6 +159,7 @@ fun AppNavigation() {
     CompositionLocalProvider(
         LocalShowSourceBadge provides showBadges,
         LocalHaptics provides rememberComposeHaptics(),
+        LocalTextClipboard provides rememberComposeTextClipboard(),
         LocalPlatformFeatures provides features,
     ) {
         Scaffold(
@@ -310,7 +317,17 @@ fun AppNavigation() {
                     }
 
                     composable(Screen.SettingsAbout.route) {
-                        AboutSettingsScreen(onBack = { navController.popBackStack() })
+                        AboutSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenDiagnostics = { navController.navigate(Screen.SettingsDiagnostics.route) { launchSingleTop = true } }
+                        )
+                    }
+
+                    // Not even reachable in a release build: the route exists only when the build is debuggable.
+                    if (showDiagnosticsRow(debuggable)) {
+                        composable(Screen.SettingsDiagnostics.route) {
+                            DiagnosticsScreen(onBack = { navController.popBackStack() })
+                        }
                     }
 
                     composable(Screen.ServerSetup.route) { backStackEntry ->

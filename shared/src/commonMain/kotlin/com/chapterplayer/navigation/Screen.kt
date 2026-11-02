@@ -42,6 +42,8 @@ sealed class Screen(val route: String) {
     object SettingsDownloads : Screen("settings/downloads")
     object SettingsCar : Screen("settings/car")
     object SettingsAbout : Screen("settings/about")
+    /** Debug builds only; the About page offers it. */
+    object SettingsDiagnostics : Screen("settings/diagnostics")
     object ServerSetup : Screen("server_setup/{serverId}") {
         const val ARG_SERVER_ID = "serverId"
         const val NEW_SERVER = "new"
