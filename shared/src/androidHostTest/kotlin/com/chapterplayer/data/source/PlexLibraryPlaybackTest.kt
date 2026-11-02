@@ -1,5 +1,6 @@
 package com.chapterplayer.data.source
 
+import com.chapterplayer.data.diagnostics.ReadRefusedException
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.HttpStatusException
@@ -149,6 +150,34 @@ class PlexLibraryPlaybackTest {
         assertEquals(ServerProgress(1_620_000L, 1_800_000L, isFinished = false, updatedAtMs = 1_700_000_300_000L), progress)
         // One call: the track list carries each track's state.
         assertEquals(listOf("/library/metadata/1101/children"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `the diagnostics reading carries the same progress with the track states and one call`() = runTest {
+        val src = source(fixture("plex/album-tracks-progress.json"))
+        val reading = src.fetchProgressReading(server, "plex_1101")
+
+        assertEquals(src.fetchProgress(server, "plex_1101"), reading.progress)
+        assertEquals(true, reading.tracks.isNotEmpty())
+        assertEquals(true, reading.tracks.any { (it.viewOffsetMs ?: 0L) > 0L || it.viewCount > 0 })
+        // Reading only: the track list, nothing else, once for each of the two reads above.
+        assertEquals(listOf("/library/metadata/1101/children", "/library/metadata/1101/children"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `the diagnostics read of a refused token blanks no sign-in`() = runTest {
+        val refused = PlexLibrarySource(
+            PlexApiService(
+                HttpClient(MockEngine { respond("", HttpStatusCode.Unauthorized) }) { installApiDefaults(isDebuggable = false) },
+                object : PlexClientIdentifier {
+                    override val value = "client-1"
+                },
+            ),
+            markSignedOut = { signedOut += it.id },
+        )
+
+        assertFailsWith<ReadRefusedException> { refused.fetchProgressReading(server, "plex_1101") }
+        assertEquals(emptyList(), signedOut)
     }
 
     @Test

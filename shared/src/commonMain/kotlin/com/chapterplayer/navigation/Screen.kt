@@ -42,9 +42,15 @@ sealed class Screen(val route: String) {
     object SettingsDownloads : Screen("settings/downloads")
     object SettingsCar : Screen("settings/car")
     object SettingsAbout : Screen("settings/about")
+    /** Debug builds only; the About page offers it. */
+    object SettingsDiagnostics : Screen("settings/diagnostics")
     object ServerSetup : Screen("server_setup/{serverId}") {
         const val ARG_SERVER_ID = "serverId"
         const val NEW_SERVER = "new"
         fun createRoute(serverId: String = NEW_SERVER) = "server_setup/$serverId"
     }
 }
+
+/** Routes that exist only in a debuggable build. */
+fun debugOnlyRoutes(debuggable: Boolean): List<String> =
+    if (debuggable) listOf(Screen.SettingsDiagnostics.route) else emptyList()

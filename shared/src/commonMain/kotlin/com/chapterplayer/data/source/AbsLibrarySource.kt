@@ -7,7 +7,11 @@ import com.chapterplayer.data.model.Chapter
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.data.auth.SignInRequiredException
+import com.chapterplayer.data.diagnostics.ReadRefusedException
 import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.data.remote.HttpStatusException
+import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.dto.AbsChapterDto
@@ -124,6 +128,21 @@ class AbsLibrarySource(
         authorizer.authorized(server) { bearerToken ->
             api.getProgress(server.baseUrl, bearerToken, bookId.toServerItemId())
         }?.toServerProgress()
+
+    /**
+     * Diagnostics: the same GET as [fetchProgress] with the stored token as it is. It never refreshes the token (that would
+     * rotate it and save the new one) and never signs the server out: a refusal is [ReadRefusedException].
+     */
+    override suspend fun fetchProgressReading(server: ServerConfig, bookId: String): ServerProgressReading {
+        if (server.token.isBlank()) throw SignInRequiredException(server.name)
+        val dto = try {
+            api.getProgress(server.baseUrl, "Bearer ${server.token}", bookId.toServerItemId())
+        } catch (e: HttpStatusException) {
+            if (e.status.value == 401) throw ReadRefusedException()
+            throw e
+        }
+        return ServerProgressReading(dto?.toServerProgress())
+    }
 
     override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {
         authorizer.authorized(server) { bearerToken ->

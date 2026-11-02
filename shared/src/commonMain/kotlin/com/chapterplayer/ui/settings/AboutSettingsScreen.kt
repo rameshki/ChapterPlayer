@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -9,8 +10,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.data.AppInfo
+import com.chapterplayer.di.DebuggableQualifier
+import com.chapterplayer.domain.diagnostics.AboutEntry
+import com.chapterplayer.domain.diagnostics.aboutEntries
 import com.chapterplayer.domain.settings.aboutSummary
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
@@ -18,7 +23,12 @@ import org.koin.compose.koinInject
 
 /** Settings, About: the app name, its version and where the code lives. */
 @Composable
-fun AboutSettingsScreen(onBack: () -> Unit, appInfo: AppInfo = koinInject()) {
+fun AboutSettingsScreen(
+    onBack: () -> Unit,
+    onOpenDiagnostics: () -> Unit = {},
+    appInfo: AppInfo = koinInject(),
+    debuggable: Boolean = koinInject(DebuggableQualifier),
+) {
     SettingsPage(title = "About", onBack = onBack) {
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
@@ -42,6 +52,32 @@ fun AboutSettingsScreen(onBack: () -> Unit, appInfo: AppInfo = koinInject()) {
                     color = TextSecondary,
                     modifier = Modifier.padding(top = 12.dp)
                 )
+            }
+        }
+        // Developer tools: only in a debuggable build, never in a release build.
+        if (AboutEntry.DIAGNOSTICS in aboutEntries(debuggable)) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(role = Role.Button, onClick = onOpenDiagnostics)
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Diagnostics",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "What this phone and each server hold for a book (debug builds only).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             }
         }
     }

@@ -3,6 +3,7 @@ package com.chapterplayer.data.source
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.stats.ServerListeningStats
 import com.chapterplayer.data.model.BookCollection
@@ -70,6 +71,13 @@ interface LibrarySource {
 
     /** The server's progress for [bookId] (the app's id); null when it has none or the source has no progress. Throws when the call fails. */
     suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? = null
+
+    /**
+     * The same read as [fetchProgress], with what lies behind it for the Diagnostics page (for Plex the per-track listening
+     * state). Reads only what [fetchProgress] reads. Throws when the call fails.
+     */
+    suspend fun fetchProgressReading(server: ServerConfig, bookId: String): ServerProgressReading =
+        ServerProgressReading(fetchProgress(server, bookId))
 
     /** Sets the server's progress for [bookId] without a session. A source without progress does nothing. Throws when the call fails. */
     suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {}

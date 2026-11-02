@@ -36,6 +36,7 @@ import com.chapterplayer.domain.playback.combinedMarkOutcome
 import com.chapterplayer.domain.playback.mirroredProgress
 import com.chapterplayer.domain.playback.mirrorRowYields
 import com.chapterplayer.domain.playback.PendingProgress
+import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.playback.addToHistory
 import com.chapterplayer.domain.playback.bookmarkTitleOrDefault
@@ -270,6 +271,17 @@ class BookRepositoryImpl(
             val book = bookDao.getById(bookId) ?: error("Unknown book")
             val (server, source) = serverAndSource(book.serverId)
             Result.success(source.fetchProgress(server, bookId))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    override suspend fun readServerProgress(bookId: String): Result<ServerProgressReading> =
+        try {
+            val book = bookDao.getById(bookId) ?: error("Unknown book")
+            val (server, source) = serverAndSource(book.serverId)
+            Result.success(source.fetchProgressReading(server, bookId))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

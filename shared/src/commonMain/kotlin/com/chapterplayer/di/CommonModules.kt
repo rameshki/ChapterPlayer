@@ -42,7 +42,12 @@ import com.chapterplayer.ui.player.PlayerMenuViewModel
 import com.chapterplayer.ui.player.PlayerViewModel
 import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
+import com.chapterplayer.ui.settings.DiagnosticsViewModel
 import com.chapterplayer.ui.stats.StatsViewModel
+import com.chapterplayer.data.diagnostics.DiagnosticsData
+import com.chapterplayer.data.diagnostics.DiagnosticsLogger
+import com.chapterplayer.data.diagnostics.PlatformDiagnosticsLogger
+import com.chapterplayer.data.diagnostics.RoomDiagnosticsData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -320,6 +325,10 @@ val commonViewModelModule = module {
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
+    // The Diagnostics page (debug builds only reach it): read only tables, and the log the report is written to.
+    single<DiagnosticsData> { RoomDiagnosticsData(get(), get()) }
+    single<DiagnosticsLogger> { PlatformDiagnosticsLogger() }
+    viewModel { DiagnosticsViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
 }
 
 /** Every common module; a platform adds its own (Android: `sharedModules` includes these; iOS: `initKoin`). */
