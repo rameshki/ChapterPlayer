@@ -7,7 +7,7 @@ import com.chapterplayer.domain.playback.isFinishedAt
  * Data class representing the necessary information to display a resume card for a book.
  */
 data class ResumeInfo(
-    /** The copy to resume: for a book on several servers the one played last (see [resumeCopy]). */
+    /** The copy the card shows: for a book on several servers [resumeCopy]'s; Resume itself follows the Play rule. */
     val item: BrowseItem,
     val chapterTitle: String?,
     val fraction: Float,

@@ -253,8 +253,11 @@ val BrowseItem.seriesServerId: String
  * The copy to resume. A downloaded copy always plays first: when one [canPlay] allows, it is resumed (of several, the
  * one played last), never a stream of another copy; its position follows the other copies through the mirrored
  * progress. Otherwise the copy played last (the one the entry's progress belongs to) when [canPlay] allows it, else the
- * first member that can play in member order, else the copy played last. A book on one server is itself. Home's
- * Resume, the widget and the car resume this copy; with "Ask every time" too, since only the details page asks.
+ * first member that can play in member order, else the copy played last. A book on one server is itself.
+ * This is for the places that cannot ask: Android Auto, the widgets and the notification resume this copy (downloaded
+ * first, else the copy played last), whatever the "Play from" choice. Wherever the person taps Play or Resume in the
+ * app (the details page, Home's Resume card) the Play rule applies instead ([chosenPlaySource], else the sheet asks);
+ * Home's card shows this copy and asks when it starts.
  */
 fun resumeCopy(entry: BrowseItem, canPlay: (BrowseItem) -> Boolean = { true }): BrowseItem {
     if (!entry.isMerged) return entry
