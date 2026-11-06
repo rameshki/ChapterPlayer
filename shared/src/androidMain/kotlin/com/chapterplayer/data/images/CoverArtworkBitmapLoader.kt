@@ -29,6 +29,9 @@ class CoverArtworkBitmapLoader(
     private val scope: CoroutineScope,
 ) : BitmapLoader {
 
+    // The same cover is asked for on every notification update; a failed load is not kept (see [LastLoadCache]).
+    private val lastLoad = LastLoadCache<Bitmap>()
+
     override fun supportsMimeType(mimeType: String): Boolean = Util.isBitmapFactorySupportedMimeType(mimeType)
 
     override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> = background { decode(data) }
@@ -36,7 +39,7 @@ class CoverArtworkBitmapLoader(
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {
         val bookId = parseCoverUri(uri.toString(), authority)
             ?: return Futures.immediateFailedFuture(IOException("Not a cover address of this app"))
-        return background { decode(covers(bookId) ?: throw IOException("No cover")) }
+        return lastLoad.get(bookId) { background { decode(covers(bookId) ?: throw IOException("No cover")) } }
     }
 
     private fun decode(bytes: ByteArray): Bitmap =

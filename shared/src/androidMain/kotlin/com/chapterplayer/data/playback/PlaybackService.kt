@@ -13,7 +13,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
@@ -110,9 +109,9 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         val builder = MediaLibrarySession.Builder(this, sessionPlayer, callback)
         if (openApp != null) builder.setSessionActivity(openApp)
         // Artwork for the notification, the lock screen and the car's Now Playing: the items name the app's cover address,
-        // loaded here through the authenticated cover loader (the last bitmaps are kept by Media3's cache).
+        // loaded here through the authenticated cover loader. Not Media3's CacheBitmapLoader: it would keep a failed load.
         val covers = get<CoverBytesLoader>()
-        builder.setBitmapLoader(CacheBitmapLoader(CoverArtworkBitmapLoader(coverAuthority(packageName), covers::load, scope)))
+        builder.setBitmapLoader(CoverArtworkBitmapLoader(coverAuthority(packageName), covers::load, scope))
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
             it.setMediaButtonPreferences(
