@@ -49,6 +49,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.chapterplayer.ios
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # The app icon: one 1024 x 1024 image in ChapterPlayer/Assets.xcassets (Xcode makes the other sizes).
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"

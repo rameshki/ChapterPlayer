@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/icon.png" width="128" height="128" alt="ChapterPlayer icon: gold headphones over an open book on navy"></p>
+
 # ChapterPlayer
 
 An audiobook player for the places your books already live: **Audiobookshelf** and **Plex** today (Audible is being researched). Chapter-first playback, progress that follows you between devices and servers, downloads for offline listening, car and widget support.

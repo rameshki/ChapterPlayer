@@ -1,33 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Simple headphones/book icon as a placeholder launcher foreground -->
+<!-- Launcher icon foreground ("Midnight and Gold").
+     Drawn on a 108 viewport (headphones over an open book, with a small sound wave) and scaled by 0.84 about
+     the centre so the whole drawing stays inside the 66 dp safe zone circle that every launcher mask keeps. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Book shape -->
-    <path
-        android:fillColor="#0E0D0B"
-        android:pathData="M30,20 L78,20 C80.2,20 82,21.8 82,24 L82,84 C82,86.2 80.2,88 78,88 L30,88 C27.8,88 26,86.2 26,84 L26,24 C26,21.8 27.8,20 30,20 Z" />
-    <!-- Book spine line -->
-    <path
-        android:strokeColor="#E8B84B"
-        android:strokeWidth="3"
-        android:pathData="M38,20 L38,88" />
-    <!-- Lines representing text -->
-    <path
-        android:strokeColor="#E8B84B"
-        android:strokeWidth="2.5"
-        android:fillColor="#00000000"
-        android:pathData="M48,40 L74,40" />
-    <path
-        android:strokeColor="#E8B84B"
-        android:strokeWidth="2.5"
-        android:fillColor="#00000000"
-        android:pathData="M48,50 L74,50" />
-    <path
-        android:strokeColor="#E8B84B"
-        android:strokeWidth="2.5"
-        android:fillColor="#00000000"
-        android:pathData="M48,60 L66,60" />
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.84"
+        android:scaleY="0.84">
+        <!-- Headband -->
+        <path
+            android:pathData="M28,58 A26,26 0 0,1 80,58"
+            android:strokeColor="#FFF2C14E"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+        <!-- Ear cups -->
+        <path
+            android:fillColor="#FFF2C14E"
+            android:pathData="M25.5,52 L27.5,52 A5.5,5.5 0 0,1 33,57.5 L33,70.5 A5.5,5.5 0 0,1 27.5,76 L25.5,76 A5.5,5.5 0 0,1 20,70.5 L20,57.5 A5.5,5.5 0 0,1 25.5,52 Z" />
+        <path
+            android:fillColor="#FFF2C14E"
+            android:pathData="M80.5,52 L82.5,52 A5.5,5.5 0 0,1 88,57.5 L88,70.5 A5.5,5.5 0 0,1 82.5,76 L80.5,76 A5.5,5.5 0 0,1 75,70.5 L75,57.5 A5.5,5.5 0 0,1 80.5,52 Z" />
+        <!-- Open book -->
+        <path
+            android:fillColor="#FFF2C14E"
+            android:pathData="M54,78 C48,73 41,71 36,72.5 L36,54 C41,52.5 48,54 54,59 Z" />
+        <path
+            android:fillColor="#FFC9973A"
+            android:pathData="M54,78 C60,73 67,71 72,72.5 L72,54 C67,52.5 60,54 54,59 Z" />
+        <!-- Sound wave -->
+        <path
+            android:fillColor="#FFFFF1C7"
+            android:pathData="M49.5,40 A2,2 0 0,1 51.5,42 L51.5,48 A2,2 0 0,1 49.5,50 A2,2 0 0,1 47.5,48 L47.5,42 A2,2 0 0,1 49.5,40 Z" />
+        <path
+            android:fillColor="#FFFFF1C7"
+            android:pathData="M54,34 A2,2 0 0,1 56,36 L56,50 A2,2 0 0,1 54,52 A2,2 0 0,1 52,50 L52,36 A2,2 0 0,1 54,34 Z" />
+        <path
+            android:fillColor="#FFFFF1C7"
+            android:pathData="M58.5,40 A2,2 0 0,1 60.5,42 L60.5,48 A2,2 0 0,1 58.5,50 A2,2 0 0,1 56.5,48 L56.5,42 A2,2 0 0,1 58.5,40 Z" />
+    </group>
 </vector>
