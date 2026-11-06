@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Launcher icon monochrome layer for themed icons: the foreground's shape in one colour (the launcher tints it).
-     Drawn on a 108 viewport (headphones over an open book, with a small sound wave) and scaled by 0.84 about
-     the centre so the whole drawing stays inside the 66 dp safe zone circle that every launcher mask keeps. -->
+     Drawn on a 108 viewport (headphones over an open book). The drawing's bounding box (y 29 to 78) is centred
+     in the tile and scaled by 0.85, the most that keeps its furthest points (the cup corners) inside the 66 dp
+     safe zone circle that every launcher mask keeps. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -9,9 +10,10 @@
     android:viewportHeight="108">
     <group
         android:pivotX="54"
-        android:pivotY="54"
-        android:scaleX="0.84"
-        android:scaleY="0.84">
+        android:pivotY="53.5"
+        android:scaleX="0.85"
+        android:scaleY="0.85"
+        android:translateY="0.5">
         <!-- Headband -->
         <path
             android:pathData="M28,58 A26,26 0 0,1 80,58"
@@ -37,21 +39,5 @@
                 android:fillColor="#FFFFFFFF"
                 android:pathData="M54,78 C60,73 67,71 72,72.5 L72,54 C67,52.5 60,54 54,59 Z" />
         </group>
-        <!-- Sound wave: five bars, width 4, gap 2.5, centred on y 45 -->
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M41,42 A2,2 0 0,1 43,44 L43,46 A2,2 0 0,1 41,48 A2,2 0 0,1 39,46 L39,44 A2,2 0 0,1 41,42 Z" />
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M47.5,39.5 A2,2 0 0,1 49.5,41.5 L49.5,48.5 A2,2 0 0,1 47.5,50.5 A2,2 0 0,1 45.5,48.5 L45.5,41.5 A2,2 0 0,1 47.5,39.5 Z" />
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M54,37 A2,2 0 0,1 56,39 L56,51 A2,2 0 0,1 54,53 A2,2 0 0,1 52,51 L52,39 A2,2 0 0,1 54,37 Z" />
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M60.5,39.5 A2,2 0 0,1 62.5,41.5 L62.5,48.5 A2,2 0 0,1 60.5,50.5 A2,2 0 0,1 58.5,48.5 L58.5,41.5 A2,2 0 0,1 60.5,39.5 Z" />
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M67,42 A2,2 0 0,1 69,44 L69,46 A2,2 0 0,1 67,48 A2,2 0 0,1 65,46 L65,44 A2,2 0 0,1 67,42 Z" />
     </group>
 </vector>
