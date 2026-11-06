@@ -55,6 +55,8 @@ import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.RoomBookMergeRepository
+import com.chapterplayer.data.favourites.FavouritesRepository
+import com.chapterplayer.data.favourites.RoomFavouritesRepository
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.AbsSessionManager
@@ -147,6 +149,7 @@ val commonDaoModule = module {
     single { get<ChapterPlayerDatabase>().downloadDao() }
     single { get<ChapterPlayerDatabase>().bookMergeDao() }
     single { get<ChapterPlayerDatabase>().listeningDao() }
+    single { get<ChapterPlayerDatabase>().favouriteDao() }
 }
 
 /** The HTTP clients and the server APIs. */
@@ -190,10 +193,12 @@ internal suspend fun blankRefusedPlexToken(servers: ServerRepository, refused: c
 
 /** The server list, sign-in, connection choice and sync, with the app scope and the dispatcher they run on. */
 val commonServerModule = module {
-    single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get()) }
+    single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get(), favouriteDao = get()) }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
     // The user's "Not the same book" and "Merge with" choices for books on several servers.
     single<BookMergeRepository> { RoomBookMergeRepository(get()) }
+    // The person's favourite books, on this phone only (Audiobookshelf has no favourites to sync with).
+    single<FavouritesRepository> { RoomFavouritesRepository(get()) }
     single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }

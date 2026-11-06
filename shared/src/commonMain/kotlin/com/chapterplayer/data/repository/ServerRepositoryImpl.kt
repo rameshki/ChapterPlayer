@@ -6,6 +6,7 @@ import com.chapterplayer.data.local.dao.BookmarkDao
 import com.chapterplayer.data.local.dao.HistoryDao
 import com.chapterplayer.data.local.dao.CollectionDao
 import com.chapterplayer.data.local.dao.ExcludedLibraryDao
+import com.chapterplayer.data.local.dao.FavouriteDao
 import com.chapterplayer.data.local.dao.LibraryDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
 import com.chapterplayer.data.local.entity.ExcludedLibraryEntity
@@ -45,7 +46,9 @@ class ServerRepositoryImpl(
     /** Where the Plex connections plex.tv listed are kept: they become [ServerConfig.alternateBaseUrls]. */
     private val statusStore: ServerStatusStore = NoServerStatusStore,
     /** The merged-sources corrections; a removed server's books are forgotten there too. */
-    private val bookMergeDao: BookMergeDao? = null
+    private val bookMergeDao: BookMergeDao? = null,
+    /** The favourites (local only); a removed server's books stop being favourites. */
+    private val favouriteDao: FavouriteDao? = null,
 ) : ServerRepository {
 
     /**
@@ -125,6 +128,7 @@ class ServerRepositoryImpl(
         val bookIds = bookDao.getByServer(id).map { it.id }
         for (chunk in bookIds.chunked(HISTORY_DELETE_CHUNK)) historyDao.deleteForBooks(chunk)
         bookMergeDao?.let { dao -> for (chunk in bookIds.chunked(MERGE_DELETE_CHUNK)) dao.deleteForBooks(chunk) }
+        favouriteDao?.let { dao -> for (chunk in bookIds.chunked(HISTORY_DELETE_CHUNK)) dao.deleteAll(chunk) }
         bookmarkDao.deleteForServer(id)
         bookDao.deleteByServer(id)
         libraryDao.deleteForServer(id)
