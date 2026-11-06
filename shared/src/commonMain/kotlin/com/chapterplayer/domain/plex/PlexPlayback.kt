@@ -126,12 +126,34 @@ fun plexCompletedTracks(tracks: List<PlexTrack>, previousPositionMs: Long?, posi
     return (passed + own).distinct()
 }
 
+/** While playing, the offset is stored (`/:/progress`) at most this often (listening time); the timeline reports are more frequent. */
+const val PLEX_PROGRESS_EVERY_MS = 60_000L
+
+/**
+ * Whether a session report stores the offset with `/:/progress`: always for a pause or a stop, and while playing once
+ * [listenedSinceProgressMs] of listening has passed since the last store (the timeline alone does not keep the offset
+ * on a real server).
+ */
+fun plexShouldStoreOffset(isPlaying: Boolean, listenedSinceProgressMs: Long): Boolean =
+    !isPlaying || listenedSinceProgressMs >= PLEX_PROGRESS_EVERY_MS
+
+/**
+ * The offset (ms inside the track, clamped 0..length) to store for [point], or null when none must be sent: the track is
+ * played to the end ([finishedTracks], or its last seconds), where the scrobble settles it and an offset would be wrong.
+ */
+fun plexOffsetToStore(point: PlexTimelinePoint, finishedTracks: Collection<Int>): Long? {
+    if (point.trackIndex in finishedTracks || nearEnd(point)) return null
+    val offset = point.offsetMs.coerceAtLeast(0L)
+    return if (point.durationMs > 0L) offset.coerceAtMost(point.durationMs) else offset
+}
+
 /**
  * What to tell Plex to set a book to a position without a playing session (a queued position, Mark as finished / not
  * finished). Plex holds progress per track, so: [unscrobble] the tracks from the position's track on that count as
- * played (first, as that also clears their offsets), set the offset in the position's track ([point], sent as a stopped
- * timeline), then [scrobble] the tracks before it that were not played yet (and its own track when the position is in
- * its last seconds). A finished book scrobbles every track and sends nothing else. Rating keys, in play order.
+ * played (first, as that also clears their offsets), store the offset in the position's track ([point], sent with
+ * `/:/progress`; null when that track is finished by the scrobble below), then [scrobble] the tracks before it that were
+ * not played yet (and its own track when the position is in its last seconds). A finished book scrobbles every track and
+ * sends nothing else. Rating keys, in play order.
  */
 data class PlexProgressPlan(val scrobble: List<String>, val unscrobble: List<String>, val point: PlexTimelinePoint?)
 
@@ -142,5 +164,5 @@ fun plexProgressPlan(tracks: List<PlexTrack>, positionMs: Long, isFinished: Bool
     val before = tracks.take(point.trackIndex).filter { it.viewCount == 0 }.map { it.ratingKey }
     val own = if (nearEnd(point)) listOf(point.ratingKey) else emptyList()
     val after = tracks.drop(point.trackIndex).filter { it.viewCount > 0 }.map { it.ratingKey }
-    return PlexProgressPlan(scrobble = before + own, unscrobble = after, point = point)
+    return PlexProgressPlan(scrobble = before + own, unscrobble = after, point = point.takeIf { own.isEmpty() })
 }

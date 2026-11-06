@@ -88,11 +88,15 @@ class BookRepositoryPlexMarkTest {
                     offset.remove(key)
                     respond("", HttpStatusCode.OK)
                 }
+                // As on a real server, a timeline only touches lastViewedAt; /:/progress is what keeps the offset.
                 path == "/:/timeline" -> {
-                    val rating = request.url.parameters["ratingKey"]!!
+                    viewedAt[request.url.parameters["ratingKey"]!!] = clockSec
+                    respond("", HttpStatusCode.OK)
+                }
+                path == "/:/progress" -> {
                     val time = request.url.parameters["time"]!!.toLong()
-                    if (time > 0) offset[rating] = time else offset.remove(rating)
-                    viewedAt[rating] = clockSec
+                    if (time > 0) offset[key!!] = time else offset.remove(key!!)
+                    viewedAt[key] = clockSec
                     respond("", HttpStatusCode.OK)
                 }
                 path.endsWith("/children") ->
@@ -143,7 +147,7 @@ class BookRepositoryPlexMarkTest {
 
         assertEquals(MarkOutcome.SYNCED, f.repo.markFinished("plex_10", false).getOrThrow())
 
-        assertEquals(listOf("unscrobble 11", "unscrobble 12", "unscrobble 13", "timeline 11"), f.plex.reports())
+        assertEquals(listOf("unscrobble 11", "unscrobble 12", "unscrobble 13", "progress 11"), f.plex.reports())
         val row = f.progressDao.get("plex_10")!!
         assertEquals(0L, row.positionMs)
         assertEquals(false, row.isFinished)
@@ -164,11 +168,15 @@ class BookRepositoryPlexMarkTest {
 
         f.repo.pushProgress(PendingProgress("plex_10", "srv1", 1_250_000L, 3_000_000L, 0L, 1_000L)).getOrThrow()
 
-        assertEquals(listOf("timeline 12", "scrobble 11"), f.plex.reports())
-        val timeline = f.plex.requests.first { it.url.encodedPath == "/:/timeline" }
-        assertEquals("stopped", timeline.url.parameters["state"])
-        assertEquals("250000", timeline.url.parameters["time"])
-        assertEquals("1000000", timeline.url.parameters["duration"])
+        assertEquals(listOf("progress 12", "scrobble 11"), f.plex.reports())
+        val progress = f.plex.requests.first { it.url.encodedPath == "/:/progress" }
+        assertEquals("12", progress.url.parameters["key"])
+        assertEquals("250000", progress.url.parameters["time"])
+        assertEquals("com.plexapp.plugins.library", progress.url.parameters["identifier"])
+        assertEquals(null, progress.url.parameters["state"])
+        assertEquals("tok-secret", progress.headers["X-Plex-Token"])
+        assertEquals(null, progress.url.parameters["X-Plex-Token"])
+        assertTrue(f.plex.requests.none { it.url.encodedPath == "/:/timeline" })
         // The server now says the book is where the queue said.
         assertEquals(1_250_000L, f.repo.fetchServerProgress("plex_10").getOrThrow()!!.positionMs)
     }

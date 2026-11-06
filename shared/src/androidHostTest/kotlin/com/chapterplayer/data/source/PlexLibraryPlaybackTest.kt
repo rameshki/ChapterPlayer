@@ -232,7 +232,7 @@ class PlexLibraryPlaybackTest {
         source.syncPlayback(server, session.sessionId, 605_000L, 10_000L, session.durationMs, isPlaying = true)
 
         assertEquals(
-            listOf("timeline 1102", "timeline 1103", "scrobble 1102", "timeline 1103", "timeline 1102", "timeline 1103"),
+            listOf("timeline 1102", "timeline 1103", "scrobble 1102", "timeline 1103", "progress 1103", "timeline 1102", "timeline 1103"),
             names(),
         )
         assertEquals(
@@ -276,12 +276,63 @@ class PlexLibraryPlaybackTest {
 
         source.closePlayback(server, session.sessionId, 700_000L, 0L)
 
-        assertEquals(listOf("timeline 1103"), names())
-        assertEquals("stopped", reports().single().url.parameters["state"])
+        assertEquals(listOf("timeline 1103", "progress 1103"), names())
+        assertEquals("stopped", reports().first().url.parameters["state"])
+        assertEquals("100000", reports().last().url.parameters["time"])
         // A closed (or unknown) session fails, so the syncer queues the position instead.
         assertFailsWith<IllegalStateException> { source.syncPlayback(server, session.sessionId, 1L, 1L, 1L, isPlaying = true) }
         source.closePlayback(server, session.sessionId, 700_000L, 0L)
-        assertEquals(1, reports().size)
+        assertEquals(2, reports().size)
+    }
+
+    @Test
+    fun `a pause stores the offset with the progress call - exact request`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        source.syncPlayback(server, session.sessionId, 700_000L, 3_000L, session.durationMs, isPlaying = false)
+
+        assertEquals(listOf("timeline 1103", "progress 1103"), names())
+        val progress = reports().last()
+        assertEquals("/:/progress", progress.url.encodedPath)
+        assertEquals("1103", progress.url.parameters["key"])
+        assertEquals("com.plexapp.plugins.library", progress.url.parameters["identifier"])
+        assertEquals("100000", progress.url.parameters["time"])
+        assertEquals(null, progress.url.parameters["state"])
+        assertEquals("tok", progress.headers["X-Plex-Token"])
+        assertEquals(null, progress.url.parameters["X-Plex-Token"])
+        assertEquals("client-1", progress.headers["X-Plex-Client-Identifier"])
+        assertEquals("ChapterPlayer", progress.headers["X-Plex-Product"])
+    }
+
+    @Test
+    fun `while playing the offset is stored about every minute of listening`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        requests.clear()
+
+        for (i in 1..7) source.syncPlayback(server, session.sessionId, 100_000L + i * 10_000L, 10_000L, session.durationMs, isPlaying = true)
+
+        assertEquals(7, reports().count { it.url.encodedPath == "/:/timeline" })
+        val progress = reports().filter { it.url.encodedPath == "/:/progress" }
+        assertEquals(listOf("160000"), progress.map { it.url.parameters["time"] })
+    }
+
+    @Test
+    fun `no offset is stored for a track played to the end`() = runTest {
+        val source = source()
+        val session = source.startPlayback(server, "plex_1101")
+        source.syncPlayback(server, session.sessionId, 586_000L, 10_000L, session.durationMs, isPlaying = true)
+        source.syncPlayback(server, session.sessionId, 596_000L, 10_000L, session.durationMs, isPlaying = true)
+        requests.clear()
+
+        // Paused in the last 5 s of track 1: scrobbled, so the scrobble settles it.
+        source.syncPlayback(server, session.sessionId, 597_000L, 1_000L, session.durationMs, isPlaying = false)
+        // Paused again after going back, in a track this session already scrobbled.
+        source.syncPlayback(server, session.sessionId, 300_000L, 1_000L, session.durationMs, isPlaying = false)
+
+        assertTrue(reports().none { it.url.encodedPath == "/:/progress" })
     }
 
     @Test

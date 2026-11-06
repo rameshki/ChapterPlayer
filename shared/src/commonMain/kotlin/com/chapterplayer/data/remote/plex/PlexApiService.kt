@@ -133,6 +133,19 @@ class PlexApiService(
         }
     }
 
+    /**
+     * Stores a track's resume offset (`GET /:/progress`, no state): `viewOffset` becomes [timeMs]. Found on a real server:
+     * a timeline report alone does not keep the offset, so this is the call that does.
+     */
+    suspend fun progress(baseUrl: String, token: String, ratingKey: String, timeMs: Long) {
+        client.get(endpoint(baseUrl, ":/progress")) {
+            reportHeaders(token)
+            parameter("key", ratingKey)
+            parameter("identifier", LIBRARY_IDENTIFIER)
+            parameter("time", timeMs.coerceAtLeast(0L))
+        }
+    }
+
     /** Marks a track as played to the end (`GET /:/scrobble`): its play count goes up and its offset is cleared. */
     suspend fun scrobble(baseUrl: String, token: String, ratingKey: String) {
         client.get(endpoint(baseUrl, ":/scrobble")) {

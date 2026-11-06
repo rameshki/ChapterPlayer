@@ -186,9 +186,26 @@ class PlexPlaybackTest {
     @Test
     fun `a position near the end of its track finishes that track too`() {
         assertEquals(
-            PlexProgressPlan(scrobble = listOf("1"), unscrobble = emptyList(), point = PlexTimelinePoint(0, "1", 598_000L, 600_000L)),
+            // Finished by the scrobble: no offset is stored for it.
+            PlexProgressPlan(scrobble = listOf("1"), unscrobble = emptyList(), point = null),
             plexProgressPlan(three, positionMs = 598_000L, isFinished = false),
         )
+    }
+
+    @Test
+    fun `the offset to store is inside the track and never for a finished one`() {
+        val point = PlexTimelinePoint(1, "2", 100_000L, 900_000L)
+        assertEquals(100_000L, plexOffsetToStore(point, emptyList()))
+        assertEquals(null, plexOffsetToStore(point, listOf(1)))
+        assertEquals(null, plexOffsetToStore(PlexTimelinePoint(1, "2", 897_000L, 900_000L), emptyList()))
+        assertEquals(0L, plexOffsetToStore(PlexTimelinePoint(1, "2", -5L, 900_000L), emptyList()))
+    }
+
+    @Test
+    fun `the offset is stored on pause and stop and about every minute while playing`() {
+        assertEquals(true, plexShouldStoreOffset(isPlaying = false, listenedSinceProgressMs = 0L))
+        assertEquals(false, plexShouldStoreOffset(isPlaying = true, listenedSinceProgressMs = 50_000L))
+        assertEquals(true, plexShouldStoreOffset(isPlaying = true, listenedSinceProgressMs = PLEX_PROGRESS_EVERY_MS))
     }
 
     @Test

@@ -24,6 +24,8 @@ import com.chapterplayer.domain.plex.PlexTrack
 import com.chapterplayer.domain.plex.plexPlaybackTracks
 import com.chapterplayer.domain.plex.plexCompletedTracks
 import com.chapterplayer.domain.plex.plexProgressPlan
+import com.chapterplayer.domain.plex.plexOffsetToStore
+import com.chapterplayer.domain.plex.plexShouldStoreOffset
 import com.chapterplayer.domain.plex.plexServerProgress
 import com.chapterplayer.domain.plex.plexTimelinePoint
 import com.chapterplayer.domain.plex.PlexEntryKind
@@ -79,6 +81,7 @@ class PlexLibrarySource(
         var lastPositionMs: Long? = null
         val scrobbled = HashSet<Int>()
         var markedFinished = false
+        var listenedSinceProgressMs = 0L
     }
 
     /** The sessions this app opened, by session id; a closed one is forgotten. Read and written under [sessionsLock]. */
@@ -286,12 +289,22 @@ class PlexLibrarySource(
             if (live.markedFinished) return@withLock
             val point = plexTimelinePoint(live.tracks, positionMs) ?: return@withLock
             api.timeline(server.baseUrl, server.token, point.ratingKey, state, point.offsetMs, point.durationMs)
-            for (index in plexCompletedTracks(live.tracks, live.lastPositionMs, positionMs, listenedMs)) {
+            val completed = plexCompletedTracks(live.tracks, live.lastPositionMs, positionMs, listenedMs)
+            for (index in completed) {
                 if (index in live.scrobbled) continue
                 api.scrobble(server.baseUrl, server.token, live.tracks[index].ratingKey)
                 live.scrobbled += index
             }
             live.lastPositionMs = positionMs
+            // The timeline alone does not keep the offset on a real server: store it on pause and stop, and about
+            // every minute of listening; never for a track that is (or was in this session) played to the end.
+            live.listenedSinceProgressMs += listenedMs.coerceAtLeast(0L)
+            if (plexShouldStoreOffset(state == TIMELINE_PLAYING, live.listenedSinceProgressMs)) {
+                plexOffsetToStore(point, live.scrobbled + completed)?.let {
+                    api.progress(server.baseUrl, server.token, point.ratingKey, it)
+                    live.listenedSinceProgressMs = 0L
+                }
+            }
         }
 
     /**
@@ -308,7 +321,9 @@ class PlexLibrarySource(
         signedIn(server) {
             val plan = plexProgressPlan(tracksOf(server, bookId), positionMs, isFinished)
             for (key in plan.unscrobble) api.unscrobble(server.baseUrl, server.token, key)
-            plan.point?.let { api.timeline(server.baseUrl, server.token, it.ratingKey, TIMELINE_STOPPED, it.offsetMs, it.durationMs) }
+            plan.point?.let { point ->
+                plexOffsetToStore(point, emptyList())?.let { api.progress(server.baseUrl, server.token, point.ratingKey, it) }
+            }
             for (key in plan.scrobble) api.scrobble(server.baseUrl, server.token, key)
         }
     }
