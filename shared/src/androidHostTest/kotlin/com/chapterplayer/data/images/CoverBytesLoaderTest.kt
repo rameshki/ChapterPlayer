@@ -59,6 +59,8 @@ class CoverBytesLoaderTest {
     }
 
     private var now = 0L
+    private var serverList = listOf(abs, plex)
+    private var plexAllowed = true
 
     private fun loader(
         rig: Rig,
@@ -77,7 +79,8 @@ class CoverBytesLoaderTest {
 
     private fun sources(local: Map<String, ByteArray> = emptyMap(), downscale: (ByteArray) -> ByteArray? = { it + 9 }) = object : CoverSources {
         override suspend fun coverOf(bookId: String) = books[bookId]
-        override suspend fun server(serverId: String) = listOf(abs, plex).firstOrNull { it.id == serverId }
+        override suspend fun server(serverId: String) = serverList.firstOrNull { it.id == serverId }
+        override suspend fun forTokenRequest(server: ServerConfig) = if (plexAllowed) server else null
         override suspend fun localCoverPath(bookId: String) = if (bookId in local) "/downloads/$bookId/cover.jpg" else null
         override fun readLocalCover(path: String) = local[path.removePrefix("/downloads/").removeSuffix("/cover.jpg")]
         override fun downscale(bytes: ByteArray) = downscale(bytes)
@@ -204,6 +207,35 @@ class CoverBytesLoaderTest {
         val loader = loader(rig)
         val results = (1..4).map { async(Dispatchers.Default) { loader.load("abs_1") } }.awaitAll()
         assertTrue(results.all { it != null })
+        assertEquals(1, rig.requests.size)
+    }
+
+    @Test
+    fun `a Plex cover is not asked for while its plain address is not verified here`() = runBlocking {
+        val rig = Rig { ok(this) }
+        plexAllowed = false
+        assertNull(loader(rig).load("plex_7"))
+        assertTrue(rig.requests.isEmpty())
+    }
+
+    @Test
+    fun `a cached cover is gone as soon as its server is removed`() = runBlocking {
+        val rig = Rig { ok(this) }
+        val loader = loader(rig)
+        assertContentEquals(image + 9, loader.load("abs_1"))
+        serverList = listOf(plex)
+        assertNull(loader.load("abs_1"))
+        assertEquals(1, rig.requests.size)
+    }
+
+    @Test
+    fun `a signed-out server's book has only its downloaded cover`() = runBlocking {
+        val rig = Rig { ok(this) }
+        val loader = loader(rig, local = mapOf("abs_2" to byteArrayOf(5)))
+        assertContentEquals(image + 9, loader.load("abs_1"))
+        serverList = listOf(abs.copy(token = ""), plex)
+        assertNull(loader.load("abs_1"))
+        assertContentEquals(byteArrayOf(5, 9), loader.load("abs_2"))
         assertEquals(1, rig.requests.size)
     }
 }

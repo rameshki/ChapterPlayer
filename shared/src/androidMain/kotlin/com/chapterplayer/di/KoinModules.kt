@@ -122,7 +122,7 @@ val playbackModule = module {
     single<DayZone> { SystemDayZone }
     single<ListeningClock> { AndroidListeningClock }
     // Covers for the notification, the lock screen and the car: the downloaded cover, else the book's own server.
-    single { AndroidCoverSources(get(), get(), get()) } bind CoverSources::class
+    single { AndroidCoverSources(get(), get(), get(), get()) } bind CoverSources::class
     single { CoverBytesLoader(get(), get(), createImageHttpClient(), Dispatchers.IO) }
 }
 

@@ -292,6 +292,29 @@ class PlexConnectionManagerTest {
     }
 
     @Test
+    fun `a cover request never probes and refuses a plain address not verified on this network`() = runTest {
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri)))
+        remembered(local, raw, remote, chosen = raw, probedAt = now, verified = listOf(local.uri))
+        val m = manager(servers)
+
+        assertNull(m.forCoverRequest(servers.getById("p1")!!))
+        assertTrue(probed.isEmpty())
+    }
+
+    @Test
+    fun `a cover request goes to a verified or https address as it is`() = runTest {
+        val servers = SavingServers(listOf(plex(baseUrl = raw.uri), plex(baseUrl = remote.uri).copy(id = "p2")))
+        remembered(raw, chosen = raw, probedAt = now, verified = listOf(raw.uri))
+        val m = manager(servers)
+
+        assertEquals(raw.uri, m.forCoverRequest(servers.getById("p1")!!)?.baseUrl)
+        assertEquals(remote.uri, m.forCoverRequest(servers.getById("p2")!!)?.baseUrl)
+        val abs = ServerConfig("a1", ServerSource.ABS, "ABS", "http://abs.test", "t")
+        assertEquals(abs, m.forCoverRequest(abs))
+        assertTrue(probed.isEmpty())
+    }
+
+    @Test
     fun `audiobookshelf servers and signed out servers are never probed`() = runTest {
         val abs = ServerConfig("a1", ServerSource.ABS, "ABS", "http://abs.test", "t")
         val out = plex(token = "")

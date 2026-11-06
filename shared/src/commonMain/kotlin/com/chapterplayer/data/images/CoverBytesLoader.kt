@@ -4,6 +4,7 @@ import com.chapterplayer.data.downloads.DOWNLOADED_COVER_FILE
 import com.chapterplayer.data.downloads.DownloadFiles
 import com.chapterplayer.data.local.dao.DownloadDao
 import com.chapterplayer.data.model.ServerConfig
+import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.domain.covers.COVER_MAX_BYTES
 import com.chapterplayer.domain.covers.CoverAuth
@@ -46,6 +47,12 @@ interface CoverSources {
     /** Where the downloaded cover would be, or null when the book has no download. */
     suspend fun localCoverPath(bookId: String): String?
 
+    /**
+     * The Plex [server] to send the token to for a cover, or null when nothing may be sent now (a plain http address
+     * not verified on this network). Never probes. Android: `PlexConnectionManager.forCoverRequest`.
+     */
+    suspend fun forTokenRequest(server: ServerConfig): ServerConfig?
+
     /** [bytes] scaled to at most 512 px on the long side, as JPEG; null when they are not an image. Blocking. */
     fun downscale(bytes: ByteArray): ByteArray?
 }
@@ -59,7 +66,7 @@ interface CoverSources {
  *
  * A failure of any kind (offline, an error answer, a refused token, not an image) is just no cover: nothing is thrown,
  * a refused token is not refreshed, and the book is not asked for again for [failureBackoffMs]. A book whose server was
- * removed has no cover. One fetch per book at a time, at most two at once.
+ * removed has no cover, a signed-out server's book only its downloaded one. One fetch per book at a time, at most two at once.
  */
 class CoverBytesLoader(
     private val sources: CoverSources,
@@ -77,9 +84,15 @@ class CoverBytesLoader(
     private val perBook = HashMap<String, Mutex>()
     private val fetches = Semaphore(2)
 
-    /** The cover of [bookId], or null when there is none or it cannot be had now. */
+    /**
+     * The cover of [bookId], or null when there is none or it cannot be had now. The book and its server are read on
+     * every call, before the memory cache, so a removed server's books have no cover at once; a signed-out server's
+     * book only has its downloaded cover (nothing cached or fetched).
+     */
     suspend fun load(bookId: String): ByteArray? {
         if (!isCoverBookId(bookId)) return null
+        val (book, server) = owner(bookId) ?: return null
+        if (server.needsSignIn) return local(bookId)
         val lock = guard.withLock {
             known(bookId)?.let { return it.bytes }
             perBook.getOrPut(bookId) { Mutex() }
@@ -87,7 +100,7 @@ class CoverBytesLoader(
         return lock.withLock {
             guard.withLock { known(bookId) }?.let { return@withLock it.bytes }
             val bytes = try {
-                find(bookId)
+                find(bookId, book, server)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -108,6 +121,26 @@ class CoverBytesLoader(
         }
     }
 
+    /** The book and its server, or null when either is gone (or cannot be read). */
+    private suspend fun owner(bookId: String): Pair<BookCover, ServerConfig>? = try {
+        val book = sources.coverOf(bookId)
+        val server = book?.let { sources.server(it.serverId) }
+        if (book != null && server != null) book to server else null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    /** The downloaded book's own cover, scaled; null when there is none. */
+    private suspend fun local(bookId: String): ByteArray? = try {
+        sources.localCoverPath(bookId)?.let { path -> withContext(io) { sources.readLocalCover(path)?.let(sources::downscale) } }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
     private class Known(val bytes: ByteArray?)
 
     /** What is already known about [bookId] (call under [guard]): the cached cover, a recent failure, or null. */
@@ -122,22 +155,19 @@ class CoverBytesLoader(
         return null
     }
 
-    private suspend fun find(bookId: String): ByteArray? {
-        val book = sources.coverOf(bookId) ?: return null
-        val server = sources.server(book.serverId) ?: return null
-        val localPath = sources.localCoverPath(bookId)
-        if (localPath != null) {
-            withContext(io) { sources.readLocalCover(localPath)?.let(sources::downscale) }?.let { return it }
-        }
+    private suspend fun find(bookId: String, book: BookCover, server: ServerConfig): ByteArray? {
+        local(bookId)?.let { return it }
         val url = book.coverUrl?.takeIf { it.isNotBlank() } ?: return null
-        val auth = coverRequestAuth(url, server) ?: return null
+        // Plex: no token to a plain http address that is not verified on this network (as for downloads).
+        val target = if (server.source == ServerSource.PLEX) sources.forTokenRequest(server) ?: return null else server
+        val auth = coverRequestAuth(url, target) ?: return null
         val raw = fetches.withPermit {
             withTimeoutOrNull(timeoutMs) {
                 when (auth) {
                     CoverAuth.NONE -> fetch(url, emptyList())
-                    CoverAuth.ABS_BEARER -> authorizer.authorized(server) { bearer -> fetch(url, listOf(HttpHeaders.Authorization to bearer)) }
+                    CoverAuth.ABS_BEARER -> authorizer.authorized(target) { bearer -> fetch(url, listOf(HttpHeaders.Authorization to bearer)) }
                     CoverAuth.PLEX_TOKEN -> {
-                        val token = plexTokenFor(url, listOf(server)) ?: return@withTimeoutOrNull null
+                        val token = plexTokenFor(url, listOf(target)) ?: return@withTimeoutOrNull null
                         fetch(url, listOf(PLEX_TOKEN_HEADER to token))
                     }
                 }
