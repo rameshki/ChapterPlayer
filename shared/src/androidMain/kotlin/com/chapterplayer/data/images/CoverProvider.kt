@@ -10,6 +10,10 @@ import android.os.Process
 import com.chapterplayer.domain.covers.coverAuthority
 import com.chapterplayer.domain.covers.coverCallerAllowed
 import com.chapterplayer.domain.covers.parseCoverUri
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.component.KoinComponent
@@ -24,8 +28,11 @@ import java.security.MessageDigest
  * this app and the trusted car packages ([coverCallerAllowed], the same list as browsing), everyone else gets a
  * [SecurityException]. Read only, one cover per book id of the library, no listing. The bytes come from
  * [CoverBytesLoader] (downloaded cover, else the book's own server), scaled, written to a cache file with a hashed name.
+ * A call waits at most 4 s for a cover that is not ready; the fetch goes on in the background for the next request.
  */
 class CoverProvider : ContentProvider(), KoinComponent {
+
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate(): Boolean = true
 
@@ -48,9 +55,12 @@ class CoverProvider : ContentProvider(), KoinComponent {
         val bookId = bookIdOf(uri) ?: throw FileNotFoundException("No such cover")
         val context = context ?: throw FileNotFoundException("No such cover")
         // Koin is started by the application; a call that comes in before that just finds no cover.
+        // A binder thread waits only briefly: a cover not ready by then is still fetched in the background (one per book,
+        // two at once), so the car's next request finds it in the memory cache.
         val bytes = try {
             val covers = get<CoverBytesLoader>()
-            runBlocking { withTimeoutOrNull(OPEN_TIMEOUT_MS) { covers.load(bookId) } }
+            val loading = background.async { covers.load(bookId) }
+            runBlocking { withTimeoutOrNull(OPEN_WAIT_MS) { loading.await() } }
         } catch (_: Exception) {
             null
         } ?: throw FileNotFoundException("No cover")
@@ -79,12 +89,16 @@ class CoverProvider : ContentProvider(), KoinComponent {
 
     private companion object {
         const val CACHE_FOLDER = "car_covers"
-        const val OPEN_TIMEOUT_MS = 20_000L
+        const val OPEN_WAIT_MS = 4_000L
+        const val STALE_PART_MS = 60_000L
         const val MAX_CACHE_FILES = 300
 
         /** Writes [bytes] to `<folder>/<sha256(bookId)>.jpg` (whole or not at all) and keeps the folder small. */
         fun writeCacheFile(folder: File, bookId: String, bytes: ByteArray): File {
             folder.mkdirs()
+            // Temp files a killed process left behind (a writer's own is younger than a minute).
+            val now = System.currentTimeMillis()
+            folder.listFiles { f -> f.name.endsWith(".part") && now - f.lastModified() > STALE_PART_MS }.orEmpty().forEach { it.delete() }
             val target = File(folder, hashed(bookId) + ".jpg")
             val temp = File.createTempFile("cover", ".part", folder)
             try {
