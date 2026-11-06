@@ -67,16 +67,21 @@ class CoverBytesLoaderTest {
         downscale: (ByteArray) -> ByteArray? = { it + 9 },
         timeoutMs: Long = 5_000,
     ) = CoverBytesLoader(
-        coverOf = { id -> books[id] },
-        server = { id -> listOf(abs, plex).firstOrNull { it.id == id } },
+        sources = sources(local, downscale),
         authorizer = authorizer,
-        localCover = { id -> local[id] },
-        downscale = downscale,
         client = rig.client,
         io = Dispatchers.Unconfined,
         nowMs = { now },
         timeoutMs = timeoutMs,
     )
+
+    private fun sources(local: Map<String, ByteArray> = emptyMap(), downscale: (ByteArray) -> ByteArray? = { it + 9 }) = object : CoverSources {
+        override suspend fun coverOf(bookId: String) = books[bookId]
+        override suspend fun server(serverId: String) = listOf(abs, plex).firstOrNull { it.id == serverId }
+        override suspend fun localCoverPath(bookId: String) = if (bookId in local) "/downloads/$bookId/cover.jpg" else null
+        override fun readLocalCover(path: String) = local[path.removePrefix("/downloads/").removeSuffix("/cover.jpg")]
+        override fun downscale(bytes: ByteArray) = downscale(bytes)
+    }
 
     private fun ok(scope: MockRequestHandleScope) = scope.respond(image, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/jpeg"))
 
@@ -179,8 +184,7 @@ class CoverBytesLoaderTest {
     fun `covers are kept in memory, the oldest dropped first`() = runBlocking {
         val rig = Rig { ok(this) }
         val loader = CoverBytesLoader(
-            coverOf = { id -> books[id] }, server = { id -> listOf(abs, plex).firstOrNull { it.id == id } },
-            authorizer = CountingAuthorizer(), localCover = { null }, downscale = { it }, client = rig.client,
+            sources = sources(downscale = { it }), authorizer = CountingAuthorizer(), client = rig.client,
             io = Dispatchers.Unconfined, nowMs = { now }, cacheSize = 2,
         )
         loader.load("abs_1")

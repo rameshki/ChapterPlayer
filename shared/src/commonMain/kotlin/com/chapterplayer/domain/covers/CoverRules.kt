@@ -71,6 +71,13 @@ fun coverContentUri(authority: String, bookId: String): String? =
     if (isCoverBookId(bookId)) "content://$authority/$COVER_PATH/$bookId" else null
 
 /**
+ * The artwork address of a book's tracks and car row: the app's own cover address, never the server's. Null when the
+ * book has no cover on its server (a downloaded book saved its cover from that address, so it has none either).
+ */
+fun bookArtworkUri(authority: String, bookId: String, coverUrl: String?): String? =
+    if (coverUrl.isNullOrBlank()) null else coverContentUri(authority, bookId)
+
+/**
  * The book a cover address names, or null when [uri] is anything but `content://<authority>/cover/<bookId>` exactly:
  * another scheme or authority, another path, a query or fragment, an encoded character or a bad id.
  */

@@ -16,6 +16,8 @@ import androidx.media3.session.SessionToken
 import com.chapterplayer.data.downloads.LocalBookFiles
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
+import com.chapterplayer.domain.covers.bookArtworkUri
+import com.chapterplayer.domain.covers.coverAuthority
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.domain.playback.SleepTimerEngine
 import com.chapterplayer.domain.playback.resolveStartMs
@@ -149,6 +151,8 @@ class AndroidPlaybackController(
         val newSpans = trackSpans(started)
         val startAt = resolveStartMs(startMs, started.startPositionMs, started.durationMs)
         val target = locate(newSpans, startAt)
+        // The cover is the app's own address; the service loads it (the token never goes into an item).
+        val artwork = bookArtworkUri(coverAuthority(context.packageName), book.id, book.coverUrl)
 
         // All or nothing, and not cancellable: if the caller leaves meanwhile (Back during "Starting") the
         // block still finishes, so the player and the book state agree. The new session stays open and
@@ -167,7 +171,7 @@ class AndroidPlaybackController(
                 sleep.reset()
                 _sleepTimer.value = SleepTimer.Off
                 player.pause() // the old book stops (and is saved) before the new one is swapped in
-                player.setMediaItems(specs.map(::toMediaItem), target?.trackIndex ?: 0, target?.offsetMs ?: 0L)
+                player.setMediaItems(specs.map { toMediaItem(it, artwork) }, target?.trackIndex ?: 0, target?.offsetMs ?: 0L)
                 player.prepare()
                 // Only now does the controller name the new book, so no state mixes the two.
                 loaded.begin(started, newSpans, startAt)
@@ -227,8 +231,8 @@ class AndroidPlaybackController(
 
     private fun fileUri(path: String): String = Uri.fromFile(File(path)).toString()
 
-    // Artwork is left out for now: the cover address needs the bearer token and a MediaItem must not carry one.
-    private fun toMediaItem(spec: TrackItemSpec): MediaItem =
+    // The artwork is the app's cover address ([artworkUri]); the server's cover address needs the token, so it is never here.
+    private fun toMediaItem(spec: TrackItemSpec, artworkUri: String?): MediaItem =
         MediaItem.Builder()
             .setMediaId(spec.mediaId)
             .setUri(spec.url)
@@ -238,6 +242,7 @@ class AndroidPlaybackController(
                 MediaMetadata.Builder()
                     .setTitle(spec.title)
                     .setArtist(spec.artist)
+                    .setArtworkUri(artworkUri?.let(Uri::parse))
                     .setIsPlayable(true)
                     .setIsBrowsable(false)
                     .setExtras(

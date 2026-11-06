@@ -13,11 +13,15 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import com.chapterplayer.data.images.CoverArtworkBitmapLoader
+import com.chapterplayer.data.images.CoverBytesLoader
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
+import com.chapterplayer.domain.covers.coverAuthority
 import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
 import com.chapterplayer.domain.playback.ResumeRewind
 import com.chapterplayer.domain.playback.TrackSpan
@@ -105,6 +109,10 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         )
         val builder = MediaLibrarySession.Builder(this, sessionPlayer, callback)
         if (openApp != null) builder.setSessionActivity(openApp)
+        // Artwork for the notification, the lock screen and the car's Now Playing: the items name the app's cover address,
+        // loaded here through the authenticated cover loader (the last bitmaps are kept by Media3's cache).
+        val covers = get<CoverBytesLoader>()
+        builder.setBitmapLoader(CacheBitmapLoader(CoverArtworkBitmapLoader(coverAuthority(packageName), covers::load, scope)))
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
             it.setMediaButtonPreferences(

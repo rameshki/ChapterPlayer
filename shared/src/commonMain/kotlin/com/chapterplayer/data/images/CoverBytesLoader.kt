@@ -27,30 +27,46 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Clock
 
 /** Where a book's cover is: its server and the cover's address there (no token in it). */
 data class BookCover(val serverId: String, val coverUrl: String?)
+
+/** What [CoverBytesLoader] reads from the phone. Android: Room, the server list, the download folder and `BitmapFactory`. */
+interface CoverSources {
+    /** The book's server and cover address; null for a book not in the library. */
+    suspend fun coverOf(bookId: String): BookCover?
+
+    /** The server, or null when it was removed. */
+    suspend fun server(serverId: String): ServerConfig?
+
+    /** The downloaded book's own cover file, unscaled; null when there is none. Blocking (called on the I/O dispatcher). */
+    fun readLocalCover(path: String): ByteArray?
+
+    /** Where the downloaded cover would be, or null when the book has no download. */
+    suspend fun localCoverPath(bookId: String): String?
+
+    /** [bytes] scaled to at most 512 px on the long side, as JPEG; null when they are not an image. Blocking. */
+    fun downscale(bytes: ByteArray): ByteArray?
+}
 
 /**
  * A book's cover as small JPEG bytes, for the media notification, the lock screen and the car (which cannot load the
  * server's address: it needs the token). A downloaded book's own `cover.jpg` comes first, so it works offline; else the
  * cover is fetched from the book's own server only ([coverRequestAuth]): the Audiobookshelf bearer or the Plex token
  * goes in a header, never in an address, and [client] drops both on a redirect to another host. Every cover is scaled
- * by [downscale] (at most 512 px on the long side) and kept in a small memory cache.
+ * by [CoverSources.downscale] (at most 512 px on the long side) and kept in a small memory cache.
  *
  * A failure of any kind (offline, an error answer, a refused token, not an image) is just no cover: nothing is thrown,
  * a refused token is not refreshed, and the book is not asked for again for [failureBackoffMs]. A book whose server was
  * removed has no cover. One fetch per book at a time, at most two at once.
  */
 class CoverBytesLoader(
-    private val coverOf: suspend (bookId: String) -> BookCover?,
-    private val server: suspend (serverId: String) -> ServerConfig?,
+    private val sources: CoverSources,
     private val authorizer: AbsAuthorizer,
-    private val localCover: suspend (bookId: String) -> ByteArray?,
-    private val downscale: (ByteArray) -> ByteArray?,
     private val client: HttpClient,
     private val io: CoroutineDispatcher,
-    private val nowMs: () -> Long,
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val cacheSize: Int = 8,
     private val failureBackoffMs: Long = 60_000,
     private val timeoutMs: Long = 15_000,
@@ -107,10 +123,11 @@ class CoverBytesLoader(
     }
 
     private suspend fun find(bookId: String): ByteArray? {
-        val book = coverOf(bookId) ?: return null
-        val server = server(book.serverId) ?: return null
-        withContext(io) { localCover(bookId) }?.let { raw ->
-            withContext(io) { downscale(raw) }?.let { return it }
+        val book = sources.coverOf(bookId) ?: return null
+        val server = sources.server(book.serverId) ?: return null
+        val localPath = sources.localCoverPath(bookId)
+        if (localPath != null) {
+            withContext(io) { sources.readLocalCover(localPath)?.let(sources::downscale) }?.let { return it }
         }
         val url = book.coverUrl?.takeIf { it.isNotBlank() } ?: return null
         val auth = coverRequestAuth(url, server) ?: return null
@@ -126,7 +143,7 @@ class CoverBytesLoader(
                 }
             }
         } ?: return null
-        return withContext(io) { downscale(raw) }
+        return withContext(io) { sources.downscale(raw) }
     }
 
     /** The body of a 200 answer of at most [COVER_MAX_BYTES], else null. A 401 is not thrown, so nothing is refreshed. */

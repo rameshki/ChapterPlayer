@@ -36,6 +36,10 @@ import com.chapterplayer.data.stats.AndroidListeningClock
 import com.chapterplayer.data.stats.ListeningClock
 import com.chapterplayer.data.stats.SystemDayZone
 import com.chapterplayer.data.local.dao.BookDao
+import com.chapterplayer.data.images.AndroidCoverSources
+import com.chapterplayer.data.images.CoverBytesLoader
+import com.chapterplayer.data.images.CoverSources
+import com.chapterplayer.data.remote.createImageHttpClient
 import com.chapterplayer.domain.stats.DayZone
 import com.chapterplayer.data.local.Migration8To9
 import com.chapterplayer.data.remote.createDownloadHttpClient
@@ -117,6 +121,9 @@ val playbackModule = module {
     single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier), get()) }
     single<DayZone> { SystemDayZone }
     single<ListeningClock> { AndroidListeningClock }
+    // Covers for the notification, the lock screen and the car: the downloaded cover, else the book's own server.
+    single { AndroidCoverSources(get(), get(), get()) } bind CoverSources::class
+    single { CoverBytesLoader(get(), get(), createImageHttpClient(), Dispatchers.IO) }
 }
 
 val downloadModule = module {

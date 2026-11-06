@@ -86,6 +86,16 @@ class CoverRulesTest {
     }
 
     @Test
+    fun `a book gets the app's cover address only when its server has a cover`() {
+        assertEquals("content://com.chapterplayer.covers/cover/abs_1", bookArtworkUri(authority, "abs_1", "https://abs.test/api/items/1/cover"))
+        assertNull(bookArtworkUri(authority, "abs_1", null))
+        assertNull(bookArtworkUri(authority, "abs_1", " "))
+        assertNull(bookArtworkUri(authority, "car:continue", "https://abs.test/x"))
+        // The server's address (and so a token) never ends up in the artwork address.
+        assertEquals(false, bookArtworkUri(authority, "plex_1", "https://plex.test/thumb?X-Plex-Token=t")!!.contains("plex.test"))
+    }
+
+    @Test
     fun `an address is read back to its book`() {
         assertEquals("abs_li_1", parseCoverUri("content://com.chapterplayer.covers/cover/abs_li_1", authority))
         assertEquals("plex_9", parseCoverUri(coverContentUri(authority, "plex_9")!!, authority))
