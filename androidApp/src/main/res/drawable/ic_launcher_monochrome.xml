@@ -26,22 +26,32 @@
         <path
             android:fillColor="#FFFFFFFF"
             android:pathData="M80.5,52 L82.5,52 A5.5,5.5 0 0,1 88,57.5 L88,70.5 A5.5,5.5 0 0,1 82.5,76 L80.5,76 A5.5,5.5 0 0,1 75,70.5 L75,57.5 A5.5,5.5 0 0,1 80.5,52 Z" />
-        <!-- Open book -->
+        <!-- Open book (the two pages 1.5 apart at the spine so they do not merge in one colour) -->
+        <group android:translateX="-0.75">
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M54,78 C48,73 41,71 36,72.5 L36,54 C41,52.5 48,54 54,59 Z" />
+        </group>
+        <group android:translateX="0.75">
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M54,78 C60,73 67,71 72,72.5 L72,54 C67,52.5 60,54 54,59 Z" />
+        </group>
+        <!-- Sound wave: five bars, width 4, gap 2.5, centred on y 45 -->
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M54,78 C48,73 41,71 36,72.5 L36,54 C41,52.5 48,54 54,59 Z" />
+            android:pathData="M41,42 A2,2 0 0,1 43,44 L43,46 A2,2 0 0,1 41,48 A2,2 0 0,1 39,46 L39,44 A2,2 0 0,1 41,42 Z" />
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M54,78 C60,73 67,71 72,72.5 L72,54 C67,52.5 60,54 54,59 Z" />
-        <!-- Sound wave -->
+            android:pathData="M47.5,39.5 A2,2 0 0,1 49.5,41.5 L49.5,48.5 A2,2 0 0,1 47.5,50.5 A2,2 0 0,1 45.5,48.5 L45.5,41.5 A2,2 0 0,1 47.5,39.5 Z" />
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M49.5,40 A2,2 0 0,1 51.5,42 L51.5,48 A2,2 0 0,1 49.5,50 A2,2 0 0,1 47.5,48 L47.5,42 A2,2 0 0,1 49.5,40 Z" />
+            android:pathData="M54,37 A2,2 0 0,1 56,39 L56,51 A2,2 0 0,1 54,53 A2,2 0 0,1 52,51 L52,39 A2,2 0 0,1 54,37 Z" />
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M54,34 A2,2 0 0,1 56,36 L56,50 A2,2 0 0,1 54,52 A2,2 0 0,1 52,50 L52,36 A2,2 0 0,1 54,34 Z" />
+            android:pathData="M60.5,39.5 A2,2 0 0,1 62.5,41.5 L62.5,48.5 A2,2 0 0,1 60.5,50.5 A2,2 0 0,1 58.5,48.5 L58.5,41.5 A2,2 0 0,1 60.5,39.5 Z" />
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M58.5,40 A2,2 0 0,1 60.5,42 L60.5,48 A2,2 0 0,1 58.5,50 A2,2 0 0,1 56.5,48 L56.5,42 A2,2 0 0,1 58.5,40 Z" />
+            android:pathData="M67,42 A2,2 0 0,1 69,44 L69,46 A2,2 0 0,1 67,48 A2,2 0 0,1 65,46 L65,44 A2,2 0 0,1 67,42 Z" />
     </group>
 </vector>
