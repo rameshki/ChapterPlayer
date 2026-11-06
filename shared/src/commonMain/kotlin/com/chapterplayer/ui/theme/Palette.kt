@@ -24,18 +24,22 @@ data class ChapterPlayerPalette(
     val onAmber: Color
 )
 
+/**
+ * "Navy cards": the page stays warm black, while cards, sheets, chips and the tab bar are navy (the icon's
+ * midnight blue), with the same amber accent.
+ */
 val DarkPalette = ChapterPlayerPalette(
     background = Color(0xFF0E0D0B),
-    surfaceElevated = Color(0xFF1A1916),
-    surfaceSecondary = Color(0xFF252320),
-    navBar = Color(0xFF2B261A),
+    surfaceElevated = Color(0xFF151A2B),
+    surfaceSecondary = Color(0xFF1E2742),
+    navBar = Color(0xFF17213F),
     amber = Color(0xFFE8B84B),
     amberDim = Color(0xFF8A6E2D),
     textPrimary = Color(0xFFF0EDE8),
-    textSecondary = Color(0xFFABA89F),
-    textTertiary = Color(0xFF6B6860),
-    divider = Color(0xFF2A2926),
-    fieldBorder = Color(0xFF252320),
+    textSecondary = Color(0xFFAEABA4),
+    textTertiary = Color(0xFF6D6C70),
+    divider = Color(0xFF232A44),
+    fieldBorder = Color(0xFF1E2742),
     error = Color(0xFFCF6679),
     onAmber = Color(0xFF0E0D0B)
 )

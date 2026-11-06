@@ -3,7 +3,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF1A1916"
+    android:background="#FF151A2B"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:padding="8dp">
@@ -13,7 +13,7 @@
         android:layout_height="32dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_widget_book"
-        android:tint="#FFABA89F" />
+        android:tint="#FFAEABA4" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -35,7 +35,7 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:text="@string/widget_preview_chapter"
-            android:textColor="#FFABA89F"
+            android:textColor="#FFAEABA4"
             android:textSize="12sp" />
     </LinearLayout>
 
