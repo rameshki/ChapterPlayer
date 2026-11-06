@@ -145,7 +145,7 @@ class CoverRulesTest {
     }
 
     @Test
-    fun `everyone else is refused, look-alikes included`() {
+    fun `everyone else is refused - look-alikes included`() {
         assertFalse(coverCallerAllowed(null, "com.chapterplayer"))
         assertFalse(coverCallerAllowed(emptyList(), "com.chapterplayer"))
         assertFalse(coverCallerAllowed(listOf("com.example.other"), "com.chapterplayer"))
