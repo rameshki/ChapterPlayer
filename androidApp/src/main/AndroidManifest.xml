@@ -57,6 +57,14 @@
             </intent-filter>
         </service>
 
+        <!-- Book covers for Android Auto's lists: exported so the car can read them, but the provider itself refuses
+             every caller except this app and the trusted car packages; read only, no tokens in the addresses -->
+        <provider
+            android:name="com.chapterplayer.data.images.CoverProvider"
+            android:authorities="${applicationId}.covers"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+
         <!-- WorkManager's foreground service, typed for the download worker -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
