@@ -18,6 +18,7 @@ import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.covers.coverAuthority
 import com.chapterplayer.domain.car.CarAccess
 import com.chapterplayer.domain.car.CarConnectionTracker
 import com.chapterplayer.domain.car.CarData
@@ -84,6 +85,9 @@ class CarLibraryCallback(
     private val now: () -> Long = System::currentTimeMillis,
     private val merging: SourceMerging = SourceMerging.None,
 ) : MediaLibrarySession.Callback {
+
+    // Book rows point at the app's cover provider; the car reads covers there.
+    private val coverAuthority = coverAuthority(ownPackage)
 
     private val carConnections = CarConnectionTracker<MediaSession.ControllerInfo>()
 
@@ -164,7 +168,7 @@ class CarLibraryCallback(
             val snap = snapshot()
             val rows = carChildrenFor(parentId, snap.data, snap.online, nowPlaying(snap.data))?.let { carPage(it, page, pageSize) }
             if (rows == null) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE, params)
-            else LibraryResult.ofItemList(rows.map { carMediaSpec(it).toMediaItem() }, params)
+            else LibraryResult.ofItemList(rows.map { carMediaSpec(it, coverAuthority).toMediaItem() }, params)
         }
     }
 
@@ -178,7 +182,7 @@ class CarLibraryCallback(
             val snap = snapshot()
             val item = carItemFor(mediaId, snap.data, snap.online, nowPlaying(snap.data))
             if (item == null) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
-            else LibraryResult.ofItem(carMediaSpec(item).toMediaItem(), null)
+            else LibraryResult.ofItem(carMediaSpec(item, coverAuthority).toMediaItem(), null)
         }
     }
 
@@ -209,7 +213,7 @@ class CarLibraryCallback(
             val snap = snapshot()
             val rows = carPage(carSearchResults(query, snap.data, snap.online), page, pageSize)
             if (rows == null) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE, params)
-            else LibraryResult.ofItemList(rows.map { carMediaSpec(it).toMediaItem() }, params)
+            else LibraryResult.ofItemList(rows.map { carMediaSpec(it, coverAuthority).toMediaItem() }, params)
         }
     }
 

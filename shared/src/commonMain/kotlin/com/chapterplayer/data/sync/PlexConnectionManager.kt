@@ -190,6 +190,16 @@ class PlexConnectionManager(
     }
 
     /**
+     * [server] when a cover may be asked for with the token now, or null when its address is plain http and not verified
+     * on this network (the same refusal as [forTokenRequest]). It never probes: covers are many small background requests
+     * (the notification, the car's lists), and the next sync or token request does the probing.
+     */
+    suspend fun forCoverRequest(server: ServerConfig): ServerConfig? {
+        if (server.source != ServerSource.PLEX || server.needsSignIn) return server
+        return if (unverifiedHttp(server.baseUrl, store.get(server.id))) null else server
+    }
+
+    /**
      * After a failed call to [server]: when the stored address has changed meanwhile, retry on it without probing.
      * Otherwise, when [error] is a connection failure (name not found, timeout, refused), re-probe ([force] skips the
      * 30 s wait) and hand back the server to retry with when its address changed. With no address that answers,

@@ -6,6 +6,7 @@ import com.chapterplayer.domain.car.CarFailure
 import com.chapterplayer.domain.car.CarItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class CarMediaMappingTest {
 
@@ -44,6 +45,23 @@ class CarMediaMappingTest {
     fun `a dimmed book cannot be played`() {
         assertEquals(false, carMediaSpec(item("abs_1", playable = true, dimmed = true)).playable)
         assertEquals(false, carMediaSpec(item("plex_1", playable = false, dimmed = true)).playable)
+    }
+
+    @Test
+    fun `a book row points at the app's cover provider, never the server`() {
+        val withCover = CarItem("abs_1", "Title", "Jane Doe", "https://abs.test/api/items/1/cover", false, true, false)
+        assertEquals("content://com.chapterplayer.covers/cover/abs_1", carMediaSpec(withCover, "com.chapterplayer.covers").artworkUri)
+        val plex = CarItem("plex_7", "Title", "", "https://plex.test:32400/library/metadata/7/thumb/1", false, true, false)
+        assertEquals("content://com.chapterplayer.covers/cover/plex_7", carMediaSpec(plex, "com.chapterplayer.covers").artworkUri)
+    }
+
+    @Test
+    fun `folders, notes and books without a cover have no artwork`() {
+        val authority = "com.chapterplayer.covers"
+        assertNull(carMediaSpec(item("car:series", browsable = true, playable = false), authority).artworkUri)
+        assertNull(carMediaSpec(CarItem("car:note", "No downloaded books yet", "", null, false, false, true), authority).artworkUri)
+        assertNull(carMediaSpec(CarItem("abs_1", "Title", "", null, false, true, false), authority).artworkUri)
+        assertNull(carMediaSpec(item("abs_1")).artworkUri)
     }
 
     @Test

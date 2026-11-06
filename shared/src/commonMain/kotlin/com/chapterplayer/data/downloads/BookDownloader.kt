@@ -367,7 +367,7 @@ class BookDownloader(
 
     private companion object {
         const val DEFAULT_MAX_ATTEMPTS = 8
-        const val COVER_FILE = "cover.jpg"
+        const val COVER_FILE = DOWNLOADED_COVER_FILE
         const val NO_FILES = "This book has no audio files to download"
         const val SERVER_GONE = "The book's server is no longer configured"
         const val BOOK_GONE = "This book is no longer in the library"
@@ -375,3 +375,6 @@ class BookDownloader(
         const val FAILED = "The download failed"
     }
 }
+
+/** The name of the cover the downloader saves in a book's folder (the notification and the car use it offline). */
+const val DOWNLOADED_COVER_FILE = "cover.jpg"
