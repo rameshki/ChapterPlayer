@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -168,6 +169,9 @@ fun ServerSetupScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                // The app draws edge to edge, so the keyboard no longer shrinks the window: pad by its height,
+                // and the scroll below can bring a focused field (the password) above it.
+                .imePadding()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
