@@ -1,6 +1,6 @@
 # Jellyfin as a source: design
 
-**Status: DRAFT v2, awaiting Robert's approval.** Nothing is built yet. v1 2026-11-07; v2 2026-11-08 takes in Robert's answers (one `.m4b` per book, one address, today's badge rule, the same books on all three servers) and settles the builder's questions as marked calls (section 12). Written from the Jellyfin server source at tag `v12.4` (released 2026-10-26) and the official docs and release posts; every source is listed at the end with the date it was read. Statements marked **(unverified)** have not been checked against source code or a real server.
+**Status: APPROVED 2026-11-08 (Robert), with Quick Connect added to J3.** Nothing is built yet; the J1 and J2 implementation plan is `docs/superpowers/plans/2026-11-08-jellyfin-j1-j2.md`. v1 2026-11-07; v2 2026-11-08 takes in Robert's answers (one `.m4b` per book, one address, today's badge rule, the same books on all three servers) and settles the builder's questions as marked calls (section 12). Written from the Jellyfin server source at tag `v12.4` (released 2026-10-26) and the official docs and release posts; every source is listed at the end with the date it was read. Statements marked **(unverified)** have not been checked against source code or a real server.
 
 ## 1. Intent and why
 Robert has a Jellyfin server and wants ChapterPlayer to play audiobooks from it like it plays Audiobookshelf (ABS) and Plex books: in the same merged library, with the same player, progress and offline rules. Jellyfin is a common self-hosted media server; people who keep films and music there often keep some audiobooks there too, and Jellyfin 12.0 (2026-09-07) made books a first-class library type (chapters, authors and narrators for audiobooks). Adding it the same way Plex was added keeps the app's promise: one place for all your audiobooks, whichever server holds them.
@@ -9,7 +9,7 @@ His decisions (2026-11-07):
 - Stage J1: browse, stream, and read the resume position.
 - Stage J2: send progress back to Jellyfin (including Mark as finished), merged entries with ABS/Plex copies (Play from / Download from choices) and progress mirroring.
 - Stage J3 (later): downloads, through the existing `DownloadSource` port. Only the slot is designed here.
-- Sign-in with username and password first; Quick Connect later. Tokens never logged; the token lives in the `CredentialStore` like the others.
+- Sign-in with username and password first; Quick Connect later (since the approval: in J3, 5.1). Tokens never logged; the token lives in the `CredentialStore` like the others.
 - Robert's server has no audiobooks yet, so everything is built against recorded-shape fixtures (synthetic text and ids; the repo is public) and checked on his server at the end.
 
 His answers (2026-11-08):
@@ -17,7 +17,9 @@ His answers (2026-11-08):
 - **One address** per Jellyfin server. No home / outside pair, no connection chooser.
 - **Badge rule unchanged**: source badges show only when servers of two or more kinds are added; Jellyfin gets its own colour and label under that rule.
 - **The same books will be on Jellyfin, Audiobookshelf and Plex.** From J2, a book is one entry with up to three copies, and progress mirrors across all three (section 9.1).
-- Still open: his Jellyfin version (section 12).
+- Still open: his Jellyfin version (section 12). Not blocking.
+
+**Approval (2026-11-08).** Robert approved this design with **one change: Quick Connect sign-in is added to stage J3, together with downloads** (designed in 5.1). Everything else stands as written; he said "apart from that it's good to start", so every builder's **call** in section 12 is an approved default (he can still change any of them later). His Jellyfin version stays the only open item and does not block J1.
 
 ## 2. Goals, non-goals, anti-goals
 **Goals**
@@ -27,7 +29,7 @@ His answers (2026-11-08):
 - J2: listening is reported back (live session plus a direct position write), Mark as finished / not finished works, the offline queue delivers, and a book on Jellyfin, ABS and Plex is one entry with three copies and mirrored progress (section 9.1).
 
 **Non-goals**
-- Not now (later stages may add them): downloads (J3), Quick Connect, Jellyfin collections (BoxSets) and playlists, transcoding.
+- Not now (later stages may add them): downloads and Quick Connect (both J3), Jellyfin collections (BoxSets) and playlists, transcoding.
 - Not planned (Robert's answers, 2026-11-08): grouping a folder of several audio files into one book (multi-file books are unsupported and show as separate items, 4.2); several addresses per server or a connection chooser.
 - Not offered: bookmarks on Jellyfin (it has none; Jellyfin copies keep bookmarks on the phone only), a server listening-history import (Jellyfin has none built in), music libraries as a book source (4.1), ebooks.
 
@@ -119,7 +121,27 @@ Versions: 12.0 removed the `/emby/` and `/mediabrowser/` prefixes, made `GetItem
 - **401**: like Plex. A 401 on any authorized call blanks the stored token (`markSignedOut`) and is `SignInRequiredException`, so Settings shows "Sign in again" and the queue stops. 403 is "The server does not let this account play this book". Sign in again asks for the password again (never stored).
 - The sign-in answer and every request/response body with `AccessToken` must never be logged: the HTTP logger's redaction adds the `Authorization: MediaBrowser ...` header (already redacted as `Authorization`) and the body logger must not print sign-in bodies (check in step 1; the Diagnostics `redact()` already removes UUIDs and long opaque strings).
 - **Identity check**: `/System/Info/Public` gives the server `Id`; **Call:** the app keeps it in `ServerStatusStore` (one more field in the server's JSON record, like Plex's probe data; no Room change). When Sign in again or an address edit then finds a different id, it refuses with "This address now belongs to another Jellyfin server. Remove this server and add it again." That way no token or progress is mixed between two servers. A sync never compares ids, so there is no extra call per sync.
-- Quick Connect (later): `GET /QuickConnect/Enabled`, `POST /QuickConnect/Initiate` (12.0 removed the GET alias [R1]), poll `GET /QuickConnect/Connect?secret=`, then `POST /Users/AuthenticateWithQuickConnect`. Enabled by default [D2].
+- Quick Connect (J3, designed in 5.1): `GET /QuickConnect/Enabled`, `POST /QuickConnect/Initiate` (12.0 removed the GET alias [R1]), poll `GET /QuickConnect/Connect?secret=`, then `POST /Users/AuthenticateWithQuickConnect`. Enabled by default [D2].
+
+### 5.1 Quick Connect (J3, added at approval)
+Quick Connect lets a person sign the phone in without typing the password: the phone shows a short code, and the person approves it on another device where they are already signed in to Jellyfin (Jellyfin web or an app: the user menu, **Settings > Quick Connect**, enter the code) [D2]. It is offered next to username and password, in Add Server and in Sign in again. Calls (all in the OpenAPI spec; shapes from the docs and the v12.4 controller names, **(unverified)** until recorded on Robert's server):
+
+| Step | Call | Answer |
+|---|---|---|
+| Is it on? | `GET /QuickConnect/Enabled` (no token) | a JSON boolean. Quick Connect is on by default; an administrator can turn it off in the Dashboard [D2] (where exactly the switch sits in 12.x is **(unverified)**) |
+| Start | `POST /QuickConnect/Initiate` with the `Authorization: MediaBrowser Client=..., Device=..., DeviceId=..., Version=...` header and no `Token` (12.0 removed the GET alias [R1]) | `QuickConnectResult`: `Secret`, `Code`, `Authenticated` = false, `DeviceId`, `DeviceName`, `AppName`, `AppVersion`, `DateAdded` |
+| Wait | `GET /QuickConnect/Connect?secret={Secret}` every **5 s** | the same result; `Authenticated` becomes true once the person approved the code |
+| Sign in | `POST /Users/AuthenticateWithQuickConnect` body `{"Secret": "..."}` with the same header | the same `AuthenticationResult` as `AuthenticateByName` (`AccessToken`, `User.Id`, `ServerId`) |
+
+- **After that it is the password sign-in.** The answer goes through the same path: version gate, identity check (the server `Id`), token into the `CredentialStore`, the books views check-list. The password fields are not needed.
+- **DeviceId**: the rule of section 5 (`chapterplayer-<install id>-<server row id>`). Initiate and the final sign-in must send the same `DeviceId` (the server ties the request to the device, **(unverified)**), so the add flow creates the server row id before Initiate (the password flow does the same, see the plan).
+- **Shown on the phone**: the code in large digits (6 digits at v12.4, **(unverified)**; the app shows whatever `Code` holds), "On a device where you are signed in to Jellyfin, open Settings > Quick Connect and enter this code", a spinner "Waiting for approval", and **Cancel**. The code is not put in a notification or anywhere else.
+- **Availability**: setup reads `/QuickConnect/Enabled` after `/System/Info/Public`. False, or a failed read: the Quick Connect button is hidden and a line says "Quick Connect is off on this server. Sign in with your password, or ask the server's administrator to turn it on." Initiate answering 401 (turned off since the check) gives the same line.
+- **Timing**: polling stops after **5 minutes** with "The code expired. Try again." (the server forgets unapproved requests after a while; at v12.4 about 10 minutes, **(unverified)**, so the app gives up first). A 401 or 404 from `/QuickConnect/Connect` (secret unknown or expired) gives the same text at once. A network error while waiting is retried at the next 5 s tick until the 5 minutes are up ("Waiting for the server..."). Only one wait runs at a time.
+- **Cancel**: Cancel, Back, leaving the screen or the view model going away stops the polling and forgets the secret. No server call is made (there is no cancel endpoint; the request expires on its own). Nothing runs in the background.
+- **Errors** in words: not approved in time (above); `AuthenticateWithQuickConnect` refused (400/401) "Quick Connect was not approved. Try again."; unreachable "Couldn't reach the server. Check the address and your network."; the version gate and "no Books library" as for the password sign-in.
+- **The secret is a credential**: kept in memory only (never stored, never in `toString`, never in a log, an exception message or the Diagnostics report). It travels in the `Connect` query string, so the debug HTTP logger, which prints request addresses, must mask `secret=` values (one filter in the logging sink, tested). The code is useless without the secret but is not logged either.
+- **Pure rules** (`domain/jellyfin/QuickConnect.kt`, commonTest): the next step from (elapsed time, last answer or error) = keep waiting / sign in / expired / not approved / off, and the wording.
 
 ## 6. Playback
 - **No PlaybackInfo call (call).** `startPlayback` reads the item fresh (`GET /Items/{Id}?Fields=Chapters,People,MediaSources`, like Plex's `fetchContent`) and uses `MediaSources[0]`: its `Id`, `Container`, `Size` and `RunTimeTicks`. A one-file item has one source. `POST /Items/{Id}/PlaybackInfo` is only needed for transcoding decisions and device profiles, and it carries fields not verified here, so the app leaves it out. The app makes its own `PlaySessionId` (a random 32-hex value per load) and sends it in the session reports. If the first real recording shows that `MediaSources` is missing from `/Items/{Id}`, PlaybackInfo with a minimal profile is the fallback.
@@ -240,7 +262,7 @@ Each step: its own plan in `docs/superpowers/plans/`, branch `stage-j/<name>`, f
    - Marks and opening: Mark as finished on three copies with one server failing gives `PARTIAL_QUEUED`. `PlaybackStarter` picks the newest of three readings.
 7. **Check on Robert's server**: listen 10 min on the phone, Jellyfin web shows the place; listen 2 min (below the band), the server keeps the real place; stop in the last 5 min, the book is not finished unless it ended; Mark as finished both ways; a book on ABS, Plex and Jellyfin is one tile with "3 sources" and the Play from sheet lists three copies; listening on the Jellyfin copy moves the ABS place (ABS web) and listening on ABS moves the Jellyfin place (Jellyfin web) to within a few seconds of the same moment in the audio; chapters differ per copy as expected; offline listening is delivered later to both servers.
 
-**Stage J3 (later): downloads** through `JellyfinDownloadSource` (9, last bullet), its own design note when it starts.
+**Stage J3 (later): downloads and Quick Connect.** Downloads through `JellyfinDownloadSource` (9, last bullet; its own design note when it starts). Quick Connect sign-in as designed in 5.1 (added by Robert at approval, 2026-11-08). The J1/J2 plan carries a short J3 outline; J3 gets its own plan when it starts.
 
 ## 11. Risks
 - **Multi-file books** (4.2) are unsupported: Jellyfin shows them as one "book" per file (or hides them), and the app shows what Jellyfin shows. Robert is converting his library to one `.m4b` per book. A book he missed shows up as several items, which tells him to convert it.
@@ -253,7 +275,9 @@ Each step: its own plan in `docs/superpowers/plans/`, branch `stage-j/<name>`, f
 - **Public repo**: fixtures must be synthetic; Jellyfin ids are GUIDs, so new random-looking synthetic ids are used, never copied ones.
 
 ## 12. Open questions
-**Robert must answer**
+**Approved 2026-11-08.** Robert approved the design with Quick Connect added to J3 and said "apart from that it's good to start": the calls below are the approved defaults. The one open question does not block J1.
+
+**Robert must answer (non-blocking)**
 1. Which Jellyfin version does your server run (Dashboard, top of the page)? This does not block building: the app is built for 10.10.7 and newer, with chapters and narrators from 12.0. Below 10.10 the app refuses; on 10.10 / 10.11 books play with one chapter and no narrator. If the server is older than 12.0, updating it is the fix.
 
 **Answered by Robert (2026-11-08)**: one `.m4b` per book and no folder grouping; one address; badge rule unchanged; the same books on ABS, Plex and Jellyfin (section 1).
@@ -291,6 +315,7 @@ Each step: its own plan in `docs/superpowers/plans/`, branch `stage-j/<name>`, f
 - How far the converted `.m4b` lengths really are from the ABS and Plex copies, and whether the converter kept ABS's chapters (9.1).
 - That `MediaSources` comes with `GET /Items/{Id}` (else PlaybackInfo is needed).
 - The status code of a wrong password, the token's character set, cover behaviour for embedded art, password change and token lifetime.
+- Quick Connect (J3): the exact answers of `/QuickConnect/Enabled`, `/Initiate`, `/Connect` and `/Users/AuthenticateWithQuickConnect`, the code length, how long the server keeps an unapproved request, whether the DeviceId must match between Initiate and the sign-in, and where the switch sits in the 12.x Dashboard.
 
 ## Sources (all read 2026-11-07)
 Server source at tag `v12.4` (released 2026-10-26) unless noted; `https://github.com/jellyfin/jellyfin/blob/v12.4/<path>`.
