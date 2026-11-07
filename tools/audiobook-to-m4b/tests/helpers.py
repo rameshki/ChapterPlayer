@@ -30,6 +30,12 @@ def ext(p):
     return to_m4b.ext(p)
 
 
+def remove_tree(path):
+    """Delete a test temp folder, also names Windows only reaches with extended paths."""
+    import shutil
+    shutil.rmtree(ext(path), ignore_errors=True)
+
+
 def write_bytes(path, data):
     path = Path(path)
     os.makedirs(ext(path.parent), exist_ok=True)
@@ -102,6 +108,9 @@ def build_demo_tree(base):
     fake_audio(lib / "Unsorted" / "a1.mp3", 100, tags={"album": "Book A"})
     fake_audio(lib / "Unsorted" / "a2.mp3", 100, tags={"album": "Book A"})
     fake_audio(lib / "Unsorted" / "b1.mp3", 100, tags={"album": "Book B"})
+    # 5b. Separate single-file books dumped in one folder, no tags: never merged.
+    fake_audio(lib / "Loose Books" / "The First Book.mp3", 30000)
+    fake_audio(lib / "Loose Books" / "Another Story.mp3", 28000)
     # 6. Track tags with a gap and an order that disagrees with the file names.
     for name, track in (("a.mp3", 2), ("b.mp3", 1), ("c.mp3", 4)):
         fake_audio(lib / "Odd Cases" / "Gappy Book" / name, 200, tags={"track": str(track), "album": "Gappy Book"})

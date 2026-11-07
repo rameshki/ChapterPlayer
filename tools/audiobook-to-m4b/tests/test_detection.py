@@ -1,5 +1,6 @@
 """Which folders are books: flat sets, disc folders, nesting, skips and ambiguity."""
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,7 +21,11 @@ class DetectionTest(unittest.TestCase):
         self.root = Path(self.tmp.name) / "lib"
 
     def tearDown(self):
-        self.tmp.cleanup()
+        helpers.remove_tree(self.tmp.name)
+        try:
+            self.tmp.cleanup()
+        except OSError:
+            pass
 
     def scan(self, **kw):
         return by_rel(to_m4b.scan_library(self.root, **kw))
@@ -71,9 +76,10 @@ class DetectionTest(unittest.TestCase):
         self.assertEqual([p.name for p in book.covers], ["folder.jpg"])
 
     def test_disc_folder_names(self):
-        for name in ("CD1", "cd 2", "Disc 3", "Disk 01", "Part 3", "disc_4", "CD 1 of 2", "Disc 1 - The Start"):
+        for name in ("CD1", "cd 2", "Disc 3", "Disk 01", "Part 3", "disc_4", "CD 1 of 2", "pt.2"):
             self.assertIsNotNone(to_m4b.disc_number(name), name)
-        for name in ("Partridge", "Discworld", "Volume 1", "Book 2", "CD", "Extras"):
+        for name in ("Partridge", "Discworld", "Volume 1", "Book 2", "CD", "Extras", "Disc 1 - The Start",
+                     "Part 1 - The Final Empire", "Part 2 (Unabridged)"):
             self.assertIsNone(to_m4b.disc_number(name), name)
 
     def test_disc_folders_with_one_file_each_make_one_book(self):
@@ -125,12 +131,64 @@ class DetectionTest(unittest.TestCase):
         c = self.scan(exclude_dirs=[self.root / "Out"])
         self.assertEqual(c, {})
 
-    def test_root_itself_can_be_a_book(self):
-        fake_audio(self.root / "1.mp3")
-        fake_audio(self.root / "2.mp3")
+    def test_the_library_root_is_never_a_book(self):
+        fake_audio(self.root / "Book A.mp3")
+        fake_audio(self.root / "Book B.mp3")
+        fake_audio(self.root / "CD1" / "x.mp3")
         c = self.scan()
         self.assertEqual(list(c), ["."])
-        self.assertEqual(c["."].name, "lib")
+        self.assertEqual(c["."].status, "ambiguous")
+        self.assertIn("never treated as a book", c["."].reasons[0])
+
+    def test_part_folders_with_titles_are_separate_books_not_discs(self):
+        for part in ("Part 1 - The First", "Part 2 - The Second"):
+            for i in (1, 2):
+                fake_audio(self.root / "Series" / part / f"{i:02d}.mp3")
+        c = self.scan()
+        self.assertEqual(sorted(c), ["Series/Part 1 - The First", "Series/Part 2 - The Second"])
+        self.assertTrue(all(x.layout == "files" and x.status == "candidate" for x in c.values()))
+
+    def test_symlinks_and_junctions_are_reported_not_followed(self):
+        for i in (1, 2):
+            fake_audio(self.root / "Author" / "Book" / f"{i}.mp3")
+        link = self.root / "Alias"
+        try:
+            if to_m4b.IS_WINDOWS:
+                import _winapi
+                _winapi.CreateJunction(str(self.root / "Author"), str(link))
+            else:
+                os.symlink(str(self.root / "Author"), str(link))
+        except (OSError, AttributeError, ImportError) as e:
+            self.skipTest(f"cannot create a link here: {e}")
+        loop = self.root / "Author" / "Book" / "Loop"
+        try:
+            if to_m4b.IS_WINDOWS:
+                _winapi.CreateJunction(str(self.root), str(loop))
+            else:
+                os.symlink(str(self.root), str(loop))
+        except OSError:
+            pass
+        c = self.scan()
+        self.assertEqual(c["Author/Book"].status, "candidate")
+        self.assertEqual(c["Alias"].status, "ambiguous")
+        self.assertEqual(c["Alias"].layout, "link")
+        self.assertNotIn("Alias/Book", c)
+        if "Author/Book/Loop" in c:
+            self.assertEqual(c["Author/Book/Loop"].layout, "link")
+
+    @unittest.skipUnless(to_m4b.IS_WINDOWS, "trailing dots only matter on Windows")
+    def test_names_ending_in_a_dot_are_unsure_on_windows(self):
+        for i in (1, 2):
+            fake_audio(Path(to_m4b.ext(self.root / "Author")) .joinpath("Title.", f"{i}.mp3"))
+        c = self.scan()
+        self.assertEqual(c["Author/Title."].status, "ambiguous")
+        self.assertIn("ends with a dot or space", c["Author/Title."].reasons[0])
+
+    @unittest.skipIf(to_m4b.IS_WINDOWS, "Windows does not allow line breaks in names")
+    def test_line_breaks_in_names_are_unsure(self):
+        fake_audio(self.root / "Book" / "01\nfile '02.mp3")
+        fake_audio(self.root / "Book" / "02.mp3")
+        self.assertEqual(self.scan()["Book"].status, "ambiguous")
 
     def test_other_subfolders_of_a_disc_book_are_noted(self):
         fake_audio(self.root / "Book" / "CD1" / "a.mp3")
@@ -140,7 +198,8 @@ class DetectionTest(unittest.TestCase):
         c = self.scan()
         self.assertEqual(c["Book"].status, "candidate")
         self.assertTrue(any("Extras" in n for n in c["Book"].notes))
-        self.assertEqual(c["Book/Extras"].status, "candidate")
+        self.assertEqual(c["Book/Extras"].status, "ambiguous")
+        self.assertIn("next to its disc folders", c["Book/Extras"].reasons[0])
 
     def test_demo_tree(self):
         lib = helpers.build_demo_tree(Path(self.tmp.name) / "demo")

@@ -269,17 +269,56 @@ class TagsAndCoverTest(unittest.TestCase):
         self.assertIsNone(plan.cover)
 
 
+class SameBookTest(unittest.TestCase):
+    def test_untagged_unnumbered_files_are_not_one_book(self):
+        c = cand(["Book A.mp3", "Book B.mp3"])
+        plan = to_m4b.make_plan(c, probes_for(c))
+        self.assertEqual(plan.status, "ambiguous")
+        self.assertIn("separate books", plan.reasons[0])
+
+    def test_untagged_numbered_files_are_one_book(self):
+        c = cand(["01.mp3", "02.mp3", "Chapter 10.mp3"])
+        self.assertEqual(to_m4b.make_plan(c, probes_for(c)).status, "ok")
+
+    def test_all_files_with_one_album_are_one_book_whatever_the_names(self):
+        c = cand(["Intro.mp3", "Outro.mp3"])
+        self.assertEqual(to_m4b.make_plan(c, probes_for(c, tags=[{"album": "X"}, {"album": "X"}])).status, "ok")
+
+    def test_partly_tagged_unnumbered_files_are_unsure(self):
+        c = cand(["Intro.mp3", "Other.mp3"])
+        plan = to_m4b.make_plan(c, probes_for(c, tags=[{"album": "X"}, {}]))
+        self.assertEqual(plan.status, "ambiguous")
+        self.assertIn("only 1 of 2", plan.reasons[0])
+
+    def test_partly_tagged_numbered_files_convert_with_a_warning(self):
+        c = cand(["01.mp3", "02.mp3"])
+        plan = to_m4b.make_plan(c, probes_for(c, tags=[{"album": "X"}, {}]))
+        self.assertEqual(plan.status, "ok")
+        self.assertIn("only 1 of 2 files have an album tag", plan.warnings)
+
+    def test_looks_numbered(self):
+        self.assertTrue(to_m4b.looks_numbered(cand(["01.mp3", "02 - x.mp3"]).files))
+        self.assertFalse(to_m4b.looks_numbered(cand(["01.mp3", "Intro.mp3"]).files))
+        self.assertFalse(to_m4b.looks_numbered(cand(["Track 1.mp3", "Take 1.mp3"]).files))
+        discs = cand(["1.mp3", "2.mp3", "1.mp3", "2.mp3"], discs=[1, 1, 2, 2])
+        self.assertTrue(to_m4b.looks_numbered(discs.files))
+
+
 class FfmpegCommandTest(unittest.TestCase):
-    def test_command_has_the_required_options(self):
+    def test_demuxer_command_has_the_required_options(self):
         c = cand(["1.mp3", "2.mp3"], covers=["cover.jpg"])
         plan = to_m4b.make_plan(c, probes_for(c, channels=1, sample_rate=22050, bit_rate=32000))
+        self.assertEqual(plan.join, "demuxer")
         tools = to_m4b.Tools(["ffmpeg"], ["ffprobe"])
         cmd = to_m4b.build_ffmpeg_cmd(tools, plan, Path("/t/list"), Path("/t/meta"), Path("/o/B.m4b.part"))
         s = " ".join(cmd)
-        for piece in ("-f concat -safe 0 -i", "-f ffmetadata -i", "-map 0:a:0", "-map 2:v:0", "-c:v copy",
-                      "-disposition:v:0 attached_pic", "-map_metadata 1", "-map_chapters 1", "-c:a aac",
+        for piece in ("-n", "-f ffmetadata -i", "-f concat -safe 0 -i", "-map 2:a:0", "-map 1:v:0", "-c:v copy",
+                      "-disposition:v:0 attached_pic", "-map_metadata 0", "-map_chapters 0", "-c:a aac",
+                      "-af aresample=22050,aformat=sample_rates=22050:channel_layouts=mono",
                       "-b:a 48k", "-ac 1", "-ar 22050", "-movflags +faststart", "-f mp4"):
             self.assertIn(piece, s)
+        self.assertNotIn("-y", cmd)
+        self.assertNotIn("use_metadata_tags", s)
         self.assertTrue(cmd[-1].endswith("B.m4b.part"))
         self.assertIsInstance(cmd, list)
 
@@ -287,15 +326,44 @@ class FfmpegCommandTest(unittest.TestCase):
         c = cand(["1.mp3", "2.mp3"])
         plan = to_m4b.make_plan(c, probes_for(c))
         cmd = to_m4b.build_ffmpeg_cmd(to_m4b.Tools(["ffmpeg"], ["ffprobe"]), plan, Path("l"), Path("m"), Path("o"))
-        self.assertNotIn("2:v:0", cmd)
+        self.assertNotIn("-map 1:v:0", " ".join(cmd))
+        self.assertIn("-map 1:a:0", " ".join(cmd))
+
+    def test_different_stream_layouts_take_each_files_audio_explicitly(self):
+        c = cand(["1.m4a", "2.m4a", "3.m4a"])
+        p = probes_for(c)
+        p[c.files[1].path].layout = ("video", "audio")
+        p[c.files[1].path].audio_index = 1
+        p[c.files[0].path].sample_rate = 22050
+        plan = to_m4b.make_plan(c, p)
+        self.assertEqual(plan.join, "filter")
+        cmd = to_m4b.build_ffmpeg_cmd(to_m4b.Tools(["ffmpeg"], ["ffprobe"]), plan, Path("l"), Path("m"), Path("o"))
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        self.assertEqual(graph, "[1:a:0][2:a:0][3:a:0]concat=n=3:v=0:a=1,"
+                                "aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo[aout]")
+        self.assertIn("[aout]", cmd)
+        self.assertNotIn("concat", [cmd[i + 1] for i, a in enumerate(cmd) if a == "-f"])
+        self.assertTrue(any("resampled" in ch for ch in plan.choices))
+
+    def test_concat_list_refuses_line_breaks(self):
+        with self.assertRaises(ValueError):
+            to_m4b.concat_list_text([Path("/lib/a\nfile '/etc/x.mp3")])
+
+    def test_error_lines(self):
+        text = "[mp3 @ 0x1] [warning] skipping\n[mp3float @ 0x2] [error] Header missing\n[fatal] boom\n"
+        self.assertEqual(len(to_m4b.ffmpeg_error_lines(text)), 2)
 
 
 class VerifyTest(unittest.TestCase):
-    def data(self, dur, chapters, cover):
-        streams = [{"codec_type": "audio"}]
+    def data(self, dur, chapters, cover, fmt_dur=None, last_end=None):
+        streams = [{"codec_type": "audio", "duration": str(dur)}]
         if cover:
             streams.append({"codec_type": "video", "disposition": {"attached_pic": 1}})
-        return {"format": {"duration": str(dur)}, "streams": streams, "chapters": [{}] * chapters}
+        chs = [{"end_time": "0"}] * chapters
+        if chapters:
+            chs = chs[:-1] + [{"end_time": str(last_end if last_end is not None else dur)}]
+        return {"format": {"duration": str(fmt_dur if fmt_dur is not None else dur)}, "streams": streams,
+                "chapters": chs}
 
     def test_tolerance_is_one_second_or_a_tenth_of_a_percent(self):
         self.assertEqual(to_m4b.verify_output(self.data(100.9, 3, False), 100, 3, False), [])
@@ -303,12 +371,40 @@ class VerifyTest(unittest.TestCase):
         self.assertEqual(to_m4b.verify_output(self.data(36003.5, 3, False), 36000, 3, False), [])
         self.assertTrue(to_m4b.verify_output(self.data(36037, 3, False), 36000, 3, False))
 
+    def test_short_audio_with_a_full_length_container_is_rejected(self):
+        # The chapter text track keeps format.duration at the full length; the audio is short.
+        problems = to_m4b.verify_output(self.data(3570, 3, False, fmt_dur=3600, last_end=3600), 3600, 3, False)
+        self.assertTrue(any("audio length 3570.00" in p for p in problems), problems)
+        self.assertTrue(any("after the audio" in p for p in problems), problems)
+
+    def test_chapter_text_track_does_not_count_as_audio(self):
+        data = {"format": {"duration": "100"}, "streams": [{"codec_type": "data", "duration": "100"}],
+                "chapters": [{"end_time": "100"}]}
+        self.assertIn("no audio stream", to_m4b.verify_output(data, 100, 1, False))
+
+    def test_audio_length_from_duration_ts(self):
+        data = {"format": {}, "streams": [{"codec_type": "audio", "duration_ts": 441000, "time_base": "1/44100"}],
+                "chapters": [{"end_time": "10"}]}
+        self.assertEqual(to_m4b.verify_output(data, 10, 1, False), [])
+        data["streams"][0].pop("duration_ts")
+        self.assertIn("the audio stream reports no length", to_m4b.verify_output(data, 10, 1, False))
+
     def test_chapters_audio_and_cover(self):
         self.assertIn("2 chapters, expected 3", to_m4b.verify_output(self.data(100, 2, False), 100, 3, False))
         self.assertIn("cover picture missing", to_m4b.verify_output(self.data(100, 3, False), 100, 3, True))
         self.assertEqual(to_m4b.verify_output(self.data(100, 3, True), 100, 3, True), [])
         self.assertIn("no audio stream", to_m4b.verify_output({"format": {"duration": "1"}, "streams": []}, 1, 0, False))
 
+
+class CollisionTest(unittest.TestCase):
+    def test_books_that_map_to_one_output_name_are_all_skipped(self):
+        a = cand(["1.mp3", "2.mp3"], rel="Author/Book?")
+        b = cand(["1.mp3", "2.mp3"], rel="Author/Book_")
+        c = cand(["1.mp3", "2.mp3"], rel="Author/BOOK_")
+        d = cand(["1.mp3", "2.mp3"], rel="Author/Other")
+        to_m4b.mark_collisions([a, b, c, d], Path("/out"))
+        self.assertEqual([x.status for x in (a, b, c, d)], ["ambiguous", "ambiguous", "ambiguous", "candidate"])
+        self.assertIn("Author/Book_", a.reasons[0])
 
 class PathTest(unittest.TestCase):
     def test_mirror_path_keeps_layout(self):

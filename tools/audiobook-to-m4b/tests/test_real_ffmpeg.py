@@ -42,7 +42,10 @@ class RealFfmpegTest(unittest.TestCase):
             r = subprocess.run([FFPROBE, "-v", "error", "-print_format", "json", "-show_format", "-show_streams",
                                 "-show_chapters", str(m4b)], stdout=subprocess.PIPE, check=True)
             data = json.loads(r.stdout)
-            self.assertAlmostEqual(float(data["format"]["duration"]), 12.0, delta=1.0)
+            audio = [s for s in data["streams"] if s["codec_type"] == "audio"]
+            # The audio stream's own length: the container length also covers the chapter track.
+            self.assertAlmostEqual(float(audio[0]["duration"]), 12.0, delta=1.0)
+            self.assertLessEqual(float(data["chapters"][-1]["end_time"]), float(audio[0]["duration"]) + 1.0)
             self.assertEqual([c["tags"]["title"] for c in data["chapters"]], ["Tone 1", "Tone 2", "Tone 3"])
             audio = [s for s in data["streams"] if s["codec_type"] == "audio"]
             self.assertEqual(audio[0]["codec_name"], "aac")

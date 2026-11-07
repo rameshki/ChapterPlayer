@@ -44,8 +44,12 @@ def main(argv):
             "disposition": {"default": 0, "attached_pic": 0},
         }]
         if a.get("picture"):
-            streams.append({"index": 1, "codec_type": "video", "codec_name": a["picture"],
-                            "disposition": {"default": 0, "attached_pic": 1}})
+            pic = {"index": 1, "codec_type": "video", "codec_name": a["picture"],
+                   "disposition": {"default": 0, "attached_pic": 1}}
+            if a.get("picture_first"):   # e.g. an .m4a whose cover stream comes before the audio
+                streams.insert(0, pic)
+            else:
+                streams.append(pic)
         fmt = {"filename": path, "nb_streams": len(streams), "format_name": "mp3",
                "duration": "%.6f" % a["duration"], "size": str(size),
                "bit_rate": str(a.get("bit_rate", 64000)), "tags": a.get("tags", {})}
@@ -58,7 +62,12 @@ def main(argv):
         streams = [{"index": 0, "codec_type": "audio", "codec_name": "aac",
                     "sample_rate": str(m.get("sample_rate", 44100)), "channels": m.get("channels", 2),
                     "bit_rate": str(m.get("bit_rate", 64000)),
+                    "duration": "%.6f" % m.get("audio_duration", m["duration"]),
                     "disposition": {"default": 1, "attached_pic": 0}}]
+        if m.get("chapters"):
+            # Like ffmpeg's MP4 muxer: chapters are also a text track running to the last chapter end.
+            streams.append({"index": len(streams), "codec_type": "data", "codec_name": "bin_data",
+                            "duration": "%.6f" % (m["chapters"][-1]["end"] / 1000)})
         if m.get("cover"):
             streams.append({"index": 1, "codec_type": "video", "codec_name": "mjpeg",
                             "disposition": {"default": 0, "attached_pic": 1}})
