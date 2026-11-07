@@ -30,6 +30,32 @@ class PlexBookContentTest {
     }
 
     @Test
+    fun `the first track's summary is kept for the book's description`() {
+        val content = plexBookContent(entries("album-tracks-with-summary.json"), emptyMap())
+
+        assertEquals("Fixture track summary line 1.\n\nFixture track summary line 2.", content.summary)
+    }
+
+    @Test
+    fun `a track detail's summary wins over the track list's`() {
+        val content = plexBookContent(entries("album-tracks-with-summary.json"), mapOf(detail("track-with-chapters.json")))
+
+        assertEquals("Fixture summary 1", content.summary)
+    }
+
+    @Test
+    fun `blank track summaries are skipped and none at all gives no summary`() {
+        val blank = PlexMetadataDto(ratingKey = "1", type = "track", title = "One", summary = "  ")
+        val second = PlexMetadataDto(ratingKey = "2", type = "track", title = "Two", summary = "From the second file")
+        val none = PlexMetadataDto(ratingKey = "3", type = "track", title = "Three")
+
+        assertEquals("From the second file", plexBookContent(listOf(blank, second), emptyMap()).summary)
+        assertEquals("From the second file", plexBookContent(listOf(blank, second), mapOf("1" to blank.copy(summary = ""))).summary)
+        assertNull(plexBookContent(listOf(blank, none), emptyMap()).summary)
+        assertNull(plexBookContent(emptyList(), emptyMap()).summary)
+    }
+
+    @Test
     fun `a single-file book without its detail is one chapter`() {
         val content = plexBookContent(entries("album-tracks.json"), emptyMap())
 

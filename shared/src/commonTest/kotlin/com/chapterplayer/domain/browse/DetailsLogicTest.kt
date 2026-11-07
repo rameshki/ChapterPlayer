@@ -123,4 +123,33 @@ class DetailsLogicTest {
         assertFalse(info.needsConnection)
         assertEquals("Fixture Saga #2", info.seriesLine)
     }
+
+    // ---- the description of a book several servers have ----
+
+    @Test
+    fun `an Audiobookshelf page keeps its own description`() {
+        assertEquals("ABS text", mergedDescription(own = "ABS text", ownIsAbs = true, absCopies = listOf("Other ABS text")))
+    }
+
+    @Test
+    fun `a Plex page shows the Audiobookshelf copy's description when it has one`() {
+        assertEquals("ABS text", mergedDescription(own = "Plex text", ownIsAbs = false, absCopies = listOf("ABS text")))
+    }
+
+    @Test
+    fun `a Plex page keeps its own description when no Audiobookshelf copy has one`() {
+        assertEquals("Plex text", mergedDescription(own = "Plex text", ownIsAbs = false, absCopies = listOf(null, "  ")))
+        assertEquals("Plex text", mergedDescription(own = "Plex text", ownIsAbs = false, absCopies = emptyList()))
+    }
+
+    @Test
+    fun `a page without a description takes the first Audiobookshelf copy that has one`() {
+        assertEquals("Second", mergedDescription(own = null, ownIsAbs = true, absCopies = listOf("", "Second", "Third")))
+        assertEquals("Second", mergedDescription(own = " ", ownIsAbs = false, absCopies = listOf(null, "Second")))
+    }
+
+    @Test
+    fun `no description anywhere stays none`() {
+        assertNull(mergedDescription(own = null, ownIsAbs = false, absCopies = listOf(null)))
+    }
 }

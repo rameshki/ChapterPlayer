@@ -21,8 +21,11 @@ data class PlexTrack(
     val lastViewedAtSec: Long? = null,
 )
 
-/** A Plex book's audio and chapters, across all its tracks. */
-data class PlexBookContent(val tracks: List<PlexTrack>, val chapters: List<Chapter>) {
+/**
+ * A Plex book's audio and chapters, across all its tracks. [summary] is the first track's summary that is not blank (a
+ * track detail's before the track list's), as Plex sends it; the book's description when the album has none.
+ */
+data class PlexBookContent(val tracks: List<PlexTrack>, val chapters: List<Chapter>, val summary: String? = null) {
     /** The whole book's length; 0 when no track's length is known. */
     val durationMs: Long get() = tracks.sumOf { it.durationMs }
 
@@ -44,8 +47,12 @@ fun plexBookContent(children: List<PlexMetadataDto>, details: Map<String, PlexMe
     val tracks = mutableListOf<PlexTrack>()
     val chapters = mutableListOf<Chapter>()
     var offset = 0L
+    var summary: String? = null
     children.filter(::isPlexTrack).forEachIndexed { index, listed ->
         val track = details[listed.ratingKey] ?: listed
+        if (summary == null) {
+            summary = listOfNotNull(details[listed.ratingKey]?.summary, listed.summary).firstOrNull { it.isNotBlank() }
+        }
         val own = track.chapters.orEmpty().sortedBy { it.startTimeMs }
         val media = track.media?.firstOrNull() ?: listed.media?.firstOrNull()
         val part = media?.parts?.firstOrNull()
@@ -80,5 +87,5 @@ fun plexBookContent(children: List<PlexMetadataDto>, details: Map<String, PlexMe
         }
         offset += durationMs
     }
-    return PlexBookContent(tracks, chapters)
+    return PlexBookContent(tracks, chapters, summary)
 }

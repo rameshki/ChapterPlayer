@@ -13,6 +13,7 @@ import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PLAYBACK_NOT_ON_IOS_TEXT
 import com.chapterplayer.data.PlatformFeatures
@@ -35,6 +36,7 @@ import com.chapterplayer.domain.browse.sourcesDescription
 import com.chapterplayer.domain.browse.BookLinks
 import com.chapterplayer.domain.browse.SeriesEntry
 import com.chapterplayer.domain.browse.aboutInfo
+import com.chapterplayer.domain.browse.mergedDescription
 import com.chapterplayer.domain.browse.bookLinks
 import com.chapterplayer.domain.browse.chapterRows
 import com.chapterplayer.domain.browse.formatLength
@@ -826,6 +828,35 @@ class BookDetailsViewModel(
             onSuccess = { Live(it ?: live.value.details) },
             onFailure = { Live(live.value.details, error = errorText(it)) }
         )
+        result.getOrNull()?.let { preferAbsDescription(it) }
+    }
+
+    /**
+     * A book several servers have shows an Audiobookshelf copy's description when this page's copy is not one with a
+     * description ([mergedDescription]); the other copies' details are asked for after this page's, best effort.
+     */
+    private suspend fun preferAbsDescription(details: BookDetails) {
+        val entry = whole.first().entry?.takeIf { it.isMerged } ?: return
+        val own = entry.member(bookId) ?: return
+        val ownIsAbs = own.book.source == ServerSource.ABS
+        if (ownIsAbs && !details.description.isNullOrBlank()) return
+        val absIds = entry.allSources.filter { it.book.source == ServerSource.ABS && it.book.id != bookId }.map { it.book.id }
+        if (absIds.isEmpty()) return
+        val absDescriptions = absIds.map { id ->
+            try {
+                books.loadDetails(id).getOrNull()?.description
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+        }
+        val chosen = mergedDescription(details.description, ownIsAbs, absDescriptions)
+        val current = live.value
+        // Only while these details are still the ones shown (a retry may have replaced them).
+        if (chosen != details.description && current.details === details) {
+            live.value = Live(details.copy(description = chosen), current.loading, current.error)
+        }
     }
 
     private fun errorText(error: Throwable) =

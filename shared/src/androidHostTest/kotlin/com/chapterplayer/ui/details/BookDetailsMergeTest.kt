@@ -80,10 +80,20 @@ class BookDetailsMergeTest {
         sizes: Map<String, Long> = emptyMap(),
         /** The download rows on the phone, by book id. */
         rows: Map<String, com.chapterplayer.data.downloads.DownloadRow> = emptyMap(),
+        /** What each copy's server gives as the description. */
+        descriptions: Map<String, String> = emptyMap(),
     ) {
+        val detailCalls = mutableListOf<String>()
         val repo = object : FakeBookRepository(books) {
-            override suspend fun loadDetails(bookId: String): Result<BookDetails?> =
-                Result.success(sizes[bookId]?.let { BookDetails(emptyList(), null, emptyList(), null, emptyList(), downloadSizeBytes = it) })
+            override suspend fun loadDetails(bookId: String): Result<BookDetails?> {
+                detailCalls += bookId
+                val size = sizes[bookId]
+                val text = descriptions[bookId]
+                return Result.success(
+                    if (size == null && text == null) null
+                    else BookDetails(emptyList(), text, emptyList(), null, emptyList(), downloadSizeBytes = size)
+                )
+            }
         }
         val controller = FakePlaybackController()
         val settings = FakeAppSettings()
@@ -124,6 +134,36 @@ class BookDetailsMergeTest {
         assertEquals("available from Audiobookshelf and Plex", state().sourcesDescription)
         assertTrue(state().canSplit)
         assertTrue(state().canMerge)
+    }
+
+    @Test
+    fun `a merged book's Plex page shows the Audiobookshelf description`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "p", descriptions = mapOf("a" to "From ABS", "p" to "From Plex"))
+        val state = collect(s)
+        assertEquals("From ABS", state().about?.description)
+    }
+
+    @Test
+    fun `a merged book's Plex page keeps the Plex description when the Audiobookshelf copy has none`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "p", descriptions = mapOf("p" to "From Plex"))
+        val state = collect(s)
+        assertEquals("From Plex", state().about?.description)
+    }
+
+    @Test
+    fun `a merged book's Audiobookshelf page with a description asks no other copy`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", descriptions = mapOf("a" to "From ABS", "p" to "From Plex"))
+        val state = collect(s)
+        assertEquals("From ABS", state().about?.description)
+        assertEquals(listOf("a"), s.detailCalls)
+    }
+
+    @Test
+    fun `a Plex book on one server shows its own description`() = runTest {
+        val s = Setup(listOf(plex("p"), abs("x", title = "Other")), "p", descriptions = mapOf("p" to "From Plex", "x" to "Other ABS"))
+        val state = collect(s)
+        assertEquals("From Plex", state().about?.description)
+        assertEquals(listOf("p"), s.detailCalls)
     }
 
     @Test
