@@ -18,7 +18,7 @@ reliable progress sync, offline listening, car integration and widgets.
 |---|---|---|
 | 1 | Audiobookshelf | Full: browse, stream, download, progress & session sync, bookmarks |
 | 2 | Plex | Full: sign-in via plex.tv, browse music/audiobook sections, stream, download, progress via Plex timeline |
-| 3 | Audible | **Undecided**: research spike in Stage 6. No DRM removal under any option |
+| 3 | Audible | **Undecided**: research done, see `docs/AUDIBLE.md` (recommends an ASIN-aware merge and an "Open in Audible" hand-off; owner questions open). No DRM removal under any option |
 
 ### Platforms & surfaces
 
@@ -179,7 +179,7 @@ Design: `docs/superpowers/specs/2026-10-30-stage-5-ios-design.md` (seven steps; 
 **Prerequisites:** a Mac with Xcode, an Apple Developer account, and an approved CarPlay audio entitlement from Apple. Apply for the entitlement early, because approval takes time.
 
 ### Stage 6: Audible (priority 3, scope to be decided)
-- [ ] Research spike: unofficial Audible API state, terms-of-service risk, account-flag risk
+- [x] Research spike: unofficial Audible API state, terms-of-service risk, account-flag risk (`docs/AUDIBLE.md`, 2026-11-07)
 - [ ] Decide between: (a) library view + hand-off to the Audible app, (b) via Audiobookshelf only (Libation/OpenAudible imports), or (c) skip
 - [ ] Never: in-app DRM removal
 
