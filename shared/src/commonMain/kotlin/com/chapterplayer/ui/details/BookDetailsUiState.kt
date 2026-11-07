@@ -66,5 +66,9 @@ data class BookDetailsUiState(
     val notice: String? = null,
     /** The merged entry (null for a book on one server) and the merging inputs, for the actions. */
     val entry: com.chapterplayer.domain.browse.BrowseItem? = null,
-    val mergeContext: com.chapterplayer.domain.browse.MergeContext? = null
+    val mergeContext: com.chapterplayer.domain.browse.MergeContext? = null,
+    /** The book is one of the person's favourites (any copy of a merged book is; see `isFavourite`). */
+    val favourite: Boolean = false,
+    /** "Mark as finished" or "Mark as not finished", from the entry's progress (the copy played last). */
+    val mark: com.chapterplayer.domain.playback.MarkAction = com.chapterplayer.domain.playback.MarkAction.MarkFinished,
 )

@@ -309,12 +309,12 @@ val commonViewModelModule = module {
     viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
     viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
     viewModelOf(::OfflineStateViewModel)
-    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get()) }
+    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get(), favourites = get()) }
     viewModelOf(::LibrariesViewModel)
     // Built with parametersOf(kind, groupKey) by the group detail screen.
     viewModel { params ->
         GroupDetailViewModel(
-            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()
+            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()
         )
     }
     // Built with parametersOf(bookId) by the book details screen.
@@ -328,8 +328,8 @@ val commonViewModelModule = module {
     // The statistics page; its figures are worked out off the main thread.
     viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
-    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()) }
+    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()) }
     // The Diagnostics page (debug builds only reach it): read only tables, and the log the report is written to.
     single<DiagnosticsData> { RoomDiagnosticsData(get(), get()) }
     single<DiagnosticsLogger> { PlatformDiagnosticsLogger() }

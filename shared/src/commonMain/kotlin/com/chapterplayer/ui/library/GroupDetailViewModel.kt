@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.favourites.FavouritesRepository
+import com.chapterplayer.data.favourites.NoFavourites
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -41,7 +43,9 @@ data class GroupDetailUiState(
     val isLoading: Boolean = true,
     val online: Boolean = true,
     val downloadedOnly: Boolean = false,
-    val nothingDownloaded: Boolean = false
+    val nothingDownloaded: Boolean = false,
+    /** The stored favourites (by book id), for the heart on the tiles. */
+    val favouriteIds: Set<String> = emptySet(),
 ) {
     /** The group has books but the filters hide them all. */
     val emptyBecauseOfFilter: Boolean get() = exists && items.isEmpty() && isFiltering
@@ -59,7 +63,8 @@ class GroupDetailViewModel(
     connectivity: ConnectivityMonitor,
     private val settings: AppSettings,
     dispatcher: CoroutineDispatcher,
-    merging: SourceMerging = SourceMerging.None
+    merging: SourceMerging = SourceMerging.None,
+    favourites: FavouritesRepository = NoFavourites,
 ) : ViewModel() {
 
     /** The Downloaded chip is on and none of the group's books is on the phone (the Library list shows the same text). */
@@ -67,7 +72,10 @@ class GroupDetailViewModel(
         shown?.items.orEmpty().isEmpty() && query.download == DownloadFilter.DOWNLOADED && query.progress == ProgressFilter.ALL &&
             query.serverIds.isEmpty()
 
-    private class Found(val title: String?, val exists: Boolean, val items: List<BrowseItem>, val filtering: Boolean, val nothingDownloaded: Boolean)
+    private class Found(
+        val title: String?, val exists: Boolean, val items: List<BrowseItem>, val filtering: Boolean, val nothingDownloaded: Boolean,
+        val favouriteIds: Set<String>,
+    )
 
     private class Whole(val all: List<BrowseItem>, val collections: List<BookCollection>, val group: BookGroup?)
 
@@ -77,11 +85,11 @@ class GroupDetailViewModel(
         Whole(all, collections, groupsFor(kind, applyQuery(all, BrowseQuery()), collections).firstOrNull { it.key == key })
     }
 
-    private val found = combine(whole, queryStore.query) { whole, query ->
+    private val found = combine(whole, queryStore.query, favourites.favouriteIds) { whole, query, favouriteIds ->
         // Without a filter the shown group is the unfiltered one, so the groups are built only once.
         val shown = if (query == BrowseQuery()) whole.group
-        else groupsFor(kind, applyQuery(whole.all, query), whole.collections).firstOrNull { it.key == key }
-        Found(whole.group?.title, whole.group != null, shown?.items.orEmpty(), isFiltering(query), nothingDownloaded(query, shown))
+        else groupsFor(kind, applyQuery(whole.all, query, favouriteIds), whole.collections).firstOrNull { it.key == key }
+        Found(whole.group?.title, whole.group != null, shown?.items.orEmpty(), isFiltering(query), nothingDownloaded(query, shown), favouriteIds)
     }.flowOn(dispatcher)
 
     val uiState: StateFlow<GroupDetailUiState> = combine(
@@ -96,7 +104,8 @@ class GroupDetailViewModel(
             nothingDownloaded = found.nothingDownloaded,
             isLoading = false,
             online = online,
-            downloadedOnly = downloadedOnly
+            downloadedOnly = downloadedOnly,
+            favouriteIds = found.favouriteIds,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GroupDetailUiState())
 

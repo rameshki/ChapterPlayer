@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.favourites.FavouritesRepository
+import com.chapterplayer.data.favourites.NoFavourites
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -48,7 +50,8 @@ class LibraryViewModel(
     private val syncCoordinator: LibrarySyncCoordinator,
     dispatcher: CoroutineDispatcher,
     private val savedState: SavedStateHandle = SavedStateHandle(),
-    merging: SourceMerging = SourceMerging.None
+    merging: SourceMerging = SourceMerging.None,
+    favourites: FavouritesRepository = NoFavourites,
 ) : ViewModel() {
 
     // Kept in the saved state so the chosen view comes back after the process was killed.
@@ -65,7 +68,8 @@ class LibraryViewModel(
         val hasBooks: Boolean,
         val serverOptions: List<ServerFilterOption>,
         val serverChip: String?,
-        val fastScroll: List<LetterIndex>
+        val fastScroll: List<LetterIndex>,
+        val favouriteIds: Set<String>,
     )
 
     private class Device(
@@ -77,13 +81,13 @@ class LibraryViewModel(
     private val content = combine(
         observeBrowseItems(books, downloads, merging),
         books.observeCollections(),
-        queryStore.query,
+        combine(queryStore.query, favourites.favouriteIds, ::Pair),
         _view,
         servers.observeAll()
-    ) { all, collections, rawQuery, view, serverList ->
+    ) { all, collections, (rawQuery, favouriteIds), view, serverList ->
         // A deleted server's id never hides books, even before the store drops it.
         val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
-        val shown = applyQuery(all, query)
+        val shown = applyQuery(all, query, favouriteIds)
         val items = if (view.isGrouped) emptyList() else shown
         val groups = groupsFor(view, shown, collections)
         Content(
@@ -95,7 +99,8 @@ class LibraryViewModel(
             // Counted from every book, so the numbers do not change with the filters.
             serverOptions = serverFilterOptions(serverList, all, query.serverIds),
             serverChip = serverChipLabel(query.serverIds, serverList),
-            fastScroll = fastScrollIndex(fastScrollKeys(view, query.sort, items, groups))
+            fastScroll = fastScrollIndex(fastScrollKeys(view, query.sort, items, groups)),
+            favouriteIds = favouriteIds,
         )
     }.flowOn(dispatcher)
 
@@ -128,7 +133,8 @@ class LibraryViewModel(
             downloadedOnly = device.downloadedOnly,
             serverOptions = content.serverOptions,
             serverChip = content.serverChip,
-            fastScroll = content.fastScroll
+            fastScroll = content.fastScroll,
+            favouriteIds = content.favouriteIds,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
@@ -150,6 +156,9 @@ class LibraryViewModel(
     fun onDownloadFilterSelected(filter: DownloadFilter) = queryStore.update { it.copy(download = filter) }
 
     fun onSortSelected(sort: BrowseSort) = queryStore.update { it.copy(sort = sort) }
+
+    /** The Filter sheet's "Favourites only" switch. */
+    fun onFavouritesOnlyChanged(on: Boolean) = queryStore.update { it.copy(favouritesOnly = on) }
 
     /** Ticks or unticks one server in the Filter sheet's Server section. */
     fun onServerToggled(serverId: String) {

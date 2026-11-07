@@ -45,7 +45,9 @@ data class LibraryUiState(
     /** The label of the active server filter chip, or null when every server shows. */
     val serverChip: String? = null,
     /** The A to Z scroller's letters for the list shown (positions within [items] or [groups]); empty hides it. */
-    val fastScroll: List<LetterIndex> = emptyList()
+    val fastScroll: List<LetterIndex> = emptyList(),
+    /** The stored favourites (by book id), for the heart on the tiles. */
+    val favouriteIds: Set<String> = emptySet(),
 ) {
     /** The highlighted chip, or null when the Filter sheet made a combination no chip stands for. */
     val chip: FilterChip? get() = chipFor(query)
