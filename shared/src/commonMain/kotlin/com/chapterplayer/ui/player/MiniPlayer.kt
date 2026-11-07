@@ -40,7 +40,8 @@ import coil3.compose.AsyncImage
 import com.chapterplayer.ui.components.BookCoverPlaceholder
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.Divider
-import com.chapterplayer.ui.theme.SurfaceElevated
+import com.chapterplayer.ui.theme.AmberDim
+import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.theme.TextPrimary
 import com.chapterplayer.ui.theme.TextSecondary
 
@@ -79,8 +80,10 @@ fun MiniPlayerContent(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(SurfaceElevated)
+            .background(SurfaceSecondary)
     ) {
+        // A thin amber line along the top edge, so the bar reads as its own layer over the cards behind it.
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(AmberDim).align(Alignment.TopStart))
         // At least 64dp, taller when large text needs it; the content stays centred.
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),

@@ -593,13 +593,13 @@ private fun ToolButton(icon: ImageVector, label: String, description: String, mo
             .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClickLabel = description, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .padding(horizontal = 2.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(icon, contentDescription = null, tint = AmberGold)
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
             maxLines = 2,
