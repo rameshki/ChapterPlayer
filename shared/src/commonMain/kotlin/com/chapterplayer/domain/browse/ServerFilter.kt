@@ -16,6 +16,7 @@ data class ServerFilterOption(
 fun ServerSource.shortLabel(): String = when (this) {
     ServerSource.ABS -> "ABS"
     ServerSource.PLEX -> "Plex"
+    ServerSource.JELLYFIN -> "Jellyfin"
 }
 
 /** The selected ids that still belong to one of [allIds]; empty means every server. */

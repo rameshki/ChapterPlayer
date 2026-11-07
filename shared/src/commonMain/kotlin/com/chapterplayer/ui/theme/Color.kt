@@ -22,6 +22,8 @@ val TextTertiary: Color @Composable @ReadOnlyComposable get() = LocalPalette.cur
 val Divider: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.divider
 val FieldBorder: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.fieldBorder
 val ErrorRed: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.error
+val JellyfinBadge: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.jellyfinBadge
+val JellyfinBadgeBg: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.jellyfinBadgeBg
 
 // ─── Source badge and status colours: the same in both themes ──────────────
 val AbsGreen = Color(0xFF2ECC71)

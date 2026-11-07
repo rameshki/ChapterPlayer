@@ -41,6 +41,7 @@ const val CHOSEN_SERVER_REMOVED_TEXT = "The server chosen before was removed, so
 private fun ServerSource.longName(): String = when (this) {
     ServerSource.ABS -> "Audiobookshelf"
     ServerSource.PLEX -> "Plex"
+    ServerSource.JELLYFIN -> "Jellyfin"
 }
 
 private fun lineLabel(choice: SourceChoice, servers: List<ServerConfig>, names: Map<String, String>): String = when (choice) {

@@ -28,6 +28,7 @@ class PaletteContrastTest {
         assertTrue(contrast(palette.onAmber, palette.amber) >= 4.5, "$name text on an amber button")
         assertTrue(contrast(palette.textSecondary, palette.navBar) >= 4.5, "$name nav bar labels")
         assertTrue(contrast(palette.amber, palette.navBar) >= 4.5, "$name selected nav item")
+        assertTrue(contrast(palette.jellyfinBadge, palette.jellyfinBadgeBg) >= 4.5, "$name Jellyfin badge text on its background")
     }
 
     @Test fun `the light field border is visible`() {

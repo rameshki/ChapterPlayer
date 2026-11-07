@@ -313,6 +313,7 @@ fun sourceOptions(item: BrowseItem, onlineServerIds: Set<String>, deviceOnline: 
 private fun ServerSource.longLabel(): String = when (this) {
     ServerSource.ABS -> "Audiobookshelf"
     ServerSource.PLEX -> "Plex"
+    ServerSource.JELLYFIN -> "Jellyfin"
 }
 
 /** The small mark on a merged tile ("2 sources"); null for a book on one server. */

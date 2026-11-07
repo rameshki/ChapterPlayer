@@ -109,6 +109,7 @@ fun seriesToFinishLine(series: SeriesToFinish): String =
 fun sourceName(source: ServerSource): String = when (source) {
     ServerSource.ABS -> "Audiobookshelf"
     ServerSource.PLEX -> "Plex"
+    ServerSource.JELLYFIN -> "Jellyfin"
 }
 
 /** Whole percentages that add up to 100 (largest remainder), largest share first. */

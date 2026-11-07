@@ -21,7 +21,10 @@ data class ChapterPlayerPalette(
     val fieldBorder: Color,
     val error: Color,
     /** Text or icons drawn on an amber button. */
-    val onAmber: Color
+    val onAmber: Color,
+    /** The Jellyfin source badge's text and its pill (a blue, apart from the Plex purple). */
+    val jellyfinBadge: Color,
+    val jellyfinBadgeBg: Color
 )
 
 /**
@@ -41,7 +44,9 @@ val DarkPalette = ChapterPlayerPalette(
     divider = Color(0xFF232A44),
     fieldBorder = Color(0xFF1E2742),
     error = Color(0xFFCF6679),
-    onAmber = Color(0xFF0E0D0B)
+    onAmber = Color(0xFF0E0D0B),
+    jellyfinBadge = Color(0xFF4FC3F7),
+    jellyfinBadgeBg = Color(0xFF0B3A52)
 )
 
 /** The amber is darker than in the dark theme so amber text stays readable on light surfaces. */
@@ -58,7 +63,9 @@ val LightPalette = ChapterPlayerPalette(
     divider = Color(0xFFDDD8CC),
     fieldBorder = Color(0xFF8D877B),
     error = Color(0xFFB3261E),
-    onAmber = Color(0xFFFFFFFF)
+    onAmber = Color(0xFFFFFFFF),
+    jellyfinBadge = Color(0xFF005A82),
+    jellyfinBadgeBg = Color(0xFFD6F0FB)
 )
 
 val LocalPalette = staticCompositionLocalOf { DarkPalette }
