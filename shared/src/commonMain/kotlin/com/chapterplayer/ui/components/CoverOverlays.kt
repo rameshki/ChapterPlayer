@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -31,6 +32,15 @@ import com.chapterplayer.ui.theme.SurfaceSecondary
 /** A check on a finished book's cover. */
 @Composable
 fun FinishedCheck(modifier: Modifier = Modifier) = CheckDisc("Finished", modifier)
+
+/** The small heart of a favourite book: on a dark disc on covers, on its own in a row. */
+@Composable
+fun FavouriteMark(modifier: Modifier = Modifier, onCover: Boolean = true) {
+    val disc = if (onCover) Modifier.background(SurfaceElevated.copy(alpha = 0.85f), CircleShape) else Modifier
+    Box(modifier = modifier.size(20.dp).then(disc), contentAlignment = Alignment.Center) {
+        Icon(Icons.Default.Favorite, contentDescription = "Favourite", tint = AmberGold, modifier = Modifier.size(12.dp))
+    }
+}
 
 /** A thin amber bar along the bottom of a cover. */
 @Composable

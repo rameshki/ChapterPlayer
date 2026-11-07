@@ -23,6 +23,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.ui.components.EmptyState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.remember
+import com.chapterplayer.domain.browse.isFavourite
+import com.chapterplayer.ui.details.BookActionsHost
+import com.chapterplayer.ui.details.rememberBookActions
 import com.chapterplayer.ui.components.OfflineHeader
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -38,10 +44,15 @@ fun GroupDetailScreen(
     groupKey: String,
     onBookClick: (bookId: String) -> Unit,
     onBack: () -> Unit,
+    /** "Go to series" and "More by" of the book long-press menu. */
+    onOpenGroup: (LibraryView, key: String) -> Unit = { _, _ -> },
     viewModel: GroupDetailViewModel = koinViewModel(parameters = { parametersOf(kind, groupKey) })
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val bookActions = rememberBookActions()
+    val snackbar = remember { SnackbarHostState() }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = {
@@ -86,8 +97,13 @@ fun GroupDetailScreen(
                 layout = state.layout,
                 isDimmed = state::dimmed,
                 onBookClick = onBookClick,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                onBookLongClick = bookActions::open,
+                isFavourite = { isFavourite(it, state.favouriteIds) },
             )
         }
     }
+        SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+    BookActionsHost(bookActions, snackbar, onOpenBook = onBookClick, onOpenGroup = onOpenGroup)
 }

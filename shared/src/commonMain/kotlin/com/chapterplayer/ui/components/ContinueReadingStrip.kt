@@ -1,7 +1,6 @@
 package com.chapterplayer.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,7 +45,9 @@ fun ContinueReadingStrip(
     progressMap: Map<String, ReadingProgress>,
     onBookClick: (String) -> Unit,
     modifier: Modifier = Modifier,
-    dimmedIds: Set<String> = emptySet()
+    dimmedIds: Set<String> = emptySet(),
+    /** A long press on a book: its long-press menu; null keeps plain taps. */
+    onBookLongClick: ((String) -> Unit)? = null,
 ) {
     Column(modifier = modifier) {
         Text(
@@ -68,7 +69,8 @@ fun ContinueReadingStrip(
                     book = book,
                     progress = progress,
                     dimmed = book.id in dimmedIds,
-                    onClick = { onBookClick(book.id) }
+                    onClick = { onBookClick(book.id) },
+                    onLongClick = onBookLongClick?.let { open -> { open(book.id) } },
                 )
             }
         }
@@ -81,14 +83,15 @@ private fun ContinueReadingCard(
     progress: ReadingProgress?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    dimmed: Boolean = false
+    dimmed: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
             .width(120.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(SurfaceElevated)
-            .clickable(onClick = onClick)
+            .bookPress(onClick = onClick, onLongClick = onLongClick)
     ) {
         // Cover
         Box(

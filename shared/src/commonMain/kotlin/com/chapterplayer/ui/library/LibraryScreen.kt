@@ -32,6 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.ui.components.OfflineHeader
+import com.chapterplayer.domain.browse.isFavourite
+import com.chapterplayer.ui.details.BookActionsHost
+import com.chapterplayer.ui.details.rememberBookActions
 import com.chapterplayer.ui.components.SettingsAction
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -55,6 +58,7 @@ fun LibraryScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var sheetOpen by remember { mutableStateOf(false) }
     var librariesOpen by remember { mutableStateOf(false) }
+    val bookActions = rememberBookActions()
 
     // Sync errors show as a snackbar; a new message while one shows replaces it with the full list.
     LaunchedEffect(state.syncError) {
@@ -112,7 +116,7 @@ fun LibraryScreen(
                 onRefresh = viewModel::onRefreshRequested,
                 modifier = Modifier.fillMaxSize()
             ) {
-                LibraryBody(state, viewModel, onBookClick, onGroupClick, onOpenServers, onOpenLibraries = { librariesOpen = true })
+                LibraryBody(state, viewModel, onBookClick, onGroupClick, onOpenServers, onOpenLibraries = { librariesOpen = true }, onBookLongClick = bookActions::open)
             }
         }
 
@@ -133,6 +137,8 @@ fun LibraryScreen(
         LibrariesSheet(onDismiss = { librariesOpen = false })
     }
 
+    BookActionsHost(bookActions, snackbarHostState, onOpenBook = onBookClick, onOpenGroup = onGroupClick)
+
     if (sheetOpen) {
         FilterSheet(
             query = state.query,
@@ -142,7 +148,8 @@ fun LibraryScreen(
             onReset = viewModel::onClearFilters,
             onDismiss = { sheetOpen = false },
             serverOptions = state.serverOptions,
-            onServerToggled = viewModel::onServerToggled
+            onServerToggled = viewModel::onServerToggled,
+            onFavouritesOnlyChanged = viewModel::onFavouritesOnlyChanged,
         )
     }
 }
@@ -154,7 +161,8 @@ private fun LibraryBody(
     onBookClick: (String) -> Unit,
     onGroupClick: (LibraryView, String) -> Unit,
     onOpenServers: () -> Unit,
-    onOpenLibraries: () -> Unit
+    onOpenLibraries: () -> Unit,
+    onBookLongClick: (String) -> Unit,
 ) {
     when {
         state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -182,7 +190,9 @@ private fun LibraryBody(
             isDimmed = state::dimmed,
             onBookClick = onBookClick,
             modifier = Modifier.fillMaxSize(),
-            fastScroll = state.fastScroll
+            fastScroll = state.fastScroll,
+            onBookLongClick = onBookLongClick,
+            isFavourite = { isFavourite(it, state.favouriteIds) },
         )
     }
 }

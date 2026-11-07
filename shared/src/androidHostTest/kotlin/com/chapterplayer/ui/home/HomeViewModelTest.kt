@@ -63,10 +63,34 @@ class HomeViewModelTest {
         val monitor = FakeMonitor()
         val settings = FakeAppSettings()
         val controller = FakePlaybackController()
+        val favs = com.chapterplayer.data.favourites.InMemoryFavourites()
         val vm = HomeViewModel(
             books, servers, downloads, store, monitor, settings, coordinator,
-            PlaybackStarter(controller, books, settings, monitor, FakeLocalBookFiles()), Dispatchers.Main
+            PlaybackStarter(controller, books, settings, monitor, FakeLocalBookFiles()), Dispatchers.Main,
+            favourites = favs,
         )
+    }
+
+    @Test
+    fun `the favourites shelf lists favourites by title and is empty without any`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(
+            com.chapterplayer.testing.testBook("a", title = "Zed"), com.chapterplayer.testing.testBook("b", title = "Alpha"),
+            com.chapterplayer.testing.testBook("c", title = "Mid"),
+        )))
+        val state = collect(s)
+        assertEquals(emptyList(), state().favourites)
+        s.favs.ids.value = setOf("a", "b", "gone")
+        assertEquals(listOf("b", "a"), state().favourites.map { it.book.id })
+        assertEquals(setOf("a", "b", "gone"), state().favouriteIds)
+    }
+
+    @Test
+    fun `the favourites filter narrows the shelves`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 2), longBook("b", addedAt = 1))))
+        s.favs.ids.value = setOf("b")
+        val state = collect(s)
+        s.store.update { it.copy(favouritesOnly = true) }
+        assertEquals(listOf("b"), state().recentlyAdded.map { it.book.id })
     }
 
     private fun seriesBook(id: String, sequence: String) = longBook(id, seriesName = "Saga").copy(seriesSequence = sequence)

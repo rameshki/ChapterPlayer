@@ -209,7 +209,8 @@ fun AppNavigation() {
                             onBookClick = openBook,
                             onOpenSettings = { openSettings() },
                             onOpenServers = { openServers() },
-                            onOpenPlayer = openPlayer
+                            onOpenPlayer = openPlayer,
+                            onOpenGroup = openGroup,
                         )
                     }
 
@@ -233,7 +234,8 @@ fun AppNavigation() {
                                 kind = kind,
                                 groupKey = key,
                                 onBookClick = openBook,
-                                onBack = { navController.popBackStack() }
+                                onBack = { navController.popBackStack() },
+                                onOpenGroup = openGroup,
                             )
                         } else {
                             // A damaged link: leave rather than show an empty page.
@@ -262,7 +264,7 @@ fun AppNavigation() {
                     }
 
                     composable(Screen.Search.route) {
-                        SearchScreen(onBookClick = openBook, onOpenSettings = { openSettings() })
+                        SearchScreen(onBookClick = openBook, onOpenSettings = { openSettings() }, onOpenGroup = openGroup)
                     }
 
                     composable(Screen.Player.route) {

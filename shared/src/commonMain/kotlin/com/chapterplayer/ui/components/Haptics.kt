@@ -9,6 +9,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 /** A short tick, for example when the A to Z scroller passes a letter. */
 fun interface Haptics {
     fun tick()
+
+    /** A long press was recognised (a book's long-press menu opens); a tick where nothing stronger is provided. */
+    fun longPress() = tick()
 }
 
 /** Does nothing; the default where no haptics are provided (tests, previews). */
@@ -21,5 +24,10 @@ val LocalHaptics = staticCompositionLocalOf { NoHaptics }
 @Composable
 fun rememberComposeHaptics(): Haptics {
     val feedback = LocalHapticFeedback.current
-    return remember(feedback) { Haptics { feedback.performHapticFeedback(HapticFeedbackType.TextHandleMove) } }
+    return remember(feedback) {
+        object : Haptics {
+            override fun tick() = feedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            override fun longPress() = feedback.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
 }
