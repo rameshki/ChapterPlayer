@@ -33,6 +33,8 @@ import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.details.BookDetailsViewModel
 import com.chapterplayer.ui.downloads.DownloadsViewModel
+import com.chapterplayer.ui.downloads.FinishedDownloadsViewModel
+import com.chapterplayer.ui.library.BookSelectionViewModel
 import com.chapterplayer.ui.home.HomeViewModel
 import com.chapterplayer.ui.library.GroupDetailViewModel
 import com.chapterplayer.ui.library.LibrariesViewModel
@@ -349,6 +351,10 @@ val commonViewModelModule = module {
     // The statistics page; its figures are worked out off the main thread.
     viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    // "Remove finished downloads" on the Downloads tab and Settings, Downloads and offline.
+    viewModel { FinishedDownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), upNext = get()) }
+    // Selection mode of a book list (Library, the group pages): one per screen.
+    viewModel { BookSelectionViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), upNext = get()) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), upNext = get()) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()) }
     // The Diagnostics page (debug builds only reach it): read only tables, and the log the report is written to.

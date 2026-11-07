@@ -89,6 +89,8 @@ fun BookActionsHost(
     snackbar: SnackbarHostState,
     onOpenBook: (bookId: String) -> Unit,
     onOpenGroup: (LibraryView, key: String) -> Unit,
+    /** The list's selection mode, started with the book selected (the menu's first row, "Select"); null: no such row. */
+    onSelect: ((bookId: String) -> Unit)? = null,
 ) {
     // One channel for every book's results, so a slow mark still reports after another book's menu opened.
     val scope = rememberCoroutineScope()
@@ -116,10 +118,15 @@ fun BookActionsHost(
         BookActionsMode.CLOSED -> Unit
         BookActionsMode.ACTIONS -> BookActionsSheet(
             state = state,
-            items = bookActionItems(state, downloads, upNextAvailable = LocalPlatformFeatures.current.playback),
+            items = bookActionItems(state, downloads, upNextAvailable = LocalPlatformFeatures.current.playback, selectable = onSelect != null),
             onDismiss = actions::close,
             onItem = { item ->
-                actions.mode = afterAction(item, viewModel, bookId, onOpenBook, onOpenGroup, state)
+                if (item.kind == BookActionKind.SELECT) {
+                    actions.close()
+                    onSelect?.invoke(bookId)
+                } else {
+                    actions.mode = afterAction(item, viewModel, bookId, onOpenBook, onOpenGroup, state)
+                }
             },
         )
         BookActionsMode.CHOOSE_COPY -> {
@@ -175,6 +182,8 @@ private fun afterAction(
 ): BookActionsMode {
     fun choose(opened: Boolean) = if (opened) BookActionsMode.CHOOSE_COPY else BookActionsMode.CLOSED
     return when (item.kind) {
+        // Handled by the host (it leaves the menu for the list's selection mode).
+        BookActionKind.SELECT -> BookActionsMode.CLOSED
         BookActionKind.PLAY -> choose(viewModel.onQuickPlay())
         BookActionKind.PLAY_NEXT -> BookActionsMode.CLOSED.also { viewModel.onUpNextClicked(front = true) }
         BookActionKind.UP_NEXT -> BookActionsMode.CLOSED.also {

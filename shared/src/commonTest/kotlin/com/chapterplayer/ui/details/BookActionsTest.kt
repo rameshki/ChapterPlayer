@@ -47,6 +47,14 @@ class BookActionsTest {
     }
 
     @Test
+    fun `a list with selection mode puts Select first`() {
+        val items = bookActionItems(state(), downloadsAvailable = true, selectable = true)
+        assertEquals(BookActionKind.SELECT, items.first().kind)
+        assertEquals("Select", items.first().label)
+        assertFalse(BookActionKind.SELECT in kinds(bookActionItems(state(), downloadsAvailable = true)))
+    }
+
+    @Test
     fun `nothing before the book is known`() {
         assertEquals(emptyList(), bookActionItems(BookDetailsUiState(), downloadsAvailable = true))
     }

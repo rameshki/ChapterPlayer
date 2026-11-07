@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,6 +60,11 @@ fun LibraryScreen(
     var sheetOpen by remember { mutableStateOf(false) }
     var librariesOpen by remember { mutableStateOf(false) }
     val bookActions = rememberBookActions()
+    val selection = koinViewModel<BookSelectionViewModel>()
+    val selectionState by selection.uiState.collectAsStateWithLifecycle()
+    // Selection mode is for the book list; the grouped views list authors, series and so on.
+    SelectionEffects(selection, selectionState, if (state.view.isGrouped) emptyList() else state.items, snackbarHostState)
+    LaunchedEffect(state.view) { if (state.view.isGrouped && selectionState.active) selection.close() }
 
     // Sync errors show as a snackbar; a new message while one shows replaces it with the full list.
     LaunchedEffect(state.syncError) {
@@ -70,9 +76,14 @@ fun LibraryScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TopAppBar(
+            if (selectionState.active) SelectionTopBar(selectionState, selection) else TopAppBar(
                 title = { Text("Library", style = MaterialTheme.typography.headlineSmall) },
                 actions = {
+                    if (!state.view.isGrouped && state.items.isNotEmpty()) {
+                        IconButton(onClick = { selection.start() }) {
+                            Icon(Icons.Default.CheckCircleOutline, contentDescription = "Select books", tint = TextSecondary)
+                        }
+                    }
                     IconButton(onClick = { librariesOpen = true }) {
                         Icon(Icons.Default.Checklist, contentDescription = "Libraries", tint = TextSecondary)
                     }
@@ -116,7 +127,12 @@ fun LibraryScreen(
                 onRefresh = viewModel::onRefreshRequested,
                 modifier = Modifier.fillMaxSize()
             ) {
-                LibraryBody(state, viewModel, onBookClick, onGroupClick, onOpenServers, onOpenLibraries = { librariesOpen = true }, onBookLongClick = bookActions::open)
+                LibraryBody(
+                    state, viewModel, onBookClick, onGroupClick, onOpenServers, onOpenLibraries = { librariesOpen = true },
+                    onBookLongClick = bookActions::open,
+                    selection = selectionState.selected.takeIf { selectionState.active },
+                    onToggleSelected = selection::toggle,
+                )
             }
         }
 
@@ -137,7 +153,10 @@ fun LibraryScreen(
         LibrariesSheet(onDismiss = { librariesOpen = false })
     }
 
-    BookActionsHost(bookActions, snackbarHostState, onOpenBook = onBookClick, onOpenGroup = onGroupClick)
+    BookActionsHost(
+        bookActions, snackbarHostState, onOpenBook = onBookClick, onOpenGroup = onGroupClick,
+        onSelect = { id: String -> selection.start(id) }.takeIf { !state.view.isGrouped },
+    )
 
     if (sheetOpen) {
         FilterSheet(
@@ -163,6 +182,8 @@ private fun LibraryBody(
     onOpenServers: () -> Unit,
     onOpenLibraries: () -> Unit,
     onBookLongClick: (String) -> Unit,
+    selection: Set<String>? = null,
+    onToggleSelected: (String) -> Unit = {},
 ) {
     when {
         state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -193,6 +214,8 @@ private fun LibraryBody(
             fastScroll = state.fastScroll,
             onBookLongClick = onBookLongClick,
             isFavourite = { isFavourite(it, state.favouriteIds) },
+            selection = selection,
+            onToggleSelected = onToggleSelected,
         )
     }
 }
