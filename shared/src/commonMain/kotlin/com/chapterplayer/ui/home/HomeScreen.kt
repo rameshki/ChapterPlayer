@@ -59,6 +59,13 @@ import com.chapterplayer.domain.browse.parseSeriesName
 import com.chapterplayer.domain.browse.sourcesDescription
 import com.chapterplayer.domain.browse.sourcesMark
 import com.chapterplayer.ui.components.BookCard
+import com.chapterplayer.ui.components.bookPress
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import com.chapterplayer.domain.browse.isFavourite
+import com.chapterplayer.ui.details.BookActionsHost
+import com.chapterplayer.ui.details.rememberBookActions
+import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.components.DimmedCoverOverlay
 import com.chapterplayer.ui.library.CoverArt
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -81,6 +88,8 @@ fun HomeScreen(
     /** The "Add a server" button of the empty state: the Servers page of Settings. */
     onOpenServers: () -> Unit,
     onOpenPlayer: () -> Unit,
+    /** "Go to series" and "More by" of the book long-press menu. */
+    onOpenGroup: (LibraryView, key: String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -90,7 +99,10 @@ fun HomeScreen(
     val stillHere = remember { HomeVisible() }
     DisposableEffect(Unit) { onDispose { stillHere.value = false } }
     val openPlayerAfterStart: () -> Unit = remember { { if (stillHere.value) currentOpenPlayer() } }
+    val bookActions = rememberBookActions()
+    val snackbar = remember { SnackbarHostState() }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("ChapterPlayer", style = MaterialTheme.typography.headlineSmall) },
@@ -112,7 +124,7 @@ fun HomeScreen(
         }
 
         val nothingToShow = state.resume == null && state.continueSeries.isEmpty() &&
-            state.inProgress.isEmpty() && state.recentlyAdded.isEmpty()
+            state.inProgress.isEmpty() && state.recentlyAdded.isEmpty() && state.favourites.isEmpty()
         when {
             state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = AmberGold)
@@ -155,9 +167,12 @@ fun HomeScreen(
                 }
             }
 
-            else -> HomeShelves(state, onBookClick, onResume = { viewModel.resume(it, openPlayerAfterStart) })
+            else -> HomeShelves(state, onBookClick, onResume = { viewModel.resume(it, openPlayerAfterStart) }, onBookLongClick = bookActions::open)
         }
     }
+        SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+    BookActionsHost(bookActions, snackbar, onOpenBook = onBookClick, onOpenGroup = onOpenGroup)
     // Resume on a book several servers have asks like the details page's Play: the same "Play from" sheet.
     state.sourceSheet?.let { sheet ->
         val actions = remember(viewModel) {
@@ -182,7 +197,7 @@ private fun ScrollingEmpty(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onResume: (AudioBook) -> Unit) {
+private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onResume: (AudioBook) -> Unit, onBookLongClick: (String) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -196,6 +211,7 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                 starting = state.starting,
                 onOpenDetails = { onBookClick(resume.item.book.id) },
                 onResume = { onResume(resume.item.book) },
+                onLongClick = { onBookLongClick(resume.entry.book.id) },
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Spacer(Modifier.height(24.dp))
@@ -222,7 +238,9 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                             dimmed = state.dimmed(item),
                             onClick = { onBookClick(item.book.id) },
                             sourcesMark = sourcesMark(item),
-                            sourcesDescription = sourcesDescription(item)
+                            sourcesDescription = sourcesDescription(item),
+                            onLongClick = { onBookLongClick(item.book.id) },
+                            favourite = isFavourite(item, state.favouriteIds),
                         )
                         nextInSeriesCaption(item)?.let {
                             Text(
@@ -246,14 +264,35 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                 // Keyed by the entry's book: a merged entry's progress may come from its other copy.
                 progressMap = state.inProgress.mapNotNull { item -> item.progress?.let { item.book.id to it } }.toMap(),
                 onBookClick = onBookClick,
-                dimmedIds = state.inProgress.filter { state.dimmed(it) }.map { it.book.id }.toSet()
+                dimmedIds = state.inProgress.filter { state.dimmed(it) }.map { it.book.id }.toSet(),
+                onBookLongClick = onBookLongClick,
             )
             Spacer(Modifier.height(24.dp))
         }
 
         if (state.recentlyAdded.isNotEmpty()) {
+            BookShelf("Recently added", state.recentlyAdded, state, onBookClick, onBookLongClick)
+        }
+
+        if (state.favourites.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            BookShelf("Favourites", state.favourites, state, onBookClick, onBookLongClick)
+        }
+    }
+}
+
+/** A titled row of book tiles (Recently added, Favourites). */
+@Composable
+private fun BookShelf(
+    title: String,
+    items: List<BrowseItem>,
+    state: HomeUiState,
+    onBookClick: (String) -> Unit,
+    onBookLongClick: (String) -> Unit,
+) {
+    Column {
             Text(
-                text = "Recently added",
+                text = title,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(horizontal = 16.dp).semantics { heading() }
@@ -263,7 +302,7 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(state.recentlyAdded, key = { it.book.id }) { item ->
+                items(items, key = { it.book.id }) { item ->
                     BookCard(
                         book = item.book,
                         progress = item.progress,
@@ -272,11 +311,12 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                         onClick = { onBookClick(item.book.id) },
                         modifier = Modifier.width(150.dp),
                         sourcesMark = sourcesMark(item),
-                        sourcesDescription = sourcesDescription(item)
+                        sourcesDescription = sourcesDescription(item),
+                        onLongClick = { onBookLongClick(item.book.id) },
+                        favourite = isFavourite(item, state.favouriteIds),
                     )
                 }
             }
-        }
     }
 }
 
@@ -293,6 +333,7 @@ private fun ResumeCard(
     starting: Boolean,
     onOpenDetails: () -> Unit,
     onResume: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val book = resume.item.book
@@ -301,7 +342,7 @@ private fun ResumeCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(SurfaceElevated)
-            .clickable(onClickLabel = "Open details", onClick = onOpenDetails)
+            .bookPress(onClick = onOpenDetails, onLongClick = onLongClick, onClickLabel = "Open details")
             .padding(12.dp)
     ) {
         Text(

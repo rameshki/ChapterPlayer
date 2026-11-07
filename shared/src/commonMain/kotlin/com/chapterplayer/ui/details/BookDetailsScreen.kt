@@ -19,6 +19,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -97,6 +100,7 @@ fun BookDetailsScreen(
             onOpenBook = onOpenBook,
             onOpenGroup = onOpenGroup,
             onOpenPlayer = onOpenPlayer,
+            onFavouriteClick = viewModel::onFavouriteClicked,
             downloadActions = DownloadActions(
                 onDownload = viewModel::onDownloadClicked,
                 onPause = viewModel::onPauseDownloadClicked,
@@ -154,7 +158,8 @@ fun BookDetailsContent(
     onOpenPlayer: () -> Unit,
     downloadActions: DownloadActions,
     modifier: Modifier = Modifier,
-    onDismissNotice: () -> Unit = {}
+    onDismissNotice: () -> Unit = {},
+    onFavouriteClick: () -> Unit = {},
 ) {
     val book = state.book
     when {
@@ -195,7 +200,7 @@ fun BookDetailsContent(
             state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
             state.notice?.let { ErrorBanner(it, onRetry = null, onDismiss = onDismissNotice) }
             detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
-            LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions, Modifier.weight(1f))
+            LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions, onFavouriteClick, Modifier.weight(1f))
         }
     }
 }
@@ -211,13 +216,14 @@ private fun LoadedList(
     onOpenBook: (String) -> Unit,
     onOpenGroup: (LibraryView, String) -> Unit,
     downloadActions: DownloadActions,
+    onFavouriteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val hasSeries = state.series.isNotEmpty()
     val tab = effectiveTab(state.selectedTab, hasSeries)
     // One scroll container: the header and tabs are the first items, so they scroll away with the list.
     LazyColumn(modifier = modifier.fillMaxWidth()) {
-        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenPlayer, onOpenGroup, downloadActions) }
+        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenPlayer, onOpenGroup, downloadActions, onFavouriteClick) }
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
             DetailsTab.CHAPTERS -> {
@@ -238,7 +244,8 @@ private fun DetailsHeader(
     onPlayClick: () -> Unit,
     onOpenPlayer: () -> Unit,
     onOpenGroup: (LibraryView, String) -> Unit,
-    downloadActions: DownloadActions
+    downloadActions: DownloadActions,
+    onFavouriteClick: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -306,8 +313,30 @@ private fun DetailsHeader(
             ) { Text("Open player", color = AmberGold, style = MaterialTheme.typography.titleSmall) }
         }
         CopyDownloadControls(state.downloadCopyLabel, state.download, downloadActions, state.otherCopyDownloads, downloadActions.forCopy)
+        FavouriteToggle(state.favourite, onFavouriteClick)
         SourcesSection(state.sources, state.sourcesDescription)
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** The heart under the download control: on this phone only (Audiobookshelf has no favourites to sync with). */
+@Composable
+private fun FavouriteToggle(favourite: Boolean, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .semantics { stateDescription = if (favourite) "Favourite" else "Not a favourite" },
+    ) {
+        Icon(
+            imageVector = if (favourite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = null,
+            tint = AmberGold,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(favouriteLabel(favourite), color = AmberGold, style = MaterialTheme.typography.titleSmall)
     }
 }
 

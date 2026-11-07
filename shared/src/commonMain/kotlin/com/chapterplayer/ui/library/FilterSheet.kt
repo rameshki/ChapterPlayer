@@ -58,7 +58,7 @@ internal fun BrowseSort.label(): String = when (this) {
 }
 
 /**
- * Server (check boxes, only with two or more servers), then Download, Progress and Sort as radio groups.
+ * Server (check boxes, only with two or more servers), Favourites only, then Download, Progress and Sort as radio groups.
  * Every change applies at once; Reset clears them.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,7 +71,8 @@ fun FilterSheet(
     onReset: () -> Unit,
     onDismiss: () -> Unit,
     serverOptions: List<ServerFilterOption> = emptyList(),
-    onServerToggled: (String) -> Unit = {}
+    onServerToggled: (String) -> Unit = {},
+    onFavouritesOnlyChanged: (Boolean) -> Unit = {},
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SurfaceElevated) {
         Column(
@@ -94,6 +95,7 @@ fun FilterSheet(
                 TextButton(onClick = onReset) { Text("Reset", color = AmberGold) }
             }
             if (serverOptions.isNotEmpty()) ServerGroup(serverOptions, onServerToggled)
+            FavouritesGroup(query.favouritesOnly, onFavouritesOnlyChanged)
             // No downloads on this platform (iOS for now): nothing to filter by.
             if (LocalPlatformFeatures.current.downloads) {
                 OptionGroup("Download", DownloadFilter.entries, query.download, DownloadFilter::label, onDownloadSelected)
@@ -143,6 +145,36 @@ private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
         )
         Text(
             text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 12.dp)
+        )
+    }
+}
+
+/** The Favourites section: one check box, "Favourites only" (favourites are kept on this phone). */
+@Composable
+private fun FavouritesGroup(on: Boolean, onChanged: (Boolean) -> Unit) {
+    Text(
+        text = "Favourites",
+        style = MaterialTheme.typography.titleSmall,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .toggleable(value = on, role = Role.Checkbox, onValueChange = onChanged),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = on,
+            onCheckedChange = null,
+            colors = CheckboxDefaults.colors(checkedColor = AmberGold, uncheckedColor = TextSecondary)
+        )
+        Text(
+            text = "Favourites only",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(start = 12.dp)

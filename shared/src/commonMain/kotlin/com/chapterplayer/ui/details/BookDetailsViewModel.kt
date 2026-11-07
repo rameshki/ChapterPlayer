@@ -42,6 +42,14 @@ import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.browse.isPlayable
 import com.chapterplayer.domain.browse.seriesNeighbours
 import com.chapterplayer.domain.playback.isFinishedAt
+import com.chapterplayer.domain.playback.MarkAction
+import com.chapterplayer.domain.playback.MARK_ERROR_TEXT
+import com.chapterplayer.domain.playback.markActionFor
+import com.chapterplayer.domain.playback.markResultText
+import com.chapterplayer.domain.browse.favouriteRowIds
+import com.chapterplayer.domain.browse.isFavourite
+import com.chapterplayer.data.favourites.FavouritesRepository
+import com.chapterplayer.data.favourites.NoFavourites
 import com.chapterplayer.domain.playback.startPositionFor
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CancellationException
@@ -85,6 +93,12 @@ class BookDetailsViewModel(
     servers: ServerRepository? = null,
     /** Without playback (iOS until Stage 5 step 4) Play is off with the reason; without downloads, Download is. */
     private val features: PlatformFeatures = PlatformFeatures.Full,
+    private val favourites: FavouritesRepository = NoFavourites,
+    /**
+     * Built for the book long-press menu (`BookActionsSheet`) rather than the page: nothing is fetched from the server on
+     * open, and the results of the actions are reported through [message] for a snackbar.
+     */
+    private val quickActions: Boolean = false,
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -190,11 +204,16 @@ class BookDetailsViewModel(
         Env(player, local, online, downloadedOnly, download.first, download.second)
     }
 
-    private val wholeAndExtras = combine(whole, extras) { w, x -> w to x }
+    private val wholeAndExtras = combine(whole, extras, favourites.favouriteIds) { w, x, f -> Triple(w, x, f) }
+
+    private val _message = MutableStateFlow<String?>(null)
+
+    /** The result of a long-press menu action, for a snackbar (only with `quickActions`); see [onMessageShown]. */
+    val message: StateFlow<String?> = _message
 
     val uiState: StateFlow<BookDetailsUiState> = combine(
         wholeAndExtras, books.observeProgress(bookId), live, selectedTab, env
-    ) { (whole, extras), progress, live, tab, env ->
+    ) { (whole, extras, favouriteIds), progress, live, tab, env ->
         val book = whole.book
         if (book == null) {
             BookDetailsUiState(phase = DetailsPhase.NOT_FOUND, selectedTab = tab)
@@ -309,13 +328,17 @@ class BookDetailsViewModel(
                 },
                 notice = extras.notice,
                 entry = if (merged) entry else null,
-                mergeContext = context
+                mergeContext = context,
+                favourite = entry?.let { isFavourite(it, favouriteIds) } ?: (bookId in favouriteIds),
+                favouriteCopyIds = entry?.let(::favouriteRowIds) ?: listOf(bookId),
+                // The entry's progress is the copy played last, as the tiles show it.
+                mark = markActionFor(entry?.progress ?: progress),
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookDetailsUiState())
 
     init {
-        loadJob = viewModelScope.launch { fetchIfCached() }
+        if (!quickActions) loadJob = viewModelScope.launch { fetchIfCached() }
         // When the player error goes away, a dismissal is forgotten so the same text can show again.
         viewModelScope.launch {
             controller.state.map { it.error }.distinctUntilChanged().collect { error ->
@@ -354,7 +377,10 @@ class BookDetailsViewModel(
         when {
             chosen != null -> playCopy(state, chosen.book.id)
             // No copy can play: say why instead of a sheet of greyed rows.
-            state.sources.none { it.enabled } -> local.value = Local(error = noCopyText(state))
+            state.sources.none { it.enabled } -> noCopyText(state).let { text ->
+                local.value = Local(error = text)
+                report(text)
+            }
             else -> sourceSheet.value = SourceAction.PLAY
         }
     }
@@ -394,7 +420,7 @@ class BookDetailsViewModel(
         when (sheet.action) {
             SourceAction.PLAY -> if (!local.value.starting) playCopy(state, copyId)
             // A paused or failed download of that copy goes on where it stopped.
-            SourceAction.DOWNLOAD -> downloadAction(askNotifications = true) {
+            SourceAction.DOWNLOAD -> downloadAction(askNotifications = true, done = if (row.resumes) DOWNLOAD_RESUMED else DOWNLOAD_STARTED) {
                 if (row.resumes) downloadController.resume(copyId) else downloadController.enqueue(copyId)
             }
         }
@@ -487,7 +513,11 @@ class BookDetailsViewModel(
             local.value = try {
                 starter.start(book, startMs).fold(
                     onSuccess = { Local() },
-                    onFailure = { Local(error = it.message ?: PlaybackStartException.DEFAULT_MESSAGE) }
+                    onFailure = { error ->
+                        val text = error.message ?: PlaybackStartException.DEFAULT_MESSAGE
+                        report(text)
+                        Local(error = text)
+                    }
                 )
             } catch (e: CancellationException) {
                 local.value = Local()
@@ -502,7 +532,7 @@ class BookDetailsViewModel(
         if (!download.canStart) return
         when (download.phase) {
             DetailsDownloadPhase.IDLE -> startDownload()
-            DetailsDownloadPhase.FAILED -> downloadAction(askNotifications = true) { downloadController.resume(downloadBookId()) }
+            DetailsDownloadPhase.FAILED -> downloadAction(askNotifications = true, done = DOWNLOAD_RETRIED) { downloadController.resume(downloadBookId()) }
             else -> Unit
         }
     }
@@ -517,11 +547,11 @@ class BookDetailsViewModel(
         val context = state.mergeContext
         val copies = entry?.let(::downloadableMembers).orEmpty()
         if (entry == null || context == null || copies.size < 2) {
-            downloadAction(askNotifications = true) { downloadController.enqueue(downloadBookId()) }
+            downloadAction(askNotifications = true, done = DOWNLOAD_STARTED) { downloadController.enqueue(downloadBookId()) }
             return
         }
         val chosen = chosenDownloadSource(entry.copy(sources = copies), context.downloadChoice, context.onlineServerIds)
-        if (chosen == null) openDownloadSheet(copies) else downloadAction(askNotifications = true) { downloadController.enqueue(chosen.book.id) }
+        if (chosen == null) openDownloadSheet(copies) else downloadAction(askNotifications = true, done = DOWNLOAD_STARTED) { downloadController.enqueue(chosen.book.id) }
     }
 
     private fun openDownloadSheet(copies: List<BrowseItem>) {
@@ -573,19 +603,19 @@ class BookDetailsViewModel(
     fun onCopyPauseClicked(id: String) {
         val phase = controlOf(id)?.phase
         if (phase == DetailsDownloadPhase.QUEUED || phase == DetailsDownloadPhase.DOWNLOADING) {
-            downloadAction { downloadController.pause(id) }
+            downloadAction(done = DOWNLOAD_PAUSED) { downloadController.pause(id) }
         }
     }
 
     fun onCopyResumeClicked(id: String) {
-        if (controlOf(id)?.phase == DetailsDownloadPhase.PAUSED) downloadAction { downloadController.resume(id) }
+        if (controlOf(id)?.phase == DetailsDownloadPhase.PAUSED) downloadAction(done = DOWNLOAD_RESUMED) { downloadController.resume(id) }
     }
 
     /** Try again on the failed download of another copy (the main control's is [onDownloadClicked]). */
     fun onCopyRetryClicked(id: String) {
         val control = controlOf(id) ?: return
         if (control.phase == DetailsDownloadPhase.FAILED && control.canStart) {
-            downloadAction(askNotifications = true) { downloadController.resume(id) }
+            downloadAction(askNotifications = true, done = DOWNLOAD_RETRIED) { downloadController.resume(id) }
         }
     }
 
@@ -593,7 +623,7 @@ class BookDetailsViewModel(
     fun onCopyCancelClicked(id: String) {
         when (controlOf(id)?.phase) {
             DetailsDownloadPhase.QUEUED, DetailsDownloadPhase.DOWNLOADING, DetailsDownloadPhase.PAUSED, DetailsDownloadPhase.FAILED ->
-                downloadAction { downloadController.cancel(id) }
+                downloadAction(done = DOWNLOAD_CANCELLED) { downloadController.cancel(id) }
             else -> Unit
         }
     }
@@ -606,7 +636,7 @@ class BookDetailsViewModel(
     fun onRemoveDownloadConfirmed() {
         val id = confirmingRemove.value ?: return
         confirmingRemove.value = null
-        downloadAction { downloadController.remove(id) }
+        downloadAction(done = DOWNLOAD_REMOVED) { downloadController.remove(id) }
     }
 
     fun onRemoveDownloadDismissed() {
@@ -614,7 +644,7 @@ class BookDetailsViewModel(
     }
 
     // The table is the truth the control follows, so a failed call simply leaves the control as it was.
-    private fun downloadAction(askNotifications: Boolean = false, block: suspend () -> Unit) {
+    private fun downloadAction(askNotifications: Boolean = false, done: String? = null, block: suspend () -> Unit) {
         viewModelScope.launch {
             if (askNotifications) {
                 try {
@@ -627,12 +657,82 @@ class BookDetailsViewModel(
             }
             try {
                 block()
+                done?.let(::report)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 // The control keeps showing the stored state; the person can tap again.
+                report(DOWNLOAD_ERROR)
             }
         }
+    }
+
+    /** The heart: marks the book (every copy of a merged book) as a favourite, or unmarks every copy when any is one. */
+    fun onFavouriteClicked() {
+        val state = uiState.value
+        if (state.book == null) return
+        val ids = state.favouriteCopyIds.ifEmpty { listOf(bookId) }
+        viewModelScope.launch {
+            try {
+                report(if (favourites.toggle(ids)) FAVOURITE_ADDED else FAVOURITE_REMOVED)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                report(FAVOURITE_ERROR)
+            }
+        }
+    }
+
+    /**
+     * Mark as finished / not finished, as the player's menu does it: [BookRepository.markFinished] on the copy whose
+     * progress the entry shows (it marks the other copies too); the result is reported for a snackbar.
+     */
+    fun onMarkClicked() {
+        val state = uiState.value
+        if (state.book == null) return
+        val finished = state.mark == MarkAction.MarkFinished
+        val target = state.entry?.progress?.bookId?.takeIf { state.entry.hasCopy(it) } ?: bookId
+        viewModelScope.launch {
+            val result = try {
+                books.markFinished(target, finished)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Result.failure(IllegalStateException())
+            }
+            report(result.fold(onSuccess = { markResultText(finished, it) }, onFailure = { MARK_ERROR_TEXT }))
+        }
+    }
+
+    /** The long-press menu's Play / Resume / Pause (the Play rule of this page). True when it opened the "Play from" sheet. */
+    fun onQuickPlay(): Boolean {
+        // A sheet left from an earlier menu (it never showed) must not pass for one this tap opened.
+        sourceSheet.value = null
+        onResumeClicked()
+        return sourceSheet.value == SourceAction.PLAY
+    }
+
+    /** The long-press menu's Download / Try again. True when it opened the "Download from" sheet. */
+    fun onQuickDownload(): Boolean {
+        sourceSheet.value = null
+        onDownloadClicked()
+        return sourceSheet.value == SourceAction.DOWNLOAD
+    }
+
+    /** "Download another copy" in the long-press menu: the "Download from" sheet. True when it opened. */
+    fun onQuickDownloadAnotherCopy(): Boolean {
+        sourceSheet.value = null
+        onDownloadAnotherCopyClicked()
+        return sourceSheet.value == SourceAction.DOWNLOAD
+    }
+
+    fun onMessageShown() {
+        _message.value = null
+    }
+
+    // Only the long-press menu reports results; the page shows them in its own controls.
+    private fun report(text: String) {
+        if (quickActions) _message.value = text
     }
 
     fun selectTab(tab: DetailsTab) {
@@ -672,5 +772,15 @@ class BookDetailsViewModel(
     private companion object {
         const val MERGE_WAIT_MS = 2_000L
         const val MERGE_FAILED_TEXT = "These books could not be shown as one"
+        const val FAVOURITE_ADDED = "Added to favourites"
+        const val FAVOURITE_REMOVED = "Removed from favourites"
+        const val FAVOURITE_ERROR = "Could not change the favourites. Try again."
+        const val DOWNLOAD_STARTED = "Download started"
+        const val DOWNLOAD_RETRIED = "Trying the download again"
+        const val DOWNLOAD_PAUSED = "Download paused"
+        const val DOWNLOAD_RESUMED = "Download resumed"
+        const val DOWNLOAD_CANCELLED = "Download cancelled"
+        const val DOWNLOAD_REMOVED = "Download removed"
+        const val DOWNLOAD_ERROR = "Could not change the download. Try again."
     }
 }

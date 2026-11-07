@@ -67,7 +67,42 @@ class LibraryViewModelTest {
         val monitor = FakeMonitor()
         val settings = FakeAppSettings()
         val coordinator = LibrarySyncCoordinator(books, this.servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher()))
-        val vm = LibraryViewModel(books, this.servers, downloads, store, monitor, settings, coordinator, Dispatchers.Main)
+        val favs = com.chapterplayer.data.favourites.InMemoryFavourites()
+        val vm = LibraryViewModel(books, this.servers, downloads, store, monitor, settings, coordinator, Dispatchers.Main, favourites = favs)
+    }
+
+    @Test
+    fun `the favourites chip shows only favourites and the state carries them for the hearts`() = runTest {
+        val s = library(testBook("a", addedAt = 2), testBook("b", addedAt = 1))
+        s.favs.ids.value = setOf("b")
+        val state = collect(s)
+        assertEquals(setOf("b"), state().favouriteIds)
+        s.vm.onChipSelected(FilterChip.FAVOURITES)
+        assertEquals(listOf("b"), state().items.map { it.book.id })
+        assertEquals(FilterChip.FAVOURITES, state().chip)
+        s.vm.onFavouritesOnlyChanged(false)
+        assertEquals(listOf("a", "b"), state().items.map { it.book.id })
+    }
+
+    @Test
+    fun `downloaded with favourites only and no downloaded favourite is not nothing downloaded`() = runTest {
+        val s = library(testBook("a"), testBook("b"))
+        s.downloads.states.value = mapOf("a" to com.chapterplayer.data.model.DownloadState.DOWNLOADED)
+        s.favs.ids.value = setOf("b")
+        val state = collect(s)
+        s.vm.onDownloadFilterSelected(com.chapterplayer.domain.browse.DownloadFilter.DOWNLOADED)
+        s.vm.onFavouritesOnlyChanged(true)
+        assertTrue(state().items.isEmpty())
+        assertFalse(state().nothingDownloaded)
+        assertTrue(state().emptyBecauseOfFilter)
+    }
+
+    @Test
+    fun `favourites only with no favourites is an empty list because of the filter`() = runTest {
+        val s = library(testBook("a"))
+        val state = collect(s)
+        s.vm.onFavouritesOnlyChanged(true)
+        assertTrue(state().emptyBecauseOfFilter)
     }
 
     private fun progress(id: String, positionMs: Long = 100, finished: Boolean = false, lastPlayedAt: Long = 1) =

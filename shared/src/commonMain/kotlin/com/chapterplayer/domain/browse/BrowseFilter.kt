@@ -29,8 +29,15 @@ data class BrowseQuery(
     val sort: BrowseSort = BrowseSort.RECENTLY_ADDED,
     /** The servers whose books show; empty means every server. */
     val serverIds: Set<String> = emptySet(),
+    /** Only the person's favourites (see `isFavourite`); like the other filters, kept in memory only. */
+    val favouritesOnly: Boolean = false,
 )
-fun applyQuery(items: List<BrowseItem>, query: BrowseQuery): List<BrowseItem> {
+
+/**
+ * The entries [query] keeps, sorted. [favouriteIds] are the stored favourites (by book id); they matter only with
+ * [BrowseQuery.favouritesOnly], so a caller that never offers that filter may leave them out.
+ */
+fun applyQuery(items: List<BrowseItem>, query: BrowseQuery, favouriteIds: Set<String> = emptySet()): List<BrowseItem> {
     // A merged book stays when any member is on a chosen server, shown as that member.
     val onChosenServers = if (query.serverIds.isEmpty()) items else items.mapNotNull { it.onServers(query.serverIds) }
     val filtered = onChosenServers.filter { item ->
@@ -47,7 +54,9 @@ fun applyQuery(items: List<BrowseItem>, query: BrowseQuery): List<BrowseItem> {
             DownloadFilter.NOT_DOWNLOADED -> item.downloadState != DownloadState.DOWNLOADED
         }
         
-        progressMatch && downloadMatch
+        val favouriteMatch = !query.favouritesOnly || isFavourite(item, favouriteIds)
+
+        progressMatch && downloadMatch && favouriteMatch
     }
     
     return sortItems(filtered, query.sort)

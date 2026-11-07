@@ -59,6 +59,8 @@ import com.chapterplayer.ui.components.BookCoverPlaceholder
 import com.chapterplayer.ui.components.DimmedCoverOverlay
 import com.chapterplayer.ui.components.DownloadBadge
 import com.chapterplayer.ui.components.FastScroller
+import com.chapterplayer.ui.components.FavouriteMark
+import com.chapterplayer.ui.components.bookPress
 import com.chapterplayer.ui.components.FinishedCheck
 import com.chapterplayer.ui.components.ReadingProgressBar
 import com.chapterplayer.ui.components.SourceBadge
@@ -119,7 +121,11 @@ fun BookLayout(
     onBookClick: (String) -> Unit,
     modifier: Modifier = Modifier,
     /** The A to Z scroller's index over [items]; empty shows no scroller. */
-    fastScroll: List<LetterIndex> = emptyList()
+    fastScroll: List<LetterIndex> = emptyList(),
+    /** A long press (or the "More options" action) on a book: its long-press menu; null keeps plain taps. */
+    onBookLongClick: ((String) -> Unit)? = null,
+    /** Whether a book is one of the person's favourites (a small heart on its tile). */
+    isFavourite: (BrowseItem) -> Boolean = { false },
 ) {
     // The strip sits over the right edge, so the items always leave it room (no shift when it comes and goes).
     val scrollerRoom = 8.dp
@@ -133,7 +139,10 @@ fun BookLayout(
             ) {
                 item(key = "count") { CountHeader(items.size) }
                 items(items, key = { it.book.id }) { item ->
-                    BookRow(item, dimmed = isDimmed(item), onClick = { onBookClick(item.book.id) })
+                    BookRow(
+                        item, dimmed = isDimmed(item), onClick = { onBookClick(item.book.id) },
+                        onLongClick = onBookLongClick?.let { open -> { open(item.book.id) } }, favourite = isFavourite(item),
+                    )
                 }
             }
             // Item 0 is the count header.
@@ -149,7 +158,7 @@ fun BookLayout(
 
         LibraryLayout.LARGE_GRID, LibraryLayout.SMALL_GRID -> Box(modifier = modifier) {
             val gridState = rememberLazyGridState()
-            BookGrid(items, layout, gridState, scrollerRoom, isDimmed, onBookClick)
+            BookGrid(items, layout, gridState, scrollerRoom, isDimmed, onBookClick, onBookLongClick, isFavourite)
             FastScroller(
                 letters = fastScroll,
                 isListScrolling = gridState.isScrollInProgress,
@@ -171,7 +180,9 @@ private fun BookGrid(
     gridState: LazyGridState,
     scrollerRoom: Dp,
     isDimmed: (BrowseItem) -> Boolean,
-    onBookClick: (String) -> Unit
+    onBookClick: (String) -> Unit,
+    onBookLongClick: ((String) -> Unit)?,
+    isFavourite: (BrowseItem) -> Boolean,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(if (layout == LibraryLayout.LARGE_GRID) 2 else 3),
@@ -190,7 +201,9 @@ private fun BookGrid(
                 dimmed = isDimmed(item),
                 onClick = { onBookClick(item.book.id) },
                 sourcesMark = sourcesMark(item),
-                sourcesDescription = sourcesDescription(item)
+                sourcesDescription = sourcesDescription(item),
+                onLongClick = onBookLongClick?.let { open -> { open(item.book.id) } },
+                favourite = isFavourite(item),
             )
         }
     }
@@ -208,14 +221,14 @@ private fun CountHeader(count: Int, horizontalPadding: Int = 16) {
 
 /** One book as a row: a small cover, title and author, and the progress and download marks. */
 @Composable
-private fun BookRow(item: BrowseItem, dimmed: Boolean, onClick: () -> Unit) {
+private fun BookRow(item: BrowseItem, dimmed: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)?, favourite: Boolean) {
     val book = item.book
     val overlay = coverOverlay(item.progress, item.downloadState, dimmed)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 72.dp)
-            .clickable(onClick = onClick)
+            .bookPress(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -243,6 +256,7 @@ private fun BookRow(item: BrowseItem, dimmed: Boolean, onClick: () -> Unit) {
         }
         // One server's badge only for a book one server has; a merged book shows the "2 sources" pill instead.
         val mark = sourcesMark(item)
+        if (favourite) FavouriteMark(onCover = false)
         if (mark == null) SourceBadge(book.source) else SourcesPill(mark, sourcesDescription(item))
         if (overlay.badge != DownloadBadgeKind.NONE) DownloadBadge(item.downloadState)
         if (overlay.finished) FinishedCheck()

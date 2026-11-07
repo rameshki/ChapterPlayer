@@ -1,6 +1,5 @@
 package com.chapterplayer.ui.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -44,14 +43,18 @@ fun BookCard(
     dimmed: Boolean = false,
     /** "2 sources" for a book several servers have (see `sourcesMark`); null for one server. */
     sourcesMark: String? = null,
-    sourcesDescription: String? = null
+    sourcesDescription: String? = null,
+    /** The book's long-press menu; null keeps a plain tap. */
+    onLongClick: (() -> Unit)? = null,
+    /** One of the person's favourites: a small heart on the cover. */
+    favourite: Boolean = false,
 ) {
     val overlay = coverOverlay(progress, downloadState, dimmed)
     Card(
         modifier = modifier
             .fillMaxWidth()
             // A dimmed book cannot play now (offline, not downloaded), but its details still open.
-            .clickable(onClick = onClick),
+            .bookPress(onClick = onClick, onLongClick = onLongClick),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -91,6 +94,7 @@ fun BookCard(
                 if (overlay.badge != DownloadBadgeKind.NONE) {
                     DownloadBadge(downloadState, Modifier.align(Alignment.TopEnd).padding(6.dp))
                 }
+                if (favourite) FavouriteMark(Modifier.align(Alignment.TopStart).padding(6.dp))
                 if (overlay.finished) {
                     FinishedCheck(Modifier.align(Alignment.BottomStart).padding(6.dp))
                 }

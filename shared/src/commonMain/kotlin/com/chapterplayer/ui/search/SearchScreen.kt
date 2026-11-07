@@ -41,6 +41,13 @@ import com.chapterplayer.domain.browse.sourcesDescription
 import com.chapterplayer.domain.browse.sourcesMark
 import com.chapterplayer.ui.components.BookCard
 import com.chapterplayer.ui.components.EmptyState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.remember
+import com.chapterplayer.domain.browse.isFavourite
+import com.chapterplayer.ui.details.BookActionsHost
+import com.chapterplayer.ui.details.rememberBookActions
+import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.components.OfflineHeader
 import com.chapterplayer.ui.components.ServerFilterHint
 import com.chapterplayer.ui.components.SettingsAction
@@ -55,12 +62,17 @@ import org.koin.compose.viewmodel.koinViewModel
 fun SearchScreen(
     onBookClick: (bookId: String) -> Unit,
     onOpenSettings: () -> Unit,
+    /** "Go to series" and "More by" of the book long-press menu. */
+    onOpenGroup: (LibraryView, key: String) -> Unit = { _, _ -> },
     viewModel: SearchViewModel = koinViewModel()
 ) {
     val text by viewModel.queryText.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
+    val bookActions = rememberBookActions()
+    val snackbar = remember { SnackbarHostState() }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Search", style = MaterialTheme.typography.headlineSmall) },
@@ -132,12 +144,17 @@ fun SearchScreen(
                         dimmed = isDimmed(item.downloadState, state.online, state.downloadedOnly),
                         onClick = { onBookClick(item.book.id) },
                         sourcesMark = sourcesMark(item),
-                        sourcesDescription = sourcesDescription(item)
+                        sourcesDescription = sourcesDescription(item),
+                        onLongClick = { bookActions.open(item.book.id) },
+                        favourite = isFavourite(item, state.favouriteIds),
                     )
                 }
             }
         }
     }
+        SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+    BookActionsHost(bookActions, snackbar, onOpenBook = onBookClick, onOpenGroup = onOpenGroup)
 }
 
 @Composable

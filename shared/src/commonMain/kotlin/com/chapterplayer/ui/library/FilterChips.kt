@@ -39,6 +39,7 @@ import com.chapterplayer.ui.theme.TextSecondary
 
 internal fun FilterChip.label(): String = when (this) {
     FilterChip.ALL -> "All"
+    FilterChip.FAVOURITES -> "Favourites"
     FilterChip.DOWNLOADED -> "Downloaded"
     FilterChip.IN_PROGRESS -> "In progress"
     FilterChip.NOT_STARTED -> "Not started"

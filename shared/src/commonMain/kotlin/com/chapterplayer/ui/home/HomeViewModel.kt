@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.favourites.FavouritesRepository
+import com.chapterplayer.data.favourites.NoFavourites
+import com.chapterplayer.domain.browse.favouritesShelf
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.data.playback.PlaybackStarter
@@ -75,6 +78,10 @@ data class HomeUiState(
     val sourceSheet: SourceSheetUi? = null,
     /** The merging inputs (null without merging), for Resume's choice of copy. */
     val mergeContext: MergeContext? = null,
+    /** The person's favourites under the filters, by title; empty hides the shelf. */
+    val favourites: List<BrowseItem> = emptyList(),
+    /** The stored favourites (by book id), for the heart on the tiles. */
+    val favouriteIds: Set<String> = emptySet(),
 ) {
     /** Whether this book cannot play now (offline or Downloaded only, and not on the phone). */
     fun dimmed(item: BrowseItem): Boolean = isDimmed(item.downloadState, online, downloadedOnly)
@@ -90,7 +97,8 @@ class HomeViewModel(
     syncCoordinator: LibrarySyncCoordinator,
     private val starter: PlaybackStarter,
     dispatcher: CoroutineDispatcher,
-    merging: SourceMerging = SourceMerging.None
+    merging: SourceMerging = SourceMerging.None,
+    favourites: FavouritesRepository = NoFavourites,
 ) : ViewModel() {
 
     private class Local(val starting: Boolean = false, val error: String? = null)
@@ -105,12 +113,12 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = combine(
         observeBrowseItems(books, downloads, merging),
         servers.observeAll(),
-        queryStore.query,
+        combine(queryStore.query, favourites.favouriteIds, ::Pair),
         combine(connectivity.isOnline, settings.downloadedOnly, syncCoordinator.state) { online, downloadedOnly, sync ->
             Triple(online, downloadedOnly, sync.isSyncing)
         },
         combine(local, merging.context, sheetOpen) { local, context, open -> Extras(local, context, open) }
-    ) { items, serverList, rawQuery, (online, downloadedOnly, syncing), extras ->
+    ) { items, serverList, (rawQuery, favouriteIds), (online, downloadedOnly, syncing), extras ->
         val local = extras.local
         val context = extras.context
         val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
@@ -133,8 +141,10 @@ class HomeViewModel(
             continueSeries = continueSeries(items, excludeBookId = resumeId),
             playError = local.error,
             starting = local.starting,
-            inProgress = inProgressShelf(items, query).filter { it.book.id != resumeId },
-            recentlyAdded = recentlyAddedShelf(items, query),
+            inProgress = inProgressShelf(items, query, favouriteIds).filter { it.book.id != resumeId },
+            recentlyAdded = recentlyAddedShelf(items, query, favouriteIds),
+            favourites = favouritesShelf(applyQuery(items, query, favouriteIds), favouriteIds),
+            favouriteIds = favouriteIds,
             hasServers = serverList.isNotEmpty(),
             isLoading = false,
             hasBooks = items.isNotEmpty(),
@@ -213,11 +223,11 @@ class HomeViewModel(
         const val RECENT_LIMIT = 20
 
         // The user's filters apply; the shelves keep their own order whatever the Library sort is.
-        fun inProgressShelf(items: List<BrowseItem>, query: BrowseQuery) =
-            applyQuery(items, query.copy(sort = BrowseSort.RECENTLY_PLAYED))
+        fun inProgressShelf(items: List<BrowseItem>, query: BrowseQuery, favouriteIds: Set<String>) =
+            applyQuery(items, query.copy(sort = BrowseSort.RECENTLY_PLAYED), favouriteIds)
                 .filter { item -> item.progress.let { it != null && it.positionMs > 0 && !it.isFinished } }
 
-        fun recentlyAddedShelf(items: List<BrowseItem>, query: BrowseQuery) =
-            applyQuery(items, query.copy(sort = BrowseSort.RECENTLY_ADDED)).take(RECENT_LIMIT)
+        fun recentlyAddedShelf(items: List<BrowseItem>, query: BrowseQuery, favouriteIds: Set<String>) =
+            applyQuery(items, query.copy(sort = BrowseSort.RECENTLY_ADDED), favouriteIds).take(RECENT_LIMIT)
     }
 }

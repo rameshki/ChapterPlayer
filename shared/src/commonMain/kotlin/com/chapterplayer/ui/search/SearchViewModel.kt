@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.favourites.FavouritesRepository
+import com.chapterplayer.data.favourites.NoFavourites
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.browse.BrowseItem
@@ -36,7 +38,9 @@ data class SearchUiState(
     val online: Boolean = true,
     val downloadedOnly: Boolean = false,
     /** The Library's server filter hides some results; Search says so and offers to clear it. */
-    val serverFilterOn: Boolean = false
+    val serverFilterOn: Boolean = false,
+    /** The stored favourites (by book id), for the heart on the tiles. */
+    val favouriteIds: Set<String> = emptySet(),
 )
 
 @OptIn(FlowPreview::class)
@@ -47,7 +51,8 @@ class SearchViewModel(
     connectivity: ConnectivityMonitor,
     settings: AppSettings,
     dispatcher: CoroutineDispatcher,
-    merging: SourceMerging = SourceMerging.None
+    merging: SourceMerging = SourceMerging.None,
+    favourites: FavouritesRepository = NoFavourites,
 ) : ViewModel() {
 
     private val _queryText = MutableStateFlow("")
@@ -65,12 +70,12 @@ class SearchViewModel(
     val uiState: StateFlow<SearchUiState> = combine(
         settledQuery,
         observeBrowseItems(books, downloads, merging),
-        queryStore.query,
+        combine(queryStore.query, favourites.favouriteIds, ::Pair),
         connectivity.isOnline,
         settings.downloadedOnly
-    ) { text, items, query, online, downloadedOnly ->
+    ) { text, items, (query, favouriteIds), online, downloadedOnly ->
         val matches = searchItems(items, text)
-        val shown = applyQuery(matches, query)
+        val shown = applyQuery(matches, query, favouriteIds)
         SearchUiState(
             query = text,
             status = when {
@@ -83,7 +88,8 @@ class SearchViewModel(
             downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED && query.serverIds.isEmpty(),
             online = online,
             downloadedOnly = downloadedOnly,
-            serverFilterOn = query.serverIds.isNotEmpty()
+            serverFilterOn = query.serverIds.isNotEmpty(),
+            favouriteIds = favouriteIds,
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchUiState())
 

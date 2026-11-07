@@ -19,7 +19,8 @@ import com.chapterplayer.domain.browse.PersonLink
 import com.chapterplayer.domain.browse.SeriesLink
 import com.chapterplayer.domain.browse.bookLinks
 import com.chapterplayer.domain.playback.MarkAction
-import com.chapterplayer.domain.playback.MarkOutcome
+import com.chapterplayer.domain.playback.MARK_ERROR_TEXT
+import com.chapterplayer.domain.playback.markResultText
 import com.chapterplayer.domain.playback.markActionFor
 import com.chapterplayer.ui.details.DetailsDownloadPhase
 import com.chapterplayer.ui.details.detailsDownload
@@ -217,18 +218,7 @@ class PlayerMenuViewModel(
             } catch (_: Exception) {
                 Result.failure(IllegalStateException())
             }
-            message.value = result.fold(
-                onSuccess = { outcome ->
-                    val done = if (finished) "Marked as finished" else "Marked as not finished"
-                    when (outcome) {
-                        MarkOutcome.QUEUED -> "$done. It will reach the server when it is back."
-                        MarkOutcome.PARTIAL -> "$done. Another copy of this book could not be changed."
-                        MarkOutcome.PARTIAL_QUEUED -> "$done. Another copy could not be changed; the rest reaches the servers when they are back."
-                        else -> done
-                    }
-                },
-                onFailure = { MARK_ERROR }
-            )
+            message.value = result.fold(onSuccess = { markResultText(finished, it) }, onFailure = { MARK_ERROR_TEXT })
         }
     }
 
@@ -238,6 +228,5 @@ class PlayerMenuViewModel(
 
     private companion object {
         const val DOWNLOAD_ERROR = "Could not change the download. Try again."
-        const val MARK_ERROR = "Could not update the book. Try again."
     }
 }
