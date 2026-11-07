@@ -88,6 +88,10 @@ fun groupBySeries(items: List<BrowseItem>): List<BookGroup> {
     ))
 }
 
+/**
+ * The collections that hold any of [items], each with its books in the collection's own order. The list itself is
+ * sorted by name with the title rule (as Series), so the A to Z scroller can index it; equal names go by key.
+ */
 fun groupByCollection(items: List<BrowseItem>, collections: List<BookCollection>): List<BookGroup> {
     // A merged book is in a server's collection when its member on that server is.
     val byServer = HashMap<String, HashMap<String, BrowseItem>>()
@@ -107,7 +111,7 @@ fun groupByCollection(items: List<BrowseItem>, collections: List<BookCollection>
         }
     }
     
-    return groups
+    return groups.sortedWith(compareBy<BookGroup>({ titleSortKey(it.title) }, { it.key }))
 }
 
 internal fun splitPeople(name: String): List<String> {

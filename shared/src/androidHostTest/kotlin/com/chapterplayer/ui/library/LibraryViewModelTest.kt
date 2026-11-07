@@ -683,13 +683,25 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `the alphabetical group lists have a scroller whatever the sort, and Collections has none`() = runTest {
+    fun `the alphabetical group lists have a scroller whatever the sort, Collections too`() = runTest {
         val s = manyBooks()
-        s.books.collections.value = List(20) { i -> BookCollection("s1", "c$i", "Collection $i", listOf("b$i")) }
+        s.books.collections.value = List(20) { i -> BookCollection("s1", "c$i", "${'Z' - i} collection", listOf("b$i")) }
         val state = collect(s)
 
         s.vm.onViewSelected(LibraryView.AUTHORS)
         assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+
+        s.vm.onViewSelected(LibraryView.COLLECTIONS)
+        // Listed by name: 'G' (Z minus 19) first, 'Z' last.
+        assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+        assertEquals(LetterIndex('Z', 19), state().fastScroll.last())
+    }
+
+    @Test
+    fun `fewer than twenty collections have no scroller`() = runTest {
+        val s = manyBooks()
+        s.books.collections.value = List(19) { i -> BookCollection("s1", "c$i", "${'A' + i} collection", listOf("b$i")) }
+        val state = collect(s)
 
         s.vm.onViewSelected(LibraryView.COLLECTIONS)
         assertEquals(emptyList(), state().fastScroll)
