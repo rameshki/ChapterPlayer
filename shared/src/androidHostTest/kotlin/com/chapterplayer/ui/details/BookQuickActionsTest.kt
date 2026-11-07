@@ -66,12 +66,15 @@ class BookQuickActionsTest {
         val connectivity = FakeConnectivity()
         val downloads = FakeDownloadController()
         val favs = InMemoryFavourites(favourites)
+        val context = kotlinx.coroutines.flow.MutableStateFlow(
+            MergeContext(MergeOverrides(), SourceChoice.Ask, SourceChoice.Ask, setOf("abs1", "plex1"), true)
+        )
         val vm = BookDetailsViewModel(
             id, repo, FakeDownloadStates(), controller,
             PlaybackStarter(controller, repo, settings, connectivity, FakeLocalBookFiles()), connectivity, settings, Dispatchers.Main,
             FakeDownloadOverview(rows), downloads, FakeNotificationPermission(),
             merging = object : com.chapterplayer.data.merge.SourceMerging {
-                override val context = flowOf(MergeContext(MergeOverrides(), SourceChoice.Ask, SourceChoice.Ask, setOf("abs1", "plex1"), true))
+                override val context = this@Setup.context
             },
             servers = FakeServerList(listOf(
                 ServerConfig("abs1", ServerSource.ABS, "Home ABS", "http://a", "t"),
@@ -152,6 +155,34 @@ class BookQuickActionsTest {
         val state = collect(s)
         assertTrue(s.vm.onQuickPlay())
         assertEquals(SourceAction.PLAY, state().sourceSheet?.action)
+    }
+
+    @Test
+    fun `a play-from sheet left open never makes a later play look like a choice`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a")
+        val state = collect(s)
+        assertTrue(s.vm.onQuickPlay())
+        // The menu gave up waiting for the sheet; meanwhile the play choice became Audiobookshelf.
+        s.context.value = s.context.value.copy(playChoice = SourceChoice.OfType(ServerSource.ABS))
+        assertFalse(s.vm.onQuickPlay())
+        assertNull(state().sourceSheet)
+        assertEquals("a", s.controller.state.value.bookId)
+    }
+
+    @Test
+    fun `the heart writes the ids of the entry it shows`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p")), "a", favourites = setOf("p"))
+        val state = collect(s)
+        assertEquals(listOf("a", "p"), state().favouriteCopyIds)
+        assertTrue(state().favourite)
+    }
+
+    @Test
+    fun `a book that is gone says so`() = runTest {
+        val s = Setup(listOf(abs("a")), "a")
+        val state = collect(s)
+        s.repo.books.value = emptyList()
+        assertEquals(DetailsPhase.NOT_FOUND, state().phase)
     }
 
     @Test

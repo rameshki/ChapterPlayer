@@ -60,7 +60,8 @@ data class LibraryUiState(
     /** The Downloaded chip is on and no book is on the phone. */
     val nothingDownloaded: Boolean
         get() = hasBooks && isContentEmpty &&
-            query.download == DownloadFilter.DOWNLOADED && query.progress == ProgressFilter.ALL && query.serverIds.isEmpty()
+            query.download == DownloadFilter.DOWNLOADED && query.progress == ProgressFilter.ALL && query.serverIds.isEmpty() &&
+            !query.favouritesOnly
 
     /** Whether this book cannot play now (offline or Downloaded only, and not on the phone). */
     fun dimmed(item: BrowseItem): Boolean = isDimmed(item.downloadState, online, downloadedOnly)

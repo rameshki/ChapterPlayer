@@ -48,7 +48,20 @@ class GroupDetailViewModelTest {
         val store = BrowseQueryStore()
         val monitor = FakeMonitor()
         val settings = FakeAppSettings()
-        val vm = GroupDetailViewModel(kind, key, repo, downloads, store, monitor, settings, Dispatchers.Main)
+        val favs = com.chapterplayer.data.favourites.InMemoryFavourites()
+        val vm = GroupDetailViewModel(kind, key, repo, downloads, store, monitor, settings, Dispatchers.Main, favourites = favs)
+    }
+
+    @Test
+    fun `downloaded with favourites only and no downloaded favourite is a filter result not nothing downloaded`() = runTest {
+        val s = Setup(LibraryView.AUTHORS, "amy", listOf(testBook("a", author = "Amy"), testBook("b", author = "Amy")))
+        s.downloads.states.value = mapOf("a" to com.chapterplayer.data.model.DownloadState.DOWNLOADED)
+        s.favs.ids.value = setOf("b")
+        val state = collect(s)
+        s.store.update { it.copy(download = com.chapterplayer.domain.browse.DownloadFilter.DOWNLOADED, favouritesOnly = true) }
+        assertTrue(state().items.isEmpty())
+        assertFalse(state().nothingDownloaded)
+        assertTrue(state().emptyBecauseOfFilter)
     }
 
     private fun TestScope.collect(setup: Setup): () -> GroupDetailUiState {

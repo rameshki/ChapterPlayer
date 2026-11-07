@@ -85,6 +85,19 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `downloaded with favourites only and no downloaded favourite is not nothing downloaded`() = runTest {
+        val s = library(testBook("a"), testBook("b"))
+        s.downloads.states.value = mapOf("a" to com.chapterplayer.data.model.DownloadState.DOWNLOADED)
+        s.favs.ids.value = setOf("b")
+        val state = collect(s)
+        s.vm.onDownloadFilterSelected(com.chapterplayer.domain.browse.DownloadFilter.DOWNLOADED)
+        s.vm.onFavouritesOnlyChanged(true)
+        assertTrue(state().items.isEmpty())
+        assertFalse(state().nothingDownloaded)
+        assertTrue(state().emptyBecauseOfFilter)
+    }
+
+    @Test
     fun `favourites only with no favourites is an empty list because of the filter`() = runTest {
         val s = library(testBook("a"))
         val state = collect(s)

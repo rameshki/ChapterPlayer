@@ -23,10 +23,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -88,20 +90,28 @@ fun BookActionsHost(
     onOpenBook: (bookId: String) -> Unit,
     onOpenGroup: (LibraryView, key: String) -> Unit,
 ) {
+    // One channel for every book's results, so a slow mark still reports after another book's menu opened.
+    val scope = rememberCoroutineScope()
+    val results = remember(actions) { BookActionResults(scope) }
+    LaunchedEffect(results, snackbar) {
+        for (text in results.results) snackbar.showSnackbar(text)
+    }
     val bookId = actions.bookId ?: return
     val viewModel = koinViewModel<BookDetailsViewModel>(key = "book-actions-$bookId", parameters = { parametersOf(bookId, true) })
-    val message by viewModel.message.collectAsStateWithLifecycle()
-    LaunchedEffect(viewModel, message) {
-        message?.let {
-            snackbar.showSnackbar(it)
-            viewModel.onMessageShown()
-        }
-    }
+    SideEffect { results.follow(viewModel, viewModel.message, viewModel::onMessageShown) }
     if (actions.mode == BookActionsMode.CLOSED) return
 
     // The menu's state is followed only while something of it shows.
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val downloads = LocalPlatformFeatures.current.downloads
+    // The book left the library (a sync or a removed server) while its menu was open.
+    LaunchedEffect(state.phase) {
+        if (state.phase == DetailsPhase.NOT_FOUND) {
+            viewModel.onSourceSheetDismissed()
+            actions.close()
+            results.report(BOOK_GONE_TEXT)
+        }
+    }
     when (actions.mode) {
         BookActionsMode.CLOSED -> Unit
         BookActionsMode.ACTIONS -> BookActionsSheet(
@@ -115,7 +125,11 @@ fun BookActionsHost(
         BookActionsMode.CHOOSE_COPY -> {
             // The sheet the action opened arrives with the next state; if it never does, the menu closes.
             LaunchedEffect(viewModel) {
-                withTimeoutOrNull(CHOOSE_COPY_WAIT_MS) { snapshotFlow { state.sourceSheet }.first { it != null } } ?: actions.close()
+                withTimeoutOrNull(CHOOSE_COPY_WAIT_MS) { snapshotFlow { state.sourceSheet }.first { it != null } } ?: run {
+                    // Forget the sheet too, so it cannot show up with a later menu.
+                    viewModel.onSourceSheetDismissed()
+                    actions.close()
+                }
             }
             state.sourceSheet?.let { sheet ->
                 SourceSheet(
@@ -148,6 +162,7 @@ fun BookActionsHost(
 }
 
 private const val CHOOSE_COPY_WAIT_MS = 2_000L
+private const val BOOK_GONE_TEXT = "This book is no longer in your library"
 
 /** Runs a row's action and says what shows next. */
 private fun afterAction(

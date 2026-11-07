@@ -330,6 +330,7 @@ class BookDetailsViewModel(
                 entry = if (merged) entry else null,
                 mergeContext = context,
                 favourite = entry?.let { isFavourite(it, favouriteIds) } ?: (bookId in favouriteIds),
+                favouriteCopyIds = entry?.let(::favouriteRowIds) ?: listOf(bookId),
                 // The entry's progress is the copy played last, as the tiles show it.
                 mark = markActionFor(entry?.progress ?: progress),
             )
@@ -670,7 +671,7 @@ class BookDetailsViewModel(
     fun onFavouriteClicked() {
         val state = uiState.value
         if (state.book == null) return
-        val ids = state.entry?.let(::favouriteRowIds) ?: listOf(bookId)
+        val ids = state.favouriteCopyIds.ifEmpty { listOf(bookId) }
         viewModelScope.launch {
             try {
                 report(if (favourites.toggle(ids)) FAVOURITE_ADDED else FAVOURITE_REMOVED)
@@ -705,18 +706,22 @@ class BookDetailsViewModel(
 
     /** The long-press menu's Play / Resume / Pause (the Play rule of this page). True when it opened the "Play from" sheet. */
     fun onQuickPlay(): Boolean {
+        // A sheet left from an earlier menu (it never showed) must not pass for one this tap opened.
+        sourceSheet.value = null
         onResumeClicked()
         return sourceSheet.value == SourceAction.PLAY
     }
 
     /** The long-press menu's Download / Try again. True when it opened the "Download from" sheet. */
     fun onQuickDownload(): Boolean {
+        sourceSheet.value = null
         onDownloadClicked()
         return sourceSheet.value == SourceAction.DOWNLOAD
     }
 
     /** "Download another copy" in the long-press menu: the "Download from" sheet. True when it opened. */
     fun onQuickDownloadAnotherCopy(): Boolean {
+        sourceSheet.value = null
         onDownloadAnotherCopyClicked()
         return sourceSheet.value == SourceAction.DOWNLOAD
     }

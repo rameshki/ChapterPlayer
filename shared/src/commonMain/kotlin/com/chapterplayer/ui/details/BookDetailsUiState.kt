@@ -69,6 +69,8 @@ data class BookDetailsUiState(
     val mergeContext: com.chapterplayer.domain.browse.MergeContext? = null,
     /** The book is one of the person's favourites (any copy of a merged book is; see `isFavourite`). */
     val favourite: Boolean = false,
+    /** The ids the heart marks or unmarks: every copy of the same entry [favourite] is worked out from. */
+    val favouriteCopyIds: List<String> = emptyList(),
     /** "Mark as finished" or "Mark as not finished", from the entry's progress (the copy played last). */
     val mark: com.chapterplayer.domain.playback.MarkAction = com.chapterplayer.domain.playback.MarkAction.MarkFinished,
 )
