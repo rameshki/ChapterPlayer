@@ -605,4 +605,20 @@ class EnginePlaybackControllerTest {
         assertEquals(250_000L, r.controller.state.value.positionMs)
         assertFalse(r.controller.state.value.isPlaying)
     }
+
+    @Test
+    fun `the end of the book is in the state until a seek`() = rigTest { r ->
+        r.controller.load(book, 0L)
+        r.controller.play()
+        assertFalse(r.controller.state.value.ended)
+        r.engine.currentIndex = 1
+        r.engine.currentOffsetMs = 150_000L
+        r.engine.ended = true
+        r.engine.playWhenReady = false
+        r.controller.onEnded()
+        assertTrue(r.controller.state.value.ended)
+        r.controller.seekTo(10_000L)
+        runCurrent()
+        assertFalse(r.controller.state.value.ended)
+    }
 }

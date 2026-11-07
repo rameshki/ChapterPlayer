@@ -14,9 +14,11 @@ sealed interface SleepTimer {
 
     /**
      * Indicates that playback should stop after a specific number of minutes have elapsed.
-     * @property minutes The duration in minutes from the start of playback.
+     * @property minutes The duration in minutes from the start of playback (what the labels show).
+     * @property durationMs The exact time; a whole number of minutes except for a timer carried over to the next book
+     *   of Up next (see `carriedSleepTimer`).
      */
-    data class After(val minutes: Int) : SleepTimer
+    data class After(val minutes: Int, val durationMs: Long = minutes * 60_000L) : SleepTimer
 
     /**
      * Indicates that playback should stop at the end of the current chapter.
@@ -38,7 +40,7 @@ fun sleepRemainingMs(
     return when (timer) {
         is SleepTimer.Off -> null
         is SleepTimer.After -> {
-            val totalMs = timer.minutes * 60_000L
+            val totalMs = timer.durationMs
             // Ensure we do not return a negative value if played time exceeds the limit
             if (totalMs - playedMs > 0) totalMs - playedMs else 0L
         }

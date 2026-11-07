@@ -7,6 +7,9 @@ import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.data.favourites.FavouritesRepository
 import com.chapterplayer.data.favourites.NoFavourites
+import com.chapterplayer.data.upnext.NoUpNext
+import com.chapterplayer.data.upnext.UpNextRepository
+import com.chapterplayer.domain.playback.resolveUpNext
 import com.chapterplayer.domain.browse.favouritesShelf
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackStartException
@@ -82,6 +85,8 @@ data class HomeUiState(
     val favourites: List<BrowseItem> = emptyList(),
     /** The stored favourites (by book id), for the heart on the tiles. */
     val favouriteIds: Set<String> = emptySet(),
+    /** Up next in queue order (never filtered: it is the person's own list); empty hides the shelf. */
+    val upNext: List<BrowseItem> = emptyList(),
 ) {
     /** Whether this book cannot play now (offline or Downloaded only, and not on the phone). */
     fun dimmed(item: BrowseItem): Boolean = isDimmed(item.downloadState, online, downloadedOnly)
@@ -99,6 +104,7 @@ class HomeViewModel(
     dispatcher: CoroutineDispatcher,
     merging: SourceMerging = SourceMerging.None,
     favourites: FavouritesRepository = NoFavourites,
+    upNext: UpNextRepository = NoUpNext,
 ) : ViewModel() {
 
     private class Local(val starting: Boolean = false, val error: String? = null)
@@ -113,12 +119,12 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = combine(
         observeBrowseItems(books, downloads, merging),
         servers.observeAll(),
-        combine(queryStore.query, favourites.favouriteIds, ::Pair),
+        combine(queryStore.query, favourites.favouriteIds, upNext.queue, ::Triple),
         combine(connectivity.isOnline, settings.downloadedOnly, syncCoordinator.state) { online, downloadedOnly, sync ->
             Triple(online, downloadedOnly, sync.isSyncing)
         },
         combine(local, merging.context, sheetOpen) { local, context, open -> Extras(local, context, open) }
-    ) { items, serverList, (rawQuery, favouriteIds), (online, downloadedOnly, syncing), extras ->
+    ) { items, serverList, (rawQuery, favouriteIds, queue), (online, downloadedOnly, syncing), extras ->
         val local = extras.local
         val context = extras.context
         val query = pruneServerFilter(rawQuery, serverList.mapTo(mutableSetOf()) { it.id })
@@ -145,6 +151,7 @@ class HomeViewModel(
             recentlyAdded = recentlyAddedShelf(items, query, favouriteIds),
             favourites = favouritesShelf(applyQuery(items, query, favouriteIds), favouriteIds),
             favouriteIds = favouriteIds,
+            upNext = resolveUpNext(queue, items).entries.map { it.entry },
             hasServers = serverList.isNotEmpty(),
             isLoading = false,
             hasBooks = items.isNotEmpty(),

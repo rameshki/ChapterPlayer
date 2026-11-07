@@ -5,6 +5,9 @@ import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.IosPathProvider
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
+import com.chapterplayer.data.playback.UpNextAdvancer
+import com.chapterplayer.data.playback.BackgroundWork
+import com.chapterplayer.data.playback.UiKitBackgroundWork
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.connectivity.IosConnectivityMonitor
 import com.chapterplayer.data.downloads.DownloadLengthFiller
@@ -38,6 +41,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import org.koin.core.Koin
+import org.koin.dsl.module
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
@@ -85,7 +89,10 @@ val iosDownloadModule = inAppDownloadModule(
 )
 
 /** Every module iOS starts with, besides [commonModules]: the platform's parts, the player and the downloads. */
-val iosModules = listOf(iosPlatformModule, iosPlaybackModule, iosDownloadModule)
+/** Up next moves on inside a UIKit background task: nothing plays while it fetches the next book. */
+val iosUpNextModule = module { single<BackgroundWork> { UiKitBackgroundWork } }
+
+val iosModules = listOf(iosPlatformModule, iosPlaybackModule, iosDownloadModule, iosUpNextModule)
 
 /** Kept so the observer lives as long as the app (the notification centre does not keep block observers alive for us). */
 private var becameActiveObserver: NSObjectProtocol? = null
@@ -120,6 +127,7 @@ private fun startAppWide(koin: Koin) {
     koin.get<ProgressSyncer>().start()
     koin.get<ProgressMirrorPusher>().start()
     koin.get<HistoryRecorder>().start()
+    koin.get<UpNextAdvancer>().start()
     koin.get<ListeningRecorder>().start()
     koin.get<PlexConnectionManager>().watchNetwork(scope, network)
     koin.get<LibrarySyncCoordinator>().start()

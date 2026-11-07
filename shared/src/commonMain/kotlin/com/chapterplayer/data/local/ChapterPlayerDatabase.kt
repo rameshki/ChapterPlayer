@@ -18,6 +18,7 @@ import com.chapterplayer.data.local.dao.ListeningDao
 import com.chapterplayer.data.local.dao.PendingProgressDao
 import com.chapterplayer.data.local.dao.ProgressDao
 import com.chapterplayer.data.local.dao.ServerConfigDao
+import com.chapterplayer.data.local.dao.UpNextDao
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.BookMergeEntity
 import com.chapterplayer.data.local.entity.BookmarkEntity
@@ -36,6 +37,7 @@ import com.chapterplayer.data.local.entity.ListeningLogEntity
 import com.chapterplayer.data.local.entity.PendingProgressEntity
 import com.chapterplayer.data.local.entity.ProgressEntity
 import com.chapterplayer.data.local.entity.ServerConfigEntity
+import com.chapterplayer.data.local.entity.UpNextEntity
 
 @Database(
     entities = [
@@ -56,7 +58,8 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
         ImportedListeningDayEntity::class,
         ImportedListeningItemEntity::class,
         ListeningImportEntity::class,
-        FavouriteEntity::class
+        FavouriteEntity::class,
+        UpNextEntity::class
     ],
     // Version 9 changes no table: its migration (DropPlexRowsMigration; Migration8To9 on Android) drops the Plex rows stored before albums were read.
     // Version 10 adds book_merges (the user's corrections of merged sources).
@@ -64,12 +67,13 @@ import com.chapterplayer.data.local.entity.ServerConfigEntity
     // Version 12 adds progress.mirrored (a row copied from another copy of a merged book).
     // Version 13 adds pending_progress.mirrorOf (a queued position that repeats another copy's listening).
     // Version 14 adds favourites (the person's favourite books, on this phone only).
-    version = 14,
+    // Version 15 adds up_next (the person's queue of books to play next, on this phone only).
+    version = 15,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8),
         AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13),
-        AutoMigration(from = 13, to = 14),
+        AutoMigration(from = 13, to = 14), AutoMigration(from = 14, to = 15),
     ],
     exportSchema = true
 )
@@ -88,6 +92,7 @@ abstract class ChapterPlayerDatabase : RoomDatabase() {
     abstract fun bookMergeDao(): BookMergeDao
     abstract fun listeningDao(): ListeningDao
     abstract fun favouriteDao(): FavouriteDao
+    abstract fun upNextDao(): UpNextDao
 
     companion object {
         const val DATABASE_NAME = "chapter_player.db"

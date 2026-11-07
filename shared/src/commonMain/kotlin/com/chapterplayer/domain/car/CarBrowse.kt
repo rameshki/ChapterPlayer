@@ -24,8 +24,11 @@ data class CarItem(
     val dimmed: Boolean,
 )
 
-/** What the tree is built from: the books of the visible libraries (with progress) and the collections. */
-data class CarData(val items: List<BrowseItem>, val collections: List<BookCollection>)
+/**
+ * What the tree is built from: the books of the visible libraries (with progress), the collections, and the entries of
+ * Up next in queue order (see `resolveUpNext`).
+ */
+data class CarData(val items: List<BrowseItem>, val collections: List<BookCollection>, val upNext: List<BrowseItem> = emptyList())
 
 const val CAR_MAX_SHORT_LIST = 50
 const val CAR_NO_DOWNLOADS_NOTE = "No downloaded books yet"
@@ -33,9 +36,12 @@ const val CAR_NO_DOWNLOADS_NOTE = "No downloaded books yet"
 private fun folder(id: String, title: String, subtitle: String = "") =
     CarItem(id, title, subtitle, null, browsable = true, playable = false, dimmed = false)
 
-/** The four tabs under the root. */
-fun carRoot(): List<CarItem> = listOf(
+const val CAR_UP_NEXT_TITLE = "Up next"
+
+/** The tabs under the root; "Up next" only while the queue has a book ([hasUpNext]). */
+fun carRoot(hasUpNext: Boolean = false): List<CarItem> = listOfNotNull(
     folder(carNodeId("continue"), "Continue"),
+    if (hasUpNext) folder(carNodeId("upnext"), CAR_UP_NEXT_TITLE) else null,
     folder(carNodeId("recent"), "Recently added"),
     folder(carNodeId("library"), "Library"),
     folder(carNodeId("downloaded"), "Downloaded"),
@@ -75,7 +81,9 @@ fun carChildren(nodeId: String, data: CarData, online: Boolean): List<CarItem>? 
     val node = parseCarNodeId(nodeId) ?: return null
     val items = data.items
     return when (node.kind) {
-        "root" -> carRoot()
+        "root" -> carRoot(data.upNext.isNotEmpty())
+        // The queue in its order; playing a book from here starts it like any other row (and takes it off the queue).
+        "upnext" -> books(data.upNext, online)
         "continue" -> books(
             sortItems(
                 items.filter { it.progress != null && !it.progress.isFinished && it.progress.positionMs > 0 && !isFinishedAt(it.progress.positionMs, it.book.durationMs) },

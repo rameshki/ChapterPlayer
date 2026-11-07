@@ -264,8 +264,8 @@ class IosPlaybackController private constructor(
     }
 }
 
-/** A UIKit background task: a few seconds more for a recovery that started while the app was in the background. */
-private object UiKitBackgroundWork : BackgroundWork {
+/** A UIKit background task: a few seconds more for work (a recovery, an Up next advance) started while the app was in the background. */
+internal object UiKitBackgroundWork : BackgroundWork {
     override fun begin(onExpired: () -> Unit): () -> Unit {
         val app = UIApplication.sharedApplication
         var id = UIBackgroundTaskInvalid

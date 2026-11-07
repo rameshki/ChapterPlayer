@@ -49,6 +49,39 @@ class CarBrowseTest {
     }
 
     @Test
+    fun `the root has an up next folder only while the queue has a book`() {
+        val a = book("a", "Alpha")
+        val queued = CarData(listOf(a), emptyList(), upNext = listOf(a))
+        assertEquals(listOf("Continue", "Up next", "Recently added", "Library", "Downloaded"), carChildren("car:root", queued, true)?.map { it.title })
+        assertTrue(carChildren("car:root", queued, true)!!.all { it.browsable && !it.playable })
+        assertEquals(listOf("Continue", "Recently added", "Library", "Downloaded"), carChildren("car:root", data(a), true)?.map { it.title })
+    }
+
+    @Test
+    fun `the up next folder lists the queue in its order as playable books`() {
+        val a = book("a", "Alpha")
+        val b = book("b", "Beta")
+        val c = book("c", "Gamma", state = DownloadState.DOWNLOADED)
+        val queued = CarData(listOf(a, b, c), emptyList(), upNext = listOf(c, a))
+        val rows = carChildren("car:upnext", queued, true)!!
+        assertEquals(listOf("c", "a"), rows.map { it.id })
+        assertTrue(rows.all { it.playable && !it.browsable })
+        // Offline the folder gets the banner and only the downloaded book can play.
+        val offline = carChildren("car:upnext", queued, false)!!
+        assertEquals(listOf("car:downloaded", "c", "a"), offline.map { it.id })
+        assertTrue(offline.first { it.id == "c" }.playable)
+        assertTrue(offline.first { it.id == "a" }.dimmed)
+    }
+
+    @Test
+    fun `the up next folder is found under the root`() {
+        val a = book("a", "Alpha")
+        val queued = CarData(listOf(a), emptyList(), upNext = listOf(a))
+        assertEquals(CAR_UP_NEXT_TITLE, carItemFor("car:upnext", queued, true, null)?.title)
+        assertNull(carItemFor("car:upnext", data(a), true, null))
+    }
+
+    @Test
     fun `continue lists unfinished started books - most recently played first`() {
         val d = data(
             book("a", "A", progress = progress("a", 1_000, last = 10)),

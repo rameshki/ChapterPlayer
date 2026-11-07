@@ -38,7 +38,10 @@ class BookActionsTest {
     @Test
     fun `a book with no series and no other books by the author offers the basic rows`() {
         assertEquals(
-            listOf(BookActionKind.PLAY, BookActionKind.FAVOURITE, BookActionKind.MARK, BookActionKind.DOWNLOAD, BookActionKind.DETAILS),
+            listOf(
+                BookActionKind.PLAY, BookActionKind.PLAY_NEXT, BookActionKind.UP_NEXT, BookActionKind.FAVOURITE, BookActionKind.MARK,
+                BookActionKind.DOWNLOAD, BookActionKind.DETAILS,
+            ),
             kinds(bookActionItems(state(), downloadsAvailable = true)),
         )
     }
@@ -111,5 +114,36 @@ class BookActionsTest {
         assertEquals("Resume download", copy.label)
         assertEquals("Plex · Home Plex · Paused · 10%", copy.subtitle)
         assertNull(items.first { it.kind == BookActionKind.DETAILS }.copyId)
+    }
+
+    @Test
+    fun `up next offers play next and add`() {
+        val items = bookActionItems(state(), true)
+        assertEquals("Play next", items.first { it.kind == BookActionKind.PLAY_NEXT }.label)
+        assertEquals("Add to Up next", items.first { it.kind == BookActionKind.UP_NEXT }.label)
+        assertTrue(items.filter { it.kind == BookActionKind.PLAY_NEXT || it.kind == BookActionKind.UP_NEXT }.all { it.enabled })
+    }
+
+    @Test
+    fun `a queued book offers remove from up next`() {
+        val items = bookActionItems(state().copy(inUpNext = true), true)
+        assertEquals("Remove from Up next", items.first { it.kind == BookActionKind.UP_NEXT }.label)
+        assertEquals("Play next", items.first { it.kind == BookActionKind.PLAY_NEXT }.label)
+    }
+
+    @Test
+    fun `the book in the player cannot be queued`() {
+        val items = bookActionItems(state(playback = DetailsPlayback.PLAYING).copy(inPlayer = true), true)
+        val next = items.first { it.kind == BookActionKind.PLAY_NEXT }
+        val add = items.first { it.kind == BookActionKind.UP_NEXT }
+        assertFalse(next.enabled)
+        assertFalse(add.enabled)
+        assertEquals("Playing now", next.subtitle)
+    }
+
+    @Test
+    fun `no up next rows without playback on this platform`() {
+        val items = bookActionItems(state(), true, upNextAvailable = false)
+        assertTrue(items.none { it.kind == BookActionKind.PLAY_NEXT || it.kind == BookActionKind.UP_NEXT })
     }
 }

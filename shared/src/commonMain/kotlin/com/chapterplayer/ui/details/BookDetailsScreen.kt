@@ -31,12 +31,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -53,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.domain.browse.SeriesLink
+import com.chapterplayer.ui.components.LocalPlatformFeatures
 import com.chapterplayer.ui.components.OfflineHeader
 import com.chapterplayer.ui.library.CoverArt
 import com.chapterplayer.ui.library.LibraryView
@@ -85,6 +89,16 @@ fun BookDetailsScreen(
             onMergeSheetDismissed = viewModel::onMergeSheetDismissed,
         )
     }
+    // Results of Play next / Add to Up next show at the bottom and go by themselves.
+    val message by viewModel.message.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(message) {
+        val text = message ?: return@LaunchedEffect
+        // Shown first, then cleared: clearing first would restart this effect and cancel the snackbar.
+        snackbar.showSnackbar(text)
+        viewModel.onMessageShown()
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         DetailsTopBar(onBack) { DetailsOverflowMenu(state.canSplit, state.canMerge, sourceActions) }
         OfflineHeader()
@@ -101,6 +115,8 @@ fun BookDetailsScreen(
             onOpenGroup = onOpenGroup,
             onOpenPlayer = onOpenPlayer,
             onFavouriteClick = viewModel::onFavouriteClicked,
+            onPlayNext = { viewModel.onUpNextClicked(front = true) },
+            onUpNext = { if (state.inUpNext) viewModel.onRemoveFromUpNextClicked() else viewModel.onUpNextClicked(front = false) },
             downloadActions = DownloadActions(
                 onDownload = viewModel::onDownloadClicked,
                 onPause = viewModel::onPauseDownloadClicked,
@@ -123,6 +139,8 @@ fun BookDetailsScreen(
                 }
             )
         )
+    }
+        SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
     state.sourceSheet?.let { SourceSheet(it, sourceActions) }
     state.mergeSheet?.let { MergeWithSheet(it, sourceActions) }
@@ -160,6 +178,8 @@ fun BookDetailsContent(
     modifier: Modifier = Modifier,
     onDismissNotice: () -> Unit = {},
     onFavouriteClick: () -> Unit = {},
+    onPlayNext: () -> Unit = {},
+    onUpNext: () -> Unit = {},
 ) {
     val book = state.book
     when {
@@ -200,7 +220,10 @@ fun BookDetailsContent(
             state.playError?.let { ErrorBanner(it, onPlayClick, onDismiss = onDismissPlayError) }
             state.notice?.let { ErrorBanner(it, onRetry = null, onDismiss = onDismissNotice) }
             detailsErrorToShow(state.playError, state.error)?.let { ErrorBanner(it, onRetry) }
-            LoadedList(state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions, onFavouriteClick, Modifier.weight(1f))
+            LoadedList(
+                state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions,
+                onFavouriteClick, UpNextClicks(onPlayNext, onUpNext), Modifier.weight(1f),
+            )
         }
     }
 }
@@ -217,13 +240,14 @@ private fun LoadedList(
     onOpenGroup: (LibraryView, String) -> Unit,
     downloadActions: DownloadActions,
     onFavouriteClick: () -> Unit,
+    upNext: UpNextClicks,
     modifier: Modifier = Modifier
 ) {
     val hasSeries = state.series.isNotEmpty()
     val tab = effectiveTab(state.selectedTab, hasSeries)
     // One scroll container: the header and tabs are the first items, so they scroll away with the list.
     LazyColumn(modifier = modifier.fillMaxWidth()) {
-        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenPlayer, onOpenGroup, downloadActions, onFavouriteClick) }
+        item(key = "header") { DetailsHeader(state, book, onPlayClick, onOpenPlayer, onOpenGroup, downloadActions, onFavouriteClick, upNext) }
         item(key = "tabs") { DetailsTabs(tab, hasSeries, onSelectTab) }
         when (tab) {
             DetailsTab.CHAPTERS -> {
@@ -246,6 +270,7 @@ private fun DetailsHeader(
     onOpenGroup: (LibraryView, String) -> Unit,
     downloadActions: DownloadActions,
     onFavouriteClick: () -> Unit,
+    upNext: UpNextClicks,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -314,8 +339,34 @@ private fun DetailsHeader(
         }
         CopyDownloadControls(state.downloadCopyLabel, state.download, downloadActions, state.otherCopyDownloads, downloadActions.forCopy)
         FavouriteToggle(state.favourite, onFavouriteClick)
+        if (LocalPlatformFeatures.current.playback) UpNextButtons(state, upNext)
         SourcesSection(state.sources, state.sourcesDescription)
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** What Play next and Add to Up next (or Remove from Up next) do on the page. */
+class UpNextClicks(val onPlayNext: () -> Unit, val onUpNext: () -> Unit)
+
+/** Play next and Add to Up next under the heart, as the long-press menu words them ([upNextItems]). */
+@Composable
+private fun UpNextButtons(state: BookDetailsUiState, clicks: UpNextClicks) {
+    val items = upNextItems(state)
+    Row(modifier = Modifier.fillMaxWidth()) {
+        items.forEach { item ->
+            TextButton(
+                onClick = if (item.kind == BookActionKind.PLAY_NEXT) clicks.onPlayNext else clicks.onUpNext,
+                enabled = item.enabled,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+            ) {
+                Text(
+                    item.label,
+                    color = if (item.enabled) AmberGold else TextSecondary,
+                    style = MaterialTheme.typography.titleSmall,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
     }
 }
 

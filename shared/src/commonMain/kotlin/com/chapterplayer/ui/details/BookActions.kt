@@ -4,7 +4,12 @@ import com.chapterplayer.domain.playback.MarkAction
 
 /** What one row of the book long-press menu (`BookActionsSheet`) does. */
 enum class BookActionKind {
-    PLAY, FAVOURITE, MARK,
+    PLAY,
+    /** "Play next": the book goes to the front of Up next. */
+    PLAY_NEXT,
+    /** "Add to Up next" (the end of the queue), or "Remove from Up next" when it is queued. */
+    UP_NEXT,
+    FAVOURITE, MARK,
     /** The main download control's action (see [BookActionItem.downloadPhase]). */
     DOWNLOAD,
     /** "Download another copy" of a book several servers have. */
@@ -33,7 +38,7 @@ data class BookActionItem(
  * left out: the download rows without downloads on this platform ([downloadsAvailable]), the series without one,
  * "More by" when the author has no other book.
  */
-fun bookActionItems(state: BookDetailsUiState, downloadsAvailable: Boolean): List<BookActionItem> {
+fun bookActionItems(state: BookDetailsUiState, downloadsAvailable: Boolean, upNextAvailable: Boolean = true): List<BookActionItem> {
     if (state.book == null) return emptyList()
     val items = mutableListOf<BookActionItem>()
     items += BookActionItem(
@@ -42,6 +47,7 @@ fun bookActionItems(state: BookDetailsUiState, downloadsAvailable: Boolean): Lis
         subtitle = state.playingFrom ?: playCaption(state.playback, state.canPlay, state.cannotPlayReason),
         enabled = playButtonEnabled(state.playback, state.canPlay),
     )
+    if (upNextAvailable) items += upNextItems(state)
     items += BookActionItem(BookActionKind.FAVOURITE, if (state.favourite) "Remove from favourites" else "Add to favourites")
     items += BookActionItem(BookActionKind.MARK, if (state.mark == MarkAction.MarkFinished) "Mark as finished" else "Mark as not finished")
     if (downloadsAvailable) {
@@ -56,6 +62,21 @@ fun bookActionItems(state: BookDetailsUiState, downloadsAvailable: Boolean): Lis
     items += BookActionItem(BookActionKind.DETAILS, "Book details")
     return items
 }
+
+/**
+ * "Play next" and "Add to Up next" (or "Remove from Up next" when queued). The book in the player cannot be queued:
+ * both are off with the reason.
+ */
+internal fun upNextItems(state: BookDetailsUiState): List<BookActionItem> {
+    val playing = if (state.inPlayer) UP_NEXT_PLAYING_NOW_TEXT else null
+    return listOf(
+        BookActionItem(BookActionKind.PLAY_NEXT, "Play next", subtitle = playing, enabled = !state.inPlayer),
+        if (state.inUpNext) BookActionItem(BookActionKind.UP_NEXT, "Remove from Up next")
+        else BookActionItem(BookActionKind.UP_NEXT, "Add to Up next", subtitle = playing, enabled = !state.inPlayer),
+    )
+}
+
+internal const val UP_NEXT_PLAYING_NOW_TEXT = "Playing now"
 
 /** The download row for one control: Download, Try again, Pause, Resume or Remove download; null when hidden. */
 private fun downloadItem(download: DetailsDownload, copyLabel: String?): BookActionItem? {

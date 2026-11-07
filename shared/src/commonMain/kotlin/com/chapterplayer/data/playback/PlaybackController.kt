@@ -95,4 +95,6 @@ data class PlaybackState(
     val sleepRemainingMs: Long? = null,
     /** The chapters of the playing book. */
     val chapters: List<Chapter> = emptyList(),
+    /** The book played to its very end and the player stopped there (a seek or a new book clears it). */
+    val ended: Boolean = false,
 )

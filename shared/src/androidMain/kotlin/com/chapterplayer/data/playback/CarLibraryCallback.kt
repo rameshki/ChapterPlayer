@@ -15,6 +15,9 @@ import androidx.media3.session.SessionError
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.merge.SourceMerging
+import com.chapterplayer.data.upnext.NoUpNext
+import com.chapterplayer.data.upnext.UpNextRepository
+import com.chapterplayer.domain.playback.resolveUpNext
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -84,6 +87,8 @@ class CarLibraryCallback(
     private val scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
     private val merging: SourceMerging = SourceMerging.None,
+    /** Up next: the car's "Up next" folder lists it while it has a book. */
+    private val upNext: UpNextRepository = NoUpNext,
 ) : MediaLibrarySession.Callback {
 
     // Book rows point at the app's cover provider; the car reads covers there.
@@ -342,7 +347,8 @@ class CarLibraryCallback(
         val items = observeBrowseItems(books, downloads, merging).first()
         val collections = books.observeCollections().first()
         val online = connectivity.isOnline.first()
-        Snapshot(CarData(items, collections), online)
+        val queued = resolveUpNext(upNext.queue.first(), items).entries.map { it.entry }
+        Snapshot(CarData(items, collections, queued), online)
     }
 
     private fun mediaIds(): List<String> = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }

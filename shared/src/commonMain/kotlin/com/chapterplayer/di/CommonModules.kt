@@ -40,6 +40,7 @@ import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.library.LibraryViewModel
 import com.chapterplayer.ui.player.PlayerMenuViewModel
 import com.chapterplayer.ui.player.PlayerViewModel
+import com.chapterplayer.ui.player.UpNextViewModel
 import com.chapterplayer.ui.search.SearchViewModel
 import com.chapterplayer.ui.settings.SettingsViewModel
 import com.chapterplayer.ui.settings.DiagnosticsViewModel
@@ -57,6 +58,11 @@ import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.RoomBookMergeRepository
 import com.chapterplayer.data.favourites.FavouritesRepository
 import com.chapterplayer.data.favourites.RoomFavouritesRepository
+import com.chapterplayer.data.playback.BackgroundWork
+import com.chapterplayer.data.playback.UpNextAdvancer
+import com.chapterplayer.data.playback.UpNextNotices
+import com.chapterplayer.data.upnext.RoomUpNextRepository
+import com.chapterplayer.data.upnext.UpNextRepository
 import com.chapterplayer.data.remote.abs.AbsApiService
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.remote.abs.AbsSessionManager
@@ -150,6 +156,7 @@ val commonDaoModule = module {
     single { get<ChapterPlayerDatabase>().bookMergeDao() }
     single { get<ChapterPlayerDatabase>().listeningDao() }
     single { get<ChapterPlayerDatabase>().favouriteDao() }
+    single { get<ChapterPlayerDatabase>().upNextDao() }
 }
 
 /** The HTTP clients and the server APIs. */
@@ -193,12 +200,14 @@ internal suspend fun blankRefusedPlexToken(servers: ServerRepository, refused: c
 
 /** The server list, sign-in, connection choice and sync, with the app scope and the dispatcher they run on. */
 val commonServerModule = module {
-    single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get(), favouriteDao = get()) }
+    single<ServerRepository> { ServerRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), statusStore = get(), bookMergeDao = get(), favouriteDao = get(), upNextDao = get()) }
     singleOf(::LibraryCatalogImpl) { bind<LibraryCatalog>() }
     // The user's "Not the same book" and "Merge with" choices for books on several servers.
     single<BookMergeRepository> { RoomBookMergeRepository(get()) }
     // The person's favourite books, on this phone only (Audiobookshelf has no favourites to sync with).
     single<FavouritesRepository> { RoomFavouritesRepository(get()) }
+    // Up next, the queue of books to play after the current one (on this phone only).
+    single<UpNextRepository> { RoomUpNextRepository(get()) }
     single<AbsAuthorizer> { AbsSessionManager(get(), get()) }
     // Lives as long as the app: syncs servers whichever screen is open.
     single<CoroutineScope>(AppScopeQualifier) { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
@@ -299,6 +308,15 @@ val commonPlaybackModule = module {
     single<ListeningImport> { ListeningStatsImporter(get(), getAll<LibrarySource>(), get(), get(), get(AppScopeQualifier), get()) }
     // Starts a book (position, saved speed, play) for details, Home and the player.
     singleOf(::PlaybackStarter)
+    // Up next: when a book plays to its end the first queued book starts (the application and iOS initKoin start it).
+    single { UpNextNotices() }
+    single {
+        UpNextAdvancer(
+            get(), get(), get(), get(), get(), get(), get(), get(AppScopeQualifier), get(), merging = get(),
+            // iOS keeps the app awake for the advance (nothing plays while it fetches); Android needs nothing.
+            background = getOrNull<BackgroundWork>() ?: BackgroundWork.None,
+        )
+    }
     // A tapped notification asks the navigation host to open the player once.
     single { OpenPlayerRequest() }
 }
@@ -320,16 +338,18 @@ val commonViewModelModule = module {
     // Built with parametersOf(bookId) by the book details screen, and parametersOf(bookId, true) by the book long-press menu.
     viewModel { params -> BookDetailsViewModel(
             params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
-            merging = get(), merges = get(), servers = get(), features = get(), favourites = get(),
+            merging = get(), merges = get(), servers = get(), features = get(), favourites = get(), upNext = get(),
             quickActions = params.getOrNull<Boolean>() ?: false,
         ) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
+    // The player's Up next sheet.
+    viewModel { UpNextViewModel(get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
     // The statistics page; its figures are worked out off the main thread.
     viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
-    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), upNext = get()) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()) }
     // The Diagnostics page (debug builds only reach it): read only tables, and the log the report is written to.
     single<DiagnosticsData> { RoomDiagnosticsData(get(), get()) }

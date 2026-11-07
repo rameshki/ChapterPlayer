@@ -2,6 +2,7 @@ package com.chapterplayer
 
 import android.app.Application
 import com.chapterplayer.data.playback.PlaybackProgressSaver
+import com.chapterplayer.data.playback.UpNextAdvancer
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
 import com.chapterplayer.data.stats.ListeningImport
@@ -49,6 +50,8 @@ class ChapterPlayerApp : Application() {
         // Bookmarks sync with the servers, and jumps in the playing book are remembered.
         GlobalContext.get().get<BookmarkSyncer>().start()
         GlobalContext.get().get<HistoryRecorder>().start()
+        // When a book plays to its end, the first book of Up next starts.
+        GlobalContext.get().get<UpNextAdvancer>().start()
         // Listening time is logged for the statistics page.
         GlobalContext.get().get<ListeningRecorder>().start()
         GlobalContext.get().get<ListeningImport>().start()
