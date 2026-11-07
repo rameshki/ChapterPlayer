@@ -55,6 +55,6 @@ The iOS app itself needs macOS and Xcode; continuous integration builds it on a 
 
 ## Contributing and licence
 
-This is a personal project and is not currently accepting outside contributions, but issues and suggestions are welcome. **No licence has been chosen yet**, which means all rights are reserved until one is added. Third-party skills and tools used in development are listed in `.claude/skills/THIRD-PARTY.md`.
+This is a personal project and is not currently accepting outside contributions, but issues and suggestions are welcome. The project is licensed under the [Apache License 2.0](LICENSE) (see also `NOTICE`); contributions, if ever accepted, would be under the same licence. Third-party skills and tools used in development are listed in `.claude/skills/THIRD-PARTY.md`.
 
 Development uses AI assistance (Claude Code); every change goes through a pull request, CI and a review before it is merged.

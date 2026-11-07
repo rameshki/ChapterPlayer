@@ -1,0 +1,6 @@
+ChapterPlayer
+Copyright 2026 Robert Morris
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+It uses third-party libraries under their own licences (mostly Apache-2.0).
+The app structure took design inspiration from AudioBooth (MPL-2.0); no code was copied from it.
