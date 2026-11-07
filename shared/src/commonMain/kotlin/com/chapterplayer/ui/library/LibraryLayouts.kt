@@ -25,7 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -89,7 +89,7 @@ fun LayoutAction(layout: LibraryLayout, onSelected: (LibraryLayout) -> Unit) {
                 imageVector = when (layout) {
                     LibraryLayout.LARGE_GRID -> Icons.Default.GridView
                     LibraryLayout.SMALL_GRID -> Icons.Default.ViewModule
-                    LibraryLayout.LIST -> Icons.Default.ViewList
+                    LibraryLayout.LIST -> Icons.AutoMirrored.Filled.ViewList
                 },
                 contentDescription = "Layout",
                 tint = TextSecondary

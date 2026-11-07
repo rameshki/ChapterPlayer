@@ -93,12 +93,12 @@ class ProgressMirrorPusher(
         val before = previous
         previous = current
         val wasRunning = before != null && before.running
-        if (wasRunning && (!current.running || current.bookId != before!!.bookId)) {
+        if (wasRunning && (!current.running || current.bookId != before.bookId)) {
             // Paused, stopped, released or another book took over: the last position seen is the best there is.
             val last = if (current.bookId == before.bookId) current else before
             push(before.bookId, last, isPlaying = false, loadedBookId = current.bookId)
         }
-        val continuing = wasRunning && before!!.bookId == current.bookId
+        val continuing = wasRunning && before.bookId == current.bookId
         if (current.running && !continuing) playingSince = nowMs()
     }
 

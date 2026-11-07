@@ -14,7 +14,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,7 +62,7 @@ internal fun SettingsPage(
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
                         }
                     }
                 },

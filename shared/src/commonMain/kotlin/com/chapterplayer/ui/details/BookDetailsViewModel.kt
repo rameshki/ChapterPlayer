@@ -260,9 +260,9 @@ class BookDetailsViewModel(
             }
             val canPlay = features.playback && book.serverId.isNotBlank() && (
                 isPlayable(whole.downloadState, env.online, env.downloadedOnly) ||
-                    (merged && entry!!.sources.any { isPlayable(it.downloadState, env.online, env.downloadedOnly) })
+                    (merged && entry.sources.any { isPlayable(it.downloadState, env.online, env.downloadedOnly) })
                 )
-            val options = if (merged) sourceOptions(entry!!, context!!.onlineServerIds, context.deviceOnline) else emptyList()
+            val options = if (merged) sourceOptions(entry, context.onlineServerIds, context.deviceOnline) else emptyList()
             val mainDownloadId = env.downloadBookId ?: bookId
             val rowIds = env.rows.mapTo(HashSet()) { it.first }
             fun copyLabel(id: String): String? = entry?.member(id)?.let { copy ->
@@ -309,9 +309,9 @@ class BookDetailsViewModel(
                     // A copy has a download: another copy is fetched only when the person asks for it, and only one
                     // with no download yet whose server answers can be.
                     val another = merged && features.downloads && env.online && env.rows.isNotEmpty() &&
-                        entry!!.allSources.any {
+                        entry.allSources.any {
                             it.book.id !in rowIds && it.downloadState == DownloadState.NOT_DOWNLOADED &&
-                                it.book.serverId in context!!.onlineServerIds
+                                it.book.serverId in context.onlineServerIds
                         }
                     if (another) d.copy(canDownloadAnotherCopy = true) else d
                 },
@@ -328,7 +328,7 @@ class BookDetailsViewModel(
                     )
                 },
                 sources = rows,
-                sourcesDescription = if (merged) sourcesDescription(entry!!) else null,
+                sourcesDescription = if (merged) sourcesDescription(entry) else null,
                 sourceSheet = extras.sheet?.takeIf { merged }?.let { action ->
                     val sizes = extras.copySizes + listOfNotNull(live.details?.downloadSizeBytes?.let { bookId to it })
                     val statuses = env.rows.associate { it.first to it.second.status }

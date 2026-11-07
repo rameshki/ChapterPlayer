@@ -10,7 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,19 +48,19 @@ fun AmberButton(text: String, onClick: () -> Unit) {
 
 @Composable
 fun NoServersState(onOpenServers: () -> Unit) = ScrollingEmpty {
-    EmptyState(Icons.Default.LibraryBooks, "Add a server to see your audiobooks here.") {
+    EmptyState(Icons.AutoMirrored.Filled.LibraryBooks, "Add a server to see your audiobooks here.") {
         AmberButton("Add a server", onOpenServers)
     }
 }
 
 @Composable
 fun NothingYetState() = ScrollingEmpty {
-    EmptyState(Icons.Default.LibraryBooks, "Nothing here yet. Pull to refresh.")
+    EmptyState(Icons.AutoMirrored.Filled.LibraryBooks, "Nothing here yet. Pull to refresh.")
 }
 
 @Composable
 fun AllLibrariesHiddenState(onOpenLibraries: () -> Unit) = ScrollingEmpty {
-    EmptyState(Icons.Default.LibraryBooks, "All libraries are hidden") {
+    EmptyState(Icons.AutoMirrored.Filled.LibraryBooks, "All libraries are hidden") {
         AmberButton("Choose libraries", onOpenLibraries)
     }
 }
@@ -113,7 +113,7 @@ fun NothingDownloadedState() = ScrollingEmpty {
 @Composable
 fun EmptyViewState(view: LibraryView) = ScrollingEmpty {
     EmptyState(
-        Icons.Default.LibraryBooks,
+        Icons.AutoMirrored.Filled.LibraryBooks,
         when (view) {
             LibraryView.SERIES -> "None of your books belong to a series yet."
             LibraryView.COLLECTIONS -> "No collections yet. Collections you make on your Audiobookshelf server show up here."

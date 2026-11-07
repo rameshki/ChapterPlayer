@@ -17,7 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -158,7 +158,7 @@ fun ServerSetupScreen(
                             onDone()
                         }
                     }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDeep)
