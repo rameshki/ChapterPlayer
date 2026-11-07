@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -93,7 +93,7 @@ data class BottomNavItem(
 /** The tabs, in bar order. Player and Settings are destinations, not tabs. */
 val bottomNavItems = listOf(
     BottomNavItem("Home", Screen.Home, Icons.Default.Home),
-    BottomNavItem("Library", Screen.Library, Icons.Default.LibraryBooks),
+    BottomNavItem("Library", Screen.Library, Icons.AutoMirrored.Filled.LibraryBooks),
     BottomNavItem("Downloads", Screen.Downloads, Icons.Default.Download),
     BottomNavItem("Search", Screen.Search, Icons.Default.Search)
 )

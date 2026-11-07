@@ -115,6 +115,69 @@ class LibraryViewModelTest {
 
     private fun library(vararg books: AudioBook) = Setup(FakeBookRepository(books.toList()))
 
+    private fun vmWith(settings: FakeAppSettings, savedState: SavedStateHandle = SavedStateHandle()): LibraryViewModel {
+        val books = FakeBookRepository()
+        val servers = FakeServerList(listOf(testServer()))
+        val coordinator = LibrarySyncCoordinator(books, servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher()))
+        return LibraryViewModel(books, servers, FakeDownloadStates(), BrowseQueryStore(), FakeMonitor(), settings, coordinator, Dispatchers.Main, savedState)
+    }
+
+    @Test
+    fun `the view chosen on an earlier launch comes back`() = runTest {
+        val settings = FakeAppSettings().apply { libraryViewFlow.value = LibraryView.SERIES.name }
+        val vm = vmWith(settings)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        assertEquals(LibraryView.SERIES, vm.uiState.value.view)
+    }
+
+    @Test
+    fun `the list waits for the stored view instead of showing Library first`() = runTest {
+        val gate = CompletableDeferred<String?>()
+        val settings = object : com.chapterplayer.data.settings.AppSettings by FakeAppSettings() {
+            override val libraryView: Flow<String?> = kotlinx.coroutines.flow.flow { emit(gate.await()) }
+        }
+        val books = FakeBookRepository(listOf(testBook("a")))
+        val servers = FakeServerList(listOf(testServer()))
+        val coordinator = LibrarySyncCoordinator(books, servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher()))
+        val vm = LibraryViewModel(books, servers, FakeDownloadStates(), BrowseQueryStore(), FakeMonitor(), settings, coordinator, Dispatchers.Main)
+        val seen = mutableListOf<LibraryUiState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { seen += it } }
+        assertTrue(seen.all { it.isLoading })
+
+        gate.complete(LibraryView.SERIES.name)
+
+        assertEquals(LibraryView.SERIES, vm.uiState.value.view)
+        assertTrue(seen.filter { !it.isLoading }.all { it.view == LibraryView.SERIES })
+    }
+
+    @Test
+    fun `choosing a view keeps it for the next launch`() = runTest {
+        val settings = FakeAppSettings()
+        val vm = vmWith(settings)
+        vm.onViewSelected(LibraryView.AUTHORS)
+        assertEquals(LibraryView.AUTHORS.name, settings.libraryViewFlow.value)
+    }
+
+    @Test
+    fun `an unknown stored view and a failed save leave the Library view working`() = runTest {
+        val unknown = vmWith(FakeAppSettings().apply { libraryViewFlow.value = "SHELVES" })
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { unknown.uiState.collect {} }
+        assertEquals(LibraryView.LIBRARY, unknown.uiState.value.view)
+
+        val failing = vmWith(FakeAppSettings(failOnSet = true))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { failing.uiState.collect {} }
+        failing.onViewSelected(LibraryView.NARRATORS)
+        assertEquals(LibraryView.NARRATORS, failing.uiState.value.view)
+    }
+
+    @Test
+    fun `the view in the saved state wins over the stored one`() = runTest {
+        val settings = FakeAppSettings().apply { libraryViewFlow.value = LibraryView.SERIES.name }
+        val vm = vmWith(settings, SavedStateHandle(mapOf("library_view" to LibraryView.COLLECTIONS.name)))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        assertEquals(LibraryView.COLLECTIONS, vm.uiState.value.view)
+    }
+
     @Test
     fun `the state is loading until the data arrives`() {
         assertTrue(library().vm.uiState.value.isLoading)
@@ -640,13 +703,25 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `the alphabetical group lists have a scroller whatever the sort, and Collections has none`() = runTest {
+    fun `the alphabetical group lists have a scroller whatever the sort, Collections too`() = runTest {
         val s = manyBooks()
-        s.books.collections.value = List(20) { i -> BookCollection("s1", "c$i", "Collection $i", listOf("b$i")) }
+        s.books.collections.value = List(20) { i -> BookCollection("s1", "c$i", "${'Z' - i} collection", listOf("b$i")) }
         val state = collect(s)
 
         s.vm.onViewSelected(LibraryView.AUTHORS)
         assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+
+        s.vm.onViewSelected(LibraryView.COLLECTIONS)
+        // Listed by name: 'G' (Z minus 19) first, 'Z' last.
+        assertEquals(LetterIndex('G', 0), state().fastScroll.first())
+        assertEquals(LetterIndex('Z', 19), state().fastScroll.last())
+    }
+
+    @Test
+    fun `fewer than twenty collections have no scroller`() = runTest {
+        val s = manyBooks()
+        s.books.collections.value = List(19) { i -> BookCollection("s1", "c$i", "${'A' + i} collection", listOf("b$i")) }
+        val state = collect(s)
 
         s.vm.onViewSelected(LibraryView.COLLECTIONS)
         assertEquals(emptyList(), state().fastScroll)

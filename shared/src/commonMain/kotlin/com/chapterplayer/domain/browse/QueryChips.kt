@@ -30,6 +30,22 @@ private fun chipQuery(chip: FilterChip, current: BrowseQuery): BrowseQuery = whe
     FilterChip.FINISHED -> current.copy(progress = ProgressFilter.FINISHED, download = DownloadFilter.ALL)
 }
 
+/** The note Home and Search show while the Library's filters hide books there too, and its clear button's label. */
+data class FilterHint(val text: String, val clearLabel: String)
+
+/**
+ * The hint for [query], or null when it hides nothing. A server filter alone keeps its own words; any other filter
+ * (progress, download, favourites only, also with a server filter) is "Filters on" with "Clear filters".
+ */
+fun filterHintFor(query: BrowseQuery): FilterHint? = when {
+    !isFiltering(query) -> null
+    query == BrowseQuery(sort = query.sort, serverIds = query.serverIds) -> FilterHint("Server filter on", "Show all servers")
+    else -> FilterHint("Filters on", "Clear filters")
+}
+
+/** [query] with every filter off; the sort stays (it hides nothing). */
+fun withoutFilters(query: BrowseQuery): BrowseQuery = BrowseQuery(sort = query.sort)
+
 /** Whether [query] hides any book (the sort does not). */
 fun isFiltering(query: BrowseQuery): Boolean =
     query.progress != ProgressFilter.ALL || query.download != DownloadFilter.ALL || query.serverIds.isNotEmpty() || query.favouritesOnly

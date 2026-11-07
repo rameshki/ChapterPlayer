@@ -73,7 +73,9 @@ import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.components.ContinueReadingStrip
 import com.chapterplayer.ui.components.EmptyState
 import com.chapterplayer.ui.components.OfflineHeader
-import com.chapterplayer.ui.components.ServerFilterHint
+import com.chapterplayer.ui.components.FilterHintRow
+import com.chapterplayer.ui.components.ClearFiltersButton
+import com.chapterplayer.ui.components.FILTERS_HIDING_TEXT
 import com.chapterplayer.ui.components.SettingsAction
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -113,7 +115,7 @@ fun HomeScreen(
             )
         )
         OfflineHeader()
-        if (state.serverFilterOn) ServerFilterHint(onClear = viewModel::onServerFilterCleared)
+        state.filterHint?.let { FilterHintRow(it, onClear = viewModel::onFiltersCleared) }
         state.playError?.let { message ->
             val book = state.resume?.item?.book
             PlayErrorBanner(
@@ -150,7 +152,9 @@ fun HomeScreen(
                     if (state.downloadedFilterOn) {
                         EmptyState(Icons.Default.CloudDownload, "Nothing downloaded here yet")
                     } else {
-                        EmptyState(Icons.Default.Warning, "No books match the current filters.")
+                        EmptyState(Icons.Default.Warning, FILTERS_HIDING_TEXT) {
+                            ClearFiltersButton(viewModel::onFiltersCleared)
+                        }
                     }
                 } else if (state.isSyncing) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

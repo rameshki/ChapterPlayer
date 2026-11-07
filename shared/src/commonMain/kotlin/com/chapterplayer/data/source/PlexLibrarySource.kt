@@ -209,14 +209,15 @@ class PlexLibrarySource(
 
     /**
      * Asked when a book is opened: the album's own metadata (description, year, genres), then its tracks and their chapters
-     * ([fetchContent]). The chapters span all the tracks; the length is the sum of the tracks.
+     * ([fetchContent]). The chapters span all the tracks; the length is the sum of the tracks. The description is the
+     * album's summary, else the first track's (a tagged file's comment often lands there), else none.
      */
     override suspend fun fetchBookDetails(server: ServerConfig, bookId: String): BookDetails {
         val album = api.getMetadata(server.baseUrl, server.token, plexRatingKey(bookId)).mediaContainer.metadata?.firstOrNull()
         val content = fetchContent(server, bookId)
         return BookDetails(
             chapters = content.chapters,
-            description = album?.summary?.takeIf { it.isNotBlank() },
+            description = album?.summary?.takeIf { it.isNotBlank() } ?: content.summary,
             genres = album?.genres.orEmpty().map { it.tag }.filter { it.isNotBlank() },
             publishedYear = album?.year?.toString(),
             series = emptyList(),

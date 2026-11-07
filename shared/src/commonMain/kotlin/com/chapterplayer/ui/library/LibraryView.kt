@@ -36,7 +36,7 @@ fun groupsFor(view: LibraryView, items: List<BrowseItem>, collections: List<Book
 /**
  * The keys the A to Z scroller indexes, in the order shown, or null when the list is not alphabetical:
  * titles or authors in the Library view under the Title or Author sort, and the group titles of Authors,
- * Narrators and Series (sorted by name whatever the sort). Collections keep the server's order, so none.
+ * Narrators, Series and Collections (sorted by name whatever the sort).
  */
 fun fastScrollKeys(view: LibraryView, sort: BrowseSort, items: List<BrowseItem>, groups: List<BookGroup>): FastScrollKeys? =
     when (view) {
@@ -47,8 +47,7 @@ fun fastScrollKeys(view: LibraryView, sort: BrowseSort, items: List<BrowseItem>,
             BrowseSort.RECENTLY_ADDED, BrowseSort.RECENTLY_PLAYED, BrowseSort.LENGTH -> null
         }
         LibraryView.AUTHORS, LibraryView.NARRATORS -> FastScrollKeys(groups.map { it.title }, LetterRule.PERSON)
-        LibraryView.SERIES -> FastScrollKeys(groups.map { it.title }, LetterRule.TITLE)
-        LibraryView.COLLECTIONS -> null
+        LibraryView.SERIES, LibraryView.COLLECTIONS -> FastScrollKeys(groups.map { it.title }, LetterRule.TITLE)
     }
 
 /**

@@ -85,7 +85,7 @@ class GroupDetailViewModel(
         Whole(all, collections, groupsFor(kind, applyQuery(all, BrowseQuery()), collections).firstOrNull { it.key == key })
     }
 
-    private val found = combine(whole, queryStore.query, favourites.favouriteIds) { whole, query, favouriteIds ->
+    private val found = combine(whole, queryStore.settledQuery, favourites.favouriteIds) { whole, query, favouriteIds ->
         // Without a filter the shown group is the unfiltered one, so the groups are built only once.
         val shown = if (query == BrowseQuery()) whole.group
         else groupsFor(kind, applyQuery(whole.all, query, favouriteIds), whole.collections).firstOrNull { it.key == key }

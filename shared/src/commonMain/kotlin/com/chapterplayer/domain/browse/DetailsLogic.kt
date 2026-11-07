@@ -47,6 +47,16 @@ data class AboutInfo(
 )
 
 /**
+ * The About text of a book several servers have. Audiobookshelf's description wins: this page's own when it is an
+ * Audiobookshelf copy with one, else the first Audiobookshelf copy in [absCopies] that has one (a Plex summary is often
+ * only a tag comment), else this page's own ([own], which may be none).
+ */
+fun mergedDescription(own: String?, ownIsAbs: Boolean, absCopies: List<String?>): String? {
+    if (ownIsAbs && !own.isNullOrBlank()) return own
+    return absCopies.firstOrNull { !it.isNullOrBlank() } ?: own
+}
+
+/**
  * Aggregates information from an AudioBook and its BookDetails into a single displayable model.
  */
 fun aboutInfo(book: AudioBook, details: BookDetails?): AboutInfo {

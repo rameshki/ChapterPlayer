@@ -29,6 +29,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -243,12 +244,29 @@ class SearchViewModelTest {
         search(s, "dune")
 
         assertEquals(listOf("b"), s.ids())
-        assertTrue(s.vm.uiState.value.serverFilterOn)
+        assertEquals("Server filter on", s.vm.uiState.value.filterHint?.text)
 
-        s.vm.onServerFilterCleared()
+        s.vm.onFiltersCleared()
         runCurrent()
 
-        assertFalse(s.vm.uiState.value.serverFilterOn)
+        assertNull(s.vm.uiState.value.filterHint)
         assertEquals(setOf("a", "b"), s.ids().toSet())
+    }
+
+    @Test
+    fun `a favourites only filter left on is reported and clearing it shows the results`() = runTest {
+        val s = Setup(listOf(testBook("a", title = "Dune")))
+        collect(s)
+        s.store.update { it.copy(favouritesOnly = true) }
+        search(s, "dune")
+
+        assertEquals(SearchStatus.FILTERED_OUT, s.vm.uiState.value.status)
+        assertEquals("Filters on", s.vm.uiState.value.filterHint?.text)
+
+        s.vm.onFiltersCleared()
+        runCurrent()
+
+        assertNull(s.vm.uiState.value.filterHint)
+        assertEquals(listOf("a"), s.ids())
     }
 }

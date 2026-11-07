@@ -154,4 +154,16 @@ class PlexFixtureParsingTest {
         assertEquals("Fixture summary 1", album.summary)
         assertEquals(listOf("Fixture tag 3"), album.genres?.map { it.tag })
     }
+
+    @Test
+    fun `summaries are read from an album detail and a track list as sent`() {
+        val album = PlexParsers.libraryItems(fixture("plex/album-detail.json")).mediaContainer.metadata.orEmpty().single()
+        assertEquals("Fixture summary line 1.\n\n  Fixture summary line 2, with spacing kept.  ", album.summary)
+
+        val empty = PlexParsers.libraryItems(fixture("plex/album-detail-no-summary.json")).mediaContainer.metadata.orEmpty().single()
+        assertEquals("", empty.summary)
+
+        val track = PlexParsers.libraryItems(fixture("plex/album-tracks-with-summary.json")).mediaContainer.metadata.orEmpty().single()
+        assertEquals("Fixture track summary line 1.\n\nFixture track summary line 2.", track.summary)
+    }
 }

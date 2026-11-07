@@ -354,6 +354,34 @@ class PlexLibrarySourceTest {
     }
 
     @Test
+    fun `an album without a summary takes its track's summary as the description`() = runTest {
+        val detailWithout = fixture("plex/track-with-chapters.json").replace("\"Fixture summary 1\"", "\"\"")
+        val details = detailsSource(fixture("plex/album-detail-no-summary.json"), fixture("plex/album-tracks-with-summary.json"), mapOf("1024" to detailWithout))
+            .fetchBookDetails(server, "plex_1019")
+
+        assertEquals("Fixture track summary line 1.\n\nFixture track summary line 2.", details.description)
+    }
+
+    @Test
+    fun `the album's own summary wins over its tracks'`() = runTest {
+        val details = detailsSource(fixture("plex/album-detail.json"), fixture("plex/album-tracks-with-summary.json"), mapOf("1024" to fixture("plex/track-with-chapters.json")))
+            .fetchBookDetails(server, "plex_1019")
+
+        assertEquals("Fixture summary line 1.\n\n  Fixture summary line 2, with spacing kept.  ", details.description)
+    }
+
+    @Test
+    fun `no summary on the album or its tracks gives no description`() = runTest {
+        val tracks = fixture("plex/album-tracks.json").replace("\"Fixture summary 1\"", "\"\"")
+        val detail = fixture("plex/track-with-chapters.json").replace("\"Fixture summary 1\"", "\"\"")
+        val details = detailsSource(fixture("plex/album-detail-no-summary.json"), tracks, mapOf("1024" to detail))
+            .fetchBookDetails(server, "plex_1019")
+
+        assertNull(details.description)
+        assertEquals(24, details.chapters.size)
+    }
+
+    @Test
     fun `details of a one-file book read the album, its track and the track's chapters`() = runTest {
         val details = detailsSource(albumDetail, fixture("plex/album-tracks.json"), mapOf("1024" to fixture("plex/track-with-chapters.json")))
             .fetchBookDetails(server, "plex_1019")

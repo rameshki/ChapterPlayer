@@ -11,6 +11,9 @@ import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.BrowseQueryStore
+import com.chapterplayer.domain.browse.FilterHint
+import com.chapterplayer.domain.browse.filterHintFor
+import com.chapterplayer.domain.browse.withoutFilters
 import com.chapterplayer.domain.browse.FilterChip
 import com.chapterplayer.domain.browse.chipFor
 import com.chapterplayer.domain.browse.applyQuery
@@ -37,8 +40,8 @@ data class SearchUiState(
     val downloadedFilterOn: Boolean = false,
     val online: Boolean = true,
     val downloadedOnly: Boolean = false,
-    /** The Library's server filter hides some results; Search says so and offers to clear it. */
-    val serverFilterOn: Boolean = false,
+    /** The Library's filters hide some results; Search says so and offers to clear them (null: nothing hidden). */
+    val filterHint: FilterHint? = null,
     /** The stored favourites (by book id), for the heart on the tiles. */
     val favouriteIds: Set<String> = emptySet(),
 )
@@ -70,7 +73,7 @@ class SearchViewModel(
     val uiState: StateFlow<SearchUiState> = combine(
         settledQuery,
         observeBrowseItems(books, downloads, merging),
-        combine(queryStore.query, favourites.favouriteIds, ::Pair),
+        combine(queryStore.settledQuery, favourites.favouriteIds, ::Pair),
         connectivity.isOnline,
         settings.downloadedOnly
     ) { text, items, (query, favouriteIds), online, downloadedOnly ->
@@ -88,13 +91,13 @@ class SearchViewModel(
             downloadedFilterOn = chipFor(query) == FilterChip.DOWNLOADED && query.serverIds.isEmpty(),
             online = online,
             downloadedOnly = downloadedOnly,
-            serverFilterOn = query.serverIds.isNotEmpty(),
+            filterHint = filterHintFor(query),
             favouriteIds = favouriteIds,
         )
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchUiState())
 
-    /** Shows every server's books again (the hint's button). */
-    fun onServerFilterCleared() = queryStore.update { it.copy(serverIds = emptySet()) }
+    /** Turns every filter off, the sort stays (the hint's button). */
+    fun onFiltersCleared() = queryStore.update(::withoutFilters)
 
     companion object {
         const val DEBOUNCE_MS = 200L

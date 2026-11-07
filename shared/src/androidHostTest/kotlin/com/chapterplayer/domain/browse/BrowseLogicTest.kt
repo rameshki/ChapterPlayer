@@ -289,16 +289,16 @@ class BrowseLogicTest {
     // ---- collections ----
 
     @Test
-    fun `collection groups keep the collection order and the order of their book ids`() {
+    fun `collection groups are listed by name and keep the order of their book ids`() {
         val items = listOf(item(book("a")), item(book("b")), item(book("c")))
         val groups = groupByCollection(items, listOf(
             BookCollection("s1", "col2", "Second", listOf("c", "a")),
             BookCollection("s1", "col1", "First", listOf("b", "c", "a")),
         ))
-        assertEquals(listOf("Second", "First"), groups.map { it.title })
-        assertEquals(listOf("s1/col2", "s1/col1"), groups.map { it.key })
-        assertEquals(listOf("c", "a"), ids(groups[0].items))
-        assertEquals(listOf("b", "c", "a"), ids(groups[1].items))
+        assertEquals(listOf("First", "Second"), groups.map { it.title })
+        assertEquals(listOf("s1/col1", "s1/col2"), groups.map { it.key })
+        assertEquals(listOf("b", "c", "a"), ids(groups[0].items))
+        assertEquals(listOf("c", "a"), ids(groups[1].items))
     }
 
     @Test

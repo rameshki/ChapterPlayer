@@ -13,6 +13,7 @@ import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.model.BookDetails
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PLAYBACK_NOT_ON_IOS_TEXT
 import com.chapterplayer.data.PlatformFeatures
@@ -35,6 +36,7 @@ import com.chapterplayer.domain.browse.sourcesDescription
 import com.chapterplayer.domain.browse.BookLinks
 import com.chapterplayer.domain.browse.SeriesEntry
 import com.chapterplayer.domain.browse.aboutInfo
+import com.chapterplayer.domain.browse.mergedDescription
 import com.chapterplayer.domain.browse.bookLinks
 import com.chapterplayer.domain.browse.chapterRows
 import com.chapterplayer.domain.browse.formatLength
@@ -110,6 +112,8 @@ class BookDetailsViewModel(
      * open, and the results of the actions are reported through [message] for a snackbar.
      */
     private val quickActions: Boolean = false,
+    /** The other copies' descriptions, kept for the app session (one per app through Koin). */
+    private val copyDescriptions: CopyDescriptions = CopyDescriptions(),
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -162,6 +166,7 @@ class BookDetailsViewModel(
     private val selectedTab = MutableStateFlow(DetailsTab.CHAPTERS)
     private val confirmingRemove = MutableStateFlow<String?>(null)
     private var loadJob: Job? = null
+    private var descriptionJob: Job? = null
 
     // Series and links come from every book of the library, never from the filtered lists.
     private val whole = observeBrowseItems(books, downloads, merging).map { all ->
@@ -260,9 +265,9 @@ class BookDetailsViewModel(
             }
             val canPlay = features.playback && book.serverId.isNotBlank() && (
                 isPlayable(whole.downloadState, env.online, env.downloadedOnly) ||
-                    (merged && entry!!.sources.any { isPlayable(it.downloadState, env.online, env.downloadedOnly) })
+                    (merged && entry.sources.any { isPlayable(it.downloadState, env.online, env.downloadedOnly) })
                 )
-            val options = if (merged) sourceOptions(entry!!, context!!.onlineServerIds, context.deviceOnline) else emptyList()
+            val options = if (merged) sourceOptions(entry, context.onlineServerIds, context.deviceOnline) else emptyList()
             val mainDownloadId = env.downloadBookId ?: bookId
             val rowIds = env.rows.mapTo(HashSet()) { it.first }
             fun copyLabel(id: String): String? = entry?.member(id)?.let { copy ->
@@ -309,9 +314,9 @@ class BookDetailsViewModel(
                     // A copy has a download: another copy is fetched only when the person asks for it, and only one
                     // with no download yet whose server answers can be.
                     val another = merged && features.downloads && env.online && env.rows.isNotEmpty() &&
-                        entry!!.allSources.any {
+                        entry.allSources.any {
                             it.book.id !in rowIds && it.downloadState == DownloadState.NOT_DOWNLOADED &&
-                                it.book.serverId in context!!.onlineServerIds
+                                it.book.serverId in context.onlineServerIds
                         }
                     if (another) d.copy(canDownloadAnotherCopy = true) else d
                 },
@@ -328,7 +333,7 @@ class BookDetailsViewModel(
                     )
                 },
                 sources = rows,
-                sourcesDescription = if (merged) sourcesDescription(entry!!) else null,
+                sourcesDescription = if (merged) sourcesDescription(entry) else null,
                 sourceSheet = extras.sheet?.takeIf { merged }?.let { action ->
                     val sizes = extras.copySizes + listOfNotNull(live.details?.downloadSizeBytes?.let { bookId to it })
                     val statuses = env.rows.associate { it.first to it.second.status }
@@ -826,6 +831,35 @@ class BookDetailsViewModel(
             onSuccess = { Live(it ?: live.value.details) },
             onFailure = { Live(live.value.details, error = errorText(it)) }
         )
+        // Outside the load job: Retry and this page's own details never wait for the other copies' servers.
+        result.getOrNull()?.let { details ->
+            descriptionJob?.cancel()
+            descriptionJob = viewModelScope.launch { preferAbsDescription(details) }
+        }
+    }
+
+    /**
+     * A book several servers have shows an Audiobookshelf copy's description when this page's copy is not one with a
+     * description ([mergedDescription]); the other copies' details are asked for after this page's, best effort, at the
+     * same time (a few at once) and only once per app session ([CopyDescriptions]).
+     */
+    private suspend fun preferAbsDescription(details: BookDetails) {
+        val entry = whole.first().entry?.takeIf { it.isMerged } ?: return
+        val own = entry.member(bookId) ?: return
+        val ownIsAbs = own.book.source == ServerSource.ABS
+        if (ownIsAbs && !details.description.isNullOrBlank()) return
+        val absIds = entry.allSources.filter { it.book.source == ServerSource.ABS && it.book.id != bookId }.map { it.book.id }
+        if (absIds.isEmpty()) return
+        val absDescriptions = copyDescriptions.descriptionsOf(absIds) { id ->
+            // No details at all (the server did not say) is not an answer to keep.
+            books.loadDetails(id).mapCatching { details -> checkNotNull(details) { "no details" }.description }
+        }
+        val chosen = mergedDescription(details.description, ownIsAbs, absDescriptions)
+        val current = live.value
+        // Only while these details are still the ones shown (a retry may have replaced them).
+        if (chosen != details.description && current.details === details) {
+            live.value = Live(details.copy(description = chosen), current.loading, current.error)
+        }
     }
 
     private fun errorText(error: Throwable) =

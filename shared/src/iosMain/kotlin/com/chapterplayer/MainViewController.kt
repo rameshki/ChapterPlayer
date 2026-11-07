@@ -5,6 +5,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.uikit.LocalUIViewController
+import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.ThemeMode
@@ -19,11 +20,13 @@ import platform.UIKit.UIUserInterfaceStyle
  * nothing), then the app shows the same navigation as Android ([AppNavigation]: the tabs, book details, the settings
  * hub, statistics) in the saved theme (new installs follow the system's dark or light). What iOS cannot do yet is
  * disabled or hidden by `PlatformFeatures.IosBrowsingOnly`. Compose draws edge to edge and pads for the safe area
- * (status bar, home indicator) and the keyboard itself.
+ * (status bar, home indicator); the screens with text fields pad for the keyboard themselves.
  */
 fun MainViewController() = run {
     initKoin()
-    ComposeUIViewController {
+    // The screens pad for the keyboard themselves (imePadding, keyboardOverlapPadding), so Compose must not also lift
+    // the whole view over a focused field (its default), or the page would move twice.
+    ComposeUIViewController(configure = { onFocusBehavior = OnFocusBehavior.DoNothing }) {
         val settings = koinInject<AppSettings>()
         val mode by settings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
         MatchSystemChrome(mode)

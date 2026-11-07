@@ -29,7 +29,7 @@ data class BrowseQuery(
     val sort: BrowseSort = BrowseSort.RECENTLY_ADDED,
     /** The servers whose books show; empty means every server. */
     val serverIds: Set<String> = emptySet(),
-    /** Only the person's favourites (see `isFavourite`); like the other filters, kept in memory only. */
+    /** Only the person's favourites (see `isFavourite`); kept across launches with the other filters. */
     val favouritesOnly: Boolean = false,
 )
 

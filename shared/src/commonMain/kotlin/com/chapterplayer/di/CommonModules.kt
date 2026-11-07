@@ -32,6 +32,7 @@ import com.chapterplayer.data.stats.RoomListeningLog
 import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.details.BookDetailsViewModel
+import com.chapterplayer.ui.details.CopyDescriptions
 import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.downloads.FinishedDownloadsViewModel
 import com.chapterplayer.ui.library.BookSelectionViewModel
@@ -264,13 +265,15 @@ val commonRepositoryModule = module {
 
 /** The filters shared by Home, Library and Search, and the merging of books several servers have. */
 val commonBrowseModule = module {
-    // In memory only. A deleted server drops out of the server choice.
+    // Kept across launches in AppSettings (the search text is not). A deleted server drops out of the server choice.
     single {
         BrowseQueryStore().also { store ->
             val serverIds = get<ServerRepository>().observeAll()
                 .map { list -> list.mapTo(mutableSetOf()) { it.id } }
                 .catch { e -> if (e is CancellationException) throw e }
             store.followServers(serverIds, get(AppScopeQualifier))
+            val settings = get<AppSettings>()
+            store.persist(settings.browseFilters, settings::setBrowseFilters, get(AppScopeQualifier))
         }
     }
     // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).
@@ -342,7 +345,10 @@ val commonViewModelModule = module {
             params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
             merging = get(), merges = get(), servers = get(), features = get(), favourites = get(), upNext = get(),
             quickActions = params.getOrNull<Boolean>() ?: false,
+            copyDescriptions = get(),
         ) }
+    // The other copies' descriptions a book details page asked for, kept for the app session.
+    single { CopyDescriptions() }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     // The player's Up next sheet.
     viewModel { UpNextViewModel(get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }

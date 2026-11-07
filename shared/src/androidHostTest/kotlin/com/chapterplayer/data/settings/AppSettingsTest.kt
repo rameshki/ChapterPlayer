@@ -44,6 +44,20 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `the Library filters and view are kept between launches`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertNull(settings.browseFilters.first())
+        assertNull(settings.libraryView.first())
+
+        settings.setBrowseFilters("""{"v":1,"sort":"TITLE"}""")
+        settings.setLibraryView("AUTHORS")
+
+        assertEquals("""{"v":1,"sort":"TITLE"}""", DataStoreAppSettings(store).browseFilters.first())
+        assertEquals("AUTHORS", DataStoreAppSettings(store).libraryView.first())
+    }
+
+    @Test
     fun `copies of a book keep their progress in step until switched off`() = runTest {
         val settings = DataStoreAppSettings(InMemoryPreferencesDataStore())
         assertEquals(true, settings.mirrorProgress.first())

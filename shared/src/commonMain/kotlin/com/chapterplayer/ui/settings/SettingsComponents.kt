@@ -14,7 +14,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.data.settings.ThemeMode
+import com.chapterplayer.ui.components.keyboardOverlapPadding
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -61,7 +62,7 @@ internal fun SettingsPage(
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
                         }
                     }
                 },
@@ -74,6 +75,9 @@ internal fun SettingsPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                // Edge to edge: the keyboard covers the page instead of shrinking it, so the scroll keeps a
+                // focused field (Diagnostics' search) above it.
+                .keyboardOverlapPadding()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = bottomPadding),
