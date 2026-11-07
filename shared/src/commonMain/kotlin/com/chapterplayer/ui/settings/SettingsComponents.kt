@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.chapterplayer.data.settings.ThemeMode
+import com.chapterplayer.ui.components.keyboardOverlapPadding
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -74,6 +75,9 @@ internal fun SettingsPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                // Edge to edge: the keyboard covers the page instead of shrinking it, so the scroll keeps a
+                // focused field (Diagnostics' search) above it.
+                .keyboardOverlapPadding()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = bottomPadding),

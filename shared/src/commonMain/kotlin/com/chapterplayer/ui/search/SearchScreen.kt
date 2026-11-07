@@ -41,6 +41,7 @@ import com.chapterplayer.domain.browse.sourcesDescription
 import com.chapterplayer.domain.browse.sourcesMark
 import com.chapterplayer.ui.components.BookCard
 import com.chapterplayer.ui.components.EmptyState
+import com.chapterplayer.ui.components.keyboardOverlapPadding
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
@@ -73,7 +74,8 @@ fun SearchScreen(
     val snackbar = remember { SnackbarHostState() }
 
     Box(modifier = Modifier.fillMaxSize()) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Edge to edge: without this the keyboard covers the lower results, which then cannot be scrolled into view.
+    Column(modifier = Modifier.fillMaxSize().keyboardOverlapPadding()) {
         TopAppBar(
             title = { Text("Search", style = MaterialTheme.typography.headlineSmall) },
             actions = { SettingsAction(onOpenSettings) },
