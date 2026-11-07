@@ -64,6 +64,14 @@ interface AppSettings {
     /** Whether the copies of a book on several servers keep their progress in step (on by default). */
     val mirrorProgress: Flow<Boolean>
     suspend fun setMirrorProgress(enabled: Boolean)
+
+    /** The Library filters and sort as `encodeBrowseQuery` writes them (never the search text); null until first changed. */
+    val browseFilters: Flow<String?>
+    suspend fun setBrowseFilters(encoded: String)
+
+    /** The Library tab's last view (`LibraryView` name: Library, Authors, …); null until first chosen. */
+    val libraryView: Flow<String?>
+    suspend fun setLibraryView(name: String)
 }
 
 class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSettings {
@@ -82,6 +90,8 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val downloadSourceChoice = stringPreferencesKey("download_source_choice")
         val playSourceChoice = stringPreferencesKey("play_source_choice")
         val mirrorProgress = booleanPreferencesKey("mirror_progress")
+        val browseFilters = stringPreferencesKey("browse_filters")
+        val libraryView = stringPreferencesKey("library_view")
     }
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
@@ -119,6 +129,10 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val mirrorProgress: Flow<Boolean> = prefs.map { it[Keys.mirrorProgress] ?: true }
 
+    override val browseFilters: Flow<String?> = prefs.map { it[Keys.browseFilters] }
+
+    override val libraryView: Flow<String?> = prefs.map { it[Keys.libraryView] }
+
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
@@ -148,4 +162,6 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         }
     }
     override suspend fun setMirrorProgress(enabled: Boolean) { store.edit { it[Keys.mirrorProgress] = enabled } }
+    override suspend fun setBrowseFilters(encoded: String) { store.edit { it[Keys.browseFilters] = encoded } }
+    override suspend fun setLibraryView(name: String) { store.edit { it[Keys.libraryView] = name } }
 }

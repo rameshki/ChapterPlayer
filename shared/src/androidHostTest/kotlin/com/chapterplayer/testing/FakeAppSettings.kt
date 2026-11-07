@@ -66,4 +66,16 @@ class FakeAppSettings(
         if (failOnSet) error("storage unavailable")
         mirrorProgressFlow.value = enabled
     }
+    val browseFiltersFlow = MutableStateFlow<String?>(null)
+    override val browseFilters: Flow<String?> = browseFiltersFlow
+    override suspend fun setBrowseFilters(encoded: String) {
+        if (failOnSet) error("storage unavailable")
+        browseFiltersFlow.value = encoded
+    }
+    val libraryViewFlow = MutableStateFlow<String?>(null)
+    override val libraryView: Flow<String?> = libraryViewFlow
+    override suspend fun setLibraryView(name: String) {
+        if (failOnSet) error("storage unavailable")
+        libraryViewFlow.value = name
+    }
 }

@@ -264,13 +264,15 @@ val commonRepositoryModule = module {
 
 /** The filters shared by Home, Library and Search, and the merging of books several servers have. */
 val commonBrowseModule = module {
-    // In memory only. A deleted server drops out of the server choice.
+    // Kept across launches in AppSettings (the search text is not). A deleted server drops out of the server choice.
     single {
         BrowseQueryStore().also { store ->
             val serverIds = get<ServerRepository>().observeAll()
                 .map { list -> list.mapTo(mutableSetOf()) { it.id } }
                 .catch { e -> if (e is CancellationException) throw e }
             store.followServers(serverIds, get(AppScopeQualifier))
+            val settings = get<AppSettings>()
+            store.persist(settings.browseFilters, settings::setBrowseFilters, get(AppScopeQualifier))
         }
     }
     // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).

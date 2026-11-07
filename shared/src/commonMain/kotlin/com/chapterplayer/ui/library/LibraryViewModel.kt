@@ -31,11 +31,13 @@ import com.chapterplayer.domain.browse.serverFilterOptions
 import com.chapterplayer.domain.browse.toggleServer
 import com.chapterplayer.domain.browse.ServerFilterOption
 import com.chapterplayer.ui.browse.observeBrowseItems
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -54,10 +56,25 @@ class LibraryViewModel(
     favourites: FavouritesRepository = NoFavourites,
 ) : ViewModel() {
 
-    // Kept in the saved state so the chosen view comes back after the process was killed.
-    private val _view = MutableStateFlow(
-        LibraryView.entries.firstOrNull { it.name == savedState.get<String>(VIEW_KEY) } ?: LibraryView.LIBRARY
-    )
+    // Kept in the saved state so the chosen view comes back after the process was killed, and in the settings so it
+    // comes back on the next launch too.
+    private val savedView = LibraryView.entries.firstOrNull { it.name == savedState.get<String>(VIEW_KEY) }
+    private val _view = MutableStateFlow(savedView ?: LibraryView.LIBRARY)
+    private var viewChosenHere = false
+
+    init {
+        if (savedView == null) viewModelScope.launch {
+            val stored = try {
+                settings.libraryView.first()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            val view = LibraryView.entries.firstOrNull { it.name == stored }
+            if (view != null && !viewChosenHere) _view.value = view
+        }
+    }
 
     /** What the lists show, worked out off the main thread. */
     private class Content(
@@ -141,8 +158,18 @@ class LibraryViewModel(
     // User actions
 
     fun onViewSelected(view: LibraryView) {
+        viewChosenHere = true
         savedState[VIEW_KEY] = view.name
         _view.value = view
+        viewModelScope.launch {
+            try {
+                settings.setLibraryView(view.name)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Not kept for the next launch this time; the view still changes now.
+            }
+        }
     }
 
     fun onLayoutSelected(layout: LibraryLayout) {

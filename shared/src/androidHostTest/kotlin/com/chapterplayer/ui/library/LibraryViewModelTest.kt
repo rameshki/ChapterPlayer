@@ -115,6 +115,49 @@ class LibraryViewModelTest {
 
     private fun library(vararg books: AudioBook) = Setup(FakeBookRepository(books.toList()))
 
+    private fun vmWith(settings: FakeAppSettings, savedState: SavedStateHandle = SavedStateHandle()): LibraryViewModel {
+        val books = FakeBookRepository()
+        val servers = FakeServerList(listOf(testServer()))
+        val coordinator = LibrarySyncCoordinator(books, servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher()))
+        return LibraryViewModel(books, servers, FakeDownloadStates(), BrowseQueryStore(), FakeMonitor(), settings, coordinator, Dispatchers.Main, savedState)
+    }
+
+    @Test
+    fun `the view chosen on an earlier launch comes back`() = runTest {
+        val settings = FakeAppSettings().apply { libraryViewFlow.value = LibraryView.SERIES.name }
+        val vm = vmWith(settings)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        assertEquals(LibraryView.SERIES, vm.uiState.value.view)
+    }
+
+    @Test
+    fun `choosing a view keeps it for the next launch`() = runTest {
+        val settings = FakeAppSettings()
+        val vm = vmWith(settings)
+        vm.onViewSelected(LibraryView.AUTHORS)
+        assertEquals(LibraryView.AUTHORS.name, settings.libraryViewFlow.value)
+    }
+
+    @Test
+    fun `an unknown stored view and a failed save leave the Library view working`() = runTest {
+        val unknown = vmWith(FakeAppSettings().apply { libraryViewFlow.value = "SHELVES" })
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { unknown.uiState.collect {} }
+        assertEquals(LibraryView.LIBRARY, unknown.uiState.value.view)
+
+        val failing = vmWith(FakeAppSettings(failOnSet = true))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { failing.uiState.collect {} }
+        failing.onViewSelected(LibraryView.NARRATORS)
+        assertEquals(LibraryView.NARRATORS, failing.uiState.value.view)
+    }
+
+    @Test
+    fun `the view in the saved state wins over the stored one`() = runTest {
+        val settings = FakeAppSettings().apply { libraryViewFlow.value = LibraryView.SERIES.name }
+        val vm = vmWith(settings, SavedStateHandle(mapOf("library_view" to LibraryView.COLLECTIONS.name)))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        assertEquals(LibraryView.COLLECTIONS, vm.uiState.value.view)
+    }
+
     @Test
     fun `the state is loading until the data arrives`() {
         assertTrue(library().vm.uiState.value.isLoading)
