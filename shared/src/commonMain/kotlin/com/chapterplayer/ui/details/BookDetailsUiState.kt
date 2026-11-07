@@ -73,4 +73,8 @@ data class BookDetailsUiState(
     val favouriteCopyIds: List<String> = emptyList(),
     /** "Mark as finished" or "Mark as not finished", from the entry's progress (the copy played last). */
     val mark: com.chapterplayer.domain.playback.MarkAction = com.chapterplayer.domain.playback.MarkAction.MarkFinished,
+    /** The book (any copy) is in Up next. */
+    val inUpNext: Boolean = false,
+    /** The book (any copy) is the one in the player: it cannot be queued. */
+    val inPlayer: Boolean = false,
 )

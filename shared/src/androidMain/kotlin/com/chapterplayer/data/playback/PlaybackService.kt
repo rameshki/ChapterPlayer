@@ -105,6 +105,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
             playback = playbackController,
             scope = scope,
             merging = get(),
+            upNext = get(),
         )
         val builder = MediaLibrarySession.Builder(this, sessionPlayer, callback)
         if (openApp != null) builder.setSessionActivity(openApp)

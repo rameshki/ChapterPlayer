@@ -64,11 +64,31 @@ class HomeViewModelTest {
         val settings = FakeAppSettings()
         val controller = FakePlaybackController()
         val favs = com.chapterplayer.data.favourites.InMemoryFavourites()
+        val queue = com.chapterplayer.data.upnext.InMemoryUpNext()
         val vm = HomeViewModel(
             books, servers, downloads, store, monitor, settings, coordinator,
             PlaybackStarter(controller, books, settings, monitor, FakeLocalBookFiles()), Dispatchers.Main,
             favourites = favs,
+            upNext = queue,
         )
+    }
+
+    @Test
+    fun `the up next shelf follows the queue and is empty without one`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 2), longBook("b", addedAt = 1))))
+        val state = collect(s)
+        assertEquals(emptyList(), state().upNext)
+        s.queue.ids.value = listOf("b", "gone", "a")
+        assertEquals(listOf("b", "a"), state().upNext.map { it.book.id })
+    }
+
+    @Test
+    fun `the up next shelf ignores the filters`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("a"), longBook("b"))))
+        s.queue.ids.value = listOf("a")
+        val state = collect(s)
+        s.store.update { it.copy(favouritesOnly = true) }
+        assertEquals(listOf("a"), state().upNext.map { it.book.id })
     }
 
     @Test

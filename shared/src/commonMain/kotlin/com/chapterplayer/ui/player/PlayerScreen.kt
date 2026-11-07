@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.History
@@ -145,6 +146,7 @@ private const val SHEET_SLEEP = 2
 private const val SHEET_CHAPTERS = 3
 private const val SHEET_BOOKMARKS = 4
 private const val SHEET_HISTORY = 5
+private const val SHEET_UP_NEXT = 6
 
 /** The screen from state and callbacks only. */
 @Composable
@@ -170,7 +172,9 @@ fun PlayerContent(
     onDeleteBookmark: (String, Long) -> Unit,
     onJumpTo: (Long) -> Unit,
     onDismissError: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The Up next sheet (its own view model); a stand-in can be passed where there is none. */
+    upNextSheet: @Composable (onDismiss: () -> Unit) -> Unit = { UpNextSheet(onDismiss = it) },
 ) {
     var sheet by rememberSaveable { mutableStateOf(SHEET_NONE) }
 
@@ -243,6 +247,7 @@ fun PlayerContent(
             ToolButton(Icons.Default.Bedtime, state.sleepLabel, "Sleep timer", Modifier.weight(1f)) { sheet = SHEET_SLEEP }
             ToolButton(Icons.Default.Bookmark, "Bookmarks", "Bookmarks", Modifier.weight(1f)) { sheet = SHEET_BOOKMARKS }
             ToolButton(Icons.Default.History, "History", "History", Modifier.weight(1f)) { sheet = SHEET_HISTORY }
+            ToolButton(Icons.AutoMirrored.Filled.QueueMusic, "Up next", "Up next", Modifier.weight(1f)) { sheet = SHEET_UP_NEXT }
         }
         }
         Column(modifier = Modifier.fillMaxSize()) {
@@ -308,6 +313,7 @@ fun PlayerContent(
             bookmarks, state.positionMs, onAddBookmark, onRenameBookmark, onDeleteBookmark, onJumpTo
         ) { sheet = SHEET_NONE }
         SHEET_HISTORY -> HistorySheet(history, onJumpTo) { sheet = SHEET_NONE }
+        SHEET_UP_NEXT -> upNextSheet { sheet = SHEET_NONE }
     }
 }
 

@@ -116,7 +116,7 @@ fun BookActionsHost(
         BookActionsMode.CLOSED -> Unit
         BookActionsMode.ACTIONS -> BookActionsSheet(
             state = state,
-            items = bookActionItems(state, downloads),
+            items = bookActionItems(state, downloads, upNextAvailable = LocalPlatformFeatures.current.playback),
             onDismiss = actions::close,
             onItem = { item ->
                 actions.mode = afterAction(item, viewModel, bookId, onOpenBook, onOpenGroup, state)
@@ -176,6 +176,10 @@ private fun afterAction(
     fun choose(opened: Boolean) = if (opened) BookActionsMode.CHOOSE_COPY else BookActionsMode.CLOSED
     return when (item.kind) {
         BookActionKind.PLAY -> choose(viewModel.onQuickPlay())
+        BookActionKind.PLAY_NEXT -> BookActionsMode.CLOSED.also { viewModel.onUpNextClicked(front = true) }
+        BookActionKind.UP_NEXT -> BookActionsMode.CLOSED.also {
+            if (state.inUpNext) viewModel.onRemoveFromUpNextClicked() else viewModel.onUpNextClicked(front = false)
+        }
         BookActionKind.FAVOURITE -> BookActionsMode.CLOSED.also { viewModel.onFavouriteClicked() }
         BookActionKind.MARK -> BookActionsMode.CLOSED.also { viewModel.onMarkClicked() }
         BookActionKind.DOWNLOAD -> when (item.downloadPhase) {

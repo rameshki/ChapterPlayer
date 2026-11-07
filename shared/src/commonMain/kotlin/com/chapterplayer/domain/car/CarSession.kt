@@ -281,7 +281,7 @@ fun carItemFor(id: String, data: CarData, online: Boolean, nowPlaying: CarNowPla
     }
     val parent = when (node.kind) {
         "root" -> return if (node.arg == null) carRootItem() else null
-        "continue", "recent", "library", "downloaded" -> "root"
+        "continue", "upnext", "recent", "library", "downloaded" -> "root"
         "series", "all" -> if (node.arg == null) "library" else node.kind
         "authors", "collections" -> if (node.arg == null) "library" else return null
         "author" -> "authors"

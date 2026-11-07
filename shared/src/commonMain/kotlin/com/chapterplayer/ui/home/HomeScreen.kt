@@ -124,7 +124,7 @@ fun HomeScreen(
         }
 
         val nothingToShow = state.resume == null && state.continueSeries.isEmpty() &&
-            state.inProgress.isEmpty() && state.recentlyAdded.isEmpty() && state.favourites.isEmpty()
+            state.inProgress.isEmpty() && state.recentlyAdded.isEmpty() && state.favourites.isEmpty() && state.upNext.isEmpty()
         when {
             state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = AmberGold)
@@ -217,6 +217,12 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
             Spacer(Modifier.height(24.dp))
         }
 
+        // The person's own queue, in its order, right after the book being listened to.
+        if (state.upNext.isNotEmpty()) {
+            BookShelf("Up next", state.upNext, state, onBookClick, onBookLongClick)
+            Spacer(Modifier.height(24.dp))
+        }
+
         if (state.continueSeries.isNotEmpty()) {
             Text(
                 text = "Continue Series",
@@ -281,7 +287,7 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
     }
 }
 
-/** A titled row of book tiles (Recently added, Favourites). */
+/** A titled row of book tiles (Up next, Recently added, Favourites). */
 @Composable
 private fun BookShelf(
     title: String,

@@ -22,11 +22,14 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavController
@@ -49,6 +52,7 @@ import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import com.chapterplayer.domain.playback.OpenPlayerRequest
+import com.chapterplayer.data.playback.UpNextNotices
 import com.chapterplayer.ui.player.MiniPlayer
 import com.chapterplayer.ui.components.LocalHaptics
 import com.chapterplayer.ui.components.LocalTextClipboard
@@ -353,6 +357,14 @@ fun AppNavigation() {
                         openRequest.drop()
                     }
                 }
+
+                // What Up next did by itself (a book skipped, a start that failed) shows over whatever screen is open.
+                val upNextNotices = koinInject<UpNextNotices>()
+                val noticeHost = remember { SnackbarHostState() }
+                LaunchedEffect(upNextNotices) {
+                    upNextNotices.messages.collect { noticeHost.showSnackbar(it) }
+                }
+                SnackbarHost(noticeHost, modifier = Modifier.align(Alignment.BottomCenter))
             }
         }
     }

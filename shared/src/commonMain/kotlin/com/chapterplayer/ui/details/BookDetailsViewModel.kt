@@ -50,6 +50,14 @@ import com.chapterplayer.domain.browse.favouriteRowIds
 import com.chapterplayer.domain.browse.isFavourite
 import com.chapterplayer.data.favourites.FavouritesRepository
 import com.chapterplayer.data.favourites.NoFavourites
+import com.chapterplayer.data.upnext.NoUpNext
+import com.chapterplayer.data.upnext.UpNextRepository
+import com.chapterplayer.domain.playback.UP_NEXT_ERROR_TEXT
+import com.chapterplayer.domain.playback.UP_NEXT_REMOVED_TEXT
+import com.chapterplayer.domain.playback.UpNextOutcome
+import com.chapterplayer.domain.playback.editUpNext
+import com.chapterplayer.domain.playback.removeFromUpNext
+import com.chapterplayer.domain.playback.upNextOutcomeText
 import com.chapterplayer.domain.playback.startPositionFor
 import com.chapterplayer.ui.browse.observeBrowseItems
 import kotlinx.coroutines.CancellationException
@@ -94,6 +102,8 @@ class BookDetailsViewModel(
     /** Without playback (iOS until Stage 5 step 4) Play is off with the reason; without downloads, Download is. */
     private val features: PlatformFeatures = PlatformFeatures.Full,
     private val favourites: FavouritesRepository = NoFavourites,
+    /** Up next: Play next and Add to Up next. */
+    private val upNext: UpNextRepository = NoUpNext,
     /**
      * Built for the book long-press menu (`BookActionsSheet`) rather than the page: nothing is fetched from the server on
      * open, and the results of the actions are reported through [message] for a snackbar.
@@ -204,16 +214,20 @@ class BookDetailsViewModel(
         Env(player, local, online, downloadedOnly, download.first, download.second)
     }
 
-    private val wholeAndExtras = combine(whole, extras, favourites.favouriteIds) { w, x, f -> Triple(w, x, f) }
+    /** The stored favourites and the Up next rows (by book id). */
+    private class Marks(val favouriteIds: Set<String>, val queue: List<String>)
+
+    private val wholeAndExtras = combine(whole, extras, combine(favourites.favouriteIds, upNext.queue, ::Marks)) { w, x, m -> Triple(w, x, m) }
 
     private val _message = MutableStateFlow<String?>(null)
 
-    /** The result of a long-press menu action, for a snackbar (only with `quickActions`); see [onMessageShown]. */
+    /** The result of a long-press menu action (only with `quickActions`) or of an Up next action, for a snackbar; see [onMessageShown]. */
     val message: StateFlow<String?> = _message
 
     val uiState: StateFlow<BookDetailsUiState> = combine(
         wholeAndExtras, books.observeProgress(bookId), live, selectedTab, env
-    ) { (whole, extras, favouriteIds), progress, live, tab, env ->
+    ) { (whole, extras, marks), progress, live, tab, env ->
+        val favouriteIds = marks.favouriteIds
         val book = whole.book
         if (book == null) {
             BookDetailsUiState(phase = DetailsPhase.NOT_FOUND, selectedTab = tab)
@@ -333,6 +347,8 @@ class BookDetailsViewModel(
                 favouriteCopyIds = entry?.let(::favouriteRowIds) ?: listOf(bookId),
                 // The entry's progress is the copy played last, as the tiles show it.
                 mark = markActionFor(entry?.progress ?: progress),
+                inUpNext = (entry?.let(::favouriteRowIds) ?: listOf(bookId)).let { copies -> marks.queue.any { it in copies } },
+                inPlayer = loaded,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookDetailsUiState())
@@ -704,6 +720,47 @@ class BookDetailsViewModel(
         }
     }
 
+    /**
+     * "Play next" ([front]) or "Add to Up next": queues the whole entry (every copy of a merged book counts as one); the
+     * book in the player is never queued. The result is reported for a snackbar, on the page as in the long-press menu.
+     */
+    fun onUpNextClicked(front: Boolean) {
+        val state = uiState.value
+        if (state.book == null) return
+        val copies = state.entry?.let(::favouriteRowIds) ?: listOf(bookId)
+        // The page's own copy is the row stored, so the queue shows the book as it was chosen.
+        val ids = listOf(bookId) + copies.filter { it != bookId }
+        val loadedId = controller.state.value.bookId
+        viewModelScope.launch {
+            try {
+                var outcome = UpNextOutcome.ALREADY_QUEUED
+                upNext.edit { queue -> editUpNext(queue, ids, loadedId, front).also { outcome = it.outcome }.queue }
+                announce(upNextOutcomeText(outcome))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                announce(UP_NEXT_ERROR_TEXT)
+            }
+        }
+    }
+
+    /** "Remove from Up next": every row of the entry leaves the queue. */
+    fun onRemoveFromUpNextClicked() {
+        val state = uiState.value
+        if (state.book == null) return
+        val copies = state.entry?.let(::favouriteRowIds) ?: listOf(bookId)
+        viewModelScope.launch {
+            try {
+                upNext.edit { queue -> removeFromUpNext(queue, copies + bookId) }
+                announce(UP_NEXT_REMOVED_TEXT)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                announce(UP_NEXT_ERROR_TEXT)
+            }
+        }
+    }
+
     /** The long-press menu's Play / Resume / Pause (the Play rule of this page). True when it opened the "Play from" sheet. */
     fun onQuickPlay(): Boolean {
         // A sheet left from an earlier menu (it never showed) must not pass for one this tap opened.
@@ -733,6 +790,11 @@ class BookDetailsViewModel(
     // Only the long-press menu reports results; the page shows them in its own controls.
     private fun report(text: String) {
         if (quickActions) _message.value = text
+    }
+
+    // Up next has no control of its own that shows the result, so the page gets the snackbar too.
+    private fun announce(text: String) {
+        _message.value = text
     }
 
     fun selectTab(tab: DetailsTab) {
