@@ -655,7 +655,7 @@ class EnginePlaybackController(
             chapters = current.chapters,
             sleepRemainingMs = null,
             error = error,
-        ).copy(playWhenReady = engine.playWhenReady || reopening?.isActive == true)
+        ).copy(playWhenReady = engine.playWhenReady || reopening?.isActive == true, ended = engine.ended)
         loaded.seen(book.positionMs)
         val remaining = sleep.remainingMs(book.positionMs, book.chapters, speed)
         _state.value = book.copy(sleepRemainingMs = remaining)

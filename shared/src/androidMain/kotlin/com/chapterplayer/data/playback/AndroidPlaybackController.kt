@@ -356,7 +356,7 @@ class AndroidPlaybackController(
             chapters = current.chapters,
             sleepRemainingMs = null,
             error = error,
-        ).copy(playWhenReady = player.playWhenReady)
+        ).copy(playWhenReady = player.playWhenReady, ended = player.playbackState == Player.STATE_ENDED)
         loaded.seen(book.positionMs)
         val remaining = sleep.remainingMs(book.positionMs, book.chapters, speed)
         _state.value = book.copy(sleepRemainingMs = remaining)

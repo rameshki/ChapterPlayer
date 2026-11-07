@@ -391,6 +391,20 @@ class RoomSchemaTest {
         }
     }
 
+    private val database15: JsonObject by lazy { load(15) }
+
+    @Test
+    fun `version 15 adds the up_next table and leaves the other tables as they were`() {
+        assertEquals(15, database15.getValue("version").jsonPrimitive.int)
+        assertEquals(tables(database14) + "up_next", tables(database15))
+        assertEquals(mapOf("bookId" to "TEXT", "position" to "INTEGER", "addedAt" to "INTEGER"), columns("up_next", database15))
+        assertEquals(listOf("bookId"), primaryKey("up_next", database15))
+        for (table in tables(database14)) {
+            assertEquals(columns(table, database14), columns(table, database15), "$table columns")
+            assertEquals(primaryKey(table, database14), primaryKey(table, database15), "$table primary key")
+        }
+    }
+
     @Test
     fun `version 12 leaves the other tables as they were`() {
         for (table in tables(database11) - "progress") {

@@ -5,6 +5,7 @@ import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.IosPathProvider
 import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
+import com.chapterplayer.data.playback.UpNextAdvancer
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.connectivity.IosConnectivityMonitor
 import com.chapterplayer.data.downloads.DownloadLengthFiller
@@ -120,6 +121,7 @@ private fun startAppWide(koin: Koin) {
     koin.get<ProgressSyncer>().start()
     koin.get<ProgressMirrorPusher>().start()
     koin.get<HistoryRecorder>().start()
+    koin.get<UpNextAdvancer>().start()
     koin.get<ListeningRecorder>().start()
     koin.get<PlexConnectionManager>().watchNetwork(scope, network)
     koin.get<LibrarySyncCoordinator>().start()
