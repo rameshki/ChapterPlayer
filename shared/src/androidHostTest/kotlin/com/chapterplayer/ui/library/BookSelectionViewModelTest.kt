@@ -14,6 +14,9 @@ import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeConnectivity
 import com.chapterplayer.testing.FakeDownloadController
+import com.chapterplayer.testing.FakeDownloadOverview
+import com.chapterplayer.testing.downloadRow
+import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.testing.FakeNotificationPermission
 import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.testBook
@@ -55,11 +58,17 @@ class BookSelectionViewModelTest {
         val notifications = FakeNotificationPermission()
         val player = FakePlaybackController()
         val connectivity = FakeConnectivity()
-        val favs = InMemoryFavourites(favourites)
+        val favsStore = InMemoryFavourites(favourites)
         val upNext = InMemoryUpNext(queue)
         val contextFlow = MutableStateFlow(context)
+        val overview = FakeDownloadOverview()
+        var writes = 0
+        val favs = object : com.chapterplayer.data.favourites.FavouritesRepository by favsStore {
+            override suspend fun add(bookIds: Collection<String>) { writes++; favsStore.add(bookIds) }
+            override suspend fun remove(bookIds: Collection<String>) { writes++; favsStore.remove(bookIds) }
+        }
         fun vm(dispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Main) = BookSelectionViewModel(
-            repo, downloads, notifications, player, connectivity, dispatcher,
+            repo, downloads, notifications, player, connectivity, dispatcher, overview = overview,
             merging = object : SourceMerging { override val context = contextFlow },
             favourites = favs, upNext = upNext,
         )
@@ -178,14 +187,16 @@ class BookSelectionViewModelTest {
         assertEquals(BulkAction.ADD_FAVOURITES, vm.uiState.value.favouriteAction)
         vm.run(BulkAction.ADD_FAVOURITES)
         advanceUntilIdle()
-        assertEquals(setOf("a", "b"), s.favs.ids.value)
+        assertEquals(setOf("a", "b"), s.favsStore.ids.value)
         assertEquals("Added 1 book to favourites. 1 already were", vm.message.value)
         vm.start()
         vm.selectAll()
         assertEquals(BulkAction.REMOVE_FAVOURITES, vm.uiState.value.favouriteAction)
         vm.run(BulkAction.REMOVE_FAVOURITES)
         advanceUntilIdle()
-        assertEquals(emptySet(), s.favs.ids.value)
+        assertEquals(emptySet(), s.favsStore.ids.value)
+        // One write for the whole selection each time, not one per book.
+        assertEquals(2, s.writes)
     }
 
     @Test
@@ -227,13 +238,14 @@ class BookSelectionViewModelTest {
         vm.start()
         vm.selectAll()
         vm.run(BulkAction.REMOVE_DOWNLOAD)
-        assertEquals(2, vm.uiState.value.confirmRemoveCount)
+        assertEquals(2, vm.uiState.value.confirm?.count)
+        assertEquals("Remove 2 downloads?", vm.uiState.value.confirm?.title)
         assertTrue(s.downloads.calls.isEmpty())
-        vm.confirmRemoveDownloads()
+        vm.confirmPending()
         advanceUntilIdle()
         assertEquals(listOf("remove a", "remove c"), s.downloads.calls)
         assertEquals("Removed 2 downloads. 1 had no download", vm.message.value)
-        assertNull(vm.uiState.value.confirmRemoveCount)
+        assertNull(vm.uiState.value.confirm)
     }
 
     @Test
@@ -266,5 +278,101 @@ class BookSelectionViewModelTest {
         advanceUntilIdle()
         assertEquals(1000, s.repo.markCalls.size)
         assertEquals("Marked 1000 books as finished", vm.message.value)
+    }
+
+    @Test
+    fun `download resumes paused and failed downloads by their real status and remove takes partial ones`() = runTest {
+        val s = Setup()
+        // The list reads both as DOWNLOADING; the rows say paused and failed.
+        s.overview.rows.value = listOf(
+            downloadRow("p", DownloadStatus.PAUSED), downloadRow("f", DownloadStatus.FAILED), downloadRow("r", DownloadStatus.DOWNLOADING),
+        )
+        val vm = s.vm()
+        val items = listOf(
+            item("p", download = DownloadState.DOWNLOADING), item("f", download = DownloadState.DOWNLOADING),
+            item("r", download = DownloadState.DOWNLOADING), item("n"),
+        )
+        vm.onItemsChanged(items)
+        vm.start()
+        vm.selectAll()
+        vm.run(BulkAction.DOWNLOAD)
+        advanceUntilIdle()
+        assertEquals(listOf("resume p", "resume f", "enqueue n"), s.downloads.calls)
+        assertEquals("Downloading 3 books. 2 of them carry on where they stopped. 1 already downloaded or on its way", vm.message.value)
+        s.downloads.calls.clear()
+        vm.start()
+        vm.selectAll()
+        vm.run(BulkAction.REMOVE_DOWNLOAD)
+        advanceUntilIdle()
+        vm.confirmPending()
+        advanceUntilIdle()
+        assertEquals(listOf("remove p", "remove f", "remove r"), s.downloads.calls)
+    }
+
+    @Test
+    fun `download leaves merged books out while the download choice is not known`() = runTest {
+        val s = Setup(context = null)
+        val vm = s.vm()
+        val merged = item("m").let { it.copy(sources = listOf(it, item("x", "plex1"))) }
+        vm.onItemsChanged(listOf(item("a"), merged))
+        vm.start()
+        vm.selectAll()
+        vm.run(BulkAction.DOWNLOAD)
+        advanceUntilIdle()
+        assertEquals(listOf("enqueue a"), s.downloads.calls)
+    }
+
+    @Test
+    fun `mark as not finished asks first above five books and counts only finished ones`() = runTest {
+        val s = Setup()
+        val vm = s.vm()
+        vm.onItemsChanged((1..6).map { item("f$it", finished = true) } + item("open", finished = false))
+        vm.start()
+        vm.selectAll()
+        vm.run(BulkAction.MARK_NOT_FINISHED)
+        advanceUntilIdle()
+        assertEquals("Mark 6 books as not finished?", vm.uiState.value.confirm?.title)
+        assertTrue(s.repo.markCalls.isEmpty())
+        vm.dismissPending()
+        assertNull(vm.uiState.value.confirm)
+        assertTrue(vm.uiState.value.active)
+        vm.run(BulkAction.MARK_NOT_FINISHED)
+        advanceUntilIdle()
+        vm.confirmPending()
+        advanceUntilIdle()
+        assertEquals(6, s.repo.markCalls.size)
+        assertEquals("Marked 6 books as not finished. 1 already were", vm.message.value)
+    }
+
+    @Test
+    fun `five books or fewer are marked not finished without a question`() = runTest {
+        val s = Setup()
+        val vm = s.vm()
+        vm.onItemsChanged((1..5).map { item("f$it", finished = true) })
+        vm.start()
+        vm.selectAll()
+        vm.run(BulkAction.MARK_NOT_FINISHED)
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.confirm)
+        assertEquals(5, s.repo.markCalls.size)
+    }
+
+    @Test
+    fun `progress is announced only every tenth of the way`() = runTest {
+        val s = Setup()
+        val gate = CompletableDeferred<Unit>()
+        s.repo.onMarkFinished = { id, _ -> if (id == "b51") gate.await(); Result.success(MarkOutcome.SYNCED) }
+        val vm = s.vm(StandardTestDispatcher(testScheduler))
+        vm.onItemsChanged((1..100).map { item("b$it") })
+        vm.start()
+        vm.selectAll()
+        vm.run(BulkAction.MARK_FINISHED)
+        advanceUntilIdle()
+        val state = vm.uiState.value
+        // Three at a time: b51 holds one worker, the others run on to the end.
+        assertTrue(state.progress!!.done in 50..99)
+        assertEquals("Marking ${state.progress!!.done / 10 * 10} of 100…", state.announcement)
+        gate.complete(Unit)
+        advanceUntilIdle()
     }
 }

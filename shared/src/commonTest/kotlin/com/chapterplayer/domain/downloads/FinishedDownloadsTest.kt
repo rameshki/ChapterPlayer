@@ -71,6 +71,26 @@ class FinishedDownloadsTest {
     }
 
     @Test
+    fun `the book up next will really play stays even when the first row cannot play now`() {
+        // Offline: the first queued book streams only, so Up next would start the second, a downloaded re-listen.
+        val streaming = item("s", finished = false).copy(downloadState = com.chapterplayer.data.model.DownloadState.NOT_DOWNLOADED)
+        val items = listOf(streaming, item("b", finished = true), item("c", finished = true))
+        val done = mapOf("b" to gb, "c" to gb)
+        val pick = finishedDownloadsToRemove(items, done, null, upNextQueue = listOf("s", "b", "c"),
+            canPlay = { it.downloadState == com.chapterplayer.data.model.DownloadState.DOWNLOADED })
+        assertEquals(listOf("c"), pick.bookIds)
+    }
+
+    @Test
+    fun `a queued book that is loaded already does not use up the protection`() {
+        val items = listOf(item("a", finished = true), item("b", finished = true), item("c", finished = true))
+        val done = mapOf("a" to gb, "b" to gb, "c" to gb)
+        // "a" is loaded (it heads the queue until it plays); "b" plays after it and stays too.
+        val pick = finishedDownloadsToRemove(items, done, loadedBookId = "a", upNextQueue = listOf("a", "b", "c"))
+        assertEquals(listOf("c"), pick.bookIds)
+    }
+
+    @Test
     fun `the question names the count and the space`() {
         assertEquals("Remove 7 downloads and free 3.4 GB?", removeFinishedQuestion(FinishedDownloads(List(7) { "b$it" }, 3_400_000_000L)))
         assertEquals("Remove 1 download and free 350 MB?", removeFinishedQuestion(FinishedDownloads(listOf("a"), 350_000_000L)))

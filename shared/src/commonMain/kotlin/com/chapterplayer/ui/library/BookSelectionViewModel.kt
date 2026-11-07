@@ -4,6 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.downloads.DownloadController
+import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.domain.browse.bulkConfirmText
+import com.chapterplayer.domain.browse.bulkConfirmTitle
+import com.chapterplayer.domain.browse.bulkMilestoneText
+import com.chapterplayer.domain.browse.bulkNeedsConfirmation
+import com.chapterplayer.domain.downloads.DownloadStatus
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import com.chapterplayer.data.favourites.FavouritesRepository
 import com.chapterplayer.data.favourites.NoFavourites
 import com.chapterplayer.data.merge.SourceMerging
@@ -51,20 +59,29 @@ data class BulkProgressUi(val action: BulkAction, val done: Int, val total: Int,
     val fraction: Float get() = if (total > 0) done.toFloat() / total else 0f
 }
 
+/** A question before a bulk action: [count] books (downloads for Remove download). */
+data class BulkConfirmUi(val action: BulkAction, val count: Int) {
+    val title: String get() = bulkConfirmTitle(action, count)
+    val text: String get() = bulkConfirmText(action)
+}
+
 /**
  * Selection mode of one book list. [selected] holds the selected entries by primary id; [favouriteAction] is Add or
- * Remove from favourites as the selection decides; [confirmRemoveCount] is set while "Remove N downloads?" asks.
+ * Remove from favourites as the selection decides; [confirm] is set while a question asks ("Remove N downloads?",
+ * "Mark N books as not finished?").
  */
 data class SelectionUiState(
     val active: Boolean = false,
     val selected: Set<String> = emptySet(),
     val favouriteAction: BulkAction = BulkAction.ADD_FAVOURITES,
     val progress: BulkProgressUi? = null,
-    val confirmRemoveCount: Int? = null,
+    val confirm: BulkConfirmUi? = null,
     val online: Boolean = true,
 ) {
     val count: Int get() = selected.size
     val title: String get() = progress?.text ?: selectionTitle(count)
+    /** The progress announced to accessibility services: the start and every tenth of the way, not every book. */
+    val announcement: String? get() = progress?.let { if (it.stopping) it.text else bulkMilestoneText(it.action, it.done, it.total) }
     val running: Boolean get() = progress != null
     val canAct: Boolean get() = count > 0 && !running
 }
@@ -84,7 +101,9 @@ class BookSelectionViewModel(
     private val player: PlaybackController,
     connectivity: ConnectivityMonitor,
     private val dispatcher: CoroutineDispatcher,
-    merging: SourceMerging = SourceMerging.None,
+    /** The real download status of each copy (the list's own state reads every unfinished download as DOWNLOADING). */
+    private val overview: DownloadOverview,
+    private val merging: SourceMerging = SourceMerging.None,
     private val favourites: FavouritesRepository = NoFavourites,
     private val upNext: UpNextRepository = NoUpNext,
 ) : ViewModel() {
@@ -93,13 +112,12 @@ class BookSelectionViewModel(
         val active: Boolean = false,
         val selected: Set<String> = emptySet(),
         val progress: BulkProgressUi? = null,
-        val confirmRemove: Int? = null,
+        val confirm: BulkConfirmUi? = null,
     )
 
     private val mode = MutableStateFlow(Mode())
     private val visible = MutableStateFlow<List<BrowseItem>>(emptyList())
     private val stopRequested = MutableStateFlow(false)
-    private val context: StateFlow<MergeContext?> = merging.context.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val favouriteIds: StateFlow<Set<String>> = favourites.favouriteIds.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
     private val online: StateFlow<Boolean> = connectivity.isOnline.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
@@ -116,7 +134,7 @@ class BookSelectionViewModel(
             favouriteAction = if (mode.active && mode.progress == null) bulkFavouriteAction(selectedEntries(items, mode.selected), favs)
             else BulkAction.ADD_FAVOURITES,
             progress = mode.progress,
-            confirmRemoveCount = mode.confirmRemove,
+            confirm = mode.confirm,
             online = isOnline,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, SelectionUiState())
@@ -124,7 +142,7 @@ class BookSelectionViewModel(
     /** The list as the screen shows it now (filtered and sorted). */
     fun onItemsChanged(items: List<BrowseItem>) {
         visible.value = items
-        mode.update { m -> if (m.selected.isEmpty()) m else Mode(m.active, pruneSelection(m.selected, items), m.progress, m.confirmRemove) }
+        mode.update { m -> if (m.selected.isEmpty()) m else Mode(m.active, pruneSelection(m.selected, items), m.progress, m.confirm) }
     }
 
     /** Selection mode on, with [entryId] selected (the long-press menu's "Select") or nothing (the top bar's button). */
@@ -137,12 +155,12 @@ class BookSelectionViewModel(
     }
 
     fun toggle(entryId: String) {
-        mode.update { m -> if (!m.active || m.progress != null) m else Mode(true, toggleSelected(m.selected, entryId), null, m.confirmRemove) }
+        mode.update { m -> if (!m.active || m.progress != null) m else Mode(true, toggleSelected(m.selected, entryId), null, m.confirm) }
     }
 
     /** Every entry of the list as shown. */
     fun selectAll() {
-        mode.update { m -> if (!m.active || m.progress != null) m else Mode(true, selectAllOf(visible.value), null, m.confirmRemove) }
+        mode.update { m -> if (!m.active || m.progress != null) m else Mode(true, selectAllOf(visible.value), null, m.confirm) }
     }
 
     /** Close (or Back): leaves selection mode. While an action runs it is Cancel instead. */
@@ -165,32 +183,49 @@ class BookSelectionViewModel(
         _message.value = null
     }
 
-    /** Runs [action] over the selection ("Remove download" asks first, see [confirmRemoveDownloads]). */
+    /**
+     * Runs [action] over the selection. "Remove download" asks first, and "Mark as not finished" when it would change
+     * more than five books (see [confirmPending]).
+     */
     fun run(action: BulkAction) {
         val m = mode.value
-        if (!m.active || m.progress != null || m.selected.isEmpty()) return
+        if (!m.active || m.progress != null || m.confirm != null || m.selected.isEmpty()) return
         val entries = selectedEntries(visible.value, m.selected)
         if (entries.isEmpty()) return
-        when (action) {
-            BulkAction.REMOVE_DOWNLOAD -> {
-                val count = bulkRemovePlan(entries).copyIds.size
-                if (count == 0) finish(bulkResultText(action, BulkTally(already = entries.size)))
-                else mode.value = Mode(true, m.selected, null, count)
+        viewModelScope.launch(dispatcher) {
+            val count = when (action) {
+                BulkAction.REMOVE_DOWNLOAD -> bulkRemovePlan(entries, statuses()).copyIds.size
+                BulkAction.MARK_NOT_FINISHED -> entries.count { !alreadyMarked(it, finished = false) }
+                else -> 0
             }
-            else -> launchRun(action, entries)
+            when {
+                action == BulkAction.REMOVE_DOWNLOAD && count == 0 -> finish(bulkResultText(action, BulkTally(already = entries.size)))
+                bulkNeedsConfirmation(action, count) -> mode.update { now -> Mode(now.active, now.selected, null, BulkConfirmUi(action, count)) }
+                else -> launchRun(action, entries)
+            }
         }
     }
 
-    fun confirmRemoveDownloads() {
+    /** The question's "Remove" / "Mark": runs the action it asked about. */
+    fun confirmPending() {
         val m = mode.value
-        if (m.confirmRemove == null) return
+        val pending = m.confirm ?: return
         mode.value = Mode(m.active, m.selected, null, null)
-        launchRun(BulkAction.REMOVE_DOWNLOAD, selectedEntries(visible.value, m.selected))
+        launchRun(pending.action, selectedEntries(visible.value, m.selected))
     }
 
-    fun dismissRemoveDownloads() {
+    fun dismissPending() {
         val m = mode.value
         mode.value = Mode(m.active, m.selected, null, null)
+    }
+
+    // The download rows' status by book id; empty when they cannot be read (then the list's own state decides).
+    private suspend fun statuses(): Map<String, DownloadStatus> = try {
+        overview.observe().first().associate { it.bookId to it.status }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        emptyMap()
     }
 
     private fun launchRun(action: BulkAction, entries: List<BrowseItem>) {
@@ -226,14 +261,19 @@ class BookSelectionViewModel(
         BulkAction.MARK_FINISHED -> runEach(action, entries, BULK_MARK_PARALLELISM) { mark(it, finished = true) }
         BulkAction.MARK_NOT_FINISHED -> runEach(action, entries, BULK_MARK_PARALLELISM) { mark(it, finished = false) }
         BulkAction.ADD_FAVOURITES, BulkAction.REMOVE_FAVOURITES -> {
+            // One write for the whole selection (every copy of each entry), so the lists follow once, not per book.
             val adding = action == BulkAction.ADD_FAVOURITES
-            val favs = favouriteIds.value
-            runEach(action, entries, 1) { entry ->
-                if (isFavourite(entry, favs) == adding) One.ALREADY
-                else attempt {
-                    if (adding) favourites.add(favouriteRowIds(entry)) else favourites.remove(favouriteRowIds(entry))
-                }
-            }
+            val favs = favourites.favouriteIds.first()
+            val change = entries.filter { isFavourite(it, favs) != adding }
+            val ids = change.flatMap(::favouriteRowIds).distinct()
+            val ok = ids.isEmpty() || attempt { if (adding) favourites.add(ids) else favourites.remove(ids) } == One.DONE
+            setProgress(BulkProgressUi(action, entries.size, entries.size))
+            BulkTally(
+                done = if (ok) change.size else 0,
+                already = entries.size - change.size,
+                failed = if (ok) 0 else change.size,
+                total = entries.size,
+            )
         }
         BulkAction.ADD_UP_NEXT -> {
             var result: BulkUpNextResult? = null
@@ -244,8 +284,10 @@ class BookSelectionViewModel(
             BulkTally(done = r.added, already = r.alreadyQueued, skipped = r.playingNow, total = entries.size)
         }
         BulkAction.DOWNLOAD -> {
-            val plan = bulkDownloadPlan(entries, context.value)
-            if (plan.copyIds.isNotEmpty()) {
+            // The "Download from" choice must be known: without it a merged book is left out, never guessed.
+            val context = withTimeoutOrNull(CONTEXT_WAIT_MS) { merging.context.first() }
+            val plan = bulkDownloadPlan(entries, context, statuses())
+            if (plan.copyIds.isNotEmpty() || plan.resumeIds.isNotEmpty()) {
                 try {
                     notifications.ensure()
                 } catch (e: CancellationException) {
@@ -254,11 +296,15 @@ class BookSelectionViewModel(
                     // No notification then; the downloads run anyway.
                 }
             }
-            val tally = runEach(action, plan.copyIds, 1) { id -> attempt { downloadController.enqueue(id) } }
-            tally.copy(already = plan.alreadyOnPhone, skipped = plan.needsChoice)
+            // Paused and failed downloads go on (Resume / Try again on the book); the others are queued.
+            val work = plan.resumeIds.map { it to true } + plan.copyIds.map { it to false }
+            val tally = runEach(action, work, 1) { (id, resume) ->
+                attempt { if (resume) downloadController.resume(id) else downloadController.enqueue(id) }
+            }
+            tally.copy(already = plan.alreadyOnPhone, skipped = plan.needsChoice, resumed = plan.resumeIds.size.coerceAtMost(tally.done))
         }
         BulkAction.REMOVE_DOWNLOAD -> {
-            val plan = bulkRemovePlan(entries)
+            val plan = bulkRemovePlan(entries, statuses())
             val tally = runEach(action, plan.copyIds, 1) { id -> attempt { downloadController.remove(id) } }
             tally.copy(already = plan.notDownloaded)
         }
@@ -317,5 +363,6 @@ class BookSelectionViewModel(
 
     private companion object {
         const val BULK_ERROR_TEXT = "Could not finish. Try again."
+        const val CONTEXT_WAIT_MS = 5_000L
     }
 }

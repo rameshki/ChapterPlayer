@@ -27,7 +27,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,7 +49,8 @@ import com.chapterplayer.ui.theme.TextSecondary
 import kotlinx.coroutines.flow.filterNotNull
 
 /**
- * The top bar of selection mode: Close, "N selected" (or the progress of a running action, "Marking 37 of 1000…"),
+ * The top bar of selection mode: Close, "N selected" (or the progress of a running action, "Marking 37 of 1000…",
+ * announced to accessibility services only at the start and every tenth of the way),
  * Select all and the actions menu; while an action runs, Cancel and a progress bar.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,13 +66,20 @@ fun SelectionTopBar(state: SelectionUiState, selection: BookSelectionViewModel) 
                 }
             },
             title = {
-                Text(
-                    text = state.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                )
+                Box {
+                    // "N selected" is announced as it changes; a running action's per-book count is not (it would
+                    // queue an announcement per book), only the milestones below.
+                    Text(
+                        text = state.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (state.running) Modifier.clearAndSetSemantics {} else Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                    state.announcement?.let { milestone ->
+                        Box(Modifier.size(1.dp).semantics { liveRegion = LiveRegionMode.Polite; contentDescription = milestone })
+                    }
+                }
             },
             actions = {
                 val progress = state.progress
@@ -161,17 +173,19 @@ fun SelectionEffects(selection: BookSelectionViewModel, state: SelectionUiState,
         isBackEnabled = state.active,
         onBackCompleted = { selection.close() },
     )
-    state.confirmRemoveCount?.let { count ->
-        val what = if (count == 1) "1 download" else "$count downloads"
+    state.confirm?.let { confirm ->
+        val removing = confirm.action == BulkAction.REMOVE_DOWNLOAD
         AlertDialog(
-            onDismissRequest = selection::dismissRemoveDownloads,
+            onDismissRequest = selection::dismissPending,
             containerColor = SurfaceElevated,
-            title = { Text("Remove $what?") },
-            text = { Text("The files are deleted from this phone. The books stay on their servers and in your library.") },
+            title = { Text(confirm.title) },
+            text = { Text(confirm.text) },
             confirmButton = {
-                TextButton(onClick = selection::confirmRemoveDownloads) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = selection::confirmPending) {
+                    Text(if (removing) "Remove" else "Mark as not finished", color = MaterialTheme.colorScheme.error)
+                }
             },
-            dismissButton = { TextButton(onClick = selection::dismissRemoveDownloads) { Text("Keep", color = TextSecondary) } },
+            dismissButton = { TextButton(onClick = selection::dismissPending) { Text(if (removing) "Keep" else "Cancel", color = TextSecondary) } },
         )
     }
 }

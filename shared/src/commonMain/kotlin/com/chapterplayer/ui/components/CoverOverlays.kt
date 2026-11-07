@@ -87,7 +87,8 @@ fun SelectionMark(selected: Boolean, modifier: Modifier = Modifier, size: androi
     ) {
         if (selected) {
             Box(Modifier.size(size).background(AmberGold, CircleShape), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Check, contentDescription = BOOK_SELECTED, tint = BackgroundDeep, modifier = Modifier.size(size * 0.65f))
+                // No description: the tile's own state ("Selected") says it once.
+                Icon(Icons.Default.Check, contentDescription = null, tint = BackgroundDeep, modifier = Modifier.size(size * 0.65f))
             }
         } else {
             Box(

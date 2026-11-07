@@ -352,9 +352,9 @@ val commonViewModelModule = module {
     viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     // "Remove finished downloads" on the Downloads tab and Settings, Downloads and offline.
-    viewModel { FinishedDownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), upNext = get()) }
+    viewModel { FinishedDownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), merging = get(), upNext = get()) }
     // Selection mode of a book list (Library, the group pages): one per screen.
-    viewModel { BookSelectionViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), upNext = get()) }
+    viewModel { BookSelectionViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), overview = get(), merging = get(), favourites = get(), upNext = get()) }
     viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), upNext = get()) }
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()) }
     // The Diagnostics page (debug builds only reach it): read only tables, and the log the report is written to.

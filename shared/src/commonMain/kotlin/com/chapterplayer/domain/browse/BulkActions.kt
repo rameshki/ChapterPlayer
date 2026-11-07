@@ -1,6 +1,7 @@
 package com.chapterplayer.domain.browse
 
 import com.chapterplayer.data.model.DownloadState
+import com.chapterplayer.domain.downloads.DownloadStatus
 import com.chapterplayer.domain.playback.UpNextOutcome
 import com.chapterplayer.domain.playback.editUpNext
 import kotlinx.coroutines.channels.Channel
@@ -66,43 +67,104 @@ fun markTarget(entry: BrowseItem?, fallbackId: String): String =
 fun alreadyMarked(entry: BrowseItem, finished: Boolean): Boolean = (entry.progress?.isFinished == true) == finished
 
 /**
- * A bulk download: [copyIds] to queue (one per entry), [alreadyOnPhone] entries with a copy on the phone or on its way
- * already, [needsChoice] entries the "Download from" rule cannot decide for (Ask, or the chosen copy's server does not
- * answer), which are left out rather than asked about one by one.
+ * A bulk download: [copyIds] to queue (one per entry), [resumeIds] paused or failed downloads to go on with (as the
+ * book's own Resume / Try again does), [alreadyOnPhone] entries with a copy on the phone or on its way already,
+ * [needsChoice] entries the "Download from" rule cannot decide for (Ask, the chosen copy's server does not answer, or
+ * the merging settings are not known yet), which are left out rather than asked about one by one.
  */
-data class BulkDownloadPlan(val copyIds: List<String>, val alreadyOnPhone: Int, val needsChoice: Int)
+data class BulkDownloadPlan(
+    val copyIds: List<String>,
+    val alreadyOnPhone: Int,
+    val needsChoice: Int,
+    val resumeIds: List<String> = emptyList(),
+)
 
-/** What a bulk download of [entries] fetches; [context] is the merging's (null: no merging, every book is its own). */
-fun bulkDownloadPlan(entries: List<BrowseItem>, context: MergeContext?): BulkDownloadPlan {
+/*
+ * A copy's real download state: the download rows ([statuses] by book id) say queued, running, paused, failed or done;
+ * the list's own state only knows "on the phone" or "not yet" (every unfinished download reads as DOWNLOADING). A copy
+ * the list shows with a download but whose row is not in [statuses] counts as on its way.
+ */
+private fun statusOf(copy: BrowseItem, statuses: Map<String, DownloadStatus>): DownloadStatus? =
+    statuses[copy.book.id] ?: when (copy.downloadState) {
+        DownloadState.NOT_DOWNLOADED -> null
+        DownloadState.DOWNLOADING -> DownloadStatus.DOWNLOADING
+        DownloadState.DOWNLOADED -> DownloadStatus.DONE
+    }
+
+/**
+ * What a bulk download of [entries] does; [context] is the merging's (null: not known, so a merged book is left out,
+ * never decided without the "Download from" choice), [statuses] the download rows' status by book id.
+ */
+fun bulkDownloadPlan(entries: List<BrowseItem>, context: MergeContext?, statuses: Map<String, DownloadStatus>): BulkDownloadPlan {
     val ids = mutableListOf<String>()
+    val resume = mutableListOf<String>()
     var already = 0
     var needsChoice = 0
     for (entry in entries) {
-        if (entry.allSources.any { it.downloadState != DownloadState.NOT_DOWNLOADED }) {
+        val copies = entry.allSources
+        val states = copies.map { statusOf(it, statuses) }
+        if (states.any { it == DownloadStatus.DONE || it == DownloadStatus.QUEUED || it == DownloadStatus.DOWNLOADING }) {
             already++
             continue
         }
-        if (!entry.isMerged || context == null) {
+        val stopped = copies.indices.firstOrNull { states[it] == DownloadStatus.PAUSED || states[it] == DownloadStatus.FAILED }
+        if (stopped != null) {
+            resume += copies[stopped].book.id
+            continue
+        }
+        if (!entry.isMerged) {
             ids += entry.book.id
             continue
         }
-        val chosen = chosenDownloadSource(entry, context.downloadChoice, context.onlineServerIds)
+        val chosen = context?.let { chosenDownloadSource(entry, it.downloadChoice, it.onlineServerIds) }
         if (chosen == null) needsChoice++ else ids += chosen.book.id
     }
-    return BulkDownloadPlan(ids, already, needsChoice)
+    return BulkDownloadPlan(ids, already, needsChoice, resume)
 }
 
-/** A bulk "Remove download": every downloaded copy of the entries, and how many entries had none on the phone. */
+/** A bulk "Remove download": every copy with a download (finished or not), and how many entries had none. */
 data class BulkRemovePlan(val copyIds: List<String>, val notDownloaded: Int)
 
-fun bulkRemovePlan(entries: List<BrowseItem>): BulkRemovePlan {
-    val ids = mutableListOf<String>()
+fun bulkRemovePlan(entries: List<BrowseItem>, statuses: Map<String, DownloadStatus>): BulkRemovePlan {
+    val ids = LinkedHashSet<String>()
     var none = 0
     for (entry in entries) {
-        val copies = entry.allSources.filter { it.downloadState == DownloadState.DOWNLOADED }.map { it.book.id }
+        val copies = entry.allSources.filter { statusOf(it, statuses) != null }.map { it.book.id }
         if (copies.isEmpty()) none++ else ids += copies
     }
-    return BulkRemovePlan(ids.distinct(), none)
+    return BulkRemovePlan(ids.toList(), none)
+}
+
+/** Whether [action] over [count] books asks first: Remove download always, Mark as not finished above five books. */
+fun bulkNeedsConfirmation(action: BulkAction, count: Int): Boolean = when (action) {
+    BulkAction.REMOVE_DOWNLOAD -> count > 0
+    BulkAction.MARK_NOT_FINISHED -> count > BULK_UNFINISH_ASK_ABOVE
+    else -> false
+}
+
+const val BULK_UNFINISH_ASK_ABOVE = 5
+
+/** The question before [action] over [count] books (downloads for Remove download). */
+fun bulkConfirmTitle(action: BulkAction, count: Int): String = when (action) {
+    BulkAction.REMOVE_DOWNLOAD -> "Remove ${downloads(count)}?"
+    else -> "Mark ${books(count)} as not finished?"
+}
+
+/** The text under [bulkConfirmTitle]. */
+fun bulkConfirmText(action: BulkAction): String = when (action) {
+    BulkAction.REMOVE_DOWNLOAD -> "The files are deleted from this phone. The books stay on their servers and in your library."
+    else -> "Each book goes back to the start, on this phone and on its servers."
+}
+
+/**
+ * What accessibility services announce while an action runs: the progress text at the start and at every tenth of the
+ * way (not at every book), so a long run does not queue a thousand announcements. The result comes as the snackbar.
+ */
+fun bulkMilestoneText(action: BulkAction, done: Int, total: Int): String {
+    if (total <= 0) return bulkProgressText(action, 0, 0)
+    val tenth = (done.toLong() * 10 / total).toInt().coerceIn(0, 10)
+    val shown = if (total <= 10) done else (tenth.toLong() * total / 10).toInt()
+    return bulkProgressText(action, shown, total)
 }
 
 /** A bulk "Add to Up next": the new queue and how many entries went in, were queued already, or are playing now. */
@@ -141,6 +203,8 @@ data class BulkTally(
     val failed: Int = 0,
     val stoppedAfter: Int? = null,
     val total: Int = 0,
+    /** Downloads that were paused or failed and go on now (counted in [done] too). */
+    val resumed: Int = 0,
 )
 
 /** The selection mode's title. */
@@ -185,6 +249,7 @@ fun bulkResultText(action: BulkAction, tally: BulkTally): String {
         BulkAction.DOWNLOAD -> "Downloading ${books(n)}"
         BulkAction.REMOVE_DOWNLOAD -> "Removed ${downloads(n)}"
     }
+    if (tally.resumed > 0) parts += "${tally.resumed} of them carry on where they stopped"
     if (tally.already > 0) parts += when (action) {
         BulkAction.MARK_FINISHED, BulkAction.MARK_NOT_FINISHED, BulkAction.ADD_FAVOURITES, BulkAction.REMOVE_FAVOURITES ->
             "${tally.already} already were"

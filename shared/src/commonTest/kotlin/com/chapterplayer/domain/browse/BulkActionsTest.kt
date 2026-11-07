@@ -4,6 +4,7 @@ import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.domain.downloads.DownloadStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -121,8 +122,9 @@ class BulkActionsTest {
         val context = MergeContext(downloadChoice = SourceChoice.OfType(ServerSource.PLEX), onlineServerIds = setOf("abs1", "plex1"))
         val single = item("s")
         val pick = merged(item("a"), item("p", "plex1"))
-        val plan = bulkDownloadPlan(listOf(single, pick), context)
+        val plan = bulkDownloadPlan(listOf(single, pick), context, statuses = emptyMap())
         assertEquals(listOf("s", "p"), plan.copyIds)
+        assertEquals(emptyList(), plan.resumeIds)
         assertEquals(0, plan.alreadyOnPhone)
         assertEquals(0, plan.needsChoice)
     }
@@ -133,7 +135,10 @@ class BulkActionsTest {
         val needs = merged(item("a"), item("p", "plex1"))
         val onPhone = item("d", download = DownloadState.DOWNLOADED)
         val onItsWay = merged(item("b", download = DownloadState.DOWNLOADING), item("q", "plex1"))
-        val plan = bulkDownloadPlan(listOf(needs, onPhone, onItsWay), ask)
+        val plan = bulkDownloadPlan(
+            listOf(needs, onPhone, onItsWay), ask,
+            statuses = mapOf("d" to DownloadStatus.DONE, "b" to DownloadStatus.QUEUED),
+        )
         assertEquals(emptyList(), plan.copyIds)
         assertEquals(1, plan.needsChoice)
         assertEquals(2, plan.alreadyOnPhone)
@@ -142,19 +147,68 @@ class BulkActionsTest {
     @Test
     fun `download skips a chosen copy whose server does not answer`() {
         val context = MergeContext(downloadChoice = SourceChoice.OfType(ServerSource.PLEX), onlineServerIds = setOf("abs1"))
-        val plan = bulkDownloadPlan(listOf(merged(item("a"), item("p", "plex1"))), context)
+        val plan = bulkDownloadPlan(listOf(merged(item("a"), item("p", "plex1"))), context, statuses = emptyMap())
         assertEquals(emptyList(), plan.copyIds)
         assertEquals(1, plan.needsChoice)
     }
 
     @Test
-    fun `remove download takes every downloaded copy`() {
+    fun `download resumes a paused or failed copy as the book's own control does`() {
+        val context = MergeContext(downloadChoice = SourceChoice.OfType(ServerSource.PLEX), onlineServerIds = setOf("abs1", "plex1"))
+        // The list reads every unfinished download as DOWNLOADING; the rows say what it really is.
+        val paused = item("a", download = DownloadState.DOWNLOADING)
+        val failed = merged(item("b", download = DownloadState.DOWNLOADING), item("p", "plex1"))
+        val plan = bulkDownloadPlan(
+            listOf(paused, failed), context,
+            statuses = mapOf("a" to DownloadStatus.PAUSED, "b" to DownloadStatus.FAILED),
+        )
+        assertEquals(emptyList(), plan.copyIds)
+        assertEquals(listOf("a", "b"), plan.resumeIds)
+        assertEquals(0, plan.alreadyOnPhone)
+    }
+
+    @Test
+    fun `download without the merging settings never picks a copy of a merged book`() {
+        val plan = bulkDownloadPlan(listOf(item("s"), merged(item("a"), item("p", "plex1"))), context = null, statuses = emptyMap())
+        assertEquals(listOf("s"), plan.copyIds)
+        assertEquals(1, plan.needsChoice)
+    }
+
+    @Test
+    fun `remove download takes every copy with a download finished or not`() {
         val both = merged(item("a", download = DownloadState.DOWNLOADED), item("p", "plex1", download = DownloadState.DOWNLOADED))
-        val running = item("r", download = DownloadState.DOWNLOADING)
+        val paused = item("r", download = DownloadState.DOWNLOADING)
         val none = item("n")
-        val plan = bulkRemovePlan(listOf(both, running, none))
-        assertEquals(listOf("a", "p"), plan.copyIds)
-        assertEquals(2, plan.notDownloaded)
+        val plan = bulkRemovePlan(
+            listOf(both, paused, none),
+            statuses = mapOf("a" to DownloadStatus.DONE, "p" to DownloadStatus.DONE, "r" to DownloadStatus.PAUSED),
+        )
+        assertEquals(listOf("a", "p", "r"), plan.copyIds)
+        assertEquals(1, plan.notDownloaded)
+    }
+
+    // Confirmations and announcements
+
+    @Test
+    fun `remove download always asks and not finished asks above five books`() {
+        assertTrue(bulkNeedsConfirmation(BulkAction.REMOVE_DOWNLOAD, 1))
+        assertFalse(bulkNeedsConfirmation(BulkAction.REMOVE_DOWNLOAD, 0))
+        assertFalse(bulkNeedsConfirmation(BulkAction.MARK_NOT_FINISHED, 5))
+        assertTrue(bulkNeedsConfirmation(BulkAction.MARK_NOT_FINISHED, 6))
+        assertFalse(bulkNeedsConfirmation(BulkAction.MARK_FINISHED, 1000))
+        assertEquals("Mark 12 books as not finished?", bulkConfirmTitle(BulkAction.MARK_NOT_FINISHED, 12))
+        assertEquals("Remove 1 download?", bulkConfirmTitle(BulkAction.REMOVE_DOWNLOAD, 1))
+    }
+
+    @Test
+    fun `progress is announced at the start and every tenth only`() {
+        assertEquals("Marking 0 of 1000…", bulkMilestoneText(BulkAction.MARK_FINISHED, 0, 1000))
+        assertEquals("Marking 0 of 1000…", bulkMilestoneText(BulkAction.MARK_FINISHED, 99, 1000))
+        assertEquals("Marking 100 of 1000…", bulkMilestoneText(BulkAction.MARK_FINISHED, 150, 1000))
+        assertEquals("Marking 900 of 1000…", bulkMilestoneText(BulkAction.MARK_FINISHED, 999, 1000))
+        val distinct = (0..1000).map { bulkMilestoneText(BulkAction.MARK_FINISHED, it, 1000) }.distinct()
+        assertEquals(11, distinct.size)
+        assertEquals("Removing 1 of 3…", bulkMilestoneText(BulkAction.REMOVE_DOWNLOAD, 1, 3))
     }
 
     // Up next
@@ -219,6 +273,7 @@ class BulkActionsTest {
             bulkResultText(BulkAction.DOWNLOAD, BulkTally(done = 3, already = 1, skipped = 2)),
         )
         assertEquals("Removed 1 download. 2 had no download", bulkResultText(BulkAction.REMOVE_DOWNLOAD, BulkTally(done = 1, already = 2)))
+        assertEquals("Downloading 3 books. 2 of them carry on where they stopped", bulkResultText(BulkAction.DOWNLOAD, BulkTally(done = 3, resumed = 2)))
         assertEquals("Downloading no books. 1 could not start", bulkResultText(BulkAction.DOWNLOAD, BulkTally(failed = 1)))
     }
 

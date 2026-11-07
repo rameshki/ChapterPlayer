@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircleOutline
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,13 +81,9 @@ fun LibraryScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (selectionState.active) SelectionTopBar(selectionState, selection) else TopAppBar(
-                title = { Text("Library", style = MaterialTheme.typography.headlineSmall) },
+                // Five 48 dp buttons at most, so "Library" keeps room on a 360 dp phone; one line whatever the font size.
+                title = { Text("Library", style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 actions = {
-                    if (!state.view.isGrouped && state.items.isNotEmpty()) {
-                        IconButton(onClick = { selection.start() }) {
-                            Icon(Icons.Default.CheckCircleOutline, contentDescription = "Select books", tint = TextSecondary)
-                        }
-                    }
                     IconButton(onClick = { librariesOpen = true }) {
                         Icon(Icons.Default.Checklist, contentDescription = "Libraries", tint = TextSecondary)
                     }
@@ -99,9 +99,11 @@ fun LibraryScreen(
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TextSecondary)
                         }
                     }
-                    IconButton(onClick = onOpenStats) {
-                        Icon(Icons.Default.BarChart, contentDescription = "Statistics", tint = TextSecondary)
-                    }
+                    LibraryMoreMenu(
+                        canSelect = !state.view.isGrouped && state.items.isNotEmpty(),
+                        onSelect = { selection.start() },
+                        onOpenStats = onOpenStats,
+                    )
                     SettingsAction(onOpenSettings)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -170,6 +172,37 @@ fun LibraryScreen(
             onServerToggled = viewModel::onServerToggled,
             onFavouritesOnlyChanged = viewModel::onFavouritesOnlyChanged,
         )
+    }
+}
+
+/** The top bar's "More": Select books (the book view with books) and Statistics. */
+@Composable
+private fun LibraryMoreMenu(canSelect: Boolean, onSelect: () -> Unit, onOpenStats: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = TextSecondary)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = SurfaceElevated) {
+            if (canSelect) {
+                DropdownMenuItem(
+                    text = { Text("Select books", color = MaterialTheme.colorScheme.onSurface) },
+                    leadingIcon = { Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = TextSecondary) },
+                    onClick = {
+                        open = false
+                        onSelect()
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Statistics", color = MaterialTheme.colorScheme.onSurface) },
+                leadingIcon = { Icon(Icons.Default.BarChart, contentDescription = null, tint = TextSecondary) },
+                onClick = {
+                    open = false
+                    onOpenStats()
+                },
+            )
+        }
     }
 }
 

@@ -3,6 +3,11 @@ package com.chapterplayer.ui.downloads
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.DownloadStates
+import com.chapterplayer.data.connectivity.ConnectivityMonitor
+import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.browse.BrowseItem
+import com.chapterplayer.domain.playback.upNextCanPlay
+import kotlinx.coroutines.flow.onEach
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.merge.SourceMerging
@@ -41,7 +46,7 @@ data class FinishedDownloadsUi(
 
 /**
  * The "Remove finished downloads" row of the Downloads tab and of Settings, Downloads and offline: which downloads of
- * finished books would go (`finishedDownloadsToRemove`: never the book in the player or the first of Up next), the
+ * finished books would go (`finishedDownloadsToRemove`: never the book in the player or the one Up next starts next), the
  * confirmation, then [DownloadController.remove] for each, one after another, and one result [message].
  */
 class FinishedDownloadsViewModel(
@@ -51,22 +56,34 @@ class FinishedDownloadsViewModel(
     private val controller: DownloadController,
     player: PlaybackController,
     dispatcher: CoroutineDispatcher,
+    connectivity: ConnectivityMonitor,
+    settings: AppSettings,
     merging: SourceMerging = SourceMerging.None,
     upNext: UpNextRepository = NoUpNext,
 ) : ViewModel() {
 
+    /** What qualifies now, with the sizes of the finished downloads (by book id) for the freed figure. */
+    private class Pick(val pick: FinishedDownloads, val sizes: Map<String, Long>)
+
     private val doneBytes = overview.observe()
         .map { rows -> rows.filter { it.status == DownloadStatus.DONE }.associate { it.bookId to maxOf(it.doneBytes, it.totalBytes) } }
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     private val loadedBookId = player.state.map { it.bookId }.distinctUntilChanged()
 
-    private val candidates: StateFlow<FinishedDownloads> = combine(
-        observeBrowseItems(books, downloads, merging), doneBytes, loadedBookId, upNext.queue,
-    ) { items, bytes, loaded, queue ->
-        finishedDownloadsToRemove(items, bytes, loaded, queue)
-    }.distinctUntilChanged().flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.Eagerly, FinishedDownloads(emptyList(), 0L))
+    // What decides whether a queued book can play now, as the Up next advancer sees it.
+    private val playRule = combine(connectivity.isOnline, settings.downloadedOnly, merging.context) { online, downloadedOnly, context ->
+        { member: BrowseItem -> upNextCanPlay(member, online, downloadedOnly, context?.onlineServerIds) }
+    }
+
+    // The latest pick while the row is on screen (the flows run only then, like the other list view models).
+    private val latest = MutableStateFlow(Pick(FinishedDownloads(emptyList(), 0L), emptyMap()))
+
+    private val candidates = combine(
+        observeBrowseItems(books, downloads, merging), doneBytes, loadedBookId, upNext.queue, playRule,
+    ) { items, bytes, loaded, queue, canPlay ->
+        Pick(finishedDownloadsToRemove(items, bytes, loaded, queue, canPlay), bytes)
+    }.flowOn(dispatcher).onEach { latest.value = it }
 
     private val confirming = MutableStateFlow(false)
     private val removing = MutableStateFlow(false)
@@ -75,16 +92,19 @@ class FinishedDownloadsViewModel(
     /** The result of the removal, for a snackbar; see [onMessageShown]. */
     val message: StateFlow<String?> = _message
 
-    val uiState: StateFlow<FinishedDownloadsUi> = combine(candidates, confirming, removing) { pick, asking, busy ->
+    val uiState: StateFlow<FinishedDownloadsUi> = combine(candidates, confirming, removing) { current, asking, busy ->
+        val pick = current.pick
+        // Nothing qualifies any more (a sync un-finished the book): the question goes and does not come back by itself.
+        if (asking && pick.count == 0) confirming.value = false
         FinishedDownloadsUi(
             summary = removeFinishedSummary(pick),
             question = if (asking && pick.count > 0) removeFinishedQuestion(pick) else null,
             removing = busy,
         )
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, FinishedDownloadsUi())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FinishedDownloadsUi())
 
     fun onRemoveClicked() {
-        if (candidates.value.count > 0 && !removing.value) confirming.value = true
+        if (latest.value.pick.count > 0 && !removing.value) confirming.value = true
     }
 
     fun onDismissed() {
@@ -95,11 +115,12 @@ class FinishedDownloadsViewModel(
     fun onConfirmed() {
         if (!confirming.value) return
         confirming.value = false
-        val pick = candidates.value
+        val current = latest.value
+        val pick = current.pick
         if (pick.count == 0 || removing.value) return
         removing.value = true
         viewModelScope.launch {
-            val sizes = doneBytes.value
+            val sizes = current.sizes
             var removed = 0
             var failed = 0
             var freed = 0L
