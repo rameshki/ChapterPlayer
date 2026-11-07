@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +62,8 @@ import com.chapterplayer.ui.components.DownloadBadge
 import com.chapterplayer.ui.components.FastScroller
 import com.chapterplayer.ui.components.FavouriteMark
 import com.chapterplayer.ui.components.bookPress
+import com.chapterplayer.ui.components.SelectionMark
+import com.chapterplayer.ui.components.selectionPress
 import com.chapterplayer.ui.components.FinishedCheck
 import com.chapterplayer.ui.components.ReadingProgressBar
 import com.chapterplayer.ui.components.SourceBadge
@@ -126,6 +129,9 @@ fun BookLayout(
     onBookLongClick: ((String) -> Unit)? = null,
     /** Whether a book is one of the person's favourites (a small heart on its tile). */
     isFavourite: (BrowseItem) -> Boolean = { false },
+    /** Selection mode: the selected entries (by primary id); null outside selection mode. A tap then selects. */
+    selection: Set<String>? = null,
+    onToggleSelected: (String) -> Unit = {},
 ) {
     // The strip sits over the right edge, so the items always leave it room (no shift when it comes and goes).
     val scrollerRoom = 8.dp
@@ -142,6 +148,7 @@ fun BookLayout(
                     BookRow(
                         item, dimmed = isDimmed(item), onClick = { onBookClick(item.book.id) },
                         onLongClick = onBookLongClick?.let { open -> { open(item.book.id) } }, favourite = isFavourite(item),
+                        selected = selection?.let { item.book.id in it }, onToggle = { onToggleSelected(item.book.id) },
                     )
                 }
             }
@@ -158,7 +165,7 @@ fun BookLayout(
 
         LibraryLayout.LARGE_GRID, LibraryLayout.SMALL_GRID -> Box(modifier = modifier) {
             val gridState = rememberLazyGridState()
-            BookGrid(items, layout, gridState, scrollerRoom, isDimmed, onBookClick, onBookLongClick, isFavourite)
+            BookGrid(items, layout, gridState, scrollerRoom, isDimmed, onBookClick, onBookLongClick, isFavourite, selection, onToggleSelected)
             FastScroller(
                 letters = fastScroll,
                 isListScrolling = gridState.isScrollInProgress,
@@ -183,6 +190,8 @@ private fun BookGrid(
     onBookClick: (String) -> Unit,
     onBookLongClick: ((String) -> Unit)?,
     isFavourite: (BrowseItem) -> Boolean,
+    selection: Set<String>?,
+    onToggleSelected: (String) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(if (layout == LibraryLayout.LARGE_GRID) 2 else 3),
@@ -194,16 +203,18 @@ private fun BookGrid(
     ) {
         item(key = "count", span = { GridItemSpan(maxLineSpan) }) { CountHeader(items.size, horizontalPadding = 0) }
         items(items, key = { it.book.id }) { item ->
+            val selected = selection?.let { item.book.id in it }
             BookCard(
                 book = item.book,
                 progress = item.progress,
                 downloadState = item.downloadState,
                 dimmed = isDimmed(item),
-                onClick = { onBookClick(item.book.id) },
+                onClick = if (selected != null) ({ onToggleSelected(item.book.id) }) else ({ onBookClick(item.book.id) }),
                 sourcesMark = sourcesMark(item),
                 sourcesDescription = sourcesDescription(item),
                 onLongClick = onBookLongClick?.let { open -> { open(item.book.id) } },
                 favourite = isFavourite(item),
+                selected = selected,
             )
         }
     }
@@ -221,14 +232,21 @@ private fun CountHeader(count: Int, horizontalPadding: Int = 16) {
 
 /** One book as a row: a small cover, title and author, and the progress and download marks. */
 @Composable
-private fun BookRow(item: BrowseItem, dimmed: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)?, favourite: Boolean) {
+private fun BookRow(
+    item: BrowseItem, dimmed: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)?, favourite: Boolean,
+    /** Selection mode: selected or not (a tap selects); null outside it. */
+    selected: Boolean? = null,
+    onToggle: () -> Unit = {},
+) {
     val book = item.book
     val overlay = coverOverlay(item.progress, item.downloadState, dimmed)
+    val press = if (selected != null) Modifier.selectionPress(selected, onToggle) else Modifier.bookPress(onClick = onClick, onLongClick = onLongClick)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 72.dp)
-            .bookPress(onClick = onClick, onLongClick = onLongClick)
+            .then(if (selected == true) Modifier.background(AmberGold.copy(alpha = 0.14f)) else Modifier)
+            .then(press)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -236,6 +254,7 @@ private fun BookRow(item: BrowseItem, dimmed: Boolean, onClick: () -> Unit, onLo
         Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))) {
             CoverArt(book, Modifier.size(56.dp))
             DimmedCoverOverlay(overlay.cloud)
+            if (selected != null) SelectionMark(selected, size = 26.dp)
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(

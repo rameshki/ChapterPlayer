@@ -36,6 +36,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.Alignment
 import com.chapterplayer.ui.components.SourceBadge
 import androidx.compose.ui.Modifier
@@ -66,6 +70,8 @@ fun DownloadsScreen(
     viewModel: DownloadsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Downloads", style = MaterialTheme.typography.headlineSmall) },
@@ -83,6 +89,8 @@ fun DownloadsScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
             )
         }
+        // Hidden unless a finished book has a download.
+        RemoveFinishedDownloadsCard(snackbar, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = AmberGold)
@@ -110,6 +118,15 @@ fun DownloadsScreen(
                     )
                 }
             }
+        }
+    }
+        SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter)) { data ->
+            Snackbar(
+                snackbarData = data,
+                containerColor = SurfaceElevated,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                actionColor = AmberGold,
+            )
         }
     }
     state.confirmRemove?.let { request ->

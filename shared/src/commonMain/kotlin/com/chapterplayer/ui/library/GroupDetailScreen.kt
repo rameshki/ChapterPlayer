@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,10 +52,13 @@ fun GroupDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val bookActions = rememberBookActions()
     val snackbar = remember { SnackbarHostState() }
+    val selection = koinViewModel<BookSelectionViewModel>()
+    val selectionState by selection.uiState.collectAsStateWithLifecycle()
+    SelectionEffects(selection, selectionState, state.items, snackbar)
 
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
+        if (selectionState.active) SelectionTopBar(selectionState, selection) else TopAppBar(
             title = {
                 Text(
                     text = state.title ?: kind.singularTitle,
@@ -70,6 +74,11 @@ fun GroupDetailScreen(
                 }
             },
             actions = {
+                if (state.items.isNotEmpty()) {
+                    IconButton(onClick = { selection.start() }) {
+                        Icon(Icons.Default.CheckCircleOutline, contentDescription = "Select books", tint = TextSecondary)
+                    }
+                }
                 LayoutAction(state.layout, viewModel::onLayoutSelected)
             },
             colors = TopAppBarDefaults.topAppBarColors(
@@ -100,10 +109,12 @@ fun GroupDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 onBookLongClick = bookActions::open,
                 isFavourite = { isFavourite(it, state.favouriteIds) },
+                selection = selectionState.selected.takeIf { selectionState.active },
+                onToggleSelected = selection::toggle,
             )
         }
     }
         SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
-    BookActionsHost(bookActions, snackbar, onOpenBook = onBookClick, onOpenGroup = onOpenGroup)
+    BookActionsHost(bookActions, snackbar, onOpenBook = onBookClick, onOpenGroup = onOpenGroup, onSelect = { id -> selection.start(id) })
 }

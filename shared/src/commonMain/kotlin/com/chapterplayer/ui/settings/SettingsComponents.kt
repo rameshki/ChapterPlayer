@@ -49,10 +49,12 @@ internal fun SettingsPage(
     onBack: (() -> Unit)?,
     floatingActionButton: @Composable () -> Unit = {},
     bottomPadding: Dp = 16.dp,
+    snackbarHost: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
 ) {
     Scaffold(
         containerColor = BackgroundDeep,
+        snackbarHost = snackbarHost,
         topBar = {
             TopAppBar(
                 title = { Text(title, style = MaterialTheme.typography.headlineSmall) },

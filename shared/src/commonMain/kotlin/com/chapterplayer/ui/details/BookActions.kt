@@ -4,6 +4,8 @@ import com.chapterplayer.domain.playback.MarkAction
 
 /** What one row of the book long-press menu (`BookActionsSheet`) does. */
 enum class BookActionKind {
+    /** "Select": selection mode of the list, with this book selected (only where the list offers it). */
+    SELECT,
     PLAY,
     /** "Play next": the book goes to the front of Up next. */
     PLAY_NEXT,
@@ -38,9 +40,16 @@ data class BookActionItem(
  * left out: the download rows without downloads on this platform ([downloadsAvailable]), the series without one,
  * "More by" when the author has no other book.
  */
-fun bookActionItems(state: BookDetailsUiState, downloadsAvailable: Boolean, upNextAvailable: Boolean = true): List<BookActionItem> {
+fun bookActionItems(
+    state: BookDetailsUiState,
+    downloadsAvailable: Boolean,
+    upNextAvailable: Boolean = true,
+    /** The list has a selection mode (Library, the group pages): "Select" comes first. */
+    selectable: Boolean = false,
+): List<BookActionItem> {
     if (state.book == null) return emptyList()
     val items = mutableListOf<BookActionItem>()
+    if (selectable) items += BookActionItem(BookActionKind.SELECT, "Select", subtitle = "Choose several books for one action")
     items += BookActionItem(
         BookActionKind.PLAY,
         if (state.playback == DetailsPlayback.STARTING) "Starting…" else playButtonLabel(state.playback, state.resumePositionMs > 0L),

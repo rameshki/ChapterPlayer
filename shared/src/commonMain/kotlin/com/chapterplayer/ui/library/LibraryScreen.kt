@@ -7,6 +7,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CheckCircleOutline
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,6 +64,11 @@ fun LibraryScreen(
     var sheetOpen by remember { mutableStateOf(false) }
     var librariesOpen by remember { mutableStateOf(false) }
     val bookActions = rememberBookActions()
+    val selection = koinViewModel<BookSelectionViewModel>()
+    val selectionState by selection.uiState.collectAsStateWithLifecycle()
+    // Selection mode is for the book list; the grouped views list authors, series and so on.
+    SelectionEffects(selection, selectionState, if (state.view.isGrouped) emptyList() else state.items, snackbarHostState)
+    LaunchedEffect(state.view) { if (state.view.isGrouped && selectionState.active) selection.close() }
 
     // Sync errors show as a snackbar; a new message while one shows replaces it with the full list.
     LaunchedEffect(state.syncError) {
@@ -70,8 +80,9 @@ fun LibraryScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TopAppBar(
-                title = { Text("Library", style = MaterialTheme.typography.headlineSmall) },
+            if (selectionState.active) SelectionTopBar(selectionState, selection) else TopAppBar(
+                // Five 48 dp buttons at most, so "Library" keeps room on a 360 dp phone; one line whatever the font size.
+                title = { Text("Library", style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 actions = {
                     IconButton(onClick = { librariesOpen = true }) {
                         Icon(Icons.Default.Checklist, contentDescription = "Libraries", tint = TextSecondary)
@@ -88,9 +99,11 @@ fun LibraryScreen(
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TextSecondary)
                         }
                     }
-                    IconButton(onClick = onOpenStats) {
-                        Icon(Icons.Default.BarChart, contentDescription = "Statistics", tint = TextSecondary)
-                    }
+                    LibraryMoreMenu(
+                        canSelect = !state.view.isGrouped && state.items.isNotEmpty(),
+                        onSelect = { selection.start() },
+                        onOpenStats = onOpenStats,
+                    )
                     SettingsAction(onOpenSettings)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -116,7 +129,12 @@ fun LibraryScreen(
                 onRefresh = viewModel::onRefreshRequested,
                 modifier = Modifier.fillMaxSize()
             ) {
-                LibraryBody(state, viewModel, onBookClick, onGroupClick, onOpenServers, onOpenLibraries = { librariesOpen = true }, onBookLongClick = bookActions::open)
+                LibraryBody(
+                    state, viewModel, onBookClick, onGroupClick, onOpenServers, onOpenLibraries = { librariesOpen = true },
+                    onBookLongClick = bookActions::open,
+                    selection = selectionState.selected.takeIf { selectionState.active },
+                    onToggleSelected = selection::toggle,
+                )
             }
         }
 
@@ -137,7 +155,10 @@ fun LibraryScreen(
         LibrariesSheet(onDismiss = { librariesOpen = false })
     }
 
-    BookActionsHost(bookActions, snackbarHostState, onOpenBook = onBookClick, onOpenGroup = onGroupClick)
+    BookActionsHost(
+        bookActions, snackbarHostState, onOpenBook = onBookClick, onOpenGroup = onGroupClick,
+        onSelect = { id: String -> selection.start(id) }.takeIf { !state.view.isGrouped },
+    )
 
     if (sheetOpen) {
         FilterSheet(
@@ -154,6 +175,37 @@ fun LibraryScreen(
     }
 }
 
+/** The top bar's "More": Select books (the book view with books) and Statistics. */
+@Composable
+private fun LibraryMoreMenu(canSelect: Boolean, onSelect: () -> Unit, onOpenStats: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = TextSecondary)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = SurfaceElevated) {
+            if (canSelect) {
+                DropdownMenuItem(
+                    text = { Text("Select books", color = MaterialTheme.colorScheme.onSurface) },
+                    leadingIcon = { Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = TextSecondary) },
+                    onClick = {
+                        open = false
+                        onSelect()
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Statistics", color = MaterialTheme.colorScheme.onSurface) },
+                leadingIcon = { Icon(Icons.Default.BarChart, contentDescription = null, tint = TextSecondary) },
+                onClick = {
+                    open = false
+                    onOpenStats()
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun LibraryBody(
     state: LibraryUiState,
@@ -163,6 +215,8 @@ private fun LibraryBody(
     onOpenServers: () -> Unit,
     onOpenLibraries: () -> Unit,
     onBookLongClick: (String) -> Unit,
+    selection: Set<String>? = null,
+    onToggleSelected: (String) -> Unit = {},
 ) {
     when {
         state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -193,6 +247,8 @@ private fun LibraryBody(
             fastScroll = state.fastScroll,
             onBookLongClick = onBookLongClick,
             isFavourite = { isFavourite(it, state.favouriteIds) },
+            selection = selection,
+            onToggleSelected = onToggleSelected,
         )
     }
 }

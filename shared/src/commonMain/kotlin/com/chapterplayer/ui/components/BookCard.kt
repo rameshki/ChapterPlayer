@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,7 @@ import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.domain.browse.DownloadBadgeKind
 import com.chapterplayer.domain.browse.coverOverlay
+import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
 
@@ -48,14 +50,18 @@ fun BookCard(
     onLongClick: (() -> Unit)? = null,
     /** One of the person's favourites: a small heart on the cover. */
     favourite: Boolean = false,
+    /** Selection mode: whether the book is selected (a tap then selects or unselects it); null outside selection mode. */
+    selected: Boolean? = null,
 ) {
     val overlay = coverOverlay(progress, downloadState, dimmed)
     Card(
         modifier = modifier
             .fillMaxWidth()
             // A dimmed book cannot play now (offline, not downloaded), but its details still open.
-            .bookPress(onClick = onClick, onLongClick = onLongClick),
+            .then(if (selected != null) Modifier.selectionPress(selected, onClick) else Modifier.bookPress(onClick = onClick, onLongClick = onLongClick)),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
+        // A selected card has a gold frame, so it stands out on the navy cards and in the light theme alike.
+        border = if (selected == true) BorderStroke(3.dp, AmberGold) else null,
         shape = RoundedCornerShape(12.dp)
     ) {
         Column {
@@ -106,6 +112,7 @@ fun BookCard(
                     ReadingProgressBar(it, Modifier.align(Alignment.BottomCenter))
                 }
                 DimmedCoverOverlay(overlay.cloud)
+                if (selected != null) SelectionMark(selected)
             }
 
             // Metadata

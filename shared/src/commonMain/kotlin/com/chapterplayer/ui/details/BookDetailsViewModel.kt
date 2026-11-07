@@ -47,6 +47,7 @@ import com.chapterplayer.domain.playback.MARK_ERROR_TEXT
 import com.chapterplayer.domain.playback.markActionFor
 import com.chapterplayer.domain.playback.markResultText
 import com.chapterplayer.domain.browse.favouriteRowIds
+import com.chapterplayer.domain.browse.markTarget
 import com.chapterplayer.domain.browse.isFavourite
 import com.chapterplayer.data.favourites.FavouritesRepository
 import com.chapterplayer.data.favourites.NoFavourites
@@ -707,7 +708,7 @@ class BookDetailsViewModel(
         val state = uiState.value
         if (state.book == null) return
         val finished = state.mark == MarkAction.MarkFinished
-        val target = state.entry?.progress?.bookId?.takeIf { state.entry.hasCopy(it) } ?: bookId
+        val target = markTarget(state.entry, bookId)
         viewModelScope.launch {
             val result = try {
                 books.markFinished(target, finished)

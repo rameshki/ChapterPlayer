@@ -8,6 +8,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import com.chapterplayer.ui.downloads.RemoveFinishedDownloadsCard
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,9 +35,12 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
 
     val features = LocalPlatformFeatures.current
-    SettingsPage(title = "Downloads and offline", onBack = onBack) {
+    val snackbar = remember { SnackbarHostState() }
+    SettingsPage(title = "Downloads and offline", onBack = onBack, snackbarHost = { SnackbarHost(snackbar) }) {
         if (features.downloads) {
             DownloadOptions(viewModel, downloadWifiOnly, downloadLocations, downloadStorageLimit, storageUsed, downloadedOnly, features.downloadLocation)
+            // Hidden unless a finished book has a download.
+            RemoveFinishedDownloadsCard(snackbar, Modifier.padding(bottom = 16.dp))
         } else {
             // A build without a downloader: only the several-servers choices below apply.
             SectionTitle("Downloads")

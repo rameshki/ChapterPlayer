@@ -1,6 +1,7 @@
 package com.chapterplayer.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +27,7 @@ import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.domain.browse.DownloadBadgeKind
 import com.chapterplayer.domain.browse.coverOverlay
 import com.chapterplayer.ui.theme.AmberGold
+import com.chapterplayer.ui.theme.BackgroundDeep
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.SurfaceSecondary
 
@@ -70,5 +72,30 @@ fun DimmedCoverOverlay(dimmed: Boolean, modifier: Modifier = Modifier) {
             tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(28.dp)
         )
+    }
+}
+
+/**
+ * The selection mode mark on a cover: a gold disc with a check and a gold wash over the cover when [selected], an empty
+ * ring otherwise. Put it as the last child of the cover Box.
+ */
+@Composable
+fun SelectionMark(selected: Boolean, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 32.dp) {
+    Box(
+        modifier = modifier.fillMaxSize().then(if (selected) Modifier.background(AmberGold.copy(alpha = 0.28f)) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) {
+            Box(Modifier.size(size).background(AmberGold, CircleShape), contentAlignment = Alignment.Center) {
+                // No description: the tile's own state ("Selected") says it once.
+                Icon(Icons.Default.Check, contentDescription = null, tint = BackgroundDeep, modifier = Modifier.size(size * 0.65f))
+            }
+        } else {
+            Box(
+                Modifier.size(size)
+                    .background(SurfaceElevated.copy(alpha = 0.55f), CircleShape)
+                    .border(2.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f), CircleShape)
+            )
+        }
     }
 }
