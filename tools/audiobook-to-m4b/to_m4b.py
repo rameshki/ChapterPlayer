@@ -6,11 +6,11 @@ chapter, per track or per disc) and builds ONE .m4b with one chapter per source
 file. Safety first:
 
 * The default is a dry run: it only reads the files and prints a plan.
-* ``--apply`` writes the new files into a SEPARATE mirror folder
-  (``--output-root``). The originals are never changed.
-* ``--in-place`` (with ``--backup-root`` and an explicit confirmation flag)
-  moves the originals into the backup folder only after the new file is built
-  and verified. Nothing is ever deleted.
+* ``--apply`` writes the new files into a SEPARATE folder (``--output-root``),
+  with the same folder layout as the library.
+* The originals are only ever read: this tool never moves, renames or deletes
+  any of them. Once you have checked the new books you can move the originals
+  yourself.
 
 Standard library only (Python 3.9+). Calls ``ffmpeg`` and ``ffprobe`` as
 external programs. Run ``python to_m4b.py --help`` for the options and see
@@ -22,13 +22,12 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as _dt
-import errno
 import fnmatch
-import hashlib
 import json
 import os
 import re
 import shutil
+import stat as _stat
 import subprocess
 import sys
 import tempfile
@@ -41,7 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 AUDIO_EXTS = {".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma", ".wav"}
 # Already-joined books. Counted as audio when deciding what a folder holds.
@@ -53,19 +52,25 @@ SKIP_DIR_NAMES = {
     "_logs", "@eadir", "#recycle", "#snapshot", "$recycle.bin",
     "system volume information", ".trash", ".trashes",
 }
+REPORT_NAME = "to_m4b-report.json"
+CSV_COLUMNS = ["source_folder", "action", "file_count", "layout", "order_source", "duration_s",
+               "source_bytes", "output_bytes", "seconds", "output", "reasons", "warnings"]
 
 MIN_BITRATE_K = 48
 MAX_BITRATE_K = 128
 MAX_SAMPLE_RATE = 44100
+STALE_PART_SECONDS = 60
+# CreateProcess limit is 32767 characters; stay well below it.
+WINDOWS_CMDLINE_LIMIT = 30000
 
 IS_WINDOWS = os.name == "nt"
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
-# A disc or part folder: "CD1", "Disc 2", "Disk 01", "Part 3", "cd 1 of 2",
-# "Disc 1 - The Beginning". Volumes are deliberately NOT included: they are
-# usually separate books.
+# A bare disc or part folder: "CD1", "Disc 2", "Disk 01", "Part 3", "cd 1 of 2".
+# Anything after the number ("Part 1 - The Final Empire") makes it NOT a disc
+# folder: such folders are often separate books. Volumes are never discs.
 DISC_RE = re.compile(
-    r"^(?:cd|dis[ck]|part|pt)[\s._#-]*0*(\d{1,3})(?!\d)"
-    r"(?:\s*(?:of|/)\s*\d+)?(?:\s*[-_:.,(\[].*)?$",
+    r"^(?:cd|dis[ck]|part|pt)[\s._#-]*0*(\d{1,3})(?!\d)(?:\s*(?:of|/)\s*\d+)?\s*$",
     re.IGNORECASE,
 )
 # A disc suffix on an album tag: "Book (Disc 1)", "Book - CD 2", "Book, Disk 1 of 3".
@@ -79,7 +84,7 @@ SERIES_PART_RE = re.compile(
     r"^(?:book|bk\.?|vol\.?|volume|band|tome|#)?\s*(\d{1,3}(?:\.\d)?)(?!\d)\s*(?:[-\u2013\u2014.:_)]|\s-\s)\s*(?=\S)",
     re.IGNORECASE,
 )
-LEAD_NUMBER_RE = re.compile(r"^\s*(?:track|trk|tr)?\s*\d{1,4}\s*(?:[-_.:)\]–—]+\s*|\s+)", re.IGNORECASE)
+LEAD_NUMBER_RE = re.compile(r"^\s*(?:track|trk|tr)?\s*\d{1,4}\s*(?:[-_.:)\]\u2013\u2014]+\s*|\s+)", re.IGNORECASE)
 NUMBER_RE = re.compile(r"([0-9]+)")
 ONLY_NUMBERS_RE = re.compile(r"[\d\W_]+")
 
@@ -95,14 +100,25 @@ Then open a NEW terminal so it is found, or point to it with --ffmpeg PATH and -
 # Paths
 # ---------------------------------------------------------------------------
 
+def _absolute(p) -> str:
+    """Absolute path WITHOUT Windows' trailing-dot/space stripping for paths already absolute."""
+    s = str(p)
+    if IS_WINDOWS:
+        s = s.replace("/", "\\")
+    if os.path.isabs(s) and not (IS_WINDOWS and not os.path.splitdrive(s)[0]):
+        return s
+    return os.path.abspath(s)
+
+
 def ext(p) -> str:
     """Path string for Python's own file operations.
 
     On Windows this is the extended form (``\\\\?\\C:\\...`` or
-    ``\\\\?\\UNC\\server\\share\\...``), which lifts the 260 character limit and
-    works for network shares. Elsewhere it is the absolute path.
+    ``\\\\?\\UNC\\server\\share\\...``), which lifts the 260 character limit,
+    works for network shares and keeps names ending in a dot or space intact.
+    Elsewhere it is the absolute path.
     """
-    s = os.path.abspath(str(p))
+    s = _absolute(p)
     if not IS_WINDOWS:
         return s
     if s.startswith("\\\\?\\"):
@@ -117,7 +133,7 @@ def plain(p) -> str:
 
     ffmpeg 5.1 and newer handle long Windows paths themselves.
     """
-    s = os.path.abspath(str(p))
+    s = _absolute(p)
     if s.startswith("\\\\?\\UNC\\"):
         return "\\\\" + s[8:]
     if s.startswith("\\\\?\\"):
@@ -136,11 +152,43 @@ def file_size(p) -> int:
         return 0
 
 
-def same_or_inside(child: Path, parent: Path) -> bool:
-    """True when ``child`` is ``parent`` or lies somewhere below it."""
-    c = os.path.normcase(os.path.abspath(str(child))).rstrip("\\/")
-    p = os.path.normcase(os.path.abspath(str(parent))).rstrip("\\/")
-    return c == p or c.startswith(p + os.sep)
+def real_path(p) -> str:
+    """Resolved path (symlinks, junctions, mapped drives), normalised for comparing."""
+    try:
+        r = os.path.realpath(_absolute(p))
+    except (OSError, ValueError):
+        r = _absolute(p)
+    return os.path.normcase(plain(r)).rstrip("\\/")
+
+
+def _file_id(p) -> Optional[Tuple[int, int]]:
+    try:
+        st = os.stat(ext(p))
+    except OSError:
+        return None
+    if not st.st_ino:
+        return None
+    return (st.st_dev, st.st_ino)
+
+
+def same_or_inside(child, parent) -> bool:
+    """True when ``child`` is ``parent`` or lies below it, also through aliases.
+
+    Compares resolved real paths, then walks up from ``child`` comparing file
+    identities, which catches mapped drives versus UNC paths, junctions,
+    symlinks, 8.3 short names and case differences.
+    """
+    c, p = real_path(child), real_path(parent)
+    if c == p or c.startswith(p + os.sep):
+        return True
+    pid = _file_id(parent)
+    if pid is None:
+        return False
+    cur = Path(plain(os.path.realpath(_absolute(child))))
+    for anc in [cur, *cur.parents]:
+        if exists(anc) and _file_id(anc) == pid:
+            return True
+    return False
 
 
 _BAD_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -183,6 +231,15 @@ def disc_number(folder_name: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def name_problem(name: str) -> Optional[str]:
+    """Why a file or folder name cannot be handed to ffmpeg safely."""
+    if "\n" in name or "\r" in name:
+        return f"the name {name!r} contains a line break"
+    if IS_WINDOWS and name != name.rstrip(" ."):
+        return f"the name '{name}' ends with a dot or space (Windows programs cannot open it reliably)"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Scanning: which folders are books
 # ---------------------------------------------------------------------------
@@ -198,7 +255,7 @@ class SourceFile:
 class Candidate:
     folder: Path
     rel: str                 # posix style, "." for the root itself
-    layout: str              # "files" | "discs"
+    layout: str              # "files" | "discs" | "link"
     files: List[SourceFile] = field(default_factory=list)   # natural order
     covers: List[Path] = field(default_factory=list)        # cover images in the folders
     status: str = "candidate"   # candidate | single | too-few | ambiguous
@@ -210,27 +267,41 @@ class Candidate:
         return self.folder.name
 
 
+def _is_link(entry) -> bool:
+    """A symbolic link or a Windows junction / other reparse point."""
+    try:
+        if entry.is_symlink():
+            return True
+        is_junction = getattr(entry, "is_junction", None)
+        if is_junction is not None and is_junction():
+            return True
+        if IS_WINDOWS:
+            attrs = getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
+            return bool(attrs & FILE_ATTRIBUTE_REPARSE_POINT)
+    except OSError:
+        return True
+    return False
+
+
 def _list_dir(folder: Path):
-    files, dirs = [], []
+    """(files, dirs, linked dirs) of a folder, each in natural order; (None, None, None) if unreadable."""
+    files, dirs, links = [], [], []
     try:
         with os.scandir(ext(folder)) as it:
             for e in it:
                 try:
-                    if e.is_dir(follow_symlinks=False):
-                        dirs.append(e.name)
+                    if e.is_dir(follow_symlinks=False) or (e.is_symlink() and e.is_dir(follow_symlinks=True)):
+                        (links if _is_link(e) else dirs).append(e.name)
                     elif e.is_file(follow_symlinks=True):
                         files.append(e.name)
                 except OSError:
                     continue
     except OSError:
-        return None, None
+        return None, None, None
     files.sort(key=natural_key)
     dirs.sort(key=natural_key)
-    return files, dirs
-
-
-def _is_audio(name: str) -> bool:
-    return Path(name).suffix.lower() in AUDIO_EXTS
+    links.sort(key=natural_key)
+    return files, dirs, links
 
 
 def _is_book_file(name: str) -> bool:
@@ -246,10 +317,13 @@ def scan_library(root: Path, min_files: int = 2, exclude_dirs: Sequence[Path] = 
     """Find book folders below ``root``. Never changes anything.
 
     Returns candidates (to convert) plus folders that were skipped or are
-    ambiguous, each with its reasons, in natural path order.
+    ambiguous, each with its reasons, in natural path order. Symbolic links and
+    junctions are reported, never followed; a folder seen twice is not scanned again.
     """
-    root = Path(os.path.abspath(str(root)))
+    root = Path(_absolute(root))
     out: List[Candidate] = []
+    seen: set = set()
+    excl = [os.path.normcase(_absolute(d)) for d in exclude_dirs]
 
     def rel_of(folder: Path) -> str:
         r = folder.relative_to(root).as_posix()
@@ -258,18 +332,32 @@ def scan_library(root: Path, min_files: int = 2, exclude_dirs: Sequence[Path] = 
     def skipped_dir(path: Path, name: str) -> bool:
         if name.startswith(".") or name.casefold() in SKIP_DIR_NAMES:
             return True
-        return any(same_or_inside(path, d) for d in exclude_dirs)
+        p = os.path.normcase(str(path))
+        return any(p == d or p.startswith(d + os.sep) for d in excl)
+
+    def ambiguous(folder: Path, reason: str, layout: str = "files") -> Candidate:
+        c = Candidate(folder, rel_of(folder), layout, status="ambiguous")
+        c.reasons.append(reason)
+        out.append(c)
+        return c
 
     def visit(folder: Path) -> bool:
         """Returns True when the folder or anything below it holds audio."""
-        files, dirs = _list_dir(folder)
+        fid = _file_id(folder)
+        if fid is not None:
+            if fid in seen:
+                ambiguous(folder, "this folder was already scanned under another name; skipped")
+                return False
+            seen.add(fid)
+        files, dirs, links = _list_dir(folder)
         if files is None:
-            c = Candidate(folder, rel_of(folder), "files", status="ambiguous")
-            c.reasons.append("folder could not be read")
-            out.append(c)
+            ambiguous(folder, "folder could not be read")
             return False
+        for name in links:
+            if not skipped_dir(folder / name, name):
+                ambiguous(folder / name, "is a symbolic link or junction; not followed (scan its target directly)", "link")
         audio = [n for n in files if _is_book_file(n)]
-        disc_dirs: List[Tuple[int, str, List[str], List[str]]] = []
+        disc_dirs: List[Tuple[int, str, List[str], List[str], List[str]]] = []
         other_dirs: List[str] = []
         for d in dirs:
             sub = folder / d
@@ -277,13 +365,14 @@ def scan_library(root: Path, min_files: int = 2, exclude_dirs: Sequence[Path] = 
                 continue
             num = disc_number(d)
             if num is not None:
-                sfiles, sdirs = _list_dir(sub)
+                sfiles, sdirs, _sl = _list_dir(sub)
                 saudio = [n for n in (sfiles or []) if _is_book_file(n)]
                 if saudio:
-                    disc_dirs.append((num, d, saudio, sfiles or []))
+                    disc_dirs.append((num, d, saudio, sfiles or [], sdirs or []))
                     continue
             other_dirs.append(d)
 
+        start = len(out)
         below = False
         other_with_audio = []
         for d in other_dirs:
@@ -294,13 +383,14 @@ def scan_library(root: Path, min_files: int = 2, exclude_dirs: Sequence[Path] = 
         if not audio and not disc_dirs:
             return below
 
+        if folder == root:
+            ambiguous(folder, "the library folder itself is never treated as a book (put the files in a book folder)")
+            return True
+
         rel = rel_of(folder)
         if audio and disc_dirs:
-            c = Candidate(folder, rel, "files", status="ambiguous")
-            c.reasons.append(
-                "folder has its own audio files and disc folders ("
-                + ", ".join(d[1] for d in disc_dirs) + "); not sure how they fit together")
-            out.append(c)
+            ambiguous(folder, "folder has its own audio files and disc folders ("
+                      + ", ".join(d[1] for d in disc_dirs) + "); not sure how they fit together")
             return True
 
         if disc_dirs:
@@ -311,13 +401,21 @@ def scan_library(root: Path, min_files: int = 2, exclude_dirs: Sequence[Path] = 
                 c.status = "ambiguous"
                 c.reasons.append("two disc folders have the same number: " + ", ".join(t[1] for t in disc_dirs))
             c.covers = _covers_in(folder, files)
-            for pos, (_num, dname, saudio, sall) in enumerate(disc_dirs, start=1):
+            for pos, (_num, dname, saudio, sall, sdirs) in enumerate(disc_dirs, start=1):
                 c.covers += _covers_in(folder / dname, sall)
+                if sdirs:
+                    c.notes.append(f"sub-folders inside {dname} are ignored: " + ", ".join(sdirs))
                 for n in saudio:
                     c.files.append(SourceFile(folder / dname / n, disc=pos, disc_folder=dname))
             _classify(c, min_files)
             if other_with_audio:
                 c.notes.append("other sub-folders with audio are NOT part of this book: " + ", ".join(other_with_audio))
+                # Bonus / Extras folders next to disc folders: report them, do not convert them on their own.
+                for sub in out[start:]:
+                    if sub.status in ("candidate", "too-few", "single"):
+                        sub.status = "ambiguous"
+                        sub.reasons = [f"sits inside the book folder '{rel}' next to its disc folders; "
+                                       "not sure whether it belongs to that book"]
             out.append(c)
             return True
 
@@ -334,7 +432,7 @@ def scan_library(root: Path, min_files: int = 2, exclude_dirs: Sequence[Path] = 
         out.append(c)
         return True
 
-    if root.is_dir() or os.path.isdir(ext(root)):
+    if os.path.isdir(ext(root)):
         visit(root)
     out.sort(key=lambda c: natural_key(c.rel))
     return out
@@ -346,6 +444,8 @@ def _classify(c: Candidate, min_files: int) -> None:
     names = [f.path.name for f in c.files]
     exts = sorted({Path(n).suffix.lower() for n in names})
     has_m4b = any(Path(n).suffix.lower() in SINGLE_BOOK_EXTS for n in names)
+    parts = [c.name] + [f.disc_folder for f in c.files if f.disc_folder] + names
+    bad = next((name_problem(n) for n in parts if name_problem(n)), None)
     if len(names) == 1:
         c.status = "single"
         c.reasons.append("already a single audio file")
@@ -358,6 +458,9 @@ def _classify(c: Candidate, min_files: int) -> None:
     elif len(names) < min_files:
         c.status = "too-few"
         c.reasons.append(f"only {len(names)} audio files (--min-files is {min_files})")
+    elif bad:
+        c.status = "ambiguous"
+        c.reasons.append(bad)
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +477,8 @@ class Probe:
     tags: Dict[str, str] = field(default_factory=dict)
     picture_codec: Optional[str] = None
     size: int = 0
+    audio_index: int = 0                 # stream index of the (first) audio stream
+    layout: Tuple[str, ...] = ("audio",)  # codec_type of every stream, in order
 
 
 class ProbeError(Exception):
@@ -387,6 +492,30 @@ def _int(v) -> Optional[int]:
         return None
 
 
+def _float(v) -> Optional[float]:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f else None   # NaN
+
+
+def stream_duration(s: dict) -> Optional[float]:
+    """A stream's own duration in seconds (duration, else duration_ts * time_base)."""
+    d = _float(s.get("duration"))
+    if d is not None:
+        return d
+    ts = _int(s.get("duration_ts"))
+    tb = s.get("time_base")
+    if ts is not None and isinstance(tb, str) and "/" in tb:
+        num, den = tb.split("/", 1)
+        try:
+            return ts * int(num) / int(den)
+        except (ValueError, ZeroDivisionError):
+            return None
+    return None
+
+
 def parse_probe(data: dict, size: int = 0) -> Probe:
     """Turn ffprobe's JSON (-show_format -show_streams) into a Probe."""
     fmt = data.get("format") or {}
@@ -394,9 +523,10 @@ def parse_probe(data: dict, size: int = 0) -> Probe:
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
     if audio is None:
         raise ProbeError("no audio stream")
-    try:
-        duration = float(fmt.get("duration") or audio.get("duration"))
-    except (TypeError, ValueError):
+    duration = _float(fmt.get("duration"))
+    if duration is None:
+        duration = stream_duration(audio)
+    if duration is None:
         raise ProbeError("ffprobe reported no duration")
     tags: Dict[str, str] = {}
     for source in (audio.get("tags") or {}, fmt.get("tags") or {}):
@@ -420,6 +550,8 @@ def parse_probe(data: dict, size: int = 0) -> Probe:
         tags=tags,
         picture_codec=pic,
         size=size,
+        audio_index=streams.index(audio),
+        layout=tuple(str(s.get("codec_type")) for s in streams),
     )
 
 
@@ -450,6 +582,7 @@ class Plan:
     cover_kind: Optional[str]          # "embedded" | "file" | None
     total_duration: float
     est_bytes: int
+    join: str = "demuxer"              # "demuxer" (list file) | "filter" (one input per file)
     output_path: Optional[Path] = None
     status: str = "ok"                 # ok | ambiguous
     reasons: List[str] = field(default_factory=list)
@@ -498,6 +631,39 @@ def album_conflict(probes: Sequence[Probe]) -> Optional[str]:
         return None
     parts = [f"'{raw[n]}' ({c} files)" for n, c in counts.most_common()]
     return "files carry different album tags: " + ", ".join(parts)
+
+
+def looks_numbered(files: Sequence[SourceFile]) -> bool:
+    """True when every file name carries a number and the numbers differ within each disc.
+
+    That is what parts or chapters of ONE book look like ('01.mp3', 'Chapter 2',
+    'Track 03'), unlike a folder of separate books ('Book A.mp3', 'Book B.mp3').
+    """
+    groups: Dict[int, List[int]] = {}
+    for f in files:
+        m = NUMBER_RE.search(f.path.stem)
+        if not m:
+            return False
+        groups.setdefault(f.disc, []).append(int(m.group(1)))
+    return all(len(set(v)) == len(v) for v in groups.values())
+
+
+def same_book_problem(files: Sequence[SourceFile], probes: Dict[Path, Probe]) -> Optional[str]:
+    """Why the files might NOT be one book (None = they look like one book)."""
+    plist = [probes[f.path] for f in files]
+    conflict = album_conflict(plist)
+    if conflict:
+        return conflict
+    tagged = sum(1 for p in plist if p.tags.get("album"))
+    if tagged == len(plist):
+        return None
+    if looks_numbered(files):
+        return None
+    if tagged == 0:
+        return ("the files have no album tag and their names do not look like numbered parts of one book "
+                "(it may be a folder of separate books)")
+    return (f"only {tagged} of {len(plist)} files have an album tag and the names do not look like "
+            "numbered parts of one book")
 
 
 def choose_order(files: Sequence[SourceFile], probes: Dict[Path, Probe]) -> Tuple[List[SourceFile], str, List[str]]:
@@ -657,6 +823,15 @@ def choose_sample_rate(probes: Sequence[Probe]) -> int:
     return min(max(rates), MAX_SAMPLE_RATE)
 
 
+def choose_join(probes: Sequence[Probe]) -> str:
+    """'demuxer' when every file has the same stream layout (the concat demuxer
+    matches streams by position), else 'filter' (each file's audio mapped explicitly)."""
+    first = probes[0]
+    if all(p.layout == first.layout and p.audio_index == first.audio_index for p in probes):
+        return "demuxer"
+    return "filter"
+
+
 def parse_bitrate(text: str) -> int:
     m = re.fullmatch(r"\s*(\d+)\s*[kK]?\s*", text or "")
     if not m:
@@ -678,12 +853,14 @@ def make_plan(cand: Candidate, probes: Dict[Path, Probe], chapter_names: str = "
     """Everything the conversion will do, decided from the scan and the probes."""
     warnings: List[str] = []
     choices: List[str] = []
-    plist = [probes[f.path] for f in cand.files]
 
-    conflict = album_conflict(plist)
+    not_one_book = same_book_problem(cand.files, probes)
     order, order_source, ow = choose_order(cand.files, probes)
     warnings += ow
     oprobes = [probes[f.path] for f in order]
+    tagged = sum(1 for p in oprobes if p.tags.get("album"))
+    if 0 < tagged < len(oprobes) and not not_one_book:
+        warnings.append(f"only {tagged} of {len(oprobes)} files have an album tag")
 
     # Title
     albums = [p.tags["album"] for p in oprobes if p.tags.get("album")]
@@ -734,7 +911,8 @@ def make_plan(cand: Candidate, probes: Dict[Path, Probe], chapter_names: str = "
             if part.startswith("."):
                 part = "0" + part
     if series:
-        choices.append(f"series from {series_src}: {series}" + (f", part {part}" if part else ""))
+        choices.append(f"series from {series_src}: {series}" + (f", part {part}" if part else "")
+                       + " (stored in grouping)")
 
     tags: Dict[str, str] = {"title": title, "album": title}
     if author:
@@ -775,29 +953,28 @@ def make_plan(cand: Candidate, probes: Dict[Path, Probe], chapter_names: str = "
     kbps = choose_bitrate(oprobes, bitrate_k)
     channels = choose_channels(oprobes)
     rate = choose_sample_rate(oprobes)
+    join = choose_join(oprobes)
     choices.append(f"audio: AAC {kbps}k, {'mono' if channels == 1 else 'stereo'}, {rate} Hz")
-    if len({p.sample_rate for p in oprobes if p.sample_rate}) > 1:
-        warnings.append("files have different sample rates; ffmpeg resamples them to one")
-    if len({p.channels for p in oprobes if p.channels}) > 1:
-        warnings.append("files mix mono and stereo")
+    if len({p.sample_rate for p in oprobes if p.sample_rate}) > 1 or len({p.channels for p in oprobes if p.channels}) > 1:
+        choices.append(f"files differ in sample rate or channels: all resampled to {rate} Hz "
+                       f"{'mono' if channels == 1 else 'stereo'}")
+    if join == "filter":
+        choices.append("files have different stream layouts: each file's audio is taken explicitly")
     codecs = {p.codec for p in oprobes if p.codec}
     if len(codecs) > 1:
-        conflict = conflict or ("files use different audio codecs: " + ", ".join(sorted(codecs)))
+        not_one_book = not_one_book or ("files use different audio codecs: " + ", ".join(sorted(codecs)))
 
     total = sum(p.duration for p in oprobes)
-    for f in order:
-        if probes[f.path].duration <= 0:
-            warnings.append(f"{f.path.name} has no length")
     plan = Plan(
         candidate=cand, order=order, order_source=order_source, probes=probes, chapters=chapters,
         chapter_source=chapter_source, tags=tags, bitrate_k=kbps, channels=channels, sample_rate=rate,
         cover=cover, cover_kind=cover_kind, total_duration=total,
         est_bytes=estimate_bytes(total, kbps, file_size(cover) if cover_kind == "file" else 300 * 1024),
-        warnings=warnings, choices=choices,
+        join=join, warnings=warnings, choices=choices,
     )
-    if conflict:
+    if not_one_book:
         plan.status = "ambiguous"
-        plan.reasons.append(conflict)
+        plan.reasons.append(not_one_book)
     elif any(probes[f.path].duration <= 0 for f in order):
         plan.status = "ambiguous"
         plan.reasons.append("a file reports no length; chapters would be wrong")
@@ -831,10 +1008,16 @@ def ffmetadata_text(tags: Dict[str, str], chapters: Sequence[Chapter]) -> str:
 
 
 def concat_list_text(paths: Sequence[Path]) -> str:
-    """A concat demuxer list. Inside single quotes only the quote needs escaping."""
+    """A concat demuxer list. Inside single quotes only the quote needs escaping.
+
+    A line break in a name would start a new directive, so it is refused.
+    """
     lines = ["ffconcat version 1.0"]
     for p in paths:
-        lines.append("file '" + plain(p).replace("'", "'\\''") + "'")
+        s = plain(p)
+        if "\n" in s or "\r" in s:
+            raise ValueError(f"a file name contains a line break: {s!r}")
+        lines.append("file '" + s.replace("'", "'\\''") + "'")
     return "\n".join(lines) + "\n"
 
 
@@ -844,19 +1027,36 @@ class Tools:
     ffprobe: List[str]
 
 
+def audio_filter(plan: Plan) -> str:
+    """Resample every file to one rate and channel layout, so files that differ still join cleanly."""
+    layout = "mono" if plan.channels == 1 else "stereo"
+    return (f"aresample={plan.sample_rate},"
+            f"aformat=sample_rates={plan.sample_rate}:channel_layouts={layout}")
+
+
 def build_ffmpeg_cmd(tools: Tools, plan: Plan, list_file: Path, meta_file: Path, part_file: Path) -> List[str]:
+    """The ffmpeg command. Inputs: 0 = ffmetadata, 1 = cover (if any), then the audio."""
     cmd = list(tools.ffmpeg) + [
-        "-hide_banner", "-nostdin", "-y", "-v", "warning", "-nostats", "-progress", "pipe:1",
-        "-f", "concat", "-safe", "0", "-i", plain(list_file),
+        "-hide_banner", "-nostdin", "-n", "-loglevel", "level+warning", "-nostats", "-progress", "pipe:1",
         "-f", "ffmetadata", "-i", plain(meta_file),
     ]
+    first_audio = 1
     if plan.cover is not None:
         cmd += ["-i", plain(plan.cover)]
-    cmd += ["-map", "0:a:0"]
+        first_audio = 2
+    if plan.join == "demuxer":
+        cmd += ["-f", "concat", "-safe", "0", "-i", plain(list_file)]
+        cmd += ["-map", f"{first_audio}:a:0", "-af", audio_filter(plan)]
+    else:
+        for f in plan.order:
+            cmd += ["-i", plain(f.path)]
+        n = len(plan.order)
+        pads = "".join(f"[{first_audio + i}:a:0]" for i in range(n))
+        cmd += ["-filter_complex", f"{pads}concat=n={n}:v=0:a=1,{audio_filter(plan)}[aout]", "-map", "[aout]"]
     if plan.cover is not None:
-        cmd += ["-map", "2:v:0", "-c:v", "copy", "-disposition:v:0", "attached_pic"]
+        cmd += ["-map", "1:v:0", "-c:v", "copy", "-disposition:v:0", "attached_pic"]
     cmd += [
-        "-map_metadata", "1", "-map_chapters", "1",
+        "-map_metadata", "0", "-map_chapters", "0",
         "-c:a", "aac", "-b:a", f"{plan.bitrate_k}k", "-ac", str(plan.channels), "-ar", str(plan.sample_rate),
         "-movflags", "+faststart", "-f", "mp4", plain(part_file),
     ]
@@ -864,27 +1064,40 @@ def build_ffmpeg_cmd(tools: Tools, plan: Plan, list_file: Path, meta_file: Path,
 
 
 def verify_output(data: dict, expected_duration: float, expected_chapters: int, expect_cover: bool) -> List[str]:
-    """Problems with a built file (empty list = it is good)."""
+    """Problems with a built file (empty list = it is good).
+
+    The length is the AUDIO stream's own duration: the container duration also
+    covers the chapter text track, which always runs to the last chapter end.
+    """
     problems = []
     streams = data.get("streams") or []
-    if not any(s.get("codec_type") == "audio" for s in streams):
-        problems.append("no audio stream")
-    try:
-        dur = float((data.get("format") or {}).get("duration"))
-    except (TypeError, ValueError):
-        dur = None
+    audio = [s for s in streams if s.get("codec_type") == "audio"]
     tol = max(1.0, expected_duration * 0.001)
-    if dur is None:
-        problems.append("no duration")
-    elif abs(dur - expected_duration) > tol:
-        problems.append(f"duration {dur:.2f} s, expected {expected_duration:.2f} s (+/- {tol:.2f} s)")
-    n = len(data.get("chapters") or [])
-    if n != expected_chapters:
-        problems.append(f"{n} chapters, expected {expected_chapters}")
+    adur = None
+    if not audio:
+        problems.append("no audio stream")
+    else:
+        adur = stream_duration(audio[0])
+        if adur is None:
+            problems.append("the audio stream reports no length")
+        elif abs(adur - expected_duration) > tol:
+            problems.append(f"audio length {adur:.2f} s, expected {expected_duration:.2f} s (+/- {tol:.2f} s)")
+    chapters = data.get("chapters") or []
+    if len(chapters) != expected_chapters:
+        problems.append(f"{len(chapters)} chapters, expected {expected_chapters}")
+    if chapters and adur is not None:
+        last_end = _float(chapters[-1].get("end_time"))
+        if last_end is not None and last_end > adur + tol:
+            problems.append(f"the last chapter ends at {last_end:.2f} s, after the audio ({adur:.2f} s)")
     if expect_cover and not any(
             s.get("codec_type") == "video" and (s.get("disposition") or {}).get("attached_pic") == 1 for s in streams):
         problems.append("cover picture missing")
     return problems
+
+
+def ffmpeg_error_lines(stderr_text: str) -> List[str]:
+    """Lines ffmpeg logged at error level or worse (with -loglevel level+...)."""
+    return [l.strip() for l in stderr_text.splitlines() if re.search(r"\[(error|fatal|panic)\]", l)]
 
 
 # ---------------------------------------------------------------------------
@@ -952,42 +1165,39 @@ def probe_files(tools: Tools, files: Sequence[SourceFile], low_priority: bool = 
 
 
 # ---------------------------------------------------------------------------
-# Moving originals (in-place mode). Never deletes: a move across drives copies,
-# checks the copy byte for byte (SHA-256) and only then removes the source.
+# Report file
 # ---------------------------------------------------------------------------
 
-def _sha256(p: Path) -> str:
-    h = hashlib.sha256()
-    with open(ext(p), "rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def move_file(src: Path, dst: Path) -> None:
-    if exists(dst):
-        raise OSError(errno.EEXIST, "already exists in the backup folder", str(dst))
-    os.makedirs(ext(dst.parent), exist_ok=True)
+def is_our_report(path: Path) -> bool:
+    """True when an existing file is a JSON report this tool wrote earlier."""
     try:
-        if IS_WINDOWS:
-            os.rename(ext(src), ext(dst))      # fails if dst exists
-        else:
-            os.link(ext(src), ext(dst))        # fails if dst exists (no silent overwrite)
-            os.unlink(ext(src))
-        return
-    except OSError as e:
-        cross = e.errno in (errno.EXDEV, getattr(errno, "ENOTSUP", -1), errno.EPERM, getattr(errno, "EOPNOTSUPP", -1)) \
-            or getattr(e, "winerror", None) == 17
-        if not cross or exists(dst):
-            raise
-    # Different drive or no hard links: copy, verify, then remove the source.
-    tmp = dst.with_name(dst.name + ".to_m4b-copy")
-    shutil.copy2(ext(src), ext(tmp))
-    if file_size(tmp) != file_size(src) or _sha256(tmp) != _sha256(src):
-        os.unlink(ext(tmp))   # our own partial copy
-        raise OSError(errno.EIO, "copy to the backup folder did not match", str(src))
-    os.replace(ext(tmp), ext(dst))
-    os.unlink(ext(src))
+        with open(ext(path), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return False
+    return isinstance(data, dict) and data.get("tool") == "to_m4b" and isinstance(data.get("books"), dict)
+
+
+def is_our_csv(path: Path) -> bool:
+    try:
+        with open(ext(path), "r", encoding="utf-8-sig", newline="") as fh:
+            first = next(csv.reader(fh), None)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return False
+    return first == CSV_COLUMNS
+
+
+def report_problem(report: Path, root: Path) -> Optional[str]:
+    """Why the report path must not be written (None = fine)."""
+    if report.suffix.lower() != ".json":
+        return f"the report file must end in .json (got '{report.name}'); a .csv is written next to it"
+    if same_or_inside(report, root):
+        return "the report file must be OUTSIDE the library folder"
+    for p, ours, what in ((report, is_our_report, "an earlier to_m4b report"),
+                          (report.with_suffix(".csv"), is_our_csv, "an earlier to_m4b CSV report")):
+        if exists(p) and (not os.path.isfile(ext(p)) or not ours(p)):
+            return f"'{p}' already exists and is not {what}; choose another report name"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1014,7 +1224,7 @@ def fmt_bytes(n: float) -> str:
 
 
 def free_space(path: Path) -> Optional[int]:
-    p = Path(os.path.abspath(str(path)))
+    p = Path(_absolute(path))
     while not exists(p):
         if p.parent == p:
             return None
@@ -1058,27 +1268,26 @@ class Run:
     # -- report --------------------------------------------------------------
     def report_path(self) -> Optional[Path]:
         if self.opts.report:
-            return Path(self.opts.report)
-        if self.opts.in_place and self.opts.backup_root:
-            return Path(self.opts.backup_root) / "to_m4b-report.json"
+            return Path(_absolute(self.opts.report))
         if self.opts.output_root:
-            return Path(self.opts.output_root) / "to_m4b-report.json"
+            return Path(_absolute(self.opts.output_root)) / REPORT_NAME
         return None
 
     def write_report(self, quiet: bool = False) -> Optional[Path]:
         path = self.report_path()
         if path is None:
             return None
+        csv_path = path.with_suffix(".csv")
         with self.lock:
             books: Dict[str, dict] = {}
-            try:
-                with open(ext(path), "r", encoding="utf-8") as fh:
-                    old = json.load(fh)
-                if isinstance(old, dict) and isinstance(old.get("books"), dict) \
-                        and old.get("source_root") == str(self.opts.root):
-                    books.update(old["books"])
-            except (OSError, ValueError):
-                pass
+            if exists(path):
+                try:
+                    with open(ext(path), "r", encoding="utf-8") as fh:
+                        old = json.load(fh)
+                    if old.get("source_root") == str(self.opts.root):
+                        books.update(old["books"])
+                except (OSError, ValueError, KeyError, AttributeError, TypeError):
+                    pass
             books.update(self.records)
             data = {
                 "tool": "to_m4b", "version": VERSION,
@@ -1095,13 +1304,10 @@ class Run:
             with open(ext(tmp), "w", encoding="utf-8", newline="\n") as fh:
                 json.dump(data, fh, indent=2, ensure_ascii=False)
             os.replace(ext(tmp), ext(path))
-            csv_path = path.with_suffix(".csv")
             tmp = csv_path.with_name(csv_path.name + ".tmp")
-            cols = ["source_folder", "action", "file_count", "layout", "order_source", "duration_s",
-                    "source_bytes", "output_bytes", "seconds", "output", "reasons", "warnings"]
             with open(ext(tmp), "w", encoding="utf-8-sig", newline="") as fh:
                 w = csv.writer(fh)
-                w.writerow(cols)
+                w.writerow(CSV_COLUMNS)
                 for rel, r in data["books"].items():
                     w.writerow([
                         rel, r.get("action"), r.get("file_count"), r.get("layout"),
@@ -1115,9 +1321,7 @@ class Run:
         return path
 
     def mode(self) -> str:
-        if not self.opts.apply:
-            return "dry-run"
-        return "in-place" if self.opts.in_place else "mirror"
+        return "apply" if self.opts.apply else "dry-run"
 
     # -- processes -----------------------------------------------------------
     def kill_all(self) -> None:
@@ -1153,6 +1357,7 @@ def plan_record(plan: Plan) -> dict:
         "bitrate_k": plan.bitrate_k,
         "channels": plan.channels,
         "sample_rate": plan.sample_rate,
+        "join": plan.join,
         "cover": (plan.cover.relative_to(c.folder).as_posix() if plan.cover else None),
         "cover_kind": plan.cover_kind,
         "choices": plan.choices,
@@ -1161,14 +1366,27 @@ def plan_record(plan: Plan) -> dict:
 
 
 def target_for(opts: argparse.Namespace, c: Candidate) -> Path:
-    if opts.in_place:
-        return c.folder / (safe_name(c.name) + ".m4b")
-    return mirror_path(Path(os.path.abspath(opts.output_root)), c.rel, c.name)
+    return mirror_path(Path(_absolute(opts.output_root)), c.rel, c.name)
+
+
+def mark_collisions(cands: Sequence[Candidate], output_root: Path) -> None:
+    """Books whose output names collide (after making names safe, ignoring case) are all skipped."""
+    groups: Dict[str, List[Candidate]] = {}
+    for c in cands:
+        if c.status != "candidate":
+            continue
+        key = os.path.normcase(str(mirror_path(output_root, c.rel, c.name))).casefold()
+        groups.setdefault(key, []).append(c)
+    for group in groups.values():
+        if len(group) > 1:
+            for c in group:
+                others = ", ".join(o.rel for o in group if o is not c)
+                c.status = "ambiguous"
+                c.reasons.append(f"would get the same output file name as {others}; rename one of the folders")
 
 
 def log_dir(opts: argparse.Namespace) -> Path:
-    base = opts.backup_root if opts.in_place else opts.output_root
-    return Path(os.path.abspath(base)) / "_logs"
+    return Path(_absolute(opts.output_root)) / "_logs"
 
 
 def print_plan(run: Run, plan: Plan, index: int) -> None:
@@ -1205,7 +1423,8 @@ def check_existing(run: Run, plan: Plan, target: Path) -> Tuple[Optional[str], L
 
 
 def convert_book(run: Run, plan: Plan, index: int) -> dict:
-    """Build, verify and place one book. Never leaves a half file under the final name."""
+    """Build and verify one book in the output folder. Never touches the originals and
+    never leaves a half file under the final name."""
     opts = run.opts
     c = plan.candidate
     rec = base_record(c)
@@ -1221,34 +1440,44 @@ def convert_book(run: Run, plan: Plan, index: int) -> dict:
     tmpdir = None
     stderr_text = ""
     success = False
-    moved: List[Tuple[Path, Path]] = []
+    part_is_ours = False
     reserved = 0
     try:
         if run.stop.is_set():
             raise Stopped()
-        # Free space (counting the books already being written).
+        # Free space (counting the books already being written). A book that does not fit is
+        # skipped; the others keep going.
         with run.lock:
             free = free_space(final.parent)
             need = plan.est_bytes + 50 * 1024 * 1024
             if free is not None and free - run.reserved < need:
-                run.stop_reason = (f"not enough free space on the output drive for {c.rel}: needs about "
+                raise RuntimeError(f"not enough free space on the output drive: needs about "
                                    f"{fmt_bytes(need)}, {fmt_bytes(max(0, free - run.reserved))} free")
-                run.stop.set()
-                rec["action"] = "failed"
-                rec["reasons"].append(run.stop_reason)
-                return rec
             run.reserved += plan.est_bytes
             reserved = plan.est_bytes
         os.makedirs(ext(final.parent), exist_ok=True)
+        if exists(part):
+            age = time.time() - os.stat(ext(part)).st_mtime
+            if age < STALE_PART_SECONDS:
+                raise RuntimeError(f"'{part.name}' is less than a minute old: another run may be writing it; "
+                                   "left alone")
+            os.unlink(ext(part))
+            rec["warnings"].append(f"removed '{part.name}', left over from an earlier interrupted run")
         tmpdir = Path(tempfile.mkdtemp(prefix="to_m4b-"))
         list_file = tmpdir / "files.ffconcat"
         meta_file = tmpdir / "chapters.ffmeta"
         err_file = tmpdir / "ffmpeg-stderr.txt"
+        try:
+            listing = concat_list_text([f.path for f in plan.order])
+        except ValueError as e:
+            raise RuntimeError(str(e))
         with open(ext(list_file), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(concat_list_text([f.path for f in plan.order]))
+            fh.write(listing)
         with open(ext(meta_file), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(ffmetadata_text(plan.tags, plan.chapters))
         cmd = build_ffmpeg_cmd(run.tools, plan, list_file, meta_file, part)
+        if IS_WINDOWS and len(subprocess.list2cmdline(cmd)) > WINDOWS_CMDLINE_LIMIT:
+            raise RuntimeError("too many files with different stream layouts for one ffmpeg command on Windows")
         run.say(f"[{index}] {c.rel}: encoding {fmt_dur(plan.total_duration)} at {plan.bitrate_k}k ...")
         with open(ext(err_file), "wb") as errfh:
             try:
@@ -1256,6 +1485,7 @@ def convert_book(run: Run, plan: Plan, index: int) -> dict:
                                         creationflags=_creationflags(run.low_priority))
             except OSError as e:
                 raise RuntimeError(f"could not start ffmpeg: {e}")
+            part_is_ours = True   # the name was free before ffmpeg started (and -n never overwrites)
             with run.lock:
                 run.procs.add(proc)
             try:
@@ -1294,32 +1524,22 @@ def convert_book(run: Run, plan: Plan, index: int) -> dict:
         if rc != 0:
             tail = [l for l in stderr_text.strip().splitlines() if l.strip()][-1:] or [f"exit code {rc}"]
             raise RuntimeError("ffmpeg failed: " + tail[0])
+        errors = ffmpeg_error_lines(stderr_text)
+        if errors:
+            if opts.strict:
+                raise RuntimeError(f"ffmpeg reported {len(errors)} errors (--strict): {errors[0]}")
+            rec["warnings"].append(f"ffmpeg reported {len(errors)} errors while decoding, e.g. {errors[0]}")
         if not exists(part):
             raise RuntimeError("ffmpeg wrote no file")
         data = run_ffprobe(run.tools, part, chapters=True, low_priority=run.low_priority)
         problems = verify_output(data, plan.total_duration, len(plan.order), plan.cover is not None)
         if problems:
             raise RuntimeError("the new file did not pass the checks: " + "; ".join(problems))
-        rec["output_duration_s"] = round(float(data["format"]["duration"]), 3)
+        audio = next(s for s in data["streams"] if s.get("codec_type") == "audio")
+        rec["output_duration_s"] = round(stream_duration(audio) or 0.0, 3)
         rec["output_bytes"] = file_size(part)
         if run.stop.is_set():
             raise Stopped()
-        if opts.in_place:
-            backup = Path(os.path.abspath(opts.backup_root))
-            root = Path(os.path.abspath(opts.root))
-            pairs = [(f.path, backup / f.path.relative_to(root)) for f in plan.order]
-            taken = [str(d) for _, d in pairs if exists(d)]
-            if taken:
-                raise RuntimeError("the backup folder already has files with these names (nothing was moved): "
-                                   + ", ".join(taken[:3]))
-            try:
-                for src, dst in pairs:
-                    move_file(src, dst)
-                    moved.append((src, dst))
-            except OSError as e:
-                raise RuntimeError(f"moving the originals to the backup folder failed ({e}); "
-                                   "the files already moved were put back")
-            rec["backup"] = [str(d) for _, d in moved]
         if exists(final):
             raise RuntimeError("a file with the output name appeared while converting; left untouched")
         os.replace(ext(part), ext(final))
@@ -1334,30 +1554,25 @@ def convert_book(run: Run, plan: Plan, index: int) -> dict:
         rec["reasons"].append(str(e))
         run.say(f"[{index}] {c.rel}: FAILED: {e}")
     finally:
-        if not success:
-            # Put back anything moved (in-place), then remove ONLY our own temporary output.
-            for src, dst in reversed(moved):
-                try:
-                    move_file(dst, src)
-                except OSError as e:
-                    rec["reasons"].append(f"could not put {src.name} back from the backup folder: {e}")
+        if not success and part_is_ours:
+            # Remove ONLY the temporary output this run created.
             try:
                 if exists(part):
                     os.unlink(ext(part))
             except OSError:
                 rec["reasons"].append(f"could not remove the temporary file {part}")
-            if rec.get("action") == "failed" and (stderr_text or rec["reasons"]):
-                try:
-                    ld = log_dir(opts)
-                    os.makedirs(ext(ld), exist_ok=True)
-                    name = safe_name((c.rel if c.rel != "." else c.name).replace("/", " - "))[:150] + ".log"
-                    with open(ext(ld / name), "w", encoding="utf-8", newline="\n") as fh:
-                        fh.write("Book: " + c.rel + "\n")
-                        fh.write("Reasons:\n  " + "\n  ".join(rec["reasons"]) + "\n\n")
-                        fh.write("ffmpeg messages:\n" + (stderr_text or "(none)\n"))
-                    rec["log"] = str(ld / name)
-                except OSError:
-                    pass
+        if rec.get("action") == "failed":
+            try:
+                ld = log_dir(opts)
+                os.makedirs(ext(ld), exist_ok=True)
+                name = safe_name((c.rel if c.rel != "." else c.name).replace("/", " - "))[:150] + ".log"
+                with open(ext(ld / name), "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write("Book: " + c.rel + "\n")
+                    fh.write("Reasons:\n  " + "\n  ".join(rec["reasons"]) + "\n\n")
+                    fh.write("ffmpeg messages:\n" + (stderr_text or "(none)\n"))
+                rec["log"] = str(ld / name)
+            except OSError:
+                pass
         if tmpdir is not None:
             shutil.rmtree(str(tmpdir), ignore_errors=True)
         if reserved:
@@ -1377,25 +1592,20 @@ def validate(opts: argparse.Namespace) -> Optional[str]:
     root = Path(opts.root)
     if not os.path.isdir(ext(root)):
         return f"The library folder does not exist: {root}"
-    if opts.in_place:
-        if not opts.backup_root:
-            return "--in-place needs --backup-root DIR (where the original files are moved to)."
-        if opts.apply and not opts.i_understand_this_changes_my_library:
-            return ("--in-place --apply changes your library (the originals are MOVED to the backup folder). "
-                    "Add --i-understand-this-changes-my-library to confirm, or use --output-root instead.")
-        if opts.output_root:
-            return "Use either --in-place (with --backup-root) or --output-root, not both."
-        b = Path(opts.backup_root)
-        if same_or_inside(b, root) or same_or_inside(root, b):
-            return ("--backup-root must be OUTSIDE the library folder (else Audiobookshelf/Plex would "
-                    "see the originals again).")
-    elif opts.apply and not opts.output_root:
-        return "--apply needs --output-root DIR (a separate folder for the new files), or --in-place."
+    if opts.apply and not opts.output_root:
+        return "--apply needs --output-root DIR (a separate folder for the new files)."
     if opts.output_root:
         o = Path(opts.output_root)
         if same_or_inside(o, root) or same_or_inside(root, o):
             return ("--output-root must be OUTSIDE the library folder (else Audiobookshelf/Plex would "
-                    "show every book twice, and the scan would find its own output).")
+                    "show every book twice, and the scan would find its own output). This is checked on "
+                    "the real location, so a mapped drive, link or junction to the library counts too.")
+    report = Path(_absolute(opts.report)) if opts.report else (
+        Path(_absolute(opts.output_root)) / REPORT_NAME if opts.output_root else None)
+    if report is not None:
+        problem = report_problem(report, root)
+        if problem:
+            return "--report: " + problem if opts.report else problem
     if opts.jobs < 1:
         return "--jobs must be 1 or more."
     if opts.min_files < 2:
@@ -1406,18 +1616,15 @@ def validate(opts: argparse.Namespace) -> Optional[str]:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="to_m4b.py",
-        description="Join audiobooks made of many audio files into one chaptered .m4b each. "
-                    "Dry run by default: nothing is written until you add --apply.")
+        description="Join audiobooks made of many audio files into one chaptered .m4b each, written into a "
+                    "separate folder. Dry run by default: nothing is written until you add --apply. "
+                    "The original files are never moved, renamed or deleted.")
     p.add_argument("root", help="the library folder to scan (e.g. D:\\Audiobooks or /volume1/audiobooks)")
     p.add_argument("--apply", action="store_true", help="really convert (default: dry run, only a plan)")
-    p.add_argument("--output-root", metavar="DIR", help="separate folder for the new .m4b files (same layout as the library)")
-    p.add_argument("--in-place", action="store_true",
-                   help="put the .m4b in the book folder and MOVE the originals into --backup-root")
-    p.add_argument("--backup-root", metavar="DIR", help="where --in-place moves the original files (outside the library)")
-    p.add_argument("--i-understand-this-changes-my-library", action="store_true",
-                   help="confirmation needed for --in-place --apply")
-    p.add_argument("--report", metavar="FILE", help="report file (JSON; a CSV is written next to it). "
-                   "Default: to_m4b-report.json in the output root")
+    p.add_argument("--output-root", metavar="DIR",
+                   help="separate folder for the new .m4b files (same layout as the library; outside it)")
+    p.add_argument("--report", metavar="FILE.json", help="report file (must end in .json; a .csv is written "
+                   "next to it). Default: to_m4b-report.json in the output root")
     p.add_argument("--jobs", type=int, default=1, metavar="N", help="books converted at the same time (default 1)")
     p.add_argument("--bitrate", type=parse_bitrate, metavar="RATE",
                    help="AAC bitrate such as 64k (default: the source's average, kept between 48k and 128k)")
@@ -1429,6 +1636,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="only books whose path inside the library matches, e.g. \"Tolkien/*\" (can repeat)")
     p.add_argument("--exclude", action="append", metavar="PATTERN", help="skip books whose path matches (can repeat)")
     p.add_argument("--limit", type=int, metavar="N", help="stop after N books (for a first trial)")
+    p.add_argument("--strict", action="store_true",
+                   help="fail a book when ffmpeg reports any decoding error (default: keep it if the checks pass, "
+                        "and note the errors in the report)")
     p.add_argument("--ffmpeg", metavar="PATH", help="path to ffmpeg if it is not on PATH")
     p.add_argument("--ffprobe", metavar="PATH", help="path to ffprobe if it is not on PATH")
     p.add_argument("--normal-priority", action="store_true", help="do not lower the priority of the conversion")
@@ -1445,7 +1655,7 @@ def main(argv: Optional[Sequence[str]] = None, out=None) -> int:
             sys.stdout.reconfigure(errors="replace")  # type: ignore[attr-defined]
         except (AttributeError, ValueError):
             pass
-    opts.root = os.path.abspath(opts.root)
+    opts.root = _absolute(opts.root)
 
     def err(msg: str) -> int:
         print("Error: " + msg, file=out, flush=True)
@@ -1466,32 +1676,36 @@ def main(argv: Optional[Sequence[str]] = None, out=None) -> int:
         lower_own_priority()
 
     root = Path(opts.root)
-    excl = [Path(os.path.abspath(d)) for d in (opts.output_root, opts.backup_root) if d]
+    excl = [Path(_absolute(opts.output_root))] if opts.output_root else []
     run.say(f"to_m4b {VERSION} - {run.mode().upper()}" + ("" if opts.apply else " (nothing is changed; add --apply to convert)"))
+    run.say("The original files are only read: never moved, renamed or deleted.")
     run.say(f"Scanning {root} ...")
     cands = scan_library(root, opts.min_files, excl)
     if opts.only:
         cands = [c for c in cands if matches(c.rel, opts.only)]
     if opts.exclude:
         cands = [c for c in cands if not matches(c.rel, opts.exclude)]
+    if opts.output_root:
+        mark_collisions(cands, Path(_absolute(opts.output_root)))
     n_cand = sum(c.status == "candidate" for c in cands)
     run.say(f"Found {n_cand} multi-file books, plus {len(cands) - n_cand} folders that are skipped or unclear.")
     run.say("")
 
     pool = ThreadPoolExecutor(max_workers=opts.jobs) if opts.apply else None
-    futures = {}
+    futures: Dict = {}
     interrupted = False
     planned_bytes = 0
     index = 0
 
     def collect(done):
         for fut in done:
-            rel = futures.pop(fut)
+            rel = futures[fut]
             try:
                 rec = fut.result()
             except Exception as e:  # a bug, not a book problem: report it and go on
                 rec = {"source_folder": rel, "action": "failed", "reasons": [f"internal error: {e!r}"]}
             run.record(rel, rec)
+            futures.pop(fut, None)
 
     try:
         for c in cands:
@@ -1518,7 +1732,7 @@ def main(argv: Optional[Sequence[str]] = None, out=None) -> int:
                 run.record(c.rel, rec)
                 continue
             plan = make_plan(c, probes, opts.chapter_names, opts.bitrate)
-            plan.output_path = target_for(opts, c) if (opts.output_root or opts.in_place) else None
+            plan.output_path = target_for(opts, c) if opts.output_root else None
             rec["plan"] = plan_record(plan)
             rec["warnings"] += plan.warnings
             rec["source_duration_s"] = round(plan.total_duration, 3)
@@ -1580,10 +1794,9 @@ def main(argv: Optional[Sequence[str]] = None, out=None) -> int:
         if counts.get(key):
             run.say(f"  {counts[key]:5d}  {label}")
     if not opts.apply and planned_bytes:
-        target = opts.output_root or (opts.root if opts.in_place else None)
         line = f"  Estimated size of the new files: {fmt_bytes(planned_bytes)}"
-        if target:
-            fs = free_space(Path(target))
+        if opts.output_root:
+            fs = free_space(Path(opts.output_root))
             if fs is not None:
                 line += f"; free on the output drive: {fmt_bytes(fs)}"
                 if fs < planned_bytes:
@@ -1596,9 +1809,10 @@ def main(argv: Optional[Sequence[str]] = None, out=None) -> int:
             run.say(f"  {r['action'].upper():9s} {rel}: " + "; ".join(r.get("reasons") or []))
     elif bad:
         run.say(f"  ({len(bad)} unsure or failed books: see the report for the reasons)")
-    if run.stop_reason and not interrupted:
+    if counts.get("converted"):
         run.say("")
-        run.say("STOPPED: " + run.stop_reason)
+        run.say("Your original files are unchanged. After checking the new books you can move the originals "
+                "yourself.")
     run.say(f"Time: {fmt_dur(time.time() - run.started)}")
     try:
         run.write_report()
