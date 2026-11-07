@@ -39,3 +39,17 @@ fun progressAfterMark(current: ReadingProgress?, bookId: String, finished: Boole
  */
 fun keepsFinishedMark(existing: ReadingProgress?, userMarkAt: Long?, loadedSinceMs: Long): Boolean =
     existing != null && existing.isFinished && userMarkAt != null && existing.lastPlayedAt == userMarkAt && userMarkAt >= loadedSinceMs
+
+/** The snackbar text after a mark (the player's menu and the book long-press menu say the same). */
+fun markResultText(finished: Boolean, outcome: MarkOutcome): String {
+    val done = if (finished) "Marked as finished" else "Marked as not finished"
+    return when (outcome) {
+        MarkOutcome.QUEUED -> "$done. It will reach the server when it is back."
+        MarkOutcome.PARTIAL -> "$done. Another copy of this book could not be changed."
+        MarkOutcome.PARTIAL_QUEUED -> "$done. Another copy could not be changed; the rest reaches the servers when they are back."
+        MarkOutcome.SYNCED, MarkOutcome.LOCAL_ONLY -> done
+    }
+}
+
+/** When a mark could not be made at all. */
+const val MARK_ERROR_TEXT = "Could not update the book. Try again."

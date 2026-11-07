@@ -317,10 +317,11 @@ val commonViewModelModule = module {
             params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()
         )
     }
-    // Built with parametersOf(bookId) by the book details screen.
+    // Built with parametersOf(bookId) by the book details screen, and parametersOf(bookId, true) by the book long-press menu.
     viewModel { params -> BookDetailsViewModel(
             params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
-            merging = get(), merges = get(), servers = get(), features = get()
+            merging = get(), merges = get(), servers = get(), features = get(), favourites = get(),
+            quickActions = params.getOrNull<Boolean>() ?: false,
         ) }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
