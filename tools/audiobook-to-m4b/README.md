@@ -13,7 +13,7 @@ This tool is separate from the ChapterPlayer app. It is a single Python script
 
 > **Status: the real encoding has NOT been run yet.** ffmpeg was not available
 > on the machine this was written on, so everything was tested with stand-in
-> programs that pretend to be ffmpeg (79 automated tests). The first trial on
+> programs that pretend to be ffmpeg (96 automated tests). The first trial on
 > two or three of your own books (step 3 below) is the real test. Check those
 > results before converting the rest.
 
@@ -22,13 +22,23 @@ This tool is separate from the ChapterPlayer app. It is a single Python script
 1. Walks your library folder and finds the books that are a set of audio files
    (`.mp3 .m4a .aac .flac .ogg .opus .wma .wav`):
    * a folder with two or more audio files in it, or
-   * a folder whose sub-folders are discs or parts (`CD1`, `Disc 2`, `Disk 01`,
-     `Part 3`, ...), which are joined in order (CD1, CD2, ... CD10).
-   * Nested layouts like `Author/Series/Book` work. An author folder is not a book.
+   * a folder whose sub-folders are discs or parts named just that (`CD1`,
+     `Disc 2`, `Disk 01`, `Part 3`, `CD 1 of 2`), which are joined in order
+     (CD1, CD2, ... CD10). A folder like `Part 1 - The Final Empire` is NOT a
+     disc: such folders are often separate books, so each is treated on its own.
+   * Nested layouts like `Author/Series/Book` work. An author folder is not a book,
+     and the library folder itself is never a book.
+   * Links (symbolic links, Windows junctions) are reported and not followed, so
+     nothing is scanned twice and a link loop cannot trap the scan.
 2. Skips what it should not touch: folders that already hold a single file
    (an `.m4b` or one MP3), and anything it is **not sure about**:
    * files with clearly different album tags in one folder (several books dumped
      together),
+   * files without (or only partly with) album tags whose names do not look like
+     numbered parts of one book (`Book A.mp3`, `Another Story.mp3`: probably
+     separate single-file books),
+   * a `Bonus` or `Extras` folder with audio next to a book's disc folders,
+   * names containing a line break, or (on Windows) ending in a dot or space,
    * different audio formats mixed in one folder,
    * an `.m4b` next to other audio files,
    * loose audio files next to sub-folders with more audio.
@@ -43,40 +53,50 @@ This tool is separate from the ChapterPlayer app. It is a single Python script
    `folder.jpg`, `front.jpg`, `cover.png` in the folder), and the tags:
    title, author (artist and album artist), narrator (composer), album, genre
    "Audiobook", year, comment, and series (see "Tags" below).
-5. Checks the new file before it counts: its length must match the total of the
-   originals (within 1 second or 0.1%, whichever is larger), it must have one
-   chapter per original file, an audio track, and the cover when there was one.
-   Only then is it renamed from `Book.m4b.part` to `Book.m4b`.
+5. Checks the new file before it counts: the length of its AUDIO track (not the
+   file's overall length, which the chapter list alone can make look complete)
+   must match the total of the originals (within 1 second or 0.1%, whichever is
+   larger), the last chapter must not end after the audio, and it must have one
+   chapter per original file and the cover when there was one. Only then is it
+   renamed from `Book.m4b.part` to `Book.m4b`.
+6. Files that differ in sample rate or mono/stereo are resampled to one format.
+   When the files do not all have the same streams in the same order (for
+   example an `.m4a` whose cover comes before the audio), each file's audio is
+   taken explicitly instead of relying on the stream order.
 
 ## The safety model, in plain words
 
 * **By default nothing is changed.** Without `--apply` the tool only reads your
   files and prints what it would do (a "dry run").
-* **With `--apply --output-root DIR`** (recommended) the new `.m4b` files go into a
-  **separate folder** with the same layout as your library
-  (`DIR/Author/Book/Book.m4b`). Your originals are only read, never changed,
-  moved or deleted. Audiobookshelf and Plex keep seeing exactly what they saw
-  before. The output folder must be outside the library folder (the tool refuses
-  otherwise, so your servers do not show every book twice).
-* **Nothing is ever deleted.** Not your files, not old output. If a file with the
-  output name already exists and does not match the book, it is left alone and
-  the book is reported as failed.
+* **With `--apply --output-root DIR`** the new `.m4b` files go into a **separate
+  folder** with the same layout as your library (`DIR/Author/Book/Book.m4b`).
+  This is the only way the tool writes books.
+* **Your originals are only ever read.** The tool never moves, renames or
+  deletes any original file, and never writes into the library folder.
+  Audiobookshelf and Plex keep seeing exactly what they saw before.
+* The output folder (and the report) must be outside the library folder. This is
+  checked on the real location, so a mapped drive, a link or a junction that
+  leads into the library is refused too.
+* **Nothing of yours is deleted.** If a file with the output name already exists
+  and does not match the book, it is left alone and the book is reported as
+  failed. Two books whose output names would be the same (for example `Book?`
+  and `Book_`, or names differing only in capital letters) are both skipped and
+  reported.
 * **Half-finished files never get the final name.** The file is written as
   `Book.m4b.part` and renamed only after the checks pass. If ffmpeg fails, the
-  checks fail, or you press Ctrl-C, the tool removes only its own `.part` and
-  temporary files.
+  checks fail, or you press Ctrl-C, the tool removes only the `.part` file it
+  created in this run, plus its own temporary files. A `.part` left behind by an
+  earlier interrupted run is replaced only when it is more than a minute old
+  (the report says so); a newer one is left alone and that book is skipped.
 * **Safe to run again.** A book whose `.m4b` already exists and passes the checks
   is skipped, so you can stop at any time and continue later.
-* **`--in-place` is optional and guarded.** It puts the `.m4b` into the book folder
-  and **moves** (never deletes) the originals into a backup folder, keeping their
-  folder layout. It needs `--backup-root DIR` (outside the library) and the extra
-  flag `--i-understand-this-changes-my-library`. The originals are moved only
-  after the new file passed the checks; if any move fails, the files already
-  moved are put back. A move to another drive copies the file, checks the copy
-  byte for byte, and only then removes the original. An existing file in the
-  backup folder is never overwritten. Audiobookshelf and Plex will notice the
-  change and rescan those books (your listening position on those books may not
-  carry over), which is why the mirror folder is the recommended way.
+* **Replacing the originals is up to you.** Once you have checked the new books,
+  you can point Jellyfin at the output folder and leave the library as it is,
+  or, if you want the library itself to hold the `.m4b` files, move the
+  originals out and the new files in yourself, one book or one author at a time.
+  The tool deliberately does not do this step. Audiobookshelf and Plex rescan
+  books whose files change, and listening positions on those books may not
+  carry over.
 
 ## Install
 
@@ -153,14 +173,13 @@ little more. For speech this is normally not audible at the bitrates used here.
 | Option | What it does |
 | --- | --- |
 | `--apply` | Really convert. Without it: dry run. |
-| `--output-root DIR` | Separate folder for the new files (recommended). |
-| `--in-place` | Put the `.m4b` in the book folder; move the originals to `--backup-root`. Needs `--i-understand-this-changes-my-library` together with `--apply`. |
-| `--backup-root DIR` | Where `--in-place` moves the originals. |
-| `--report FILE` | Report file (JSON plus a CSV next to it). Default: `to_m4b-report.json` in the output (or backup) folder. |
+| `--output-root DIR` | Separate folder for the new files, outside the library. Needed with `--apply`. |
+| `--report FILE.json` | Report file; must end in `.json`, a `.csv` with the same name is written next to it. It must be outside the library, and an existing file of that name is only replaced when it is an earlier report of this tool. Default: `to_m4b-report.json` in the output folder. |
 | `--limit N` | Stop after N books (books already done do not count). |
 | `--only PATTERN`, `--exclude PATTERN` | Choose books by their path inside the library, e.g. `"Author/*"`, `"*Discworld*"`. Can be repeated. Not case sensitive. |
 | `--jobs N` | Books converted at the same time (default 1). |
 | `--bitrate 64k` | Fixed AAC bitrate. |
+| `--strict` | Fail a book when ffmpeg reports any decoding error. Without it such a book is kept when all the checks pass, and the errors are noted in the report. |
 | `--chapter-names tags\|files\|numbered` | `tags` (default): the files' title tags when they make sense, else the file names; `files`: cleaned file names (`03 - The Storm.mp3` becomes "The Storm", `03.mp3` becomes "Chapter 03"); `numbered`: Chapter 01, 02, ... |
 | `--min-files N` | Smallest number of files that makes a book (default 2). |
 | `--ffmpeg PATH`, `--ffprobe PATH` | Where ffmpeg/ffprobe are, if not found automatically. |
@@ -178,8 +197,13 @@ little more. For speech this is normally not audible at the bitrates used here.
   name in an `Author/Series/Book` layout. The number comes from a `series-part`
   tag or from the start of the book folder name (`03 - Title`, `Book 3 - Title`).
   It is written as `grouping` ("Series #3"), plus `series` and `series-part`.
-  Note: ffmpeg's MP4 writer is expected to keep `grouping` but to drop the
-  custom `series`/`series-part` names; check what your server shows after the trial.
+  Note: ffmpeg's MP4 writer keeps `grouping` but is expected to drop the custom
+  `series`/`series-part` names. ffmpeg's `-movflags +use_metadata_tags` would
+  keep them, but its documentation only says "use mdta atom for metadata", and
+  that mode stores ALL tags in a different place than the usual iTunes tags
+  (and, as far as the ffmpeg source shows, without the cover), so many players
+  would lose the title, author and cover. The tool therefore does not use it.
+  Check what your servers show for the series after the trial.
 * **Genre** is always "Audiobook". Year and comment are copied when present.
 
 ## Running on a NAS or against a network share
@@ -218,8 +242,10 @@ folder looked at, with: the source folder, the number of files, the layout
 the tags, the sizes, the lengths and how long it took. It is updated after each
 book and kept across runs (a later run updates the books it looked at again).
 
-When a book fails, ffmpeg's messages are saved in `_logs/` in the output folder
-(for `--in-place`: in the backup folder).
+When a book fails, ffmpeg's messages are saved in `_logs/` in the output folder.
+
+A dry run with `--output-root` creates that folder to hold the report (nothing
+else); a dry run without `--output-root` or `--report` writes no file at all.
 
 ## Troubleshooting
 
@@ -228,13 +254,21 @@ When a book fails, ffmpeg's messages are saved in `_logs/` in the output folder
 * **"UNSURE, skipped: files carry different album tags"**: the folder seems to
   hold more than one book. Put each book in its own folder, or fix the album
   tags (e.g. with Mp3tag), then run again.
-* **"duration ... expected ..." after a conversion**: the new file's length does
-  not match the originals. A common cause is an MP3 without a proper length
+* **"audio length ... expected ..." after a conversion**: the new file's audio
+  does not match the originals. A common cause is an MP3 without a proper length
   header (some old rips): ffprobe then only estimates its length. Re-saving the
   files with a tag editor that rewrites the header, or converting that book
   by hand, helps. The book is not placed until the lengths match.
-* **"not enough free space"**: the run stops before starting a book that would
-  not fit. Free some space or choose another output drive.
+* **"not enough free space"**: a book that would not fit is skipped (the others
+  go on). Free some space or choose another output drive, and run again.
+* **"UNSURE, skipped: the files have no album tag and their names do not look
+  like numbered parts"**: the folder may hold separate single-file books. If it
+  really is one book, give the files an album tag or number them (`01 ...`,
+  `02 ...`).
+* **"is a symbolic link or junction; not followed"**: run the tool on the link's
+  target folder itself if you want those books.
+* **"would get the same output file name"**: two folders differ only by
+  characters Windows cannot use or by capital letters. Rename one of them.
 * **"a file with the output name already exists and does not match"**: an older
   or different `.m4b` is in the output folder. Move it away (the tool never
   deletes it) and run again.
@@ -266,16 +300,22 @@ python tools/audiobook-to-m4b/to_m4b.py /tmp/demo/library --ffprobe tools/audiob
 
 ## How it calls ffmpeg (for the curious)
 
-The files are joined with ffmpeg's concat demuxer (a list file), the tags and
-chapters come from an ffmetadata file (`;FFMETADATA1`, one `[CHAPTER]` block per
-file, `TIMEBASE=1/1000`), and the cover is a third input:
+The tags and chapters come from an ffmetadata file (`;FFMETADATA1`, one
+`[CHAPTER]` block per file, `TIMEBASE=1/1000`, input 0), the cover is input 1,
+and the audio follows. When every file has the same streams in the same order,
+the files are joined with ffmpeg's concat demuxer (a list file):
 
 ```
-ffmpeg -f concat -safe 0 -i files.ffconcat -f ffmetadata -i chapters.ffmeta [-i cover]
-       -map 0:a:0 [-map 2:v:0 -c:v copy -disposition:v:0 attached_pic]
-       -map_metadata 1 -map_chapters 1 -c:a aac -b:a 64k -ac 2 -ar 44100
+ffmpeg -n -f ffmetadata -i chapters.ffmeta [-i cover] -f concat -safe 0 -i files.ffconcat
+       -map 2:a:0 -af aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo
+       [-map 1:v:0 -c:v copy -disposition:v:0 attached_pic]
+       -map_metadata 0 -map_chapters 0 -c:a aac -b:a 64k -ac 2 -ar 44100
        -movflags +faststart -f mp4 Book.m4b.part
 ```
+
+Otherwise every file is its own input and its audio is picked explicitly:
+`-filter_complex "[2:a:0][3:a:0]...concat=n=N:v=0:a=1,aresample=...,aformat=...[aout]" -map "[aout]"`.
+`-n` makes ffmpeg refuse to overwrite anything.
 
 All programs are started with argument lists (never through a shell), so names
 with spaces, quotes or other characters are passed exactly as they are.
