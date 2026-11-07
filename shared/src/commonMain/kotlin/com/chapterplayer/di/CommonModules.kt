@@ -58,6 +58,7 @@ import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.RoomBookMergeRepository
 import com.chapterplayer.data.favourites.FavouritesRepository
 import com.chapterplayer.data.favourites.RoomFavouritesRepository
+import com.chapterplayer.data.playback.BackgroundWork
 import com.chapterplayer.data.playback.UpNextAdvancer
 import com.chapterplayer.data.playback.UpNextNotices
 import com.chapterplayer.data.upnext.RoomUpNextRepository
@@ -309,7 +310,13 @@ val commonPlaybackModule = module {
     singleOf(::PlaybackStarter)
     // Up next: when a book plays to its end the first queued book starts (the application and iOS initKoin start it).
     single { UpNextNotices() }
-    single { UpNextAdvancer(get(), get(), get(), get(), get(), get(), get(), get(AppScopeQualifier), get(), merging = get()) }
+    single {
+        UpNextAdvancer(
+            get(), get(), get(), get(), get(), get(), get(), get(AppScopeQualifier), get(), merging = get(),
+            // iOS keeps the app awake for the advance (nothing plays while it fetches); Android needs nothing.
+            background = getOrNull<BackgroundWork>() ?: BackgroundWork.None,
+        )
+    }
     // A tapped notification asks the navigation host to open the player once.
     single { OpenPlayerRequest() }
 }

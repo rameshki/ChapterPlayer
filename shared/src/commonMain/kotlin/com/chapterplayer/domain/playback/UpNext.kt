@@ -142,14 +142,21 @@ fun planUpNext(queue: List<String>, items: List<BrowseItem>, endedBookId: String
     return UpNextPlan(null, drop, skipped)
 }
 
+/** Why a queued book that is not on the phone cannot play now, in words for the note. */
+fun upNextSkipReason(online: Boolean, downloadedOnly: Boolean): String = when {
+    !online -> "needs a connection"
+    downloadedOnly -> "Downloaded only is on"
+    else -> "its server does not answer"
+}
+
 /**
- * The note when the end of a book skipped queued books that cannot play now ([skippedTitles], in queue order);
- * [started] says whether a later one started. Null when nothing was skipped.
+ * The note when the end of a book skipped queued books that cannot play now ([skippedTitles], in queue order, all for
+ * [reason], see [upNextSkipReason]); [started] says whether a later one started. Null when nothing was skipped.
  */
-fun upNextSkipText(skippedTitles: List<String>, started: Boolean): String? {
+fun upNextSkipText(skippedTitles: List<String>, started: Boolean, reason: String): String? {
     if (skippedTitles.isEmpty()) return null
     val what = if (skippedTitles.size == 1) "\"${skippedTitles.first()}\"" else "${skippedTitles.size} books"
-    return if (started) "Up next skipped $what: not playable now" else "Up next: $what cannot play now (needs a connection)"
+    return if (started) "Up next skipped $what: $reason" else "Up next: $what cannot play now ($reason)"
 }
 
 /** The note when the next book of Up next did not start; [reason] is the starter's safe message. */
@@ -177,8 +184,34 @@ fun endedWhilePlaying(lastBeforeEnd: PlaybackState?, now: PlaybackState): Boolea
     if (before.bookId != now.bookId || before.ended) return false
     // Playing was asked for until the end: a paused book never gets here by itself.
     if (!before.playWhenReady) return false
-    val sleep = before.sleepRemainingMs ?: return true
     val speed = if (before.speed > 0f) before.speed else 1f
-    val bookLeftMs = ((before.durationMs - before.positionMs).coerceAtLeast(0L) / speed).toLong()
-    return sleep > bookLeftMs + UP_NEXT_SLEEP_MARGIN_MS
+    val bookLeft = (before.durationMs - before.positionMs).coerceAtLeast(0L)
+    // Playing reports its place twice a second: an end further away than that was jumped to (a 30 s skip), not played to.
+    if (bookLeft > (UP_NEXT_END_REACH_MS * maxOf(speed, 1f)).toLong()) return false
+    val sleep = before.sleepRemainingMs ?: return true
+    return sleep > (bookLeft / speed).toLong() + UP_NEXT_SLEEP_MARGIN_MS
 }
+
+/** How much book may be left in the last state before the end for the end to count as played to (not jumped to). */
+const val UP_NEXT_END_REACH_MS = 5_000L
+
+/**
+ * The sleep timer the next book starts with, so it keeps counting down through an advance: an "After" timer with the
+ * wall time it had left when the book ended ([remainingAtEndMs]) less what the advance took ([elapsedMs]), at least
+ * one second; null when no timer was set (or it was "End of chapter", which never lets the book end and move on).
+ */
+fun carriedSleepTimer(timer: SleepTimer, remainingAtEndMs: Long?, elapsedMs: Long): SleepTimer? {
+    if (timer !is SleepTimer.After || remainingAtEndMs == null) return null
+    val left = (remainingAtEndMs - elapsedMs.coerceAtLeast(0L)).coerceAtLeast(MIN_CARRIED_SLEEP_MS)
+    return SleepTimer.After(minutes = ((left + 59_999L) / 60_000L).toInt(), durationMs = left)
+}
+
+/** The wall time a sleep timer had left at the end of the book, from the last state before the end ([before]). */
+fun sleepLeftAtEnd(before: PlaybackState): Long? {
+    val sleep = before.sleepRemainingMs ?: return null
+    val speed = if (before.speed > 0f) before.speed else 1f
+    val bookLeftWall = ((before.durationMs - before.positionMs).coerceAtLeast(0L) / speed).toLong()
+    return (sleep - bookLeftWall).coerceAtLeast(0L)
+}
+
+private const val MIN_CARRIED_SLEEP_MS = 1_000L

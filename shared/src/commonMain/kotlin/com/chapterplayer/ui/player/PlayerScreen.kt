@@ -187,8 +187,9 @@ fun PlayerContent(
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(menu.message) {
         val text = menu.message ?: return@LaunchedEffect
-        menuActions.onMessageShown()
+        // Shown first, then cleared: clearing first would restart this effect and cancel the snackbar.
         snackbarHostState.showSnackbar(text)
+        menuActions.onMessageShown()
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(BackgroundDeep)) {

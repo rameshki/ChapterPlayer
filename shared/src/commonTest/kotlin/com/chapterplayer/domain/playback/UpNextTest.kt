@@ -227,9 +227,16 @@ class UpNextTest {
 
     @Test
     fun `the skip note names one book and counts several`() {
-        assertNull(upNextSkipText(emptyList(), started = true))
-        assertEquals("Up next skipped \"Book b\": not playable now", upNextSkipText(listOf("Book b"), started = true))
-        assertEquals("Up next: 2 books cannot play now (needs a connection)", upNextSkipText(listOf("x", "y"), started = false))
+        assertNull(upNextSkipText(emptyList(), started = true, reason = "needs a connection"))
+        assertEquals("Up next skipped \"Book b\": needs a connection", upNextSkipText(listOf("Book b"), started = true, reason = "needs a connection"))
+        assertEquals("Up next: 2 books cannot play now (Downloaded only is on)", upNextSkipText(listOf("x", "y"), started = false, reason = "Downloaded only is on"))
+    }
+
+    @Test
+    fun `the skip reason names what stops the book`() {
+        assertEquals("needs a connection", upNextSkipReason(online = false, downloadedOnly = true))
+        assertEquals("Downloaded only is on", upNextSkipReason(online = true, downloadedOnly = true))
+        assertEquals("its server does not answer", upNextSkipReason(online = true, downloadedOnly = false))
     }
 
     @Test
@@ -306,8 +313,53 @@ class UpNextTest {
 
     @Test
     fun `the sleep margin follows the speed`() {
-        // 30 s of book at 2x is 15 s of listening: a 16 s timer is due at the end.
-        assertFalse(endedWhilePlaying(playing(position = 30_000L, sleep = 16_000L, speed = 2f), ended))
-        assertTrue(endedWhilePlaying(playing(position = 30_000L, sleep = 20_000L, speed = 2f), ended))
+        // 8 s of book at 2x is 4 s of listening: a 6 s timer is due at the end (3 s margin), an 8 s one is not.
+        assertFalse(endedWhilePlaying(playing(position = 52_000L, sleep = 6_000L, speed = 2f), ended))
+        assertTrue(endedWhilePlaying(playing(position = 52_000L, sleep = 8_000L, speed = 2f), ended))
+    }
+
+    @Test
+    fun `a skip that lands on the end is not played to the end`() {
+        // 25 s before the end, Forward 30 s: the next state is the end.
+        assertFalse(endedWhilePlaying(playing(position = 35_000L), ended))
+        // Within the last few seconds it is.
+        assertTrue(endedWhilePlaying(playing(position = 56_000L), ended))
+        // At 3x a tick covers more book.
+        assertTrue(endedWhilePlaying(playing(position = 47_000L, speed = 3f), ended))
+    }
+
+    // -- The sleep timer through an advance ---------------------------------------------------
+
+    @Test
+    fun `an after timer carries its time left over to the next book`() {
+        val carried = carriedSleepTimer(SleepTimer.After(60), remainingAtEndMs = 40 * 60_000L, elapsedMs = 5_000L)
+        assertEquals(SleepTimer.After(40, 40 * 60_000L - 5_000L), carried)
+    }
+
+    @Test
+    fun `a carried timer keeps at least a second`() {
+        assertEquals(SleepTimer.After(1, 1_000L), carriedSleepTimer(SleepTimer.After(15), remainingAtEndMs = 2_000L, elapsedMs = 9_000L))
+    }
+
+    @Test
+    fun `no timer and end of chapter carry nothing`() {
+        assertNull(carriedSleepTimer(SleepTimer.Off, remainingAtEndMs = null, elapsedMs = 0L))
+        assertNull(carriedSleepTimer(SleepTimer.EndOfChapter, remainingAtEndMs = 10_000L, elapsedMs = 0L))
+        assertNull(carriedSleepTimer(SleepTimer.After(15), remainingAtEndMs = null, elapsedMs = 0L))
+    }
+
+    @Test
+    fun `the time left at the end takes off the book that was still to play`() {
+        // 1 s of book left at 1x and 20 min on the timer: 20 min less 1 s at the end.
+        assertEquals(20 * 60_000L - 1_000L, sleepLeftAtEnd(playing(position = 59_000L, sleep = 20 * 60_000L)))
+        // At 2x, 4 s of book is 2 s of listening.
+        assertEquals(8_000L, sleepLeftAtEnd(playing(position = 56_000L, sleep = 10_000L, speed = 2f)))
+        assertNull(sleepLeftAtEnd(playing()))
+    }
+
+    @Test
+    fun `an exact after timer counts its own time`() {
+        assertEquals(90_000L - 30_000L, sleepRemainingMs(SleepTimer.After(2, 90_000L), playedMs = 30_000L, positionMs = 0L, chapters = emptyList(), speed = 1f))
+        assertEquals(15 * 60_000L, SleepTimer.After(15).durationMs)
     }
 }

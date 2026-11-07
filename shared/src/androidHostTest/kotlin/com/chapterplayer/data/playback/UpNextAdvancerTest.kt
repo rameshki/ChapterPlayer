@@ -13,7 +13,13 @@ import com.chapterplayer.testing.FakeDownloadStates
 import com.chapterplayer.testing.FakeLocalBookFiles
 import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.testBook
+import com.chapterplayer.data.upnext.UpNextRepository
+import com.chapterplayer.domain.playback.SleepTimer
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -38,13 +44,33 @@ class UpNextAdvancerTest {
     private val queue = InMemoryUpNext()
     private val notices = UpNextNotices()
 
-    private fun TestScope.advancer(merging: FixedSourceMerging? = null): UpNextAdvancer {
+    private var clock = 0L
+    private val background = object : BackgroundWork {
+        var begun = 0
+        var ended = 0
+        override fun begin(onExpired: () -> Unit): () -> Unit {
+            begun++
+            return { ended++ }
+        }
+    }
+
+    private fun TestScope.advancer(merging: FixedSourceMerging? = null, upNext: UpNextRepository = queue): UpNextAdvancer {
         val main = UnconfinedTestDispatcher(testScheduler)
         val starter = PlaybackStarter(controller, repo, settings, connectivity, local)
         return UpNextAdvancer(
-            controller, queue, repo, downloads, connectivity, settings, starter, backgroundScope, notices,
+            controller, upNext, repo, downloads, connectivity, settings, starter, backgroundScope, notices,
             merging = merging ?: FixedSourceMerging(MergeContext(onlineServerIds = setOf("s1"))), main = main,
+            background = background, nowMs = { clock },
         ).also { it.start() }
+    }
+
+    /** The queue, but its first read waits for [gate]: the advance is held there while the test acts. */
+    private class GatedUpNext(val inner: InMemoryUpNext, val gate: CompletableDeferred<Unit>) : UpNextRepository {
+        override val queue: Flow<List<String>> = flow {
+            gate.await()
+            emitAll(inner.ids)
+        }
+        override suspend fun edit(change: (List<String>) -> List<String>) = inner.edit(change)
     }
 
     private fun TestScope.collectNotices(): List<String> {
@@ -152,7 +178,7 @@ class UpNextAdvancerTest {
         assertEquals(listOf("c"), controller.loads.map { it.first })
         // The skipped book stays queued for later.
         assertEquals(listOf("b"), queue.ids.value)
-        assertEquals(listOf("Up next skipped \"Title b\": not playable now"), seen)
+        assertEquals(listOf("Up next skipped \"Title b\": needs a connection"), seen)
     }
 
     @Test
@@ -222,6 +248,92 @@ class UpNextAdvancerTest {
 
         assertEquals(listOf("plex_b"), controller.loads.map { it.first })
         assertEquals(emptyList(), queue.ids.value)
+    }
+
+    @Test
+    fun `a sleep timer keeps its time left on the next book`() = runTest {
+        queue.ids.value = listOf("b")
+        controller.sleep.value = SleepTimer.After(60)
+        advancer()
+
+        controller.playback.value = PlaybackState(
+            bookId = "a", isPlaying = true, playWhenReady = true, positionMs = 59_000L, durationMs = 60_000L, sleepRemainingMs = 20 * 60_000L,
+        )
+        controller.playback.value = PlaybackState(bookId = "a", playWhenReady = true, positionMs = 60_000L, durationMs = 60_000L, ended = true)
+
+        assertEquals(listOf("b"), controller.loads.map { it.first })
+        // 20 min on the timer, 1 s of book still to play: the rest carries over.
+        assertEquals(listOf<SleepTimer>(SleepTimer.After(20, 20 * 60_000L - 1_000L)), controller.sleepSets)
+    }
+
+    @Test
+    fun `without a sleep timer none is set on the next book`() = runTest {
+        queue.ids.value = listOf("b")
+        advancer()
+        playsToTheEnd()
+        assertEquals(listOf("b"), controller.loads.map { it.first })
+        assertTrue(controller.sleepSets.isEmpty())
+    }
+
+    @Test
+    fun `a book picked during the advance wins and the advance starts nothing`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        queue.ids.value = listOf("b", "c")
+        advancer(upNext = GatedUpNext(queue, gate))
+
+        playsToTheEnd()
+        // While the advance waits, the person starts c (the car, a widget, the app).
+        controller.playback.value = PlaybackState(bookId = "c", isPlaying = true, playWhenReady = true, durationMs = 60_000L)
+        gate.complete(Unit)
+
+        assertTrue(controller.loads.isEmpty())
+        // c left the queue because it played; b stays for the next end.
+        assertEquals(listOf("b"), queue.ids.value)
+    }
+
+    @Test
+    fun `playing the ended book again cancels the advance`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        queue.ids.value = listOf("b")
+        advancer(upNext = GatedUpNext(queue, gate))
+
+        playsToTheEnd()
+        // A seek back into the ended book.
+        controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, playWhenReady = true, positionMs = 30_000L, durationMs = 60_000L)
+        gate.complete(Unit)
+
+        assertTrue(controller.loads.isEmpty())
+        assertEquals(listOf("b"), queue.ids.value)
+    }
+
+    @Test
+    fun `the advance runs inside background work`() = runTest {
+        queue.ids.value = listOf("b")
+        advancer()
+        playsToTheEnd()
+        assertEquals(1, background.begun)
+        assertEquals(1, background.ended)
+    }
+
+    @Test
+    fun `a book played again after the player let it go leaves the queue again`() = runTest {
+        advancer()
+        controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, playWhenReady = true, durationMs = 60_000L)
+        // The player let the book go (a long pause ended the session); then the person queued it and resumed it.
+        controller.playback.value = PlaybackState()
+        queue.ids.value = listOf("a", "b")
+        controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, playWhenReady = true, durationMs = 60_000L)
+        assertEquals(listOf("b"), queue.ids.value)
+    }
+
+    @Test
+    fun `downloaded only names its reason`() = runTest {
+        val seen = collectNotices()
+        settings.downloadedOnlyFlow.value = true
+        queue.ids.value = listOf("b")
+        advancer()
+        playsToTheEnd()
+        assertEquals(listOf("Up next: \"Title b\" cannot play now (Downloaded only is on)"), seen)
     }
 
     @Test

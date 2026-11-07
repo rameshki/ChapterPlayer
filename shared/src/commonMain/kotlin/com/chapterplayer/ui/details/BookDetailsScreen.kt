@@ -94,8 +94,9 @@ fun BookDetailsScreen(
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) {
         val text = message ?: return@LaunchedEffect
-        viewModel.onMessageShown()
+        // Shown first, then cleared: clearing first would restart this effect and cancel the snackbar.
         snackbar.showSnackbar(text)
+        viewModel.onMessageShown()
     }
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
