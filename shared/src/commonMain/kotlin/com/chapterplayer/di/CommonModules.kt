@@ -32,6 +32,7 @@ import com.chapterplayer.data.stats.RoomListeningLog
 import com.chapterplayer.domain.browse.BrowseQueryStore
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.ui.details.BookDetailsViewModel
+import com.chapterplayer.ui.details.CopyDescriptions
 import com.chapterplayer.ui.downloads.DownloadsViewModel
 import com.chapterplayer.ui.downloads.FinishedDownloadsViewModel
 import com.chapterplayer.ui.library.BookSelectionViewModel
@@ -344,7 +345,10 @@ val commonViewModelModule = module {
             params.get<String>(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), get(),
             merging = get(), merges = get(), servers = get(), features = get(), favourites = get(), upNext = get(),
             quickActions = params.getOrNull<Boolean>() ?: false,
+            copyDescriptions = get(),
         ) }
+    // The other copies' descriptions a book details page asked for, kept for the app session.
+    single { CopyDescriptions() }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
     // The player's Up next sheet.
     viewModel { UpNextViewModel(get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }

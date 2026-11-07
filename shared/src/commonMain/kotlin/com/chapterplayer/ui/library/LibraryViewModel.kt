@@ -37,10 +37,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import com.chapterplayer.domain.browse.BROWSE_RESTORE_WAIT_MS
 
 class LibraryViewModel(
     books: BookRepository,
@@ -59,20 +62,21 @@ class LibraryViewModel(
     // Kept in the saved state so the chosen view comes back after the process was killed, and in the settings so it
     // comes back on the next launch too.
     private val savedView = LibraryView.entries.firstOrNull { it.name == savedState.get<String>(VIEW_KEY) }
-    private val _view = MutableStateFlow(savedView ?: LibraryView.LIBRARY)
-    private var viewChosenHere = false
+    // Null until the stored view was read (shortly bounded), so the lists wait instead of showing Library first and
+    // then jumping to the stored view.
+    private val _view = MutableStateFlow(savedView)
 
     init {
         if (savedView == null) viewModelScope.launch {
             val stored = try {
-                settings.libraryView.first()
+                withTimeoutOrNull(BROWSE_RESTORE_WAIT_MS) { settings.libraryView.first() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 null
             }
-            val view = LibraryView.entries.firstOrNull { it.name == stored }
-            if (view != null && !viewChosenHere) _view.value = view
+            // A view chosen meanwhile wins.
+            _view.compareAndSet(null, LibraryView.entries.firstOrNull { it.name == stored } ?: LibraryView.LIBRARY)
         }
     }
 
@@ -98,8 +102,8 @@ class LibraryViewModel(
     private val content = combine(
         observeBrowseItems(books, downloads, merging),
         books.observeCollections(),
-        combine(queryStore.query, favourites.favouriteIds, ::Pair),
-        _view,
+        combine(queryStore.settledQuery, favourites.favouriteIds, ::Pair),
+        _view.filterNotNull(),
         servers.observeAll()
     ) { all, collections, (rawQuery, favouriteIds), view, serverList ->
         // A deleted server's id never hides books, even before the store drops it.
@@ -158,7 +162,6 @@ class LibraryViewModel(
     // User actions
 
     fun onViewSelected(view: LibraryView) {
-        viewChosenHere = true
         savedState[VIEW_KEY] = view.name
         _view.value = view
         viewModelScope.launch {

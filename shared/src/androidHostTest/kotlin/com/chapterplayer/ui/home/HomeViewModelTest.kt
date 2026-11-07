@@ -465,16 +465,33 @@ class HomeViewModelTest {
         val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1), longBook("b", addedAt = 2).copy(serverId = "s2"))))
         s.servers.flow.value = listOf(testServer("s1"), testServer("s2"))
         val state = collect(s)
-        assertFalse(state().serverFilterOn)
+        assertNull(state().filterHint)
 
         s.store.update { it.copy(serverIds = setOf("s2")) }
 
         assertEquals(listOf("b"), state().recentlyAdded.map { it.book.id })
-        assertTrue(state().serverFilterOn)
+        assertEquals("Server filter on", state().filterHint?.text)
 
-        s.vm.onServerFilterCleared()
+        s.vm.onFiltersCleared()
 
-        assertFalse(state().serverFilterOn)
+        assertNull(state().filterHint)
+        assertEquals(listOf("b", "a"), state().recentlyAdded.map { it.book.id })
+    }
+
+    @Test
+    fun `any filter left on from the Library is reported on Home and can be cleared keeping the sort`() = runTest {
+        val s = Setup(FakeBookRepository(listOf(longBook("a", addedAt = 1), longBook("b", addedAt = 2))))
+        s.store.update { it.copy(progress = com.chapterplayer.domain.browse.ProgressFilter.FINISHED, sort = com.chapterplayer.domain.browse.BrowseSort.TITLE) }
+        val state = collect(s)
+
+        assertEquals("Filters on", state().filterHint?.text)
+        assertEquals("Clear filters", state().filterHint?.clearLabel)
+        assertTrue(state().recentlyAdded.isEmpty())
+
+        s.vm.onFiltersCleared()
+
+        assertNull(state().filterHint)
+        assertEquals(com.chapterplayer.domain.browse.BrowseQuery(sort = com.chapterplayer.domain.browse.BrowseSort.TITLE), s.store.query.value)
         assertEquals(listOf("b", "a"), state().recentlyAdded.map { it.book.id })
     }
 
@@ -484,7 +501,7 @@ class HomeViewModelTest {
         s.store.update { it.copy(serverIds = setOf("s1")) }
         val state = collect(s)
 
-        assertFalse(state().serverFilterOn)
+        assertNull(state().filterHint)
         assertEquals(listOf("a"), state().recentlyAdded.map { it.book.id })
     }
     // A book on abs1 and plex1; the Plex copy was played last.

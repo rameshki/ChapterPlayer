@@ -131,6 +131,26 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `the list waits for the stored view instead of showing Library first`() = runTest {
+        val gate = CompletableDeferred<String?>()
+        val settings = object : com.chapterplayer.data.settings.AppSettings by FakeAppSettings() {
+            override val libraryView: Flow<String?> = kotlinx.coroutines.flow.flow { emit(gate.await()) }
+        }
+        val books = FakeBookRepository(listOf(testBook("a")))
+        val servers = FakeServerList(listOf(testServer()))
+        val coordinator = LibrarySyncCoordinator(books, servers, CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher()))
+        val vm = LibraryViewModel(books, servers, FakeDownloadStates(), BrowseQueryStore(), FakeMonitor(), settings, coordinator, Dispatchers.Main)
+        val seen = mutableListOf<LibraryUiState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { seen += it } }
+        assertTrue(seen.all { it.isLoading })
+
+        gate.complete(LibraryView.SERIES.name)
+
+        assertEquals(LibraryView.SERIES, vm.uiState.value.view)
+        assertTrue(seen.filter { !it.isLoading }.all { it.view == LibraryView.SERIES })
+    }
+
+    @Test
     fun `choosing a view keeps it for the next launch`() = runTest {
         val settings = FakeAppSettings()
         val vm = vmWith(settings)

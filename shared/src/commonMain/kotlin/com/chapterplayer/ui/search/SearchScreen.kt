@@ -50,7 +50,9 @@ import com.chapterplayer.ui.details.BookActionsHost
 import com.chapterplayer.ui.details.rememberBookActions
 import com.chapterplayer.ui.library.LibraryView
 import com.chapterplayer.ui.components.OfflineHeader
-import com.chapterplayer.ui.components.ServerFilterHint
+import com.chapterplayer.ui.components.FilterHintRow
+import com.chapterplayer.ui.components.ClearFiltersButton
+import com.chapterplayer.ui.components.FILTERS_HIDING_TEXT
 import com.chapterplayer.ui.components.SettingsAction
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.BackgroundDeep
@@ -85,7 +87,7 @@ fun SearchScreen(
             )
         )
         OfflineHeader()
-        if (state.serverFilterOn) ServerFilterHint(onClear = viewModel::onServerFilterCleared)
+        state.filterHint?.let { FilterHintRow(it, onClear = viewModel::onFiltersCleared) }
 
         OutlinedTextField(
             value = text,
@@ -127,7 +129,9 @@ fun SearchScreen(
                 if (state.downloadedFilterOn) {
                     EmptyState(Icons.Default.CloudDownload, "Nothing downloaded here yet")
                 } else {
-                    EmptyState(Icons.Default.Warning, "No books match the current filters.")
+                    EmptyState(Icons.Default.Warning, FILTERS_HIDING_TEXT) {
+                        ClearFiltersButton(viewModel::onFiltersCleared)
+                    }
                 }
             }
 

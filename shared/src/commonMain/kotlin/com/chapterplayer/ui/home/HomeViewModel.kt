@@ -21,6 +21,9 @@ import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.BrowseQuery
 import com.chapterplayer.domain.browse.BrowseQueryStore
+import com.chapterplayer.domain.browse.FilterHint
+import com.chapterplayer.domain.browse.filterHintFor
+import com.chapterplayer.domain.browse.withoutFilters
 import com.chapterplayer.domain.browse.BrowseSort
 import com.chapterplayer.domain.browse.ResumeInfo
 import com.chapterplayer.domain.browse.continueSeries
@@ -75,8 +78,8 @@ data class HomeUiState(
     val online: Boolean = true,
     val downloadedOnly: Boolean = false,
     val isSyncing: Boolean = false,
-    /** The Library's server filter hides some books here too; Home says so and offers to clear it. */
-    val serverFilterOn: Boolean = false,
+    /** The Library's filters hide some books here too; Home says so and offers to clear them (null: nothing hidden). */
+    val filterHint: FilterHint? = null,
     /** The "Play from" sheet Resume opened for a book on several servers; null when closed. */
     val sourceSheet: SourceSheetUi? = null,
     /** The merging inputs (null without merging), for Resume's choice of copy. */
@@ -119,7 +122,7 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = combine(
         observeBrowseItems(books, downloads, merging),
         servers.observeAll(),
-        combine(queryStore.query, favourites.favouriteIds, upNext.queue, ::Triple),
+        combine(queryStore.settledQuery, favourites.favouriteIds, upNext.queue, ::Triple),
         combine(connectivity.isOnline, settings.downloadedOnly, syncCoordinator.state) { online, downloadedOnly, sync ->
             Triple(online, downloadedOnly, sync.isSyncing)
         },
@@ -159,7 +162,7 @@ class HomeViewModel(
             online = online,
             downloadedOnly = downloadedOnly,
             isSyncing = syncing,
-            serverFilterOn = query.serverIds.isNotEmpty(),
+            filterHint = filterHintFor(query),
             sourceSheet = sheet,
             mergeContext = context,
         )
@@ -219,8 +222,8 @@ class HomeViewModel(
         }
     }
 
-    /** Shows every server's books again (the hint's button). */
-    fun onServerFilterCleared() = queryStore.update { it.copy(serverIds = emptySet()) }
+    /** Turns every filter off, the sort stays (the hint's button). */
+    fun onFiltersCleared() = queryStore.update(::withoutFilters)
 
     fun dismissError() {
         if (!local.value.starting) local.value = Local()

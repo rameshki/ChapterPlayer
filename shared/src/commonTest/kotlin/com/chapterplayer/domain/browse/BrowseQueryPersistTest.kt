@@ -5,6 +5,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -92,6 +97,43 @@ class BrowseQueryPersistTest {
         store.update { it.copy(sort = BrowseSort.AUTHOR) }
 
         assertEquals(listOf(encodeBrowseQuery(BrowseQuery(sort = BrowseSort.AUTHOR))), saves)
+    }
+
+    // ---- the lists wait for the restore ----
+
+    @Test
+    fun `a store that is not persisted gives its query at once`() = runTest {
+        val store = BrowseQueryStore()
+        assertEquals(BrowseQuery(), withTimeoutOrNull(1) { store.settledQuery.first() })
+    }
+
+    @Test
+    fun `the settled query waits for the stored filters and never gives the defaults first`() = runTest {
+        val read = CompletableDeferred<String?>()
+        val store = BrowseQueryStore()
+        store.persist(flow { emit(read.await()) }, save = {}, backgroundScope, UnconfinedTestDispatcher(testScheduler))
+        val seen = mutableListOf<BrowseQuery>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.settledQuery.collect { seen += it } }
+        assertEquals(emptyList(), seen)
+
+        read.complete(encodeBrowseQuery(stored))
+
+        assertEquals(listOf(stored), seen)
+    }
+
+    @Test
+    fun `a stored read that never answers gives the defaults after a short wait`() = runTest {
+        val store = BrowseQueryStore()
+        store.persist(flow { awaitCancellation() }, save = {}, backgroundScope, UnconfinedTestDispatcher(testScheduler))
+        val seen = mutableListOf<BrowseQuery>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.settledQuery.collect { seen += it } }
+        assertEquals(emptyList(), seen)
+
+        advanceTimeBy(BROWSE_RESTORE_WAIT_MS + 1)
+
+        assertEquals(listOf(BrowseQuery()), seen)
+        store.update { it.copy(sort = BrowseSort.TITLE) }
+        assertEquals(BrowseQuery(sort = BrowseSort.TITLE), seen.last())
     }
 
     // ---- stored server ids and the server list ----

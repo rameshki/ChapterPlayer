@@ -82,11 +82,15 @@ class BookDetailsMergeTest {
         rows: Map<String, com.chapterplayer.data.downloads.DownloadRow> = emptyMap(),
         /** What each copy's server gives as the description. */
         descriptions: Map<String, String> = emptyMap(),
+        copyDescriptions: CopyDescriptions = CopyDescriptions(),
+        /** Copies whose details answer only once their gate opens. */
+        slowIds: Map<String, kotlinx.coroutines.CompletableDeferred<Unit>> = emptyMap(),
     ) {
         val detailCalls = mutableListOf<String>()
         val repo = object : FakeBookRepository(books) {
             override suspend fun loadDetails(bookId: String): Result<BookDetails?> {
                 detailCalls += bookId
+                slowIds[bookId]?.await()
                 val size = sizes[bookId]
                 val text = descriptions[bookId]
                 return Result.success(
@@ -116,6 +120,7 @@ class BookDetailsMergeTest {
             },
             merges = merges,
             servers = servers,
+            copyDescriptions = copyDescriptions,
         )
     }
 
@@ -140,6 +145,32 @@ class BookDetailsMergeTest {
     fun `a merged book's Plex page shows the Audiobookshelf description`() = runTest {
         val s = Setup(listOf(abs("a"), plex("p")), "p", descriptions = mapOf("a" to "From ABS", "p" to "From Plex"))
         val state = collect(s)
+        assertEquals("From ABS", state().about?.description)
+    }
+
+    @Test
+    fun `the Audiobookshelf description is asked for once per session and Retry does not wait for it`() = runTest {
+        val cache = CopyDescriptions()
+        val s = Setup(listOf(abs("a"), plex("p")), "p", descriptions = mapOf("a" to "From ABS", "p" to "From Plex"), copyDescriptions = cache)
+        val state = collect(s)
+        assertEquals("From ABS", state().about?.description)
+        val again = Setup(listOf(abs("a"), plex("p")), "p", descriptions = mapOf("a" to "From ABS", "p" to "From Plex"), copyDescriptions = cache)
+        val second = collect(again)
+        assertEquals("From ABS", second().about?.description)
+        assertEquals(listOf("p"), again.detailCalls)
+    }
+
+    @Test
+    fun `a slow Audiobookshelf server holds neither the page's details nor Retry`() = runTest {
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val s = Setup(listOf(abs("a"), plex("p")), "p", descriptions = mapOf("a" to "From ABS", "p" to "From Plex"), slowIds = mapOf("a" to slow))
+        val state = collect(s)
+        assertEquals("From Plex", state().about?.description)
+        s.vm.retry()
+        // Retry read the page again while the first Audiobookshelf read was still waiting.
+        assertEquals(listOf("p", "a", "p", "a"), s.detailCalls)
+
+        slow.complete(Unit)
         assertEquals("From ABS", state().about?.description)
     }
 

@@ -112,6 +112,8 @@ class BookDetailsViewModel(
      * open, and the results of the actions are reported through [message] for a snackbar.
      */
     private val quickActions: Boolean = false,
+    /** The other copies' descriptions, kept for the app session (one per app through Koin). */
+    private val copyDescriptions: CopyDescriptions = CopyDescriptions(),
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -164,6 +166,7 @@ class BookDetailsViewModel(
     private val selectedTab = MutableStateFlow(DetailsTab.CHAPTERS)
     private val confirmingRemove = MutableStateFlow<String?>(null)
     private var loadJob: Job? = null
+    private var descriptionJob: Job? = null
 
     // Series and links come from every book of the library, never from the filtered lists.
     private val whole = observeBrowseItems(books, downloads, merging).map { all ->
@@ -828,12 +831,17 @@ class BookDetailsViewModel(
             onSuccess = { Live(it ?: live.value.details) },
             onFailure = { Live(live.value.details, error = errorText(it)) }
         )
-        result.getOrNull()?.let { preferAbsDescription(it) }
+        // Outside the load job: Retry and this page's own details never wait for the other copies' servers.
+        result.getOrNull()?.let { details ->
+            descriptionJob?.cancel()
+            descriptionJob = viewModelScope.launch { preferAbsDescription(details) }
+        }
     }
 
     /**
      * A book several servers have shows an Audiobookshelf copy's description when this page's copy is not one with a
-     * description ([mergedDescription]); the other copies' details are asked for after this page's, best effort.
+     * description ([mergedDescription]); the other copies' details are asked for after this page's, best effort, at the
+     * same time (a few at once) and only once per app session ([CopyDescriptions]).
      */
     private suspend fun preferAbsDescription(details: BookDetails) {
         val entry = whole.first().entry?.takeIf { it.isMerged } ?: return
@@ -842,14 +850,9 @@ class BookDetailsViewModel(
         if (ownIsAbs && !details.description.isNullOrBlank()) return
         val absIds = entry.allSources.filter { it.book.source == ServerSource.ABS && it.book.id != bookId }.map { it.book.id }
         if (absIds.isEmpty()) return
-        val absDescriptions = absIds.map { id ->
-            try {
-                books.loadDetails(id).getOrNull()?.description
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                null
-            }
+        val absDescriptions = copyDescriptions.descriptionsOf(absIds) { id ->
+            // No details at all (the server did not say) is not an answer to keep.
+            books.loadDetails(id).mapCatching { details -> checkNotNull(details) { "no details" }.description }
         }
         val chosen = mergedDescription(details.description, ownIsAbs, absDescriptions)
         val current = live.value
