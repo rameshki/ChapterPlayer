@@ -22,6 +22,14 @@ class SettingsSummaryTest {
         assertEquals("1 Audiobookshelf · signed in", serversSummary(listOf(server(ServerSource.ABS))))
         assertEquals("1 Plex · signed in", serversSummary(listOf(server(ServerSource.PLEX))))
         assertEquals("1 Audiobookshelf · sign in again", serversSummary(listOf(server(ServerSource.ABS, token = ""))))
+        assertEquals("1 Jellyfin · signed in", serversSummary(listOf(server(ServerSource.JELLYFIN))))
+        assertEquals("1 Jellyfin · sign in again", serversSummary(listOf(server(ServerSource.JELLYFIN, token = ""))))
+    }
+
+    @Test
+    fun `one server of each kind reads as three servers`() {
+        val three = listOf(server(ServerSource.ABS), server(ServerSource.PLEX), server(ServerSource.JELLYFIN))
+        assertEquals("3 servers", serversSummary(three))
     }
 
     @Test

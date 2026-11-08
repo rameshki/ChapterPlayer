@@ -96,6 +96,22 @@ class DiagnosticsViewModelTest {
         assertTrue(s.vm.uiState.value.choices.isEmpty())
     }
 
+    @Test fun `a Jellyfin copy is labelled Jellyfin`() = runTest {
+        val jfServer = ServerConfig("s3", ServerSource.JELLYFIN, "Den Jellyfin", "https://jf.test/jellyfin", "jftokenjftokenjftoken1")
+        val jfBook = testBook("jf_0a1b2c3d4e5f60718293a4b5c6d7e8f9", title = "A Quiet Shore", author = "Some Writer")
+            .copy(serverId = "s3", source = ServerSource.JELLYFIN)
+        val vm = DiagnosticsViewModel(
+            FakeBookRepository(listOf(jfBook)), FakeDownloadStates(), FixedSourceMerging(MergeContext(onlineServerIds = setOf("s3"))),
+            FakeServerList(listOf(jfServer)), Data(), logger, Monitor(), Dispatchers.Main, nowMs = { 1_793_628_185_000L }
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        runCurrent()
+        assertEquals("Den Jellyfin (Jellyfin)", vm.uiState.value.choices.single().detail)
+        vm.select(jfBook.id); runCurrent()
+        val report = assertNotNull(vm.uiState.value.report)
+        assertTrue(report.contains("== Copy 1: Den Jellyfin (Jellyfin) =="), report)
+    }
+
     @Test fun `choosing a book shows local pending and download facts without reading a server`() = runTest {
         val s = Setup(); collect(s)
         s.repo.progress.value = listOf(ReadingProgress(absBook.id, 5_000L, 1_000L, 1_793_628_000_000L))

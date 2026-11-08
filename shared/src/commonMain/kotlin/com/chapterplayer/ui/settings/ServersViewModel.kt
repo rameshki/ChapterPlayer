@@ -9,6 +9,7 @@ import com.chapterplayer.data.sync.ConnectionTest
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.data.sync.ServerSyncPhase
 import com.chapterplayer.data.sync.ServerSyncStatus
+import com.chapterplayer.domain.browse.serverKindName
 import com.chapterplayer.domain.settings.serverStatusLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -67,7 +68,7 @@ fun serverRows(servers: List<ServerConfig>, statuses: Map<String, ServerSyncStat
         ServerRowUi(
             id = server.id,
             name = server.name,
-            typeLabel = if (server.source == ServerSource.PLEX) "Plex" else "Audiobookshelf",
+            typeLabel = serverKindName(server.source),
             connectionLabel = status?.connectionLabel.orEmpty(),
             statusLine = serverStatusLine(phase, nowMs),
             failed = phase is ServerSyncPhase.Failed,

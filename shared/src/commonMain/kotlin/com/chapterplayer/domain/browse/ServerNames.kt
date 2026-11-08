@@ -10,11 +10,16 @@ import com.chapterplayer.data.model.ServerSource
  * (stored addresses never hold a token; user info before "@" is dropped).
  */
 
+/** The full name of a kind of server, as Settings, the sheets and Diagnostics show it. */
+fun serverKindName(source: ServerSource): String = when (source) {
+    ServerSource.ABS -> "Audiobookshelf"
+    ServerSource.PLEX -> "Plex"
+    ServerSource.JELLYFIN -> "Jellyfin"
+}
+
 /** The display name of every server in [servers], by id. */
 fun serverDisplayNames(servers: List<ServerConfig>): Map<String, String> {
-    fun base(server: ServerConfig) = server.name.trim().ifEmpty {
-        if (server.source == ServerSource.ABS) "Audiobookshelf" else "Plex"
-    }
+    fun base(server: ServerConfig) = server.name.trim().ifEmpty { serverKindName(server.source) }
     val result = LinkedHashMap<String, String>()
     for (group in servers.groupBy { base(it).lowercase() }.values) {
         if (group.size == 1) {

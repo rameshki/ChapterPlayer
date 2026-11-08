@@ -167,4 +167,12 @@ class ServersUiTest {
 
         assertEquals(listOf("a1"), synced)
     }
+
+    @Test
+    fun `a Jellyfin row is labelled Jellyfin`() {
+        val jf = ServerConfig("j1", ServerSource.JELLYFIN, "Den Jellyfin", "https://jf.test/jellyfin", "secret-jf")
+        val rows = serverRows(listOf(abs, plex, jf), emptyMap(), nowMs = 0L)
+        assertEquals(listOf("Audiobookshelf", "Plex", "Jellyfin"), rows.map { it.typeLabel })
+        assertTrue(rows.none { it.toString().contains("secret") })
+    }
 }

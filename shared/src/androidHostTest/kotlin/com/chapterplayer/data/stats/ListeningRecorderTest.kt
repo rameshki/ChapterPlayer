@@ -147,6 +147,16 @@ class ListeningRecorderTest {
     }
 
     @Test
+    fun `a Jellyfin book the cache does not know is logged as Jellyfin`() = runTest {
+        val r = rig()
+        r.play(3, book = "jf_0a1b2c3d4e5f60718293a4b5c6d7e8f9")
+        r.emit(book = "jf_0a1b2c3d4e5f60718293a4b5c6d7e8f9", playing = false)
+        val row = r.log.log.value.single()
+        assertEquals(ServerSource.JELLYFIN, row.source)
+        assertEquals("", row.serverId)
+    }
+
+    @Test
     fun `parts of a second carry over to the next write`() = runTest {
         val r = rig()
         repeat(4) {
