@@ -158,7 +158,14 @@ private fun PlayPause(state: NowPlayingWidgetState.Book, colors: WidgetColors) {
  * Runs a button on the main thread, as the controller requires. When nothing is loaded (the widget still shows a
  * book from before the app was gone) the app opens instead, and the widget is redrawn.
  */
-private suspend fun onMain(context: Context, glanceId: GlanceId, block: WidgetActions.() -> Boolean) {
+private suspend fun onMain(context: Context, glanceId: GlanceId, block: WidgetActions.() -> Boolean) =
+    runWidgetButton(context, block) { NowPlayingWidget().update(context, glanceId) }
+
+/**
+ * A widget button (Now Playing, Listen): [block] runs on the main thread; when it did nothing because no book is
+ * loaded, the app opens instead and [redraw] draws the widget again.
+ */
+internal suspend fun runWidgetButton(context: Context, block: WidgetActions.() -> Boolean, redraw: suspend () -> Unit) {
     val actions = object : KoinComponent {}.get<WidgetActions>()
     val acted = withContext(Dispatchers.Main) { actions.block() }
     if (acted) return
@@ -171,7 +178,7 @@ private suspend fun onMain(context: Context, glanceId: GlanceId, block: WidgetAc
         }
     }
     try {
-        NowPlayingWidget().update(context, glanceId)
+        redraw()
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {

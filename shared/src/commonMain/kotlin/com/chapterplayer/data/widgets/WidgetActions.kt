@@ -1,6 +1,9 @@
 package com.chapterplayer.data.widgets
 
 import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.domain.playback.RemoteAction
+import com.chapterplayer.domain.playback.RemoteCommand
+import com.chapterplayer.domain.playback.remoteAction
 import com.chapterplayer.domain.widgets.WidgetCommand
 import com.chapterplayer.domain.widgets.canSkip
 import com.chapterplayer.domain.widgets.playPauseCommand
@@ -24,6 +27,20 @@ class WidgetActions(private val controller: PlaybackController) {
     fun skipBack(): Boolean = skip { controller.skipBack() }
 
     fun skipForward(): Boolean = skip { controller.skipForward() }
+
+    /** Previous chapter (the Listen widget): restarts the chapter after its first 3 s, as the lock screen does. */
+    fun previousChapter(): Boolean = chapter(RemoteCommand.PreviousChapter)
+
+    /** Next chapter (the Listen widget): nothing at the last chapter. */
+    fun nextChapter(): Boolean = chapter(RemoteCommand.NextChapter)
+
+    private fun chapter(command: RemoteCommand): Boolean {
+        val state = controller.state.value
+        if (state.bookId == null) return false
+        val action = remoteAction(command, state)
+        if (action is RemoteAction.SeekTo) controller.seekTo(action.positionMs)
+        return true
+    }
 
     private inline fun skip(action: () -> Unit): Boolean {
         val state = controller.state.value
