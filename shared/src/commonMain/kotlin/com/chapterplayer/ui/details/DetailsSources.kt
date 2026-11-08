@@ -1,5 +1,7 @@
 package com.chapterplayer.ui.details
 
+import com.chapterplayer.domain.browse.canDownload
+
 import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.SourceOption
@@ -78,8 +80,12 @@ internal const val DOWNLOADING_TEXT = "Downloading"
 internal const val PAUSED_RESUME_TEXT = "Paused: Resume"
 internal const val FAILED_RETRY_TEXT = "Failed: Try again"
 
-/** The copies a download can come from: every copy (Audiobookshelf and Plex download alike). */
-internal fun downloadableMembers(entry: BrowseItem): List<BrowseItem> = entry.allSources
+/**
+ * The copies a download can come from: every copy on a server the app can download from (Audiobookshelf and Plex alike;
+ * a Jellyfin copy is left out until J3, `canDownload`).
+ */
+internal fun downloadableMembers(entry: BrowseItem): List<BrowseItem> =
+    entry.allSources.filter { it.book.source.canDownload() }
 
 /**
  * The rows of the "Download from" sheet, from each copy's real download state ([statuses] by book id, from the download

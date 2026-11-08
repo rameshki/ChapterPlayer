@@ -18,6 +18,7 @@ reliable progress sync, offline listening, car integration and widgets.
 |---|---|---|
 | 1 | Audiobookshelf | Full: browse, stream, download, progress & session sync, bookmarks |
 | 2 | Plex | Full: sign-in via plex.tv, browse music/audiobook sections, stream, download, progress via Plex timeline |
+| 2b | Jellyfin | J1 built (browse, stream, resume read; host-tested only), J2 progress back and three-copy mirroring next, J3 downloads and Quick Connect. Design `docs/superpowers/specs/2026-11-07-jellyfin-source-design.md` |
 | 3 | Audible | **Undecided**: research done, see `docs/AUDIBLE.md` (recommends an ASIN-aware merge and an "Open in Audible" hand-off; owner questions open). No DRM removal under any option |
 
 ### Platforms & surfaces
@@ -178,6 +179,12 @@ Design: `docs/superpowers/specs/2026-10-30-stage-5-ios-design.md` (seven steps; 
 - [ ] TestFlight beta
 
 **Prerequisites:** a Mac with Xcode, an Apple Developer account, and an approved CarPlay audio entitlement from Apple. Apply for the entitlement early, because approval takes time.
+
+### Stage J: Jellyfin as a source (design approved 2026-11-08; plan `docs/superpowers/plans/2026-11-08-jellyfin-j1-j2.md`)
+- [x] J1 built on `stage-j/j1` (Tasks 1 to 8): server kind, sign-in (password), server identity, library sync, details, chapters, anonymous covers, streaming with the token in the header only (Android and iOS), resume read, three kinds in merging and source choices (Jellyfin left out of Download until J3). Host-tested against synthetic fixtures only
+- [ ] J1 checked on Robert's Jellyfin 12.4 server (Task 9): real answer shapes recorded into the fixtures
+- [ ] J2: progress back (live session, threshold bands, queue, Mark as finished), three-copy mirroring
+- [ ] J3: downloads (`JellyfinDownloadSource`) and Quick Connect
 
 ### Stage 6: Audible (priority 3, scope to be decided)
 - [x] Research spike: unofficial Audible API state, terms-of-service risk, account-flag risk (`docs/AUDIBLE.md`, 2026-11-07)

@@ -80,11 +80,41 @@ fun chosenPlaySource(item: BrowseItem, choice: SourceChoice, onlineServerIds: Se
 
 /**
  * The copy to download without asking, or null when the user has to choose: the copy [choice] names when its server
- * answers and it is not on the phone or on its way already; with Ask, or when that copy cannot be fetched, null.
+ * answers and it is not on the phone or on its way already; with Ask, or when that copy cannot be fetched, null. A copy
+ * on a server the app cannot download from ([canDownload]) is never picked: a book only there gives null.
  */
 fun chosenDownloadSource(item: BrowseItem, choice: SourceChoice, onlineServerIds: Set<String>): BrowseItem? {
-    if (!item.isMerged) return item
+    if (!item.isMerged) return item.takeIf { it.book.source.canDownload() }
     return item.sources.firstOrNull {
-        choice.names(it) && it.book.serverId in onlineServerIds && it.downloadState == DownloadState.NOT_DOWNLOADED
+        it.book.source.canDownload() && choice.names(it) && it.book.serverId in onlineServerIds &&
+            it.downloadState == DownloadState.NOT_DOWNLOADED
     }
+}
+
+/**
+ * Whether the app can download books from this kind of server: Audiobookshelf and Plex can; Jellyfin cannot until its
+ * download source exists (stage J3), so it is left out of Download, the "Download from" sheet and choice, and bulk
+ * Download rather than shown as unavailable.
+ */
+fun ServerSource.canDownload(): Boolean = when (this) {
+    ServerSource.ABS, ServerSource.PLEX -> true
+    ServerSource.JELLYFIN -> false
+}
+
+/**
+ * This "Download from" choice as it can be used with [servers]: a choice of a kind (or of one server of a kind) the app
+ * cannot download from reads as [SourceChoice.Ask].
+ */
+fun SourceChoice.forDownload(servers: List<com.chapterplayer.data.model.ServerConfig>): SourceChoice = when (this) {
+    SourceChoice.Ask -> this
+    is SourceChoice.OfType -> if (source.canDownload()) this else SourceChoice.Ask
+    is SourceChoice.OfServer ->
+        if (servers.firstOrNull { it.id == serverId }?.source?.canDownload() == false) SourceChoice.Ask else this
+}
+
+/** The tie-break between kinds (member order and metadata order): Audiobookshelf, then Jellyfin, then Plex. */
+internal fun ServerSource.kindRank(): Int = when (this) {
+    ServerSource.ABS -> 0
+    ServerSource.JELLYFIN -> 1
+    ServerSource.PLEX -> 2
 }

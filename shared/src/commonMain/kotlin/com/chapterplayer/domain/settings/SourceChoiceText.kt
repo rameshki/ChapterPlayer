@@ -3,6 +3,8 @@ package com.chapterplayer.domain.settings
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.SourceChoice
+import com.chapterplayer.domain.browse.canDownload
+import com.chapterplayer.domain.browse.forDownload
 import com.chapterplayer.domain.browse.resolvedAgainst
 import com.chapterplayer.domain.browse.serverDisplayNames
 import com.chapterplayer.domain.browse.shortLabel
@@ -72,10 +74,13 @@ private fun lineDetail(choice: SourceChoice, names: Map<String, String>, purpose
  * [serverDisplayNames]. A choice of a removed server reads as Ask and says so.
  */
 fun sourceChoiceCard(stored: SourceChoice, servers: List<ServerConfig>, purpose: SourcePurpose): SourceChoiceCard {
-    val effective = stored.resolvedAgainst(servers.map { it.id })
+    val resolved = stored.resolvedAgainst(servers.map { it.id })
+    // "Download from" never names a kind the app cannot download from (Jellyfin until J3): such a choice reads as Ask.
+    val effective = if (purpose == SourcePurpose.DOWNLOAD) resolved.forDownload(servers) else resolved
     val names = serverDisplayNames(servers)
     val lines = mutableListOf<SourceChoice>(SourceChoice.Ask)
     for (type in ServerSource.entries) {
+        if (purpose == SourcePurpose.DOWNLOAD && !type.canDownload()) continue
         val ofType = servers.filter { it.source == type }
         if (ofType.isEmpty() && effective != SourceChoice.OfType(type)) continue
         lines += SourceChoice.OfType(type)
@@ -87,7 +92,7 @@ fun sourceChoiceCard(stored: SourceChoice, servers: List<ServerConfig>, purpose:
         label = lineLabel(effective, servers, names),
         detail = lineDetail(effective, names, purpose),
         note = if (purpose == SourcePurpose.PLAY) PLAY_DOWNLOADED_FIRST_TEXT else null,
-        removedNote = if (effective != stored) CHOSEN_SERVER_REMOVED_TEXT else null,
+        removedNote = if (resolved != stored) CHOSEN_SERVER_REMOVED_TEXT else null,
         lines = lines.map { choice ->
             SourceChoiceLine(
                 choice = choice,
@@ -118,7 +123,7 @@ fun sourceChoicesSummary(download: SourceChoice, play: SourceChoice, servers: Li
     if (!sourceChoicesApply(servers)) return null
     val ids = servers.map { it.id }
     val names = serverDisplayNames(servers)
-    val d = if (downloads) shortName(download.resolvedAgainst(ids), names) else null
+    val d = if (downloads) shortName(download.resolvedAgainst(ids).forDownload(servers), names) else null
     val p = shortName(play.resolvedAgainst(ids), names)
     return when {
         d == null && p == null -> null

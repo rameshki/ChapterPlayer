@@ -461,4 +461,62 @@ class MergedSourcesTest {
         val after = merge(items, MergeOverrides(merges = setOf("a" to "q")))
         assertEquals(setOf(setOf("a", "p", "q")), groups(after))
     }
+
+    // ---- three kinds ----
+
+    private val withJf = everyServer + "jf1"
+
+    private fun jf(id: String, durationMs: Long = 45 * hour) = item(id, "jf1", durationMs = durationMs, source = ServerSource.JELLYFIN)
+
+    @Test
+    fun `abs plex and jellyfin copies make one entry`() {
+        val result = merge(
+            listOf(item("a", "abs1", durationMs = 10 * hour), item("p", "plex1", durationMs = 10 * hour), jf("j", 10 * hour - 4_000L)),
+            online = withJf,
+        )
+        assertEquals(1, result.size)
+        assertEquals(3, result.single().sources.size)
+    }
+
+    @Test
+    fun `on a tie the order is Audiobookshelf then Jellyfin then Plex`() {
+        val result = merge(listOf(item("p", "plex1"), jf("j"), item("a", "abs1")), online = withJf)
+        assertEquals(listOf("a", "j", "p"), result.single().allSources.map { it.book.id })
+    }
+
+    @Test
+    fun `jellyfin only plus plex makes Jellyfin the primary on a tie`() {
+        val result = merge(listOf(item("p", "plex1"), jf("j")), online = withJf)
+        assertEquals("j", result.single().book.id)
+        assertEquals(listOf("j", "p"), result.single().allSources.map { it.book.id })
+    }
+
+    @Test
+    fun `narrator and series come from Jellyfin before Plex when Audiobookshelf has none`() {
+        fun with(item: BrowseItem, narrator: String, series: String?) = item.copy(book = item.book.copy(narrator = narrator, seriesName = series))
+        val result = merge(
+            listOf(
+                item("a", "abs1"),
+                with(item("p", "plex1"), "Plex Voice", "Plex Series"),
+                with(jf("j"), "Jellyfin Voice", "Jellyfin Series"),
+            ),
+            online = withJf,
+        )
+        val book = result.single().book
+        assertEquals("Jellyfin Voice", book.narrator)
+        assertEquals("Jellyfin Series", book.seriesName)
+        assertEquals("jf1", result.single().seriesServerId)
+    }
+
+    @Test
+    fun `a Jellyfin copy is never picked to download`() {
+        val entry = merge(listOf(item("a", "abs1"), jf("j")), online = withJf).single()
+        assertNull(chosenDownloadSource(entry, SourceChoice.OfType(ServerSource.JELLYFIN), withJf))
+        assertNull(chosenDownloadSource(entry, SourceChoice.OfServer("jf1"), withJf))
+        assertEquals("a", chosenDownloadSource(entry, SourceChoice.OfType(ServerSource.ABS), withJf)?.book?.id)
+        // A Jellyfin book on its own cannot be downloaded at all (until J3).
+        assertNull(chosenDownloadSource(jf("solo"), SourceChoice.Ask, withJf))
+        assertFalse(ServerSource.JELLYFIN.canDownload())
+        assertTrue(ServerSource.ABS.canDownload() && ServerSource.PLEX.canDownload())
+    }
 }

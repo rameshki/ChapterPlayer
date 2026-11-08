@@ -201,7 +201,7 @@ private fun memberOrder(playChoice: SourceChoice, onlineServerIds: Set<String>):
         { if (playChoice.names(it) && it.book.serverId in onlineServerIds) 0 else 1 },
         { if (it.book.serverId in onlineServerIds) 0 else 1 },
         { if (playChoice.names(it)) 0 else 1 },
-        { if (it.book.source == ServerSource.ABS) 0 else 1 },
+        { it.book.source.kindRank() },
         { it.book.id },
     )
 
@@ -217,9 +217,12 @@ private fun entryOf(members: List<BrowseItem>, playChoice: SourceChoice, onlineS
     return withPrimary(chosen, ordered)
 }
 
-/** The members in grouping-metadata order: Audiobookshelf copies first (they carry series and narrators best). */
+/**
+ * The members in grouping-metadata order: Audiobookshelf copies first (they carry series and narrators best), then
+ * Jellyfin (12.0+ has narrators and chapters), then Plex (neither).
+ */
 private fun metadataOrder(members: List<BrowseItem>): List<BrowseItem> =
-    members.sortedBy { if (it.book.source == ServerSource.ABS) 0 else 1 }
+    members.sortedBy { it.book.source.kindRank() }
 
 private fun withPrimary(primary: BrowseItem, ordered: List<BrowseItem>): BrowseItem {
     // A mirrored row carries the time of the copy it was copied from: on a tie the copy really played wins.
