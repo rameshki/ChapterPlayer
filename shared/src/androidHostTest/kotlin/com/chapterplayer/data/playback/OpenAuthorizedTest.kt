@@ -21,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class OpenAuthorizedTest {
 
@@ -169,5 +170,70 @@ class OpenAuthorizedTest {
         )
         run(two, setOf("Bearer tokB"), attempts)
         assertEquals(listOf<String?>("Bearer tokB"), attempts)
+    }
+
+    // ---- Jellyfin ----
+
+    private val jfUrl = "https://jf.test/jellyfin/Audio/abc/stream?static=true&mediaSourceId=abc&playSessionId=p1"
+    private val jfHeader: suspend (ServerConfig) -> String = { s -> "MediaBrowser Client=\"ChapterPlayer\", Token=\"${s.token}\"" }
+
+    private fun runJellyfin(
+        servers: FakeServers,
+        url: String,
+        headers: MutableList<AuthHeader?>,
+        signedOut: MutableList<String> = mutableListOf(),
+        failWith: Exception? = null,
+    ) = openAuthorized(
+        url, servers, manager(servers, IntArray(1)), { it is Unauthorized },
+        jellyfinHeader = jfHeader, onJellyfinRefused = { signedOut += it.id },
+    ) { header ->
+        headers += header
+        failWith?.let { throw it }
+        "opened"
+    }
+
+    @Test
+    fun `a Jellyfin address opens with the MediaBrowser header`() {
+        val headers = mutableListOf<AuthHeader?>()
+        val jf = server("j", "https://jf.test/jellyfin", ServerSource.JELLYFIN, token = "jf-token")
+        assertEquals("opened", runJellyfin(FakeServers(listOf(jf)), jfUrl, headers))
+        assertEquals("Authorization", headers.single()!!.name)
+        assertEquals("MediaBrowser Client=\"ChapterPlayer\", Token=\"jf-token\"", headers.single()!!.value)
+    }
+
+    @Test
+    fun `an address on another origin gets no Jellyfin header`() {
+        val headers = mutableListOf<AuthHeader?>()
+        val jf = server("j", "https://jf.test/jellyfin", ServerSource.JELLYFIN, token = "jf-token")
+        runJellyfin(FakeServers(listOf(jf)), "https://other.test/jellyfin/Audio/abc/stream", headers)
+        assertNull(headers.single())
+        // Outside the server's path too.
+        headers.clear()
+        runJellyfin(FakeServers(listOf(jf)), "https://jf.test/elsewhere/Audio/abc/stream", headers)
+        assertNull(headers.single())
+    }
+
+    @Test
+    fun `a refused Jellyfin token signs out and asks to sign in again`() {
+        val signedOut = mutableListOf<String>()
+        val jf = server("j", "https://jf.test/jellyfin", ServerSource.JELLYFIN, token = "jf-token")
+        assertFailsWith<SignInRequiredException> {
+            runJellyfin(FakeServers(listOf(jf)), jfUrl, mutableListOf(), signedOut, failWith = Unauthorized())
+        }
+        assertEquals(listOf("j"), signedOut)
+    }
+
+    @Test
+    fun `a Jellyfin server is never sent an Audiobookshelf bearer`() {
+        val headers = mutableListOf<AuthHeader?>()
+        val refreshes = IntArray(1)
+        val jf = server("j", "https://jf.test/jellyfin", ServerSource.JELLYFIN, token = "jf-token")
+        val servers = FakeServers(listOf(jf))
+        openAuthorized(jfUrl, servers, manager(servers, refreshes), { it is Unauthorized }, jellyfinHeader = jfHeader) { header ->
+            headers += header
+            "opened"
+        }
+        assertTrue(headers.single()!!.value.startsWith("MediaBrowser "))
+        assertEquals(0, refreshes[0])
     }
 }

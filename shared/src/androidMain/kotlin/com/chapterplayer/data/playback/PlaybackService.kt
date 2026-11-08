@@ -28,6 +28,7 @@ import com.chapterplayer.domain.playback.bookPosition
 import com.chapterplayer.domain.playback.locate
 import com.chapterplayer.domain.playback.seekByTarget
 import com.chapterplayer.data.repository.ServerRepository
+import com.chapterplayer.di.blankRefusedPlexToken
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +62,14 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
             .setMediaSourceFactory(
                 // Downloaded books are file addresses (read straight from disk); everything else goes over HTTP with the token.
                 DefaultMediaSourceFactory(
-                    DefaultDataSource.Factory(this, AuthorizingDataSourceFactory(get<ServerRepository>(), get<AbsAuthorizer>()))
+                    DefaultDataSource.Factory(
+                        this,
+                        AuthorizingDataSourceFactory(
+                            get<ServerRepository>(), get<AbsAuthorizer>(),
+                            jellyfinHeader = jellyfinStreamHeader(get(), get()),
+                            onJellyfinRefused = { refused -> blankRefusedPlexToken(get(), refused) },
+                        )
+                    )
                 )
             )
             .setAudioAttributes(

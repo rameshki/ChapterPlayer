@@ -5,6 +5,16 @@ import com.chapterplayer.data.diagnostics.ReadRefusedException
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.model.BookCollection
 import com.chapterplayer.data.model.BookDetails
+import com.chapterplayer.data.playback.PlaybackSession
+import com.chapterplayer.data.playback.PlaybackStartException
+import com.chapterplayer.data.playback.PlaybackTrack
+import com.chapterplayer.data.playback.UNSUPPORTED_AUDIO_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_LENGTH_UNKNOWN_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_NO_AUDIO_TEXT
+import com.chapterplayer.domain.jellyfin.jellyfinContainerSupported
+import com.chapterplayer.domain.jellyfin.jellyfinMimeType
+import com.chapterplayer.domain.jellyfin.jellyfinStreamUrl
+import com.chapterplayer.domain.jellyfin.newPlaySessionId
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.SeriesRef
 import com.chapterplayer.data.model.ServerConfig
@@ -60,6 +70,65 @@ class JellyfinLibrarySource(
 ) : LibrarySource {
 
     override val type: ServerSource = ServerSource.JELLYFIN
+
+    /**
+     * A load the app opened: the item, Jellyfin's play session and media source ids (used by J2's reports), and the
+     * last reported place. Read and written under [sessionsLock].
+     */
+    private class LiveSession(val itemId: String, val playSessionId: String, val mediaSourceId: String) {
+        val lock = Mutex()
+        var lastPositionMs: Long? = null
+        var markedFinished = false
+    }
+
+    private val sessions = HashMap<String, LiveSession>()
+    private var sessionCount = 0L
+    private val sessionsLock = Mutex()
+
+    /**
+     * Opens the app's own session for [bookId] (Jellyfin has no PlaybackInfo call here): the item is read fresh with its
+     * media sources and chapters, its first media source is the one file, streamed as the original (`static=true`) with
+     * a new play session id, the token in the header only. It starts at the server's place unless that is none or
+     * finished. A book with no media source, an unknown length or a container the app cannot play fails with a safe text.
+     */
+    override suspend fun startPlayback(server: ServerConfig, bookId: String): PlaybackSession = signedIn(server) {
+        val itemId = itemIdOf(bookId)
+        val item = api.getItem(server.baseUrl, deviceId(server), server.token, itemId)
+        val media = item.mediaSources.firstOrNull() ?: throw PlaybackStartException(JELLYFIN_NO_AUDIO_TEXT)
+        if (!jellyfinContainerSupported(media.container)) throw PlaybackStartException(UNSUPPORTED_AUDIO_TEXT)
+        val durationMs = jellyfinTicksToMs(item.runTimeTicks).takeIf { it > 0L } ?: jellyfinTicksToMs(media.runTimeTicks)
+        if (durationMs <= 0L) throw PlaybackStartException(JELLYFIN_LENGTH_UNKNOWN_TEXT)
+        val mediaSourceId = media.id?.takeIf { it.isNotBlank() } ?: itemId
+        val playSessionId = newPlaySessionId()
+        val track = PlaybackTrack(
+            index = 0,
+            startMs = 0L,
+            durationMs = durationMs,
+            mimeType = jellyfinMimeType(media.container),
+            url = jellyfinStreamUrl(server.baseUrl, itemId, mediaSourceId, playSessionId),
+            fileId = itemId,
+        )
+        val reading = jellyfinServerProgress(item.userData, durationMs)
+        val start = if (reading == null || reading.isFinished) 0L else reading.positionMs
+        val sessionId = sessionsLock.withLock {
+            sessionCount++
+            "jf-$itemId-$sessionCount".also { sessions[it] = LiveSession(itemId, playSessionId, mediaSourceId) }
+        }
+        PlaybackSession(
+            sessionId = sessionId,
+            serverId = server.id,
+            bookId = bookId,
+            durationMs = durationMs,
+            startPositionMs = start,
+            tracks = listOf(track),
+            chapters = jellyfinChapters(item.chapters, durationMs),
+        )
+    }
+
+    /** J1 writes nothing to the server: closing only forgets the session (J2 sends the stop report). */
+    override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
+        sessionsLock.withLock { sessions.remove(sessionId) }
+    }
 
     /** What the last snapshot of a server read: when, every book's progress and every book's length. */
     private class SnapshotCache(val atMs: Long, val progress: Map<String, ServerProgress>, val lengths: Map<String, Long>)

@@ -60,7 +60,7 @@ fun jellyfinItemToBook(item: JellyfinItemDto, base: String, serverId: String, li
 
 /** `{base}/Items/{id}/Images/Primary?tag={tag}&maxWidth=600`: the path of [base] kept once, never a token. */
 fun jellyfinCoverUrl(base: String, itemId: String, tag: String): String =
-    base.trimEnd('/') + "/Items/" + urlPart(itemId) + "/Images/Primary?tag=" + urlPart(tag) + "&maxWidth=600"
+    base.trimEnd('/') + "/Items/" + jellyfinUrlPart(itemId) + "/Images/Primary?tag=" + jellyfinUrlPart(tag) + "&maxWidth=600"
 
 /**
  * The book's chapters: sorted by start, without starts that are missing, negative, at or past the end or repeated;
@@ -110,7 +110,7 @@ fun jellyfinServerProgress(data: JellyfinUserDataDto?, durationMs: Long): Server
 private const val HEX = "0123456789ABCDEF"
 
 /** [value] percent-encoded except the unreserved characters (ids and tags are hex, so this is only a safeguard). */
-private fun urlPart(value: String): String = buildString {
+internal fun jellyfinUrlPart(value: String): String = buildString {
     for (byte in value.encodeToByteArray()) {
         val b = byte.toInt() and 0xFF
         val c = b.toChar()

@@ -14,6 +14,7 @@ import com.chapterplayer.data.permissions.NoNotificationPermission
 import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.StreamAuthorizer
+import com.chapterplayer.data.playback.jellyfinStreamHeader
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.repository.ServerRepository
 import kotlinx.coroutines.CoroutineScope
@@ -49,7 +50,12 @@ fun headerPlayerModule(
 ): Module = module {
     single {
         val servers = get<ServerRepository>()
-        StreamAuthorizer(get(), get(), get(ProbeClientQualifier), onPlexRefused = { refused -> blankRefusedPlexToken(servers, refused) })
+        StreamAuthorizer(
+            get(), get(), get(ProbeClientQualifier),
+            onPlexRefused = { refused -> blankRefusedPlexToken(servers, refused) },
+            jellyfinHeader = jellyfinStreamHeader(get(), get()),
+            onJellyfinRefused = { refused -> blankRefusedPlexToken(servers, refused) },
+        )
     }
     single<PlaybackController> { create(get(), get(), get(AppScopeQualifier), get()) }
 }

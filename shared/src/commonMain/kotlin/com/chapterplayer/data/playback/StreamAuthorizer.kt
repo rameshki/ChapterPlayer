@@ -126,13 +126,17 @@ private class StreamRefused(val check: StreamCheck) : Exception("refused")
  * the token from being sent elsewhere; a server that sends only later requests elsewhere is not caught (documented).
  *
  * [client] must not follow redirects (the probe client). [onPlexRefused] blanks a Plex token the server refused (as the
- * Plex API calls do), so Settings says "Sign in again".
+ * Plex API calls do), so Settings says "Sign in again". A Jellyfin server gets the `Authorization: MediaBrowser ...`
+ * value [jellyfinHeader] builds for it (never an Audiobookshelf bearer); its refused token is blanked by
+ * [onJellyfinRefused] (no refresh exists) and a 403 says the account may not play the book.
  */
 class StreamAuthorizer(
     private val servers: ServerRepository,
     private val authorizer: AbsAuthorizer,
     private val client: HttpClient,
     private val onPlexRefused: suspend (ServerConfig) -> Unit = {},
+    private val jellyfinHeader: suspend (ServerConfig) -> String = { error("No Jellyfin header") },
+    private val onJellyfinRefused: suspend (ServerConfig) -> Unit = onPlexRefused,
 ) {
 
     /**
@@ -147,10 +151,14 @@ class StreamAuthorizer(
         }
         return try {
             val server = streamServerFor(url, servers.observeAll().first())
-            when {
-                server == null -> StreamHeaders.None.also { requireOk(check(url, null)) }
-                server.source == ServerSource.PLEX -> plex(server, url)
-                else -> abs(server, url)
+            if (server == null) {
+                StreamHeaders.None.also { requireOk(check(url, null)) }
+            } else {
+                when (server.source) {
+                    ServerSource.PLEX -> plex(server, url)
+                    ServerSource.JELLYFIN -> jellyfin(server, url)
+                    ServerSource.ABS -> abs(server, url)
+                }
             }
         } catch (e: CancellationException) {
             throw e
@@ -175,6 +183,16 @@ class StreamAuthorizer(
         return headers
     }
 
+    private suspend fun jellyfin(server: ServerConfig, url: String): StreamHeaders {
+        val headers = StreamHeaders(mapOf(HttpHeaders.Authorization to jellyfinHeader(server)))
+        val result = check(url, headers)
+        if (result == StreamCheck.UNAUTHORIZED) {
+            withContext(NonCancellable) { onJellyfinRefused(server) }
+        }
+        requireOk(result)
+        return headers
+    }
+
     /**
      * The headers for [url] as they should be now, without a check: an Audiobookshelf token close to expiry is refreshed
      * first (through the authorizer), so items built from now on outlive it. Null when there is no server, no token or the
@@ -182,10 +200,11 @@ class StreamAuthorizer(
      */
     suspend fun currentHeaders(url: String): StreamHeaders? = try {
         val server = streamServerFor(url, servers.observeAll().first())
-        when {
-            server == null -> null
-            server.source == ServerSource.PLEX -> StreamHeaders(mapOf(PLEX_TOKEN_HEADER to server.token))
-            else -> authorizer.authorized(server) { bearer -> StreamHeaders(mapOf(HttpHeaders.Authorization to bearer)) }
+        when (server?.source) {
+            null -> null
+            ServerSource.PLEX -> StreamHeaders(mapOf(PLEX_TOKEN_HEADER to server.token))
+            ServerSource.JELLYFIN -> StreamHeaders(mapOf(HttpHeaders.Authorization to jellyfinHeader(server)))
+            ServerSource.ABS -> authorizer.authorized(server) { bearer -> StreamHeaders(mapOf(HttpHeaders.Authorization to bearer)) }
         }
     } catch (e: CancellationException) {
         throw e

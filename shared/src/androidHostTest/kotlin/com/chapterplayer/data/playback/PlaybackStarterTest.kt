@@ -233,6 +233,45 @@ class PlaybackStarterTest {
         assertEquals(listOf("a"), repo.fetchedProgress)
     }
 
+    // -- A Jellyfin copy: its server reading weighs like any other (newest wins; "0 and not played" is none) --------
+
+    private val jfBook = testBook("jf_0bdd952d73af33d8d4421dfdb2f25919")
+        .copy(durationMs = 100_000L, source = com.chapterplayer.data.model.ServerSource.JELLYFIN, serverId = "j1")
+    private val jfRepo = FakeBookRepository(listOf(jfBook))
+    private val jfStarter = PlaybackStarter(controller, jfRepo, settings, connectivity, local)
+    private fun jfLocal(pos: Long, at: Long) = ReadingProgress(jfBook.id, pos, 100_000L, at)
+
+    @Test
+    fun `a Jellyfin reading newer than the local row wins`() = runTest {
+        jfRepo.progress.value = listOf(jfLocal(10_000L, at = 100L))
+        jfRepo.onFetchServerProgress = { Result.success(remote(60_000L, at = 200L)) }
+
+        jfStarter.start(jfBook)
+
+        assertEquals(listOf(jfBook.id to 60_000L), controller.loads)
+    }
+
+    @Test
+    fun `an older Jellyfin reading loses to the local row`() = runTest {
+        jfRepo.progress.value = listOf(jfLocal(10_000L, at = 300L))
+        jfRepo.onFetchServerProgress = { Result.success(remote(60_000L, at = 200L)) }
+
+        jfStarter.start(jfBook)
+
+        assertEquals(listOf(jfBook.id to 10_000L), controller.loads)
+    }
+
+    @Test
+    fun `a Jellyfin reading of no progress never moves a book back to 0`() = runTest {
+        jfRepo.progress.value = listOf(jfLocal(42_000L, at = 100L))
+        // "0 and not played" reads as null (jellyfinServerProgress), even when the server's time is newer.
+        jfRepo.onFetchServerProgress = { Result.success(null) }
+
+        jfStarter.start(jfBook)
+
+        assertEquals(listOf(jfBook.id to 42_000L), controller.loads)
+    }
+
     @Test
     fun `newer local progress wins over the server`() = runTest {
         repo.progress.value = listOf(local(10_000L, at = 300L))

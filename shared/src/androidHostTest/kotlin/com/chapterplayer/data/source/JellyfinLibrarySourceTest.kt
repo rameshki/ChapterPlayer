@@ -321,4 +321,82 @@ class JellyfinLibrarySourceTest {
         src.fetchAllProgress(server.copy(id = "row-2"))
         assertTrue(requests.size > count)
     }
+
+    // ---- playback ----
+
+    @Test
+    fun `an m4b starts as one track with its chapters at the server's place`() = runTest {
+        val src = source { Answer(fixture("jellyfin/item-detail-media-sources.json")) }
+        val session = src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919")
+
+        val track = session.tracks.single()
+        assertEquals(0, track.index)
+        assertEquals(0L, track.startMs)
+        assertEquals(10 * 3_600_000L, track.durationMs)
+        assertEquals("audio/mp4", track.mimeType)
+        assertEquals("0bdd952d73af33d8d4421dfdb2f25919", track.fileId)
+        assertTrue(track.url.startsWith("https://jf.test/jellyfin/Audio/0bdd952d73af33d8d4421dfdb2f25919/stream?static=true&mediaSourceId=0bdd952d73af33d8d4421dfdb2f25919&playSessionId="), track.url)
+        assertTrue(!track.url.contains(token))
+        assertEquals(4, session.chapters.size)
+        assertEquals(1_350_000L, session.startPositionMs)
+        assertEquals(10 * 3_600_000L, session.durationMs)
+        assertEquals("row-1", session.serverId)
+        assertEquals("jf_0bdd952d73af33d8d4421dfdb2f25919", session.bookId)
+        assertTrue(session.sessionId.startsWith("jf-0bdd952d73af33d8d4421dfdb2f25919-"), session.sessionId)
+        assertEquals("/jellyfin/Items/0bdd952d73af33d8d4421dfdb2f25919", requests.single().url.encodedPath)
+        assertEquals("Chapters,People,Overview,Genres,Studios,MediaSources", requests.single().url.parameters["Fields"])
+    }
+
+    @Test
+    fun `two starts get two sessions and two play session ids`() = runTest {
+        val src = source { Answer(fixture("jellyfin/item-detail-media-sources.json")) }
+        val one = src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919")
+        val two = src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919")
+        assertTrue(one.sessionId != two.sessionId)
+        assertTrue(one.tracks.single().url != two.tracks.single().url)
+    }
+
+    @Test
+    fun `a finished book starts at the beginning`() = runTest {
+        val played = fixture("jellyfin/item-detail-media-sources.json")
+            .replace("\"PlaybackPositionTicks\": 13500000000", "\"PlaybackPositionTicks\": 0")
+            .replace("\"Played\": false", "\"Played\": true")
+        val src = source { Answer(played) }
+        assertEquals(0L, src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919").startPositionMs)
+    }
+
+    @Test
+    fun `start without media source fails with a safe text`() = runTest {
+        val src = source { Answer(fixture("jellyfin/item-detail-chapters.json")) }
+        val e = assertFailsWith<com.chapterplayer.data.playback.PlaybackStartException> {
+            src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919")
+        }
+        assertEquals(com.chapterplayer.domain.jellyfin.JELLYFIN_NO_AUDIO_TEXT, e.message)
+        assertTrue(!e.message!!.contains("jf.test") && !e.message!!.contains(token))
+    }
+
+    @Test
+    fun `a container the app cannot play fails with the format text`() = runTest {
+        val wma = fixture("jellyfin/item-detail-media-sources.json").replace("\"Container\": \"m4b\"", "\"Container\": \"wma\"")
+        val src = source { Answer(wma) }
+        val e = assertFailsWith<com.chapterplayer.data.playback.PlaybackStartException> {
+            src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919")
+        }
+        assertEquals(com.chapterplayer.data.playback.UNSUPPORTED_AUDIO_TEXT, e.message)
+    }
+
+    @Test
+    fun `an ogg book starts on android and is refused by the apple gate`() = runTest {
+        val src = source { Answer(fixture("jellyfin/item-detail-ogg.json")) }
+        val track = src.startPlayback(server, "jf_e68bb4f5169289c83051faa19260e55d").tracks.single()
+        assertEquals("audio/ogg", track.mimeType)
+        assertTrue(!com.chapterplayer.data.playback.applePlays(track))
+    }
+
+    @Test
+    fun `a refused token on start blanks the sign-in`() = runTest {
+        val src = source { Answer("", HttpStatusCode.Unauthorized) }
+        assertFailsWith<SignInRequiredException> { src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919") }
+        assertEquals(listOf("row-1"), signedOut.map { it.id })
+    }
 }
