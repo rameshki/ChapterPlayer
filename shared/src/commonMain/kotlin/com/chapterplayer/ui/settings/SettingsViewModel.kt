@@ -11,6 +11,9 @@ import com.chapterplayer.domain.settings.sourceChoicesSummary
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.auth.AbsSignInPort
+import com.chapterplayer.data.auth.JellyfinSignInPort
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_MISSING_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_UNREADABLE_TEXT
 import com.chapterplayer.data.auth.normalizeServerAddress
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
@@ -28,6 +31,8 @@ import com.chapterplayer.data.remote.plex.PLEX_VERSION
 import com.chapterplayer.data.remote.plex.dto.connectionCandidates
 import com.chapterplayer.data.sync.PlexConnectionManager
 import com.chapterplayer.data.sync.PlexConnectionProbe
+import com.chapterplayer.data.sync.NoServerStatusStore
+import com.chapterplayer.data.sync.ServerStatusStore
 import com.chapterplayer.domain.plex.ConnectionPick
 import com.chapterplayer.domain.plex.PlexCandidate
 import com.chapterplayer.domain.plex.PlexConnectionKind
@@ -142,7 +147,10 @@ data class ServerSetupUiState(
     val plexConnectionNote: String? = null,
 
     // ABS add flow (sign in, then choose libraries)
-    val abs: AbsSetupState = AbsSetupState()
+    val abs: AbsSetupState = AbsSetupState(),
+
+    // Jellyfin add flow and Sign in again
+    val jellyfin: JellyfinSetupState = JellyfinSetupState()
 ) {
     /** Left out so a token can never reach a log. */
     override fun toString() = "ServerSetupUiState(source=$source, name=$name, baseUrl=$baseUrl)"
@@ -388,13 +396,18 @@ class ServerSetupViewModel(
     /** Tries the picked Plex server's connections; null takes the first one untried. */
     private val plexProbe: PlexConnectionProbe? = null,
     /** Where plex.tv's server list is read and the connections are tried (off the main thread). */
-    private val work: CoroutineDispatcher = Dispatchers.Default
+    private val work: CoroutineDispatcher = Dispatchers.Default,
+    /** Signs in to Jellyfin servers; null offers no Jellyfin sign-in (it fails with the unreachable words). */
+    jellyfinSignIn: JellyfinSignInPort? = null,
+    /** Keeps a Jellyfin server's own id for the identity check on Sign in again and on an address change. */
+    private val statusStore: ServerStatusStore = NoServerStatusStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ServerSetupUiState(plexClientId = plexClientIdentifier.value))
     val uiState: StateFlow<ServerSetupUiState> = _uiState
 
     private val absHandler = AbsSetupHandler(viewModelScope, absSignIn, serverRepository, _uiState)
+    private val jellyfinHandler = JellyfinSetupHandler(viewModelScope, jellyfinSignIn, serverRepository, statusStore, _uiState)
 
     // ── Audiobookshelf add flow ──────────────────────────────────────────────
 
@@ -410,6 +423,18 @@ class ServerSetupViewModel(
     fun onAbsSignInAgain(serverId: String) = absHandler.signInAgain(serverId)
     fun onAbsSecretsDiscarded() = absHandler.clearSecrets()
 
+    // ── Jellyfin add flow and Sign in again ─────────────────────────────────
+
+    fun onJellyfinAddressChanged(value: String) = jellyfinHandler.onAddressChanged(value)
+    fun onJellyfinUsernameChanged(value: String) = jellyfinHandler.onUsernameChanged(value)
+    fun onJellyfinPasswordChanged(value: String) = jellyfinHandler.onPasswordChanged(value)
+    fun onJellyfinLibraryToggled(id: String) = jellyfinHandler.onLibraryToggled(id)
+    fun onJellyfinSignIn() = jellyfinHandler.signIn()
+    fun onJellyfinSave() = jellyfinHandler.save()
+    fun onJellyfinBack() = jellyfinHandler.onBack()
+    fun onJellyfinSignInAgain(serverId: String) = jellyfinHandler.signInAgain(serverId)
+    fun onJellyfinSecretsDiscarded() = jellyfinHandler.clearSecrets()
+
     private var pollingJob: Job? = null
 
     // ── Load existing server (edit mode) ─────────────────────────────────────
@@ -421,8 +446,8 @@ class ServerSetupViewModel(
                 name = config.name,
                 source = config.source,
                 baseUrl = config.baseUrl,
-                // An Audiobookshelf edit never loads the stored token; saving keeps it from storage.
-                token = if (config.source == ServerSource.ABS) "" else config.token,
+                // An Audiobookshelf or Jellyfin edit never loads the stored token; saving keeps it from storage.
+                token = if (config.source == ServerSource.ABS || config.source == ServerSource.JELLYFIN) "" else config.token,
                 libraryId = config.libraryId ?: "",
                 plexClientId = plexClientIdentifier.value
             )
@@ -439,6 +464,8 @@ class ServerSetupViewModel(
         // Cancel any in-flight OAuth when switching away from Plex
         if (source != ServerSource.PLEX) cancelPlexOAuth()
         absHandler.clearSecrets()
+        jellyfinHandler.clearSecrets()
+        if (source == ServerSource.JELLYFIN) jellyfinHandler.startAdd()
         _uiState.value = _uiState.value.copy(
             source = source,
             baseUrl = "",
@@ -677,6 +704,26 @@ class ServerSetupViewModel(
                         libraryId = state.libraryId.takeIf { it.isNotBlank() }
                     )
                     // The stored server's own source decides, not the form's.
+                    stored.source == ServerSource.JELLYFIN -> {
+                        val address = normalizeServerAddress(state.baseUrl)
+                        if (address == null) {
+                            fail("Enter a valid server address.")
+                            return@launch
+                        }
+                        // The token belongs to the old address: a new one asks for Sign in again, which checks the
+                        // server's id, so no token or progress is mixed between two servers.
+                        val moved = address != (normalizeServerAddress(stored.baseUrl) ?: stored.baseUrl)
+                        if (moved) {
+                            // Fail closed: the Sign in again after the move checks the server id kept at the first
+                            // sign-in, so a row without one (or one that cannot be read now) cannot move.
+                            when (storedServerId(statusStore, stored.id)) {
+                                StoredServerId.Unreadable -> { fail(JELLYFIN_ID_UNREADABLE_TEXT); return@launch }
+                                StoredServerId.Missing -> { fail(JELLYFIN_ID_MISSING_TEXT); return@launch }
+                                is StoredServerId.Known -> Unit
+                            }
+                        }
+                        stored.copy(name = state.name.trim(), baseUrl = address, token = if (moved) "" else stored.token)
+                    }
                     stored.source == ServerSource.ABS -> {
                         // The token is kept as stored, so only the address needs checking.
                         val address = normalizeServerAddress(state.baseUrl)
@@ -705,7 +752,11 @@ class ServerSetupViewModel(
                         )
                     }
                 }
-                serverRepository.save(config)
+                if (stored?.source == ServerSource.JELLYFIN && config.baseUrl != stored.baseUrl && config.token.isEmpty()) {
+                    serverRepository.saveUserAddressChange(config)
+                } else {
+                    serverRepository.save(config)
+                }
                 rememberPlexConnections(config, stored, state)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e

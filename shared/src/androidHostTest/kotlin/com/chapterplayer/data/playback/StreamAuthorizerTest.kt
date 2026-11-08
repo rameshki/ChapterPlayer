@@ -137,4 +137,50 @@ class StreamAuthorizerTest {
         )
         assertEquals("Cannot reach the server", assertFailsWith<PlaybackStartException> { offline.prepare(track) }.message)
     }
+
+    // ---- Jellyfin ----
+
+    private val jf = ServerConfig(id = "j", source = ServerSource.JELLYFIN, name = "Jellyfin", baseUrl = "https://jf.example.test/jellyfin", token = "jf-token")
+    private val jfTrack = "https://jf.example.test/jellyfin/Audio/abc/stream?static=true&mediaSourceId=abc&playSessionId=p1"
+    private val jfHeader: suspend (ServerConfig) -> String = { s -> "MediaBrowser Client=\"ChapterPlayer\", Token=\"${s.token}\"" }
+
+    @Test
+    fun `a Jellyfin track gets the MediaBrowser header after the one-byte check`() = runTest {
+        val seen = mutableListOf<Seen>()
+        val absCalls = mutableListOf<String>()
+        val streams = StreamAuthorizer(
+            FakeServerList(listOf(jf)), authorizer(absCalls), client(seen, HttpStatusCode.PartialContent), jellyfinHeader = jfHeader,
+        )
+        val headers = streams.prepare(jfTrack)
+        assertEquals(mapOf(HttpHeaders.Authorization to "MediaBrowser Client=\"ChapterPlayer\", Token=\"jf-token\""), headers.values)
+        assertEquals(1, seen.size)
+        assertEquals("bytes=0-0", seen[0].range)
+        assertNull(seen[0].plexToken)
+        // Never an Audiobookshelf bearer.
+        assertTrue(absCalls.isEmpty())
+        assertTrue(seen[0].auth!!.startsWith("MediaBrowser "))
+        assertEquals(headers, streams.currentHeaders(jfTrack))
+    }
+
+    @Test
+    fun `a refused Jellyfin token says sign in again and blanks it`() = runTest {
+        val refused = mutableListOf<String>()
+        val streams = StreamAuthorizer(
+            FakeServerList(listOf(jf)), authorizer(mutableListOf()), client(mutableListOf(), HttpStatusCode.Unauthorized),
+            jellyfinHeader = jfHeader, onJellyfinRefused = { refused += it.id },
+        )
+        assertEquals(SIGN_IN_AGAIN_TEXT, assertFailsWith<PlaybackStartException> { streams.prepare(jfTrack) }.message)
+        assertEquals(listOf("j"), refused)
+    }
+
+    @Test
+    fun `a Jellyfin 403 says the account may not play it`() = runTest {
+        val refused = mutableListOf<String>()
+        val streams = StreamAuthorizer(
+            FakeServerList(listOf(jf)), authorizer(mutableListOf()), client(mutableListOf(), HttpStatusCode.Forbidden),
+            jellyfinHeader = jfHeader, onJellyfinRefused = { refused += it.id },
+        )
+        assertEquals(NOT_ALLOWED_TEXT, assertFailsWith<PlaybackStartException> { streams.prepare(jfTrack) }.message)
+        assertTrue(refused.isEmpty())
+    }
 }

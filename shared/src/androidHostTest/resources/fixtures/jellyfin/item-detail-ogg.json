@@ -1,0 +1,78 @@
+{
+  "Name": "Northern Song",
+  "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+  "Id": "e68bb4f5169289c83051faa19260e55d",
+  "DateCreated": "2026-10-04T10:00:00.0000000Z",
+  "CanDownload": true,
+  "Container": "ogg",
+  "RunTimeTicks": 72000000000,
+  "ProductionYear": 2021,
+  "IsFolder": false,
+  "Type": "AudioBook",
+  "ParentId": "40fd54c7fab6b3a985f36b461a437081",
+  "Overview": "A synthetic description of Northern Song.",
+  "Genres": [
+    "Fiction"
+  ],
+  "ProviderIds": {},
+  "MediaType": "Audio",
+  "AlbumArtist": "Fay Fiction",
+  "Artists": [
+    "Fay Fiction"
+  ],
+  "ImageTags": {},
+  "UserData": {
+    "PlaybackPositionTicks": 0,
+    "PlayCount": 0,
+    "IsFavorite": false,
+    "Played": false,
+    "Key": "e68bb4f5169289c83051faa19260e55d",
+    "ItemId": "e68bb4f5169289c83051faa19260e55d"
+  },
+  "People": [
+    {
+      "Name": "Fay Fiction",
+      "Id": "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
+      "Role": "",
+      "Type": "Author"
+    }
+  ],
+  "Chapters": [
+    {
+      "StartPositionTicks": 0,
+      "Name": "Part One",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 36000000000,
+      "Name": "Part Two",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    }
+  ],
+  "Studios": [],
+  "MediaSources": [
+    {
+      "Protocol": "File",
+      "Id": "e68bb4f5169289c83051faa19260e55d",
+      "Path": "/media/audiobooks/Fay Fiction/Northern Song.ogg",
+      "Type": "Default",
+      "Container": "ogg",
+      "Size": 98765432,
+      "Name": "synthetic",
+      "IsRemote": false,
+      "RunTimeTicks": 72000000000,
+      "SupportsDirectPlay": true,
+      "SupportsDirectStream": true,
+      "SupportsTranscoding": true,
+      "MediaStreams": [
+        {
+          "Codec": "opus",
+          "Type": "Audio",
+          "Index": 0,
+          "Channels": 2,
+          "SampleRate": 44100
+        }
+      ]
+    }
+  ]
+}

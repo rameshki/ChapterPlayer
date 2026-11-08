@@ -6,5 +6,6 @@ package com.chapterplayer.data.model
  */
 enum class ServerSource {
     ABS,   // Audiobookshelf
-    PLEX   // Plex Media Server
+    PLEX,  // Plex Media Server
+    JELLYFIN // Jellyfin
 }

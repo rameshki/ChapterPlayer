@@ -214,4 +214,28 @@ class CoverRulesTest {
         assertNull(coverRequestAuth("https://example.com/absolutely/api/items/1/cover", abs))
         assertNull(coverRequestAuth("https://example.com/other/api/items/1/cover", abs))
     }
+
+    @Test
+    fun `jellyfin cover under the server gets no auth`() {
+        val jf = server(ServerSource.JELLYFIN, "https://jf.test/jellyfin", token = "stored-token")
+        assertEquals(CoverAuth.NONE, coverRequestAuth("https://jf.test/jellyfin/Items/x/Images/Primary?tag=t", jf))
+        val slash = server(ServerSource.JELLYFIN, "https://jf.test/jellyfin/", token = "stored-token")
+        assertEquals(CoverAuth.NONE, coverRequestAuth("https://jf.test/jellyfin/Items/x/Images/Primary?tag=t", slash))
+    }
+
+    @Test
+    fun `jellyfin cover on another origin is refused`() {
+        val jf = server(ServerSource.JELLYFIN, "https://jf.test/jellyfin", token = "stored-token")
+        assertNull(coverRequestAuth("https://other.test/jellyfin/Items/x/Images/Primary?tag=t", jf))
+        assertNull(coverRequestAuth("https://jf.test/jellyfinx/Items/x/Images/Primary?tag=t", jf))
+        assertNull(coverRequestAuth("http://jf.test/jellyfin/Items/x/Images/Primary?tag=t", jf))
+        assertNull(coverRequestAuth("https://jf.test/Items/x/Images/Primary?tag=t", jf))
+    }
+
+    @Test
+    fun `jellyfin book ids are cover ids`() {
+        assertTrue(isCoverBookId("jf_0a1b2c3d4e5f60718293a4b5c6d7e8f9"))
+        assertFalse(isCoverBookId("jf_"))
+        assertFalse(isCoverBookId("jf_a/b"))
+    }
 }

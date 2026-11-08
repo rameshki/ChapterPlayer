@@ -18,6 +18,7 @@ import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.PersonLink
 import com.chapterplayer.domain.browse.SeriesLink
 import com.chapterplayer.domain.browse.bookLinks
+import com.chapterplayer.domain.browse.canDownload
 import com.chapterplayer.domain.playback.MarkAction
 import com.chapterplayer.domain.playback.MARK_ERROR_TEXT
 import com.chapterplayer.domain.playback.markResultText
@@ -136,6 +137,7 @@ class PlayerMenuViewModel(
     }
 
     private fun menuDownload(facts: Facts): MenuDownload {
+        if (facts.download == null && facts.book?.source?.canDownload() == false) return MenuDownload()
         val control = detailsDownload(facts.download, facts.online, knownSizeBytes = null, confirmingRemove = false)
         val subtitle = control.statusText ?: control.disabledReason
         return when (control.phase) {

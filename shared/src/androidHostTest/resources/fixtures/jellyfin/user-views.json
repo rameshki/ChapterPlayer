@@ -1,0 +1,66 @@
+{
+  "Items": [
+    {
+      "Name": "Audiobooks",
+      "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+      "Id": "40fd54c7fab6b3a985f36b461a437081",
+      "Etag": "0f1e2d3c",
+      "DateCreated": "2026-09-01T10:00:00.0000000Z",
+      "CanDelete": false,
+      "IsFolder": true,
+      "Type": "CollectionFolder",
+      "CollectionType": "books",
+      "ImageTags": {},
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 0,
+        "IsFavorite": false,
+        "Played": false,
+        "Key": "40fd54c7fab6b3a985f36b461a437081",
+        "ItemId": "40fd54c7fab6b3a985f36b461a437081"
+      }
+    },
+    {
+      "Name": "Music",
+      "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+      "Id": "10aae6df2f1368214a0e5f52fd20b11a",
+      "Etag": "0f1e2d3c",
+      "DateCreated": "2026-09-01T10:00:00.0000000Z",
+      "CanDelete": false,
+      "IsFolder": true,
+      "Type": "CollectionFolder",
+      "CollectionType": "music",
+      "ImageTags": {},
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 0,
+        "IsFavorite": false,
+        "Played": false,
+        "Key": "10aae6df2f1368214a0e5f52fd20b11a",
+        "ItemId": "10aae6df2f1368214a0e5f52fd20b11a"
+      }
+    },
+    {
+      "Name": "Films",
+      "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+      "Id": "12c059a5a92e30eae4ab516f3acca35c",
+      "Etag": "0f1e2d3c",
+      "DateCreated": "2026-09-01T10:00:00.0000000Z",
+      "CanDelete": false,
+      "IsFolder": true,
+      "Type": "CollectionFolder",
+      "CollectionType": "movies",
+      "ImageTags": {},
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 0,
+        "IsFavorite": false,
+        "Played": false,
+        "Key": "12c059a5a92e30eae4ab516f3acca35c",
+        "ItemId": "12c059a5a92e30eae4ab516f3acca35c"
+      }
+    }
+  ],
+  "TotalRecordCount": 3,
+  "StartIndex": 0
+}

@@ -8,6 +8,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.chapterplayer.data.auth.SignInRequiredException
+import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.plex.PLEX_TOKEN_HEADER
 import com.chapterplayer.domain.plex.plexAddressesOf
@@ -15,6 +16,7 @@ import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.data.repository.ServerRepository
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -37,6 +39,10 @@ import java.net.URI
 class AuthorizingDataSourceFactory(
     private val servers: ServerRepository,
     private val authorizer: AbsAuthorizer,
+    /** The `Authorization: MediaBrowser ...` value for a Jellyfin server; null leaves Jellyfin addresses without one. */
+    private val jellyfinHeader: (suspend (ServerConfig) -> String)? = null,
+    /** Blanks a Jellyfin token the server refused (no refresh exists), so Settings says "Sign in again". */
+    private val onJellyfinRefused: suspend (ServerConfig) -> Unit = {},
 ) : DataSource.Factory {
 
     private val http = OkHttpDataSource.Factory(
@@ -44,7 +50,7 @@ class AuthorizingDataSourceFactory(
     )
 
     override fun createDataSource(): DataSource =
-        AuthorizingDataSource(http.createDataSource(), servers, authorizer)
+        AuthorizingDataSource(http.createDataSource(), servers, authorizer, jellyfinHeader, onJellyfinRefused)
 }
 
 /** The audio stream opened for one request was answered from another host. Fixed text, no address. */
@@ -77,6 +83,8 @@ private class AuthorizingDataSource(
     private val upstream: HttpDataSource,
     private val servers: ServerRepository,
     private val authorizer: AbsAuthorizer,
+    private val jellyfinHeader: (suspend (ServerConfig) -> String)?,
+    private val onJellyfinRefused: suspend (ServerConfig) -> Unit,
 ) : DataSource {
 
     override fun addTransferListener(transferListener: TransferListener) = upstream.addTransferListener(transferListener)
@@ -86,6 +94,8 @@ private class AuthorizingDataSource(
             url = dataSpec.uri.toString(),
             servers = servers,
             authorizer = authorizer,
+            jellyfinHeader = jellyfinHeader,
+            onJellyfinRefused = onJellyfinRefused,
             upstream = object : Upstream {
                 override fun open(url: String, header: AuthHeader?): Long {
                     val spec = dataSpec.withUri(Uri.parse(url))
@@ -149,7 +159,9 @@ internal fun openStream(
     servers: ServerRepository,
     authorizer: AbsAuthorizer,
     upstream: Upstream,
-): Long = openAuthorized(url, servers, authorizer, upstream::isUnauthorized) { header ->
+    jellyfinHeader: (suspend (ServerConfig) -> String)? = null,
+    onJellyfinRefused: suspend (ServerConfig) -> Unit = {},
+): Long = openAuthorized(url, servers, authorizer, upstream::isUnauthorized, jellyfinHeader, onJellyfinRefused) { header ->
     var current = url
     var hop = 0
     var length: Long? = null
@@ -176,36 +188,60 @@ internal fun openStream(
  * [open] gets the Authorization header ("Bearer ...") and runs through [authorizer], so an expiring token is
  * refreshed first and a 401 (see [isUnauthorized]) refreshes once and retries once. An address under a Plex
  * server gets its `X-Plex-Token` header, and a 401 there is a [SignInRequiredException] (no refresh exists).
- * Any other address gets [open] with null. Blocking, for the player's loader thread.
+ * An address under a Jellyfin server (path included) gets `Authorization: MediaBrowser ...` from [jellyfinHeader]
+ * (never an Audiobookshelf bearer); a 401 there blanks the token ([onJellyfinRefused]) and is a
+ * [SignInRequiredException]. Without [jellyfinHeader] a Jellyfin address is still matched (so it can never take another
+ * server's credential) and opened with no header (fail closed). Any other address gets [open] with null. Blocking, for the player's loader thread.
  */
 internal fun <T> openAuthorized(
     url: String,
     servers: ServerRepository,
     authorizer: AbsAuthorizer,
     isUnauthorized: (Exception) -> Boolean,
+    jellyfinHeader: (suspend (ServerConfig) -> String)? = null,
+    onJellyfinRefused: suspend (ServerConfig) -> Unit = {},
     open: (header: AuthHeader?) -> T,
 ): T {
+    // Jellyfin servers are always matched, so an address under one never falls to an Audiobookshelf server on the same
+    // host (whose bearer must not reach it); without [jellyfinHeader] such an address is opened with no header.
     val configured = runBlocking { servers.observeAll().first() }
-        .filter { it.source == ServerSource.ABS || it.source == ServerSource.PLEX }
+        .filter { it.source == ServerSource.ABS || it.source == ServerSource.PLEX || it.source == ServerSource.JELLYFIN }
     // A Plex server answers on each connection plex.tv listed for it, so each is one of its addresses.
     val bearers = configured.flatMap { s -> plexAddressesOf(s).map { address -> s to ServerBearer(address, s.token) } }
     val match = serverFor(url, bearers.map { it.second }) ?: return open(null)
     val server = bearers.first { it.second === match }.first
-    if (server.source == ServerSource.PLEX) {
-        return try {
+    return when (server.source) {
+        ServerSource.PLEX -> try {
             open(AuthHeader(PLEX_TOKEN_HEADER, server.token))
         } catch (e: Exception) {
             if (isUnauthorized(e)) throw SignInRequiredException(server.name)
             throw e
         }
-    }
-    return runBlocking {
-        authorizer.authorized(server) { bearer ->
+        ServerSource.JELLYFIN -> {
+            val builder = jellyfinHeader ?: return open(null)
+            val header = runBlocking { builder(server) }
             try {
-                open(AuthHeader("Authorization", bearer))
+                open(AuthHeader("Authorization", header))
             } catch (e: Exception) {
-                if (isUnauthorized(e)) throw HttpStatusException(HttpStatusCode.Unauthorized)
+                if (isUnauthorized(e)) {
+                    try {
+                        runBlocking(NonCancellable) { onJellyfinRefused(server) }
+                    } catch (_: Exception) {
+                        // Best effort: the player still learns that the sign-in is gone.
+                    }
+                    throw SignInRequiredException(server.name)
+                }
                 throw e
+            }
+        }
+        ServerSource.ABS -> runBlocking {
+            authorizer.authorized(server) { bearer ->
+                try {
+                    open(AuthHeader("Authorization", bearer))
+                } catch (e: Exception) {
+                    if (isUnauthorized(e)) throw HttpStatusException(HttpStatusCode.Unauthorized)
+                    throw e
+                }
             }
         }
     }

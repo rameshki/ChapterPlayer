@@ -558,6 +558,19 @@ class LibrarySyncCoordinatorTest {
     }
 
     @Test
+    fun `a Jellyfin server merges its progress but pulls no bookmarks`() = runTest {
+        val books = RecordingBooks()
+        val jellyfin = server("j").copy(source = ServerSource.JELLYFIN)
+        val c = coordinator(books, FakeServerList(listOf(jellyfin)))
+
+        c.requestSync("j")
+
+        assertEquals(listOf("j"), books.synced)
+        assertEquals(listOf("j"), books.mergedServers)
+        assertTrue(books.pulledBookmarks.isEmpty())
+    }
+
+    @Test
     fun `a merge that throws neither fails the sync nor shows an error`() = runTest {
         val books = RecordingBooks()
         books.onMergeAll = { error("merge broke") }

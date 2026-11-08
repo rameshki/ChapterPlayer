@@ -42,12 +42,13 @@ fun serverFor(url: String, servers: List<ServerBearer>): ServerBearer? {
 fun bearerFor(url: String, servers: List<ServerBearer>): String? = serverFor(url, servers)?.token
 
 /**
- * The configured Audiobookshelf or Plex server [url] belongs to (see [serverFor]); a Plex server's verified other
- * connections count as its addresses too ([plexAddressesOf]). Null when none matches or it has no token.
+ * The configured Audiobookshelf, Plex or Jellyfin server [url] belongs to (see [serverFor]: the longest base address,
+ * path included, on a path boundary); a Plex server's verified other connections count as its addresses too
+ * ([plexAddressesOf]). Null when none matches or it has no token.
  */
 fun streamServerFor(url: String, servers: List<ServerConfig>): ServerConfig? {
     val bearers = servers
-        .filter { it.source == ServerSource.ABS || it.source == ServerSource.PLEX }
+        .filter { it.source == ServerSource.ABS || it.source == ServerSource.PLEX || it.source == ServerSource.JELLYFIN }
         .flatMap { s -> plexAddressesOf(s).map { address -> s to ServerBearer(address, s.token) } }
     val match = serverFor(url, bearers.map { it.second }) ?: return null
     return bearers.first { it.second === match }.first
@@ -81,6 +82,9 @@ private val OWN_START_MESSAGES = setOf(
     "The book's server is no longer configured",
     "This server cannot play books yet",
     com.chapterplayer.domain.plex.PLEX_AUDIO_MISSING_TEXT,
+    com.chapterplayer.domain.jellyfin.JELLYFIN_NO_AUDIO_TEXT,
+    com.chapterplayer.domain.jellyfin.JELLYFIN_LENGTH_UNKNOWN_TEXT,
+    UNSUPPORTED_AUDIO_TEXT,
 )
 
 /**

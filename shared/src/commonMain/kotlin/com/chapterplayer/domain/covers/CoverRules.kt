@@ -4,6 +4,7 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.car.CarTrust
 import com.chapterplayer.domain.car.isTrustedCarController
+import com.chapterplayer.domain.jellyfin.JELLYFIN_BOOK_PREFIX
 import com.chapterplayer.domain.plex.PLEX_ID_PREFIX
 import com.chapterplayer.domain.plex.plexTokenFor
 
@@ -51,13 +52,14 @@ private const val MAX_ID_LENGTH = 128
 private const val COVER_PATH = "cover"
 
 /**
- * Whether [id] is a book id a cover may be asked for: `abs_` or `plex_` and up to 128 letters, digits, `_` or `-`.
+ * Whether [id] is a book id a cover may be asked for: `abs_`, `plex_` or `jf_` and up to 128 letters, digits, `_` or `-`.
  * Nothing else (no dots, slashes, percent signs or spaces), so an id can never walk out of a path.
  */
 fun isCoverBookId(id: String): Boolean {
     val rest = when {
         id.startsWith(ABS_BOOK_PREFIX) -> id.substring(ABS_BOOK_PREFIX.length)
         id.startsWith(PLEX_ID_PREFIX) -> id.substring(PLEX_ID_PREFIX.length)
+        id.startsWith(JELLYFIN_BOOK_PREFIX) -> id.substring(JELLYFIN_BOOK_PREFIX.length)
         else -> return false
     }
     return rest.length in 1..MAX_ID_LENGTH && rest.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '_' || it == '-' }
@@ -107,7 +109,13 @@ enum class CoverAuth { ABS_BEARER, PLEX_TOKEN, NONE }
  */
 fun coverRequestAuth(url: String, server: ServerConfig): CoverAuth? = when (server.source) {
     ServerSource.PLEX -> if (plexTokenFor(url, listOf(server)) != null) CoverAuth.PLEX_TOKEN else null
-    else -> when {
+    // Jellyfin serves images without a token: never send one (and never an Audiobookshelf bearer), only ask under the
+    // server's own address (path included).
+    ServerSource.JELLYFIN -> when {
+        server.baseUrl.isBlank() || !url.startsWith(server.baseUrl.trimEnd('/') + "/") -> null
+        else -> CoverAuth.NONE
+    }
+    ServerSource.ABS -> when {
         server.baseUrl.isBlank() || !url.startsWith(server.baseUrl.trimEnd('/') + "/") -> null
         server.token.isBlank() -> CoverAuth.NONE
         else -> CoverAuth.ABS_BEARER

@@ -1,0 +1,22 @@
+{
+  "User": {
+    "Name": "fixture-user",
+    "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+    "Id": "52d8fc64326c7e0848c4f143abb47ba1",
+    "HasPassword": true,
+    "Policy": {
+      "IsAdministrator": false,
+      "EnableContentDownloading": true
+    }
+  },
+  "SessionInfo": {
+    "Id": "f3b0a1c2d3e4f5061728394a5b6c7d8e",
+    "UserId": "52d8fc64326c7e0848c4f143abb47ba1",
+    "Client": "ChapterPlayer",
+    "DeviceName": "Android",
+    "DeviceId": "chapterplayer-client-1-row-1",
+    "ApplicationVersion": "0.4.1"
+  },
+  "AccessToken": "a6f98b2a08d92285b19af86a9503bf50",
+  "ServerId": "36b7674f7149d16771400fae9b9eb1f9"
+}

@@ -1,0 +1,56 @@
+{
+  "Name": "A Field of Stones",
+  "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+  "Id": "3a68b8d5c009572d209b2205cfc1bda8",
+  "DateCreated": "2026-10-02T09:15:30.1234567Z",
+  "CanDownload": true,
+  "Container": "mov,mp4,m4a,3gp,3g2,mj2",
+  "RunTimeTicks": 270000000000,
+  "ProductionYear": 2021,
+  "IsFolder": false,
+  "Type": "AudioBook",
+  "ParentId": "40fd54c7fab6b3a985f36b461a437081",
+  "Overview": "A synthetic description of A Field of Stones.",
+  "Genres": [
+    "Fiction"
+  ],
+  "ProviderIds": {},
+  "MediaType": "Audio",
+  "AlbumArtist": "Bo Sample",
+  "Artists": [
+    "Bo Sample"
+  ],
+  "ImageTags": {
+    "Primary": "8e2d3c4b"
+  },
+  "UserData": {
+    "PlaybackPositionTicks": 0,
+    "PlayCount": 0,
+    "IsFavorite": false,
+    "Played": false,
+    "Key": "3a68b8d5c009572d209b2205cfc1bda8",
+    "ItemId": "3a68b8d5c009572d209b2205cfc1bda8"
+  },
+  "People": [
+    {
+      "Name": "Bo Sample",
+      "Id": "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
+      "Role": "",
+      "Type": "Author"
+    },
+    {
+      "Name": "Cy Voice",
+      "Id": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6",
+      "Role": "",
+      "Type": "Narrator"
+    },
+    {
+      "Name": "Di Tone",
+      "Id": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6",
+      "Role": "",
+      "Type": "Narrator"
+    }
+  ],
+  "Chapters": [],
+  "Studios": []
+}

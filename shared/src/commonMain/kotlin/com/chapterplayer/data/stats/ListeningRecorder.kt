@@ -3,6 +3,8 @@ package com.chapterplayer.data.stats
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.playback.PlaybackState
+import com.chapterplayer.domain.jellyfin.isJellyfinBook
+import com.chapterplayer.domain.plex.PLEX_ID_PREFIX
 import com.chapterplayer.domain.stats.DayZone
 import com.chapterplayer.domain.stats.ListenTick
 import com.chapterplayer.domain.stats.epochDayOf
@@ -136,10 +138,17 @@ class ListeningRecorder(
         val found = owners.ownerOf(bookId)
         if (found != null) knownOwners[bookId] = found
         // A book the cache does not know: its id says which kind of server it came from.
-        return found ?: BookOwner("", if (bookId.startsWith("plex_")) ServerSource.PLEX else ServerSource.ABS)
+        return found ?: BookOwner("", sourceOfBookId(bookId))
     }
 
     private companion object {
+        /** The kind of server a book id names by its prefix (an id with no known prefix is an Audiobookshelf one). */
+        fun sourceOfBookId(bookId: String): ServerSource = when {
+            bookId.startsWith(PLEX_ID_PREFIX) -> ServerSource.PLEX
+            isJellyfinBook(bookId) -> ServerSource.JELLYFIN
+            else -> ServerSource.ABS
+        }
+
         const val FLUSH_EVERY_MS = 30_000L
         const val FIRST_RETRY_MS = 5_000L
         const val MAX_RETRY_MS = 5 * 60_000L

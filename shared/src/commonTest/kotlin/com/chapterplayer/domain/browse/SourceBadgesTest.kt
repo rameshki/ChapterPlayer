@@ -19,4 +19,17 @@ class SourceBadgesTest {
         assertTrue(showSourceBadges(listOf(ServerSource.ABS, ServerSource.PLEX)))
         assertTrue(showSourceBadges(listOf(ServerSource.PLEX, ServerSource.ABS, ServerSource.ABS)))
     }
+
+    @Test
+    fun `any two kinds of server show the badge`() {
+        assertTrue(showSourceBadges(listOf(ServerSource.ABS, ServerSource.JELLYFIN)))
+        assertTrue(showSourceBadges(listOf(ServerSource.PLEX, ServerSource.JELLYFIN)))
+        assertTrue(showSourceBadges(listOf(ServerSource.ABS, ServerSource.PLEX, ServerSource.JELLYFIN)))
+    }
+
+    @Test
+    fun `Jellyfin servers alone show no badge`() {
+        assertFalse(showSourceBadges(listOf(ServerSource.JELLYFIN)))
+        assertFalse(showSourceBadges(listOf(ServerSource.JELLYFIN, ServerSource.JELLYFIN)))
+    }
 }

@@ -14,6 +14,7 @@ import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.MergeContext
 import com.chapterplayer.domain.browse.searchItems
+import com.chapterplayer.domain.browse.serverKindName
 import com.chapterplayer.domain.diagnostics.DiagCopy
 import com.chapterplayer.domain.diagnostics.DiagDownload
 import com.chapterplayer.domain.diagnostics.DiagnosticsInput
@@ -255,7 +256,7 @@ class DiagnosticsViewModel(
         return buildReport(DiagnosticsInput(entry.book.title, entry.book.author, copies, merge, nowMs()))
     }
 
-    private fun labelOf(source: ServerSource) = if (source == ServerSource.PLEX) "Plex" else "Audiobookshelf"
+    private fun labelOf(source: ServerSource) = serverKindName(source)
 
     companion object {
         const val MAX_CHOICES = 30

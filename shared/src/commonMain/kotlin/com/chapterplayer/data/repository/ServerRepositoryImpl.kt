@@ -89,13 +89,26 @@ class ServerRepositoryImpl(
             .withAlternates(alternatesNow())
     }
 
-    override suspend fun save(config: ServerConfig) {
+    override suspend fun save(config: ServerConfig) = saveRow(config, userMovedAddress = false)
+
+    override suspend fun saveUserAddressChange(config: ServerConfig) = saveRow(config, userMovedAddress = true)
+
+    private suspend fun saveRow(config: ServerConfig, userMovedAddress: Boolean) {
         ensureTokensMigrated()
         migrationLock.withLock {
-            val isNew = serverConfigDao.getById(config.id) == null
+            val stored = serverConfigDao.getById(config.id)
+            val isNew = stored == null
             try {
-                // An empty value that only reflects a failed read is not written over the stored secret.
-                if (config.token.isNotEmpty() || !lastReadFailed(config.id)) credentials.put(config.id, config.token)
+                // An empty value that only reflects a failed read is not written over the stored secret, unless the
+                // user moved the address and dropped the token on purpose: the old token belongs to the old address and
+                // must not come back for the new one when the store is readable again, so it is removed for sure (a
+                // failure fails the save). An automatic switch between the same server's addresses keeps it.
+                val moved = userMovedAddress && stored != null && stored.baseUrl.trimEnd('/') != config.baseUrl.trimEnd('/')
+                if (config.token.isEmpty() && lastReadFailed(config.id) && moved) {
+                    credentials.remove(config.id)
+                } else if (config.token.isNotEmpty() || !lastReadFailed(config.id)) {
+                    credentials.put(config.id, config.token)
+                }
                 if (config.refreshToken != null) {
                     credentials.put(refreshKey(config.id), config.refreshToken)
                 } else if (!lastReadFailed(refreshKey(config.id))) {

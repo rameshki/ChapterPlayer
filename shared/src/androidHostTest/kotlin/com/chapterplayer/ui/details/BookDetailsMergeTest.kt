@@ -52,6 +52,7 @@ class BookDetailsMergeTest {
     private fun abs(id: String, serverId: String = "abs1", title: String = "Same Book") =
         testBook(id, title = title, author = "Same Author").copy(serverId = serverId, durationMs = 3_600_000L)
     private fun plex(id: String) = abs(id, "plex1").copy(source = ServerSource.PLEX)
+    private fun jf(id: String) = abs(id, "jf1").copy(source = ServerSource.JELLYFIN)
 
     private class FakeMerges : BookMergeRepository {
         val flow = MutableStateFlow(MergeOverrides())
@@ -73,7 +74,7 @@ class BookDetailsMergeTest {
         /** "Play from (when not downloaded)" and "Download from". */
         play: SourceChoice = SourceChoice.Ask,
         download: SourceChoice = SourceChoice.Ask,
-        online: Set<String> = setOf("abs1", "abs2", "plex1"),
+        online: Set<String> = setOf("abs1", "abs2", "plex1", "jf1"),
         downloadStates: Map<String, DownloadState> = emptyMap(),
         deviceOnline: Boolean = true,
         /** What each copy's server says a download fetches. */
@@ -109,6 +110,7 @@ class BookDetailsMergeTest {
             ServerConfig("abs1", ServerSource.ABS, "Home ABS", "http://a", "t"),
             ServerConfig("abs2", ServerSource.ABS, "Work ABS", "http://b", "t"),
             ServerConfig("plex1", ServerSource.PLEX, "Home Plex", "http://p", "t"),
+            ServerConfig("jf1", ServerSource.JELLYFIN, "Home Jellyfin", "http://j", "t"),
         ))
         val vm = BookDetailsViewModel(
             id, repo, FakeDownloadStates(downloadStates), controller,
@@ -127,6 +129,55 @@ class BookDetailsMergeTest {
     private fun TestScope.collect(s: Setup): () -> BookDetailsUiState {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { s.vm.uiState.collect {} }
         return { s.vm.uiState.value }
+    }
+
+    @Test
+    fun `a merged book with a Jellyfin copy downloads only from Audiobookshelf or Plex and plays from all three`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p"), jf("j")), "j")
+        val state = collect(s)
+        assertEquals(3, state().sources.size)
+
+        s.vm.onDownloadClicked()
+        val download = assertNotNull(state().sourceSheet)
+        assertEquals(SourceAction.DOWNLOAD, download.action)
+        assertEquals(listOf("a", "p"), download.rows.map { it.bookId })
+        s.vm.onSourceChosen("j")
+        assertTrue(s.downloads.calls.isEmpty())
+        s.vm.onSourceSheetDismissed()
+
+        s.vm.onResumeClicked()
+        val play = assertNotNull(state().sourceSheet)
+        assertEquals(SourceAction.PLAY, play.action)
+        assertEquals(setOf("a", "p", "j"), play.rows.map { it.bookId }.toSet())
+    }
+
+    @Test
+    fun `a Jellyfin book alone has no download control`() = runTest {
+        val s = Setup(listOf(jf("j"), abs("x", title = "Other")), "j")
+        val state = collect(s)
+        assertEquals(DetailsDownloadPhase.HIDDEN, state().download.phase)
+        assertFalse(state().download.canDownloadAnotherCopy)
+        s.vm.onDownloadClicked()
+        assertTrue(s.downloads.calls.isEmpty())
+    }
+
+    @Test
+    fun `an Audiobookshelf and Jellyfin book downloads the Audiobookshelf copy from the Jellyfin page`() = runTest {
+        val s = Setup(listOf(abs("a"), jf("j")), "j")
+        val state = collect(s)
+        assertEquals(DetailsDownloadPhase.IDLE, state().download.phase)
+        s.vm.onDownloadClicked()
+        assertNull(state().sourceSheet)
+        assertEquals(listOf("enqueue a"), s.downloads.calls)
+    }
+
+    @Test
+    fun `download from Jellyfin asks among the copies that can download`() = runTest {
+        val s = Setup(listOf(abs("a"), plex("p"), jf("j")), "a", download = SourceChoice.OfType(ServerSource.JELLYFIN))
+        val state = collect(s)
+        s.vm.onDownloadClicked()
+        assertEquals(listOf("a", "p"), state().sourceSheet?.rows?.map { it.bookId })
+        assertTrue(s.downloads.calls.isEmpty())
     }
 
     @Test

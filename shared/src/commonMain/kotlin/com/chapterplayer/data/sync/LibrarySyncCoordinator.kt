@@ -325,11 +325,12 @@ class LibrarySyncCoordinator(
                 connectionMessage = next?.message
             }
         }
-        // The books are cached: bring in what the server knows about listening to them (best effort).
-        if (outcome.isSuccess && server.source == ServerSource.ABS) {
+        // The books are cached: bring in what the server knows about listening to them (best effort). Jellyfin's comes
+        // with the list it just read (no extra call); bookmarks are Audiobookshelf's only.
+        if (outcome.isSuccess && (server.source == ServerSource.ABS || server.source == ServerSource.JELLYFIN)) {
             mergeProgress(server)
-            pullBookmarks(server)
         }
+        if (outcome.isSuccess && server.source == ServerSource.ABS) pullBookmarks(server)
         // Plex album lists carry no length: read the lengths afterwards, without holding up this sync.
         if (outcome.isSuccess && server.source == ServerSource.PLEX) lengthFiller?.request(server)
         val reason = outcome.exceptionOrNull()?.let { throwable ->

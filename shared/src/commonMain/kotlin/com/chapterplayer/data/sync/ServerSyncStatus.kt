@@ -35,6 +35,7 @@ data class ServerSyncStatus(
 fun lengthsNote(percent: Int): String = "Reading lengths… ${percent.coerceIn(0, 100)}%"
 
 const val ABS_CONNECTION_LABEL = "Audiobookshelf address"
+const val JELLYFIN_CONNECTION_LABEL = "Jellyfin address"
 
 /** The status of [server] from its stored [record], its cached [bookCount] and whether it is [syncing] now. */
 fun serverSyncStatus(server: ServerConfig, record: ServerStatusRecord, bookCount: Int, syncing: Boolean): ServerSyncStatus {
@@ -46,7 +47,11 @@ fun serverSyncStatus(server: ServerConfig, record: ServerStatusRecord, bookCount
             ServerSyncPhase.Failed(record.lastErrorText ?: "Unknown error", errorAt)
         else -> ServerSyncPhase.Idle(success, bookCount)
     }
-    if (server.source != ServerSource.PLEX) return ServerSyncStatus(server.id, phase, ABS_CONNECTION_LABEL)
+    when (server.source) {
+        ServerSource.ABS -> return ServerSyncStatus(server.id, phase, ABS_CONNECTION_LABEL)
+        ServerSource.JELLYFIN -> return ServerSyncStatus(server.id, phase, JELLYFIN_CONNECTION_LABEL)
+        ServerSource.PLEX -> Unit
+    }
     val base = server.baseUrl.trimEnd('/')
     val kind = record.candidates.firstOrNull { it.uri.trimEnd('/') == base }?.toCandidate()?.kind ?: PlexConnectionKind.SAVED
     return ServerSyncStatus(

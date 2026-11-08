@@ -77,6 +77,8 @@ data class BulkDownloadPlan(
     val alreadyOnPhone: Int,
     val needsChoice: Int,
     val resumeIds: List<String> = emptyList(),
+    /** Entries only on servers the app cannot download from yet (Jellyfin until J3). */
+    val notDownloadable: Int = 0,
 )
 
 /*
@@ -100,8 +102,13 @@ fun bulkDownloadPlan(entries: List<BrowseItem>, context: MergeContext?, statuses
     val resume = mutableListOf<String>()
     var already = 0
     var needsChoice = 0
+    var notDownloadable = 0
     for (entry in entries) {
-        val copies = entry.allSources
+        val copies = entry.allSources.filter { it.book.source.canDownload() }
+        if (copies.isEmpty()) {
+            notDownloadable++
+            continue
+        }
         val states = copies.map { statusOf(it, statuses) }
         if (states.any { it == DownloadStatus.DONE || it == DownloadStatus.QUEUED || it == DownloadStatus.DOWNLOADING }) {
             already++
@@ -112,14 +119,15 @@ fun bulkDownloadPlan(entries: List<BrowseItem>, context: MergeContext?, statuses
             resume += copies[stopped].book.id
             continue
         }
-        if (!entry.isMerged) {
-            ids += entry.book.id
+        if (copies.size == 1) {
+            // A book on one server, or the one copy of a merged book that the app can download.
+            ids += copies.single().book.id
             continue
         }
         val chosen = context?.let { chosenDownloadSource(entry, it.downloadChoice, it.onlineServerIds) }
         if (chosen == null) needsChoice++ else ids += chosen.book.id
     }
-    return BulkDownloadPlan(ids, already, needsChoice, resume)
+    return BulkDownloadPlan(ids, already, needsChoice, resume, notDownloadable)
 }
 
 /** A bulk "Remove download": every copy with a download (finished or not), and how many entries had none. */
@@ -205,6 +213,8 @@ data class BulkTally(
     val total: Int = 0,
     /** Downloads that were paused or failed and go on now (counted in [done] too). */
     val resumed: Int = 0,
+    /** Books left out of a download because their only server is one the app cannot download from yet. */
+    val notDownloadable: Int = 0,
 )
 
 /** The selection mode's title. */
@@ -262,6 +272,7 @@ fun bulkResultText(action: BulkAction, tally: BulkTally): String {
         BulkAction.DOWNLOAD -> "Skipped ${tally.skipped} that need you to choose a server (open each book to choose)"
         else -> "Skipped ${tally.skipped}"
     }
+    if (tally.notDownloadable > 0) parts += "Skipped ${tally.notDownloadable} on a server the app cannot download from yet"
     if (tally.queued > 0) parts += "${tally.queued} could not reach their server and will sync when it is back"
     if (tally.partial > 0) parts += "${tally.partial} had a copy that could not be changed"
     if (tally.failed > 0) parts += when (action) {

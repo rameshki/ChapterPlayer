@@ -3,6 +3,10 @@ package com.chapterplayer.ui.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
+import com.chapterplayer.domain.browse.serverKindName
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -118,22 +122,26 @@ fun ServerSetupScreen(
     }
 
     val isAbsAdd = serverId == null && uiState.source == ServerSource.ABS
-    val inLibraryStep = isAbsAdd && uiState.abs.step == AbsStep.LIBRARIES
+    val isJellyfinAdd = serverId == null && uiState.source == ServerSource.JELLYFIN
+    val inAbsLibraryStep = isAbsAdd && uiState.abs.step == AbsStep.LIBRARIES
+    val inJellyfinLibraryStep = isJellyfinAdd && uiState.jellyfin.step == JellyfinStep.LIBRARIES
+    val inLibraryStep = inAbsLibraryStep || inJellyfinLibraryStep
 
     // The system Back button does what the arrow in the top bar does on the libraries step.
     NavigationEventHandler(
         state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
         isBackEnabled = inLibraryStep,
-        onBackCompleted = { viewModel.onAbsBack() }
+        onBackCompleted = { if (inJellyfinLibraryStep) viewModel.onJellyfinBack() else viewModel.onAbsBack() }
     )
 
-    // Leaving an Audiobookshelf edit by system Back drops typed secrets, like the top-bar arrow.
-    val isAbsEdit = serverId != null && uiState.source == ServerSource.ABS
+    // Leaving an Audiobookshelf or Jellyfin edit by system Back drops typed secrets, like the top-bar arrow.
+    val isSignInEdit = serverId != null && (uiState.source == ServerSource.ABS || uiState.source == ServerSource.JELLYFIN)
     NavigationEventHandler(
         state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
-        isBackEnabled = isAbsEdit,
+        isBackEnabled = isSignInEdit,
         onBackCompleted = {
             viewModel.onAbsSecretsDiscarded()
+            viewModel.onJellyfinSecretsDiscarded()
             onDone()
         }
     )
@@ -150,11 +158,14 @@ fun ServerSetupScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (isAbsAdd && uiState.abs.step == AbsStep.LIBRARIES) {
+                        if (inAbsLibraryStep) {
                             viewModel.onAbsBack()
+                        } else if (inJellyfinLibraryStep) {
+                            viewModel.onJellyfinBack()
                         } else {
                             viewModel.cancelPlexOAuth()
                             viewModel.onAbsSecretsDiscarded()
+                            viewModel.onJellyfinSecretsDiscarded()
                             onDone()
                         }
                     }) {
@@ -184,20 +195,31 @@ fun ServerSetupScreen(
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onBackground
             )
-            if (!inLibraryStep && serverId == null) Row(
+            // Three kinds of server: the choices wrap instead of running off a narrow screen or a large font.
+            if (!inLibraryStep && serverId == null) FlowRow(
                 modifier = Modifier.selectableGroup(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 ServerSource.entries.forEach { source ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The whole row is the radio button, so the label is read with it and tapping the name works.
+                    Row(
+                        modifier = Modifier
+                            .selectable(
+                                selected = uiState.source == source,
+                                onClick = { viewModel.onSourceChanged(source) },
+                                role = Role.RadioButton
+                            )
+                            .heightIn(min = 48.dp)
+                            .padding(end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         RadioButton(
                             selected = uiState.source == source,
-                            onClick = { viewModel.onSourceChanged(source) },
+                            onClick = null,
                             colors = RadioButtonDefaults.colors(selectedColor = AmberGold)
                         )
                         Text(
-                            text = source.name,
+                            text = serverKindName(source),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -210,7 +232,11 @@ fun ServerSetupScreen(
                 value = uiState.name,
                 onValueChange = viewModel::onNameChanged,
                 label = "Display Name",
-                placeholder = if (uiState.source == ServerSource.ABS) "e.g. Home ABS" else "e.g. My Plex"
+                placeholder = when (uiState.source) {
+                    ServerSource.ABS -> "e.g. Home ABS"
+                    ServerSource.PLEX -> "e.g. My Plex"
+                    ServerSource.JELLYFIN -> "e.g. Home Jellyfin"
+                }
             )
 
             // ── ABS fields ────────────────────────────────────────────────
@@ -247,6 +273,36 @@ fun ServerSetupScreen(
                 }
             }
 
+            // ── Jellyfin fields ───────────────────────────────────────────
+            if (isJellyfinAdd) {
+                JellyfinAddSection(
+                    state = uiState.jellyfin,
+                    onAddressChanged = viewModel::onJellyfinAddressChanged,
+                    onUsernameChanged = viewModel::onJellyfinUsernameChanged,
+                    onPasswordChanged = viewModel::onJellyfinPasswordChanged,
+                    onSignIn = viewModel::onJellyfinSignIn,
+                    onLibraryToggled = viewModel::onJellyfinLibraryToggled,
+                    onSave = viewModel::onJellyfinSave
+                )
+            } else if (uiState.source == ServerSource.JELLYFIN) {
+                // Editing keeps the stored sign-in; a new address needs Sign in again (the token is dropped on save).
+                ChapterTextField(
+                    value = uiState.baseUrl,
+                    onValueChange = viewModel::onBaseUrlChanged,
+                    label = "Server address",
+                    placeholder = "http://192.168.1.10:8096",
+                    keyboardType = KeyboardType.Uri
+                )
+                if (serverId != null) {
+                    JellyfinSignInAgainSection(
+                        state = uiState.jellyfin,
+                        onUsernameChanged = viewModel::onJellyfinUsernameChanged,
+                        onPasswordChanged = viewModel::onJellyfinPasswordChanged,
+                        onSignIn = { viewModel.onJellyfinSignInAgain(serverId) }
+                    )
+                }
+            }
+
             // ── Plex OAuth flow ───────────────────────────────────────────
             if (uiState.source == ServerSource.PLEX) {
                 PlexAuthSection(
@@ -268,7 +324,7 @@ fun ServerSetupScreen(
 
             // Error message
             val errorMsg = uiState.saveError ?: uiState.plexOAuthError
-            if (!isAbsAdd && errorMsg != null) {
+            if (!isAbsAdd && !isJellyfinAdd && errorMsg != null) {
                 Text(
                     text = errorMsg,
                     style = MaterialTheme.typography.bodySmall,
@@ -277,9 +333,9 @@ fun ServerSetupScreen(
             }
 
             // Save button
-            if (!isAbsAdd) Button(
+            if (!isAbsAdd && !isJellyfinAdd) Button(
                 onClick = { viewModel.saveServer(serverId) },
-                enabled = !uiState.isSaving && !uiState.abs.isSigningIn,
+                enabled = !uiState.isSaving && !uiState.abs.isSigningIn && !uiState.jellyfin.isSigningIn,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AmberGold,

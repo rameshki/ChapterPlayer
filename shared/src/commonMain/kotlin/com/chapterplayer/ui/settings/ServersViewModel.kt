@@ -9,7 +9,18 @@ import com.chapterplayer.data.sync.ConnectionTest
 import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.data.sync.ServerSyncPhase
 import com.chapterplayer.data.sync.ServerSyncStatus
+import com.chapterplayer.domain.browse.serverKindName
 import com.chapterplayer.domain.settings.serverStatusLine
+import com.chapterplayer.data.remote.HttpStatusException
+import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
+import com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_JELLYFIN_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_REDIRECT_TEXT
+import com.chapterplayer.domain.jellyfin.checkJellyfinServer
+import com.chapterplayer.domain.plex.classifyConnectionError
+import com.chapterplayer.domain.settings.JELLYFIN_CONNECTION_KIND
+import com.chapterplayer.domain.settings.jellyfinHttpStatusText
+import com.chapterplayer.domain.settings.jellyfinTestResult
+import kotlinx.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -67,14 +78,14 @@ fun serverRows(servers: List<ServerConfig>, statuses: Map<String, ServerSyncStat
         ServerRowUi(
             id = server.id,
             name = server.name,
-            typeLabel = if (server.source == ServerSource.PLEX) "Plex" else "Audiobookshelf",
+            typeLabel = serverKindName(server.source),
             connectionLabel = status?.connectionLabel.orEmpty(),
             statusLine = serverStatusLine(phase, nowMs),
             failed = phase is ServerSyncPhase.Failed,
             syncing = phase is ServerSyncPhase.Syncing,
             connectionNote = status?.connectionNote,
             lengthsNote = status?.lengthsNote,
-            canTestConnection = server.source == ServerSource.PLEX,
+            canTestConnection = server.source == ServerSource.PLEX || server.source == ServerSource.JELLYFIN,
             needsSignIn = server.needsSignIn,
             libraryId = server.libraryId,
         )
@@ -108,6 +119,8 @@ class ServersViewModel(
     private val sync: LibrarySyncCoordinator,
     private val appScope: CoroutineScope,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** Jellyfin's public info on the probe client (no token, no redirects); null tests no Jellyfin server. */
+    private val jellyfinProbe: JellyfinApiService? = null,
 ) : ViewModel() {
 
     /** The current time every 30 s, so "12 min ago" moves on while the page is open. */
@@ -138,13 +151,18 @@ class ServersViewModel(
     fun testConnection(serverId: String) {
         testJob?.cancel()
         testJob = viewModelScope.launch {
-            val name = try {
-                servers.getById(serverId)?.name
+            val server = try {
+                servers.getById(serverId)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 null
             } ?: return@launch
+            val name = server.name
             _connectionTest.value = ConnectionTestUi(name, running = true)
+            if (server.source == ServerSource.JELLYFIN) {
+                _connectionTest.value = jellyfinConnectionTest(server)
+                return@launch
+            }
             val test = try {
                 sync.testConnection(serverId)
             } catch (e: Exception) {
@@ -153,6 +171,26 @@ class ServersViewModel(
             }
             _connectionTest.value = connectionTestUi(name, test)
         }
+    }
+
+    /** A Jellyfin server has one address: its public info is read (no token is sent) and the answer worded. */
+    private suspend fun jellyfinConnectionTest(server: ServerConfig): ConnectionTestUi {
+        val probe = jellyfinProbe ?: return ConnectionTestUi(server.name, message = "Could not test this server")
+        val (ok, text) = try {
+            jellyfinTestResult(checkJellyfinServer(probe.getPublicInfo(server.baseUrl)))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            false to when (e) {
+                // Before IOException: HttpStatusException is one.
+                is HttpStatusException ->
+                    if (e.status.value in 300..399) JELLYFIN_REDIRECT_TEXT else jellyfinHttpStatusText(e.status.value)
+                is IOException -> classifyConnectionError(e).text
+                // A body that is not Jellyfin's JSON (a web page, another app).
+                else -> JELLYFIN_NOT_JELLYFIN_TEXT
+            }
+        }
+        val row = ConnectionTestRowUi(JELLYFIN_CONNECTION_KIND, server.baseUrl, ok, text, inUse = true)
+        return ConnectionTestUi(server.name, rows = listOf(row))
     }
 
     fun dismissConnectionTest() {

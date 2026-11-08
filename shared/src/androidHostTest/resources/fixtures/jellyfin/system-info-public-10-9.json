@@ -1,0 +1,9 @@
+{
+  "LocalAddress": "http://192.0.2.10:8096",
+  "ServerName": "Example Jellyfin",
+  "Version": "10.9.11",
+  "ProductName": "Jellyfin Server",
+  "OperatingSystem": "",
+  "Id": "12259ef28da570ce2661ebfdb059b9c6",
+  "StartupWizardCompleted": true
+}

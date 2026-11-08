@@ -301,7 +301,10 @@ class BookSelectionViewModel(
             val tally = runEach(action, work, 1) { (id, resume) ->
                 attempt { if (resume) downloadController.resume(id) else downloadController.enqueue(id) }
             }
-            tally.copy(already = plan.alreadyOnPhone, skipped = plan.needsChoice, resumed = plan.resumeIds.size.coerceAtMost(tally.done))
+            tally.copy(
+                already = plan.alreadyOnPhone, skipped = plan.needsChoice, resumed = plan.resumeIds.size.coerceAtMost(tally.done),
+                notDownloadable = plan.notDownloadable,
+            )
         }
         BulkAction.REMOVE_DOWNLOAD -> {
             val plan = bulkRemovePlan(entries, statuses())

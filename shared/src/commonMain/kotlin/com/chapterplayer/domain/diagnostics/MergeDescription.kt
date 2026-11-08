@@ -1,12 +1,12 @@
 package com.chapterplayer.domain.diagnostics
 
 import com.chapterplayer.data.model.DownloadState
-import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.MergeContext
 import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.domain.browse.chosenDownloadSource
 import com.chapterplayer.domain.browse.chosenPlaySource
+import com.chapterplayer.domain.browse.serverKindName
 
 /** The grouping and source rules of [entry] right now, worded for the report. [serverNames] maps server ids to the names the user gave. */
 fun describeMerge(entry: BrowseItem, context: MergeContext, serverNames: Map<String, String>): DiagMerge {
@@ -15,7 +15,7 @@ fun describeMerge(entry: BrowseItem, context: MergeContext, serverNames: Map<Str
     fun nameOf(item: BrowseItem) = serverNames[item.book.serverId] ?: "unnamed server"
     fun choiceText(choice: SourceChoice) = when (choice) {
         SourceChoice.Ask -> "Ask every time"
-        is SourceChoice.OfType -> if (choice.source == ServerSource.ABS) "Audiobookshelf" else "Plex"
+        is SourceChoice.OfType -> serverKindName(choice.source)
         is SourceChoice.OfServer -> serverNames[choice.serverId] ?: "a removed server"
     }
     val playChosen = chosenPlaySource(entry, context.playChoice, context.onlineServerIds)

@@ -1,7 +1,7 @@
 package com.chapterplayer.domain.settings
 
 import com.chapterplayer.data.model.ServerConfig
-import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.domain.browse.serverKindName
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
 import com.chapterplayer.domain.downloads.storageLimitLabel
@@ -14,7 +14,7 @@ fun serversSummary(servers: List<ServerConfig>): String {
     if (servers.isEmpty()) return "No servers yet"
     val lostSignIn = servers.any { it.needsSignIn }
     if (servers.size == 1) {
-        val kind = if (servers[0].source == ServerSource.ABS) "Audiobookshelf" else "Plex"
+        val kind = serverKindName(servers[0].source)
         return "1 $kind$SEPARATOR${if (lostSignIn) "sign in again" else "signed in"}"
     }
     return "${servers.size} servers" + if (lostSignIn) "${SEPARATOR}sign in again" else ""

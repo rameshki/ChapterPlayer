@@ -11,7 +11,9 @@ internal const val EXTRA_DURATION_MS = "chapterplayer.durationMs"
  * an address. [httpStatus] is the server's answer code when the failure was a refused request.
  */
 fun safePlaybackError(errorCode: Int, httpStatus: Int?, signInNeeded: Boolean): String = when {
-    signInNeeded || httpStatus == 401 || httpStatus == 403 -> SIGN_IN_AGAIN_TEXT
+    signInNeeded || httpStatus == 401 -> SIGN_IN_AGAIN_TEXT
+    // The server knows the account but does not let it play this book: signing in again would not help (as on iOS).
+    httpStatus == 403 -> NOT_ALLOWED_TEXT
     httpStatus == 404 -> "The audio was not found on the server"
     errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
         errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Cannot reach the server"

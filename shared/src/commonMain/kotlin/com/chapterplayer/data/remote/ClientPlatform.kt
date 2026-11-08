@@ -8,3 +8,6 @@ internal expect val PLEX_PLATFORM_NAME: String
  * per platform names the client.
  */
 internal expect val ABS_DEVICE_ID: String
+
+/** The generic device name Jellyfin is told (`Device="..."`): "Android" or "iPhone", never a personal name. */
+internal expect val JELLYFIN_DEVICE_NAME: String

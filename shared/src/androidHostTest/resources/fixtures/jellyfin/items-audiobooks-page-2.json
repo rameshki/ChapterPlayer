@@ -1,0 +1,48 @@
+{
+  "Items": [
+    {
+      "Name": "Quiet Rivers",
+      "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+      "Id": "26f699bf533c76bf809909fd468f32e9",
+      "DateCreated": "2026-10-03T18:45:00.0000000Z",
+      "CanDownload": true,
+      "Container": "mov,mp4,m4a,3gp,3g2,mj2",
+      "RunTimeTicks": 108000000000,
+      "ProductionYear": 2021,
+      "IsFolder": false,
+      "Type": "AudioBook",
+      "ParentId": "40fd54c7fab6b3a985f36b461a437081",
+      "Overview": "A synthetic description of Quiet Rivers.",
+      "Genres": [
+        "Fiction"
+      ],
+      "ProviderIds": {},
+      "MediaType": "Audio",
+      "AlbumArtist": "Ada Example",
+      "Artists": [
+        "Ada Example"
+      ],
+      "ImageTags": {},
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 2,
+        "IsFavorite": false,
+        "Played": true,
+        "Key": "26f699bf533c76bf809909fd468f32e9",
+        "ItemId": "26f699bf533c76bf809909fd468f32e9",
+        "LastPlayedDate": "2026-10-25T21:00:00.0000000Z",
+        "PlayedPercentage": 100.0
+      },
+      "People": [
+        {
+          "Name": "Ada Example",
+          "Id": "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
+          "Role": "",
+          "Type": "Author"
+        }
+      ]
+    }
+  ],
+  "TotalRecordCount": 3,
+  "StartIndex": 2
+}

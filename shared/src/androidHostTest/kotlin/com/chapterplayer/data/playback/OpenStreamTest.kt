@@ -217,4 +217,21 @@ class OpenStreamTest {
         assertNull(redirectTarget("http://h.test/a", "/b", hop = 6, withToken = false))
         assertEquals("http://h.test/b", redirectTarget("http://h.test/a", "/b", hop = 5, withToken = false))
     }
+
+    @Test
+    fun `a Jellyfin stream follows a same-origin redirect and refuses another host`() {
+        val jf = Servers(listOf(ServerConfig("j", ServerSource.JELLYFIN, "J", "https://jf.test/jellyfin", "jftok")))
+        val header: suspend (ServerConfig) -> String = { s -> "MediaBrowser Token=\"${s.token}\"" }
+        val stream = "https://jf.test/jellyfin/Audio/abc/stream?static=true&mediaSourceId=abc&playSessionId=p1"
+        val same = "https://jf.test/jellyfin/Audio/abc/stream2"
+        val up = FakeUpstream(mutableListOf({ throw Redirect(same) }, { 8L }))
+        assertEquals(8L, openStream(stream, jf, RetryOnce, up, jellyfinHeader = header))
+        assertEquals(listOf(stream, same), up.urls)
+        assertEquals(listOf<String?>("Authorization", "Authorization"), up.headerNames)
+        assertEquals(listOf<String?>("MediaBrowser Token=\"jftok\"", "MediaBrowser Token=\"jftok\""), up.authorizations)
+
+        val away = FakeUpstream(mutableListOf({ throw Redirect("https://evil.test/file.m4b") }))
+        assertFailsWith<UnsafeRedirectException> { openStream(stream, jf, RetryOnce, away, jellyfinHeader = header) }
+        assertEquals(listOf(stream), away.urls)
+    }
 }

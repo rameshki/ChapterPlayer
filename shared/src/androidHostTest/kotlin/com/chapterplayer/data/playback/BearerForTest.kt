@@ -75,6 +75,9 @@ class BearerForTest {
         assertEquals("Sign in again in Settings", safePlaybackError(errorCode = 2004, httpStatus = 401, signInNeeded = false))
         assertEquals("Sign in again in Settings", safePlaybackError(errorCode = 0, httpStatus = null, signInNeeded = true))
         assertEquals("The audio was not found on the server", safePlaybackError(2004, 404, false))
+        // A 403 is the server refusing this account the book (as on iOS): signing in again would not help.
+        assertEquals(NOT_ALLOWED_TEXT, safePlaybackError(2004, 403, false))
+        assertEquals(NOT_ALLOWED_TEXT, describeError(2004, listOf(ErrorLink("InvalidResponseCodeException", "Response code: 403"))))
         assertEquals("Cannot reach the server", safePlaybackError(2001, null, false))
         assertEquals("Cannot reach the server", safePlaybackError(2002, null, false))
         assertEquals("Playback failed", safePlaybackError(1000, null, false))

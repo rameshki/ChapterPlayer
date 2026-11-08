@@ -72,6 +72,14 @@ import com.chapterplayer.data.remote.abs.AbsSessionManager
 import com.chapterplayer.data.remote.abs.AbsSignIn
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.createProbeHttpClient
+import com.chapterplayer.data.AppInfo
+import com.chapterplayer.data.auth.JellyfinSignInPort
+import com.chapterplayer.data.remote.InstallId
+import com.chapterplayer.data.remote.JELLYFIN_DEVICE_NAME
+import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
+import com.chapterplayer.data.remote.jellyfin.JellyfinSignIn
+import com.chapterplayer.data.source.JellyfinLibrarySource
+import com.chapterplayer.domain.jellyfin.JellyfinClient
 import com.chapterplayer.data.remote.plex.KtorPlexConnectionProbe
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
@@ -134,6 +142,9 @@ val ServerStatusStoreQualifier = named("serverStatus")
 /** The HTTP client that probes Plex connections: 5 s timeouts, no redirects. */
 val ProbeClientQualifier = named("probeClient")
 
+/** The Jellyfin API on the probe client (public info only). */
+val JellyfinProbeApiQualifier = named("jellyfinProbeApi")
+
 /** The app-long coroutine scope, and the dispatcher the browse view models do their list work on. */
 val AppScopeQualifier = named("appScope")
 val IoDispatcherQualifier = named("io")
@@ -176,7 +187,17 @@ val commonNetworkModule = module {
     single(ProbeClientQualifier) { createProbeHttpClient(get<Boolean>(DebuggableQualifier)) }
     single<PlexConnectionProbe> { KtorPlexConnectionProbe(get(ProbeClientQualifier)) }
     single<PlexCandidateLookup> { PlexTvCandidateLookup(get(), get()) }
+    // Jellyfin: the app's own id for this install (Plex's stored client id; Jellyfin's DeviceId is built from it per row),
+    // the API on the app client, a second one on the probe client (public info: no redirects, no token) and the sign-in.
+    single<InstallId> { get<PlexClientIdentifier>() }
+    single { JellyfinApiService(get(), jellyfinClientInfo(get())) }
+    single(JellyfinProbeApiQualifier) { JellyfinApiService(get(ProbeClientQualifier), jellyfinClientInfo(get())) }
+    single<JellyfinSignInPort> { JellyfinSignIn(get(), get(JellyfinProbeApiQualifier), get()) }
 }
+
+/** What the app tells Jellyfin about itself for a DeviceId: the generic device name and the app version. */
+private fun jellyfinClientInfo(appInfo: AppInfo): (String) -> JellyfinClient =
+    { deviceId -> JellyfinClient(JELLYFIN_DEVICE_NAME, deviceId, appInfo.versionName) }
 
 /** The stores on the platform's DataStore files (the credential store is the platform's own). */
 val commonStoreModule = module {
@@ -193,9 +214,22 @@ val commonSourceModule = module {
         val servers = get<ServerRepository>()
         PlexLibrarySource(get()) { refused -> blankRefusedPlexToken(servers, refused) }
     } bind LibrarySource::class
+    // Jellyfin tokens cannot be refreshed either: a refused one is blanked the same way.
+    single {
+        val servers = get<ServerRepository>()
+        val status = get<ServerStatusStore>()
+        JellyfinLibrarySource(
+            get(), get(),
+            markSignedOut = { refused -> blankRefusedPlexToken(servers, refused) },
+            expectedServerId = { rowId -> status.get(rowId).jellyfinServerId },
+        )
+    } bind LibrarySource::class
 }
 
-/** Blanks [refused]'s Plex token if it is still the one the server refused, so Settings says "Sign in again". */
+/**
+ * Blanks [refused]'s token if it is still the one the server refused, so Settings says "Sign in again". Used for Plex and
+ * Jellyfin, whose tokens have no refresh.
+ */
 internal suspend fun blankRefusedPlexToken(servers: ServerRepository, refused: com.chapterplayer.data.model.ServerConfig) {
     val current = servers.getById(refused.id)
     if (current != null && current.token.isNotBlank() && current.token == refused.token) servers.save(current.copy(token = ""))
@@ -329,8 +363,13 @@ val commonPlaybackModule = module {
 /** Every screen's view model. */
 val commonViewModelModule = module {
     // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
-    viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
-    viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
+    viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier), jellyfinProbe = get(JellyfinProbeApiQualifier)) }
+    viewModel {
+        ServerSetupViewModel(
+            get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier),
+            jellyfinSignIn = get(), statusStore = get(),
+        )
+    }
     viewModelOf(::OfflineStateViewModel)
     viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get(), favourites = get()) }
     viewModelOf(::LibrariesViewModel)

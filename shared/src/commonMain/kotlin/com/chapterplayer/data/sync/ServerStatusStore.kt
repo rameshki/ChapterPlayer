@@ -52,6 +52,8 @@ data class ServerStatusRecord(
     val lastSuccessAtMs: Long? = null,
     val lastErrorText: String? = null,
     val lastErrorAtMs: Long? = null,
+    /** Jellyfin: the server's own `Id` from the sign-in, so Sign in again refuses an address now held by another server. */
+    val jellyfinServerId: String? = null,
 )
 
 /** Per-server connection and sync state, kept across restarts. */

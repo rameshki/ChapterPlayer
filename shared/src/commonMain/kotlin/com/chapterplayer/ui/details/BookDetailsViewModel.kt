@@ -303,7 +303,9 @@ class BookDetailsViewModel(
                     ?: env.player.error?.takeIf { loaded && it != env.local.dismissedPlayerError },
                 currentPositionMs = if (thisLoaded) env.player.positionMs else progress?.positionMs ?: 0L,
                 resumePositionMs = savedStart,
-                download = detailsDownload(
+                // No copy on a server the app can download from (a Jellyfin book until J3) and no download: no control at
+                // all, rather than a Download that could only fail.
+                download = if (env.download == null && entry != null && downloadableMembers(entry).isEmpty()) DetailsDownload() else detailsDownload(
                     env.download, env.online,
                     // A shown download of another copy has its own size; this page's server only knows this copy's.
                     knownSizeBytes = env.download?.totalBytes?.takeIf { it > 0L }
@@ -314,7 +316,7 @@ class BookDetailsViewModel(
                     // A copy has a download: another copy is fetched only when the person asks for it, and only one
                     // with no download yet whose server answers can be.
                     val another = merged && features.downloads && env.online && env.rows.isNotEmpty() &&
-                        entry.allSources.any {
+                        downloadableMembers(entry).any {
                             it.book.id !in rowIds && it.downloadState == DownloadState.NOT_DOWNLOADED &&
                                 it.book.serverId in context.onlineServerIds
                         }
@@ -568,8 +570,12 @@ class BookDetailsViewModel(
         val entry = state.entry
         val context = state.mergeContext
         val copies = entry?.let(::downloadableMembers).orEmpty()
+        if (entry != null && copies.isEmpty()) return
         if (entry == null || context == null || copies.size < 2) {
-            downloadAction(askNotifications = true, done = DOWNLOAD_STARTED) { downloadController.enqueue(downloadBookId()) }
+            // One copy can download (a merged book whose other copies are on servers the app cannot download from takes
+            // it); without the entry yet, this page's own download.
+            val target = copies.singleOrNull()?.book?.id ?: downloadBookId()
+            downloadAction(askNotifications = true, done = DOWNLOAD_STARTED) { downloadController.enqueue(target) }
             return
         }
         val chosen = chosenDownloadSource(entry.copy(sources = copies), context.downloadChoice, context.onlineServerIds)

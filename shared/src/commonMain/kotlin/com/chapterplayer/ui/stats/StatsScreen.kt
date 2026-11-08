@@ -95,6 +95,7 @@ import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.SurfaceSecondary
 import com.chapterplayer.ui.theme.TextPrimary
 import com.chapterplayer.ui.theme.TextSecondary
+import com.chapterplayer.ui.theme.TextTertiary
 import org.koin.compose.viewmodel.koinViewModel
 
 /** Tabular figures, so numbers line up and do not shift as they change. */
@@ -373,6 +374,7 @@ private fun StatRow(name: String, value: String, spokenValue: String = value, on
 private fun sourceColor(source: ServerSource): Color = when (source) {
     ServerSource.ABS -> AmberGold
     ServerSource.PLEX -> TextSecondary
+    ServerSource.JELLYFIN -> TextTertiary
 }
 
 @Composable

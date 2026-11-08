@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.ui.theme.AbsGreen
 import com.chapterplayer.ui.theme.AmberGold
+import com.chapterplayer.ui.theme.JellyfinBadge
+import com.chapterplayer.ui.theme.JellyfinBadgeBg
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.AbsGreenDim
 import com.chapterplayer.ui.theme.PlexPurpleActual
@@ -24,7 +26,7 @@ import com.chapterplayer.ui.theme.PlexPurpleDim
 val LocalShowSourceBadge = staticCompositionLocalOf { false }
 
 /**
- * A small pill badge indicating the book's source server (ABS or Plex).
+ * A small pill badge indicating the book's source server (ABS, Plex or Jellyfin).
  */
 @Composable
 fun SourceBadge(
@@ -35,6 +37,7 @@ fun SourceBadge(
     val (label, textColor, bgColor) = when (source) {
         ServerSource.ABS -> Triple("ABS", AbsGreen, AbsGreenDim)
         ServerSource.PLEX -> Triple("PLEX", PlexPurpleActual, PlexPurpleDim)
+        ServerSource.JELLYFIN -> Triple("JF", JellyfinBadge, JellyfinBadgeBg)
     }
 
     Text(
