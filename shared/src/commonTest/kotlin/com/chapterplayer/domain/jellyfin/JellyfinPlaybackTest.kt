@@ -22,7 +22,7 @@ class JellyfinPlaybackTest {
     }
 
     @Test
-    fun `raw aac is aac, not mp4`() {
+    fun `raw aac is aac and not mp4`() {
         assertEquals("audio/aac", jellyfinMimeType("aac"))
     }
 
