@@ -55,6 +55,21 @@ class MergedSourcesTest {
     }
 
     @Test
+    fun `the same book on Audiobookshelf Plex and Jellyfin is one entry`() {
+        val result = merge(
+            listOf(
+                item("a", "abs1", durationMs = 10 * hour),
+                item("p", "plex1", durationMs = 10 * hour),
+                item("jf_x", "jf1", durationMs = 10 * hour - 4_000L, source = ServerSource.JELLYFIN),
+            ),
+            online = everyServer + "jf1",
+        )
+        assertEquals(1, result.size)
+        assertEquals(3, result.single().sources.size)
+        assertEquals(setOf("a", "p", "jf_x"), result.single().allSources.map { it.book.id }.toSet())
+    }
+
+    @Test
     fun `case punctuation articles and diacritics do not matter`() {
         val result = merge(listOf(
             item("a", "abs1", title = "The Way of Kings", author = "Brandon Sanderson"),

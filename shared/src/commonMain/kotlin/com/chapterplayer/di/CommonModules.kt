@@ -78,6 +78,7 @@ import com.chapterplayer.data.remote.InstallId
 import com.chapterplayer.data.remote.JELLYFIN_DEVICE_NAME
 import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
 import com.chapterplayer.data.remote.jellyfin.JellyfinSignIn
+import com.chapterplayer.data.source.JellyfinLibrarySource
 import com.chapterplayer.domain.jellyfin.JellyfinClient
 import com.chapterplayer.data.remote.plex.KtorPlexConnectionProbe
 import com.chapterplayer.data.remote.plex.PlexApiService
@@ -213,9 +214,17 @@ val commonSourceModule = module {
         val servers = get<ServerRepository>()
         PlexLibrarySource(get()) { refused -> blankRefusedPlexToken(servers, refused) }
     } bind LibrarySource::class
+    // Jellyfin tokens cannot be refreshed either: a refused one is blanked the same way.
+    single {
+        val servers = get<ServerRepository>()
+        JellyfinLibrarySource(get(), get(), markSignedOut = { refused -> blankRefusedPlexToken(servers, refused) })
+    } bind LibrarySource::class
 }
 
-/** Blanks [refused]'s Plex token if it is still the one the server refused, so Settings says "Sign in again". */
+/**
+ * Blanks [refused]'s token if it is still the one the server refused, so Settings says "Sign in again". Used for Plex and
+ * Jellyfin, whose tokens have no refresh.
+ */
 internal suspend fun blankRefusedPlexToken(servers: ServerRepository, refused: com.chapterplayer.data.model.ServerConfig) {
     val current = servers.getById(refused.id)
     if (current != null && current.token.isNotBlank() && current.token == refused.token) servers.save(current.copy(token = ""))
