@@ -114,4 +114,9 @@ class CountingHost(private val fail: Boolean = false) : WidgetHost {
         continueListening++
         if (fail) error("widget host gone")
     }
+    var listen = 0
+    override suspend fun redrawListen() {
+        listen++
+        if (fail) error("widget host gone")
+    }
 }

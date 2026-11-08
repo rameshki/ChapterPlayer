@@ -35,6 +35,8 @@ internal class WidgetColors(
     val textSecondary: ColorProvider,
     val accent: ColorProvider,
     val onAccent: ColorProvider,
+    /** The unfilled part of a progress bar (the Listen widget). */
+    val track: ColorProvider,
 )
 
 internal fun widgetColors(mode: ThemeMode): WidgetColors = when (mode) {
@@ -47,6 +49,7 @@ internal fun widgetColors(mode: ThemeMode): WidgetColors = when (mode) {
         textSecondary = ColorProvider(day = LightPalette.textSecondary, night = DarkPalette.textSecondary),
         accent = ColorProvider(day = LightPalette.amber, night = DarkPalette.amber),
         onAccent = ColorProvider(day = LightPalette.onAmber, night = DarkPalette.onAmber),
+        track = ColorProvider(day = LightPalette.surfaceSecondary, night = DarkPalette.surfaceSecondary),
     )
 }
 
@@ -56,6 +59,7 @@ private fun fixed(p: ChapterPlayerPalette) = WidgetColors(
     textSecondary = ColorProvider(p.textSecondary),
     accent = ColorProvider(p.amber),
     onAccent = ColorProvider(p.onAmber),
+    track = ColorProvider(p.surfaceSecondary),
 )
 
 /**
@@ -91,7 +95,7 @@ internal fun WidgetIconButton(icon: Int, description: String, tint: ColorProvide
     }
 }
 
-/** The neutral cover: widgets never fetch covers (that needs the server token). */
+/** The neutral cover. Widgets never fetch covers themselves (that needs the server token); Listen gets a bitmap from the app. */
 @Composable
 internal fun WidgetCoverPlaceholder(tint: ColorProvider, size: Dp = 32.dp) {
     Image(

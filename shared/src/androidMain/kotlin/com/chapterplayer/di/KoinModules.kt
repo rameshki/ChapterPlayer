@@ -57,7 +57,9 @@ import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.data.widgets.WidgetHost
 import com.chapterplayer.data.widgets.WidgetResumer
+import com.chapterplayer.data.widgets.WidgetCovers
 import com.chapterplayer.ui.widgets.GlanceWidgetHost
+import com.chapterplayer.ui.widgets.ListenCoverCache
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -180,7 +182,9 @@ val widgetModule = module {
     single { WidgetActions(get()) }
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
     single<WidgetHost> { GlanceWidgetHost(androidContext()) }
-    single { WidgetRefresher(get(), get(), get(AppScopeQualifier)) }
+    // The Listen widget's covers: loaded in the app through the authenticated cover loader, kept per book as small bitmaps.
+    single { ListenCoverCache(get(), androidContext(), Dispatchers.IO) } bind WidgetCovers::class
+    single { WidgetRefresher(get(), get(), get(AppScopeQualifier), covers = get()) }
     // The Continue widget's Resume: the main activity hands it the book (the one load path, offline rules apply).
     // It runs in the app scope, so a rotation or leaving the activity does not cut a start short.
     single { WidgetResumer(get(), get(), get(), get(), get(AppScopeQualifier)) }

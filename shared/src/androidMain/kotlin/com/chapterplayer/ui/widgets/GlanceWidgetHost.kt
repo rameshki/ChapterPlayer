@@ -9,4 +9,6 @@ class GlanceWidgetHost(private val context: Context) : WidgetHost {
     override suspend fun redrawNowPlaying() = NowPlayingWidget().updateAll(context)
 
     override suspend fun redrawContinueListening() = ContinueListeningWidget().updateAll(context)
+
+    override suspend fun redrawListen() = ListenWidget().updateAll(context)
 }

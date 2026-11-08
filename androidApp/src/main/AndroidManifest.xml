@@ -102,6 +102,19 @@
                 android:resource="@xml/continue_listening_widget_info" />
         </receiver>
 
+        <!-- Home screen widgets (Glance): Listen (Resume, then the playback controls) -->
+        <receiver
+            android:name="com.chapterplayer.ui.widgets.ListenWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_listen_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/listen_widget_info" />
+        </receiver>
+
     </application>
 
 </manifest>

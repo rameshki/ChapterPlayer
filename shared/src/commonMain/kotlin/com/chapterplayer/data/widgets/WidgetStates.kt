@@ -7,6 +7,8 @@ import com.chapterplayer.data.playback.PlaybackController
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.domain.widgets.ContinueWidgetState
+import com.chapterplayer.domain.widgets.ListenWidgetState
+import com.chapterplayer.domain.widgets.listenWidgetState
 import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.continueWidgetState
 import com.chapterplayer.domain.widgets.nowPlayingWidgetState
@@ -38,6 +40,22 @@ class WidgetStates(
     val continueListening: Flow<ContinueWidgetState>
         get() = combine(observeBrowseItems(books, downloads, merging), connectivity.isOnline, settings.downloadedOnly) { items, online, downloadedOnly ->
             continueWidgetState(items, online, downloadedOnly)
+        }.distinctUntilChanged()
+
+    /**
+     * The Listen widget: the loaded book's controls, else the same book [continueListening] offers. Emits only when
+     * that changes (a whole percent at most while playing, never a position tick).
+     */
+    val listen: Flow<ListenWidgetState>
+        get() = combine(
+            controller.state,
+            books.observeAllBooks(),
+            observeBrowseItems(books, downloads, merging),
+            connectivity.isOnline,
+            settings.downloadedOnly,
+        ) { state, all, items, online, downloadedOnly ->
+            val loaded = state.bookId?.let { id -> all.firstOrNull { it.id == id } }
+            listenWidgetState(state, loaded, items, online, downloadedOnly)
         }.distinctUntilChanged()
 
     /** Whether a Resume tap may start [bookId] now (see [widgetMayResume]). */

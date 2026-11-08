@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker's preview of Listen before Android 12: its own dark card, visible on any picker. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="110dp"
+    android:viewportWidth="250"
+    android:viewportHeight="110">
+    <path
+        android:fillColor="#FF151A2B"
+        android:pathData="M16,0h218a16,16 0 0 1 16,16v78a16,16 0 0 1 -16,16h-218a16,16 0 0 1 -16,-16v-78a16,16 0 0 1 16,-16z" />
+    <path
+        android:fillColor="#FFF0EDE8"
+        android:pathData="M14,14h120v8h-120z" />
+    <path
+        android:fillColor="#FFAEABA4"
+        android:pathData="M14,30h80v6h-80z" />
+    <path
+        android:fillColor="#FF1E2742"
+        android:pathData="M14,50h190v4h-190z" />
+    <path
+        android:fillColor="#FFE8B84B"
+        android:pathData="M14,50h60v4h-60z M212,48h24v8h-24z" />
+    <path
+        android:fillColor="#FFE8B84B"
+        android:pathData="M45,72h3v16h-3z M50,80l10,8V72z M114,70v20l16,-10z M195,88l10,-8l-10,-8z M207,72h3v16h-3z" />
+</vector>
