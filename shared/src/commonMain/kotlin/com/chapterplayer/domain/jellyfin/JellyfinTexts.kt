@@ -19,3 +19,6 @@ const val JELLYFIN_UNREADABLE_VIEW_TEXT = "the server's answer could not be read
 const val JELLYFIN_UNREADABLE_SYNC_TEXT = "The server's answer could not be read"
 /** The most the public-info answer may be: a real one is well under 1 KB. */
 const val JELLYFIN_PUBLIC_INFO_MAX_BYTES = 64 * 1024
+/** A sync whose address did not answer as this Jellyfin server (a web page, an error, another app): nothing was sent. */
+const val JELLYFIN_NOT_THIS_SERVER_TEXT =
+    "This address no longer answers as your Jellyfin server, so nothing was sent. Check the address in Settings."

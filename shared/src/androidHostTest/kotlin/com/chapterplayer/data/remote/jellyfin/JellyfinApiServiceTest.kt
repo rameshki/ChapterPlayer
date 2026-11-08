@@ -16,6 +16,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import io.ktor.utils.io.writeFully
+import io.ktor.utils.io.writer
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -178,6 +180,25 @@ class JellyfinApiServiceTest {
         // Just under the cap still reads.
         val fine = "{\"ProductName\":\"Jellyfin Server\",\"Version\":\"12.4.0\",\"Id\":\"x\",\"Padding\":\"" + "x".repeat(60_000) + "\"}"
         assertEquals("12.4.0", service({ fine }).getPublicInfo("https://jf.test").version)
+    }
+
+    @Test
+    fun `public info stops reading at 64 KB even when the answer never ends`() {
+        val chunk = ByteArray(8 * 1024) { 'x'.code.toByte() }
+        val endless = JellyfinApiService(
+            HttpClient(MockEngine {
+                val body = kotlinx.coroutines.GlobalScope.writer(kotlinx.coroutines.Dispatchers.IO) {
+                    channel.writeFully("{\"ProductName\":\"".encodeToByteArray())
+                    while (true) channel.writeFully(chunk)
+                }.channel
+                respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            }) { installApiDefaults(isDebuggable = false) },
+        ) { JellyfinClient("Android", it, "0.4.1") }
+        kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeout(10_000) {
+                assertFailsWith<IllegalStateException> { endless.getPublicInfo("https://jf.test") }
+            }
+        }
     }
 
     @Test

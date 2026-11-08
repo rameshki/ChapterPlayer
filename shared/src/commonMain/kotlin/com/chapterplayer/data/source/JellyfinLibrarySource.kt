@@ -25,7 +25,10 @@ import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
 import com.chapterplayer.data.remote.jellyfin.fetchAllAudiobooks
 import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NO_BOOKS_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_THIS_SERVER_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_OTHER_SERVER_TEXT
+import com.chapterplayer.domain.jellyfin.JellyfinServerCheck
+import com.chapterplayer.domain.jellyfin.checkJellyfinServer
 import com.chapterplayer.domain.jellyfin.JELLYFIN_UNREADABLE_SYNC_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_UNREADABLE_VIEW_TEXT
 import com.chapterplayer.domain.plex.classifyConnectionError
@@ -166,7 +169,14 @@ class JellyfinLibrarySource(
      */
     override suspend fun fetchSnapshot(server: ServerConfig): SourceSnapshot = signedIn(server) {
         checkIdentity(server)
-        val views = bookViews(server)
+        val views = try {
+            bookViews(server)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Status and connection errors as they are (a 401 still signs out); an unreadable answer in fixed words.
+            throw syncFailure(e)
+        }
         if (views.isEmpty()) error(JELLYFIN_NO_BOOKS_TEXT)
         val read = views.filter { it.id !in server.excludedLibraryIds }
             .filter { server.libraryId.isNullOrBlank() || it.id == server.libraryId }
@@ -248,20 +258,29 @@ class JellyfinLibrarySource(
     }
 
     /**
-     * The address must still belong to the server signed in to: its public info (no token) names the server id kept at
-     * sign-in. A row with no id kept is not checked. An address that cannot be read now is left to the sync's own calls,
-     * which fail the same way.
+     * The address must still belong to the server signed in to, before any token is sent: its public info (no token)
+     * must be Jellyfin's and name the server id kept at sign-in. Only an address that cannot be reached at all (no
+     * connection, a timeout, a certificate problem) is let through, because the token calls cannot reach it either; any
+     * other answer (a web page, an error status, another app's JSON, Jellyfin without the id) stops the sync with
+     * [JELLYFIN_NOT_THIS_SERVER_TEXT], and another Jellyfin server with [JELLYFIN_OTHER_SERVER_TEXT]. A row with no id
+     * kept (only rows saved before the id was kept) is not checked. Calls outside a sync (details, progress, playback)
+     * are not checked.
      */
     private suspend fun checkIdentity(server: ServerConfig) {
         val expected = expectedServerId(server.id)?.takeIf { it.isNotBlank() } ?: return
-        val answered = try {
-            api.getPublicInfo(server.baseUrl).id
+        val info = try {
+            api.getPublicInfo(server.baseUrl)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            return
+            // Before IOException: HttpStatusException is one, and an error status is an answer.
+            if (e is IOException && e !is HttpStatusException) return
+            throw IllegalStateException(JELLYFIN_NOT_THIS_SERVER_TEXT)
         }
-        check(answered != null && answered.equals(expected, ignoreCase = true)) { JELLYFIN_OTHER_SERVER_TEXT }
+        when (val check = checkJellyfinServer(info)) {
+            is JellyfinServerCheck.Ok -> check(check.serverId.equals(expected, ignoreCase = true)) { JELLYFIN_OTHER_SERVER_TEXT }
+            else -> throw IllegalStateException(JELLYFIN_NOT_THIS_SERVER_TEXT)
+        }
     }
 
     private suspend fun bookViews(server: ServerConfig): List<LibraryInfo> =

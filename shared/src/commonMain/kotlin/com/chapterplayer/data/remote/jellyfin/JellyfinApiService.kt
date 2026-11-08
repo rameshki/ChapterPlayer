@@ -18,6 +18,8 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.contentLength
@@ -52,16 +54,23 @@ class JellyfinApiService(
      * a serialization error.
      */
     suspend fun getPublicInfo(base: String): JellyfinPublicInfoDto {
-        val response = client.get(endpoint(base, "System/Info/Public")) {
+        // Streamed, not buffered: an address that serves something big or endless (a file, a stream) is read for at most
+        // [JELLYFIN_PUBLIC_INFO_MAX_BYTES] and [PUBLIC_INFO_TIMEOUT_MS]; a real answer is under 1 KB. The setup probe and
+        // the check before each sync both read it this way.
+        // The time limit is Ktor's own (a timeout is an IOException, read as "unreachable"), on the clock, not the
+        // coroutine's: both clients install the timeout plugin.
+        val text = client.prepareGet(endpoint(base, "System/Info/Public")) {
             header(HttpHeaders.Accept, JSON)
+            timeout { requestTimeoutMillis = PUBLIC_INFO_TIMEOUT_MS }
+        }.execute { response ->
+            if (!response.status.isSuccess()) throw HttpStatusException(response.status)
+            val declared = response.contentLength()
+            check(declared == null || declared <= JELLYFIN_PUBLIC_INFO_MAX_BYTES) { "The answer is too large" }
+            val bytes = response.bodyAsChannel().readRemaining(JELLYFIN_PUBLIC_INFO_MAX_BYTES + 1L).readByteArray()
+            check(bytes.size <= JELLYFIN_PUBLIC_INFO_MAX_BYTES) { "The answer is too large" }
+            bytes.decodeToString()
         }
-        if (!response.status.isSuccess()) throw HttpStatusException(response.status)
-        // An address that serves something big (a file, a page) must not fill memory: a real answer is under 1 KB.
-        val declared = response.contentLength()
-        check(declared == null || declared <= JELLYFIN_PUBLIC_INFO_MAX_BYTES) { "The answer is too large" }
-        val bytes = response.bodyAsChannel().readRemaining(JELLYFIN_PUBLIC_INFO_MAX_BYTES + 1L).readByteArray()
-        check(bytes.size <= JELLYFIN_PUBLIC_INFO_MAX_BYTES) { "The answer is too large" }
-        return ApiJson.decodeFromString(JellyfinPublicInfoDto.serializer(), bytes.decodeToString())
+        return ApiJson.decodeFromString(JellyfinPublicInfoDto.serializer(), text)
     }
 
     /** `POST /Users/AuthenticateByName` with the header but no token yet. */
@@ -115,6 +124,8 @@ class JellyfinApiService(
 
     private companion object {
         const val JSON = "application/json"
+        /** The longest the public-info read may take, start to end. */
+        const val PUBLIC_INFO_TIMEOUT_MS = 10_000L
         const val LIST_FIELDS = "People,Overview,Genres,DateCreated,ProviderIds"
         const val DETAIL_FIELDS = "Chapters,People,Overview,Genres,Studios,MediaSources"
     }

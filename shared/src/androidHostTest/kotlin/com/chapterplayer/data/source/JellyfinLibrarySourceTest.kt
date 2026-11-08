@@ -182,6 +182,70 @@ class JellyfinLibrarySourceTest {
         assertTrue(signedOut.isEmpty())
     }
 
+    /** A server row with a kept id whose address answers [publicInfo] there; every other call answers normally. */
+    private fun checkedSource(publicInfo: () -> Answer) = source(expectedServerId = "36b7674f7149d16771400fae9b9eb1f9") { r ->
+        val p = r.url.encodedPath
+        when {
+            p.endsWith("/System/Info/Public") -> publicInfo()
+            p.endsWith("/UserViews") -> Answer(fixture("jellyfin/user-views.json"))
+            p.endsWith("/Items") -> Answer(fixture("jellyfin/items-folder-of-parts.json"))
+            else -> null
+        }
+    }
+
+    private suspend fun assertStoppedBeforeToken(src: JellyfinLibrarySource) {
+        val e = assertFailsWith<IllegalStateException> { src.fetchSnapshot(server) }
+        assertEquals(com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_THIS_SERVER_TEXT, e.message)
+        assertEquals(listOf("/jellyfin/System/Info/Public"), requests.map { it.url.encodedPath })
+        assertTrue(requests.none { it.headers[HttpHeaders.Authorization] != null })
+        assertTrue(signedOut.isEmpty())
+    }
+
+    @Test
+    fun `a web page at the address stops the sync before the token is sent`() = runTest {
+        assertStoppedBeforeToken(checkedSource { Answer("<html><body>Router login</body></html>") })
+    }
+
+    @Test
+    fun `a 404 at the address stops the sync before the token is sent`() = runTest {
+        assertStoppedBeforeToken(checkedSource { Answer("not here", HttpStatusCode.NotFound) })
+    }
+
+    @Test
+    fun `a server error at the address stops the sync before the token is sent`() = runTest {
+        assertStoppedBeforeToken(checkedSource { Answer("oops", HttpStatusCode.ServiceUnavailable) })
+    }
+
+    @Test
+    fun `another app's JSON at the address stops the sync before the token is sent`() = runTest {
+        assertStoppedBeforeToken(checkedSource { Answer("""{"name":"nas","version":"7.2"}""") })
+        requests.clear()
+        assertStoppedBeforeToken(checkedSource { Answer("""{"ProductName":"Jellyfin Server","Version":"12.4.0"}""") })
+    }
+
+    @Test
+    fun `an unreachable address skips the check and the sync goes on as usual`() = runTest {
+        val src = source(expectedServerId = "36b7674f7149d16771400fae9b9eb1f9") { r ->
+            val p = r.url.encodedPath
+            when {
+                p.endsWith("/System/Info/Public") -> throw java.net.ConnectException("refused")
+                p.endsWith("/UserViews") -> Answer(fixture("jellyfin/user-views.json"))
+                p.endsWith("/Items") -> Answer(fixture("jellyfin/items-folder-of-parts.json"))
+                else -> null
+            }
+        }
+        assertEquals(2, src.fetchSnapshot(server).books.size)
+    }
+
+    @Test
+    fun `an unreadable views answer fails in fixed words`() = runTest {
+        val src = source { r ->
+            if (r.url.encodedPath.endsWith("/UserViews")) Answer("""{"Items": "<html>private page text</html>"}""") else null
+        }
+        val e = assertFailsWith<IllegalStateException> { src.fetchSnapshot(server) }
+        assertEquals("The server's answer could not be read", e.message)
+    }
+
     @Test
     fun `a sync on the same server goes ahead after the check`() = runTest {
         val src = source(expectedServerId = "36B7674F7149D16771400FAE9B9EB1F9") { r ->
