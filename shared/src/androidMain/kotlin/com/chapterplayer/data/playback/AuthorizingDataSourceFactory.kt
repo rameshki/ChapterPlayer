@@ -190,8 +190,8 @@ internal fun openStream(
  * server gets its `X-Plex-Token` header, and a 401 there is a [SignInRequiredException] (no refresh exists).
  * An address under a Jellyfin server (path included) gets `Authorization: MediaBrowser ...` from [jellyfinHeader]
  * (never an Audiobookshelf bearer); a 401 there blanks the token ([onJellyfinRefused]) and is a
- * [SignInRequiredException]. Without [jellyfinHeader] Jellyfin servers are not matched. Any other address gets [open]
- * with null. Blocking, for the player's loader thread.
+ * [SignInRequiredException]. Without [jellyfinHeader] a Jellyfin address is still matched (so it can never take another
+ * server's credential) and opened with no header (fail closed). Any other address gets [open] with null. Blocking, for the player's loader thread.
  */
 internal fun <T> openAuthorized(
     url: String,
@@ -202,11 +202,10 @@ internal fun <T> openAuthorized(
     onJellyfinRefused: suspend (ServerConfig) -> Unit = {},
     open: (header: AuthHeader?) -> T,
 ): T {
+    // Jellyfin servers are always matched, so an address under one never falls to an Audiobookshelf server on the same
+    // host (whose bearer must not reach it); without [jellyfinHeader] such an address is opened with no header.
     val configured = runBlocking { servers.observeAll().first() }
-        .filter {
-            it.source == ServerSource.ABS || it.source == ServerSource.PLEX ||
-                (it.source == ServerSource.JELLYFIN && jellyfinHeader != null)
-        }
+        .filter { it.source == ServerSource.ABS || it.source == ServerSource.PLEX || it.source == ServerSource.JELLYFIN }
     // A Plex server answers on each connection plex.tv listed for it, so each is one of its addresses.
     val bearers = configured.flatMap { s -> plexAddressesOf(s).map { address -> s to ServerBearer(address, s.token) } }
     val match = serverFor(url, bearers.map { it.second }) ?: return open(null)
@@ -219,7 +218,8 @@ internal fun <T> openAuthorized(
             throw e
         }
         ServerSource.JELLYFIN -> {
-            val header = runBlocking { requireNotNull(jellyfinHeader)(server) }
+            val builder = jellyfinHeader ?: return open(null)
+            val header = runBlocking { builder(server) }
             try {
                 open(AuthHeader("Authorization", header))
             } catch (e: Exception) {

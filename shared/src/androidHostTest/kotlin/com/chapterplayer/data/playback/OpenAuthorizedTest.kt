@@ -224,6 +224,23 @@ class OpenAuthorizedTest {
     }
 
     @Test
+    fun `without the header builder a Jellyfin address under an Audiobookshelf host gets no bearer`() {
+        val headers = mutableListOf<AuthHeader?>()
+        val refreshes = IntArray(1)
+        // Audiobookshelf at the host's root, Jellyfin under /jellyfin behind the same proxy.
+        val servers = FakeServers(listOf(
+            server("a", "https://jf.test", ServerSource.ABS, token = "abs-token"),
+            server("j", "https://jf.test/jellyfin", ServerSource.JELLYFIN, token = "jf-token"),
+        ))
+        openAuthorized(jfUrl, servers, manager(servers, refreshes), { it is Unauthorized }) { header ->
+            headers += header
+            "opened"
+        }
+        assertNull(headers.single())
+        assertEquals(0, refreshes[0])
+    }
+
+    @Test
     fun `a Jellyfin server is never sent an Audiobookshelf bearer`() {
         val headers = mutableListOf<AuthHeader?>()
         val refreshes = IntArray(1)
