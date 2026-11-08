@@ -358,8 +358,13 @@ val commonPlaybackModule = module {
 /** Every screen's view model. */
 val commonViewModelModule = module {
     // The Servers page: sync state, Sync now and Test connection; a sync started there runs in the app scope.
-    viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier)) }
-    viewModel { ServerSetupViewModel(get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier)) }
+    viewModel { ServersViewModel(get(), get(), get(AppScopeQualifier), jellyfinProbe = get(JellyfinProbeApiQualifier)) }
+    viewModel {
+        ServerSetupViewModel(
+            get(), get(), get(), get(), plexConnections = get(), plexProbe = get(), work = get(IoDispatcherQualifier),
+            jellyfinSignIn = get(), statusStore = get(),
+        )
+    }
     viewModelOf(::OfflineStateViewModel)
     viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get(), favourites = get()) }
     viewModelOf(::LibrariesViewModel)
