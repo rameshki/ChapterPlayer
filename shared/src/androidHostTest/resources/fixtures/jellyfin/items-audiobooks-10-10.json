@@ -1,0 +1,41 @@
+{
+  "Items": [
+    {
+      "Name": "Old Server Book",
+      "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+      "Id": "1773b28c21c4a5b07e73315c3b58e433",
+      "DateCreated": "2025-06-01T07:00:00.0000000Z",
+      "CanDownload": true,
+      "Container": "m4b",
+      "RunTimeTicks": 180000000000,
+      "ProductionYear": 2021,
+      "IsFolder": false,
+      "Type": "AudioBook",
+      "ParentId": "40fd54c7fab6b3a985f36b461a437081",
+      "Overview": "A synthetic description of Old Server Book.",
+      "Genres": [
+        "Fiction"
+      ],
+      "ProviderIds": {},
+      "MediaType": "Audio",
+      "AlbumArtist": "Eve Placeholder",
+      "Artists": [
+        "Eve Placeholder"
+      ],
+      "ImageTags": {
+        "Primary": "9f3e4d5c"
+      },
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 0,
+        "IsFavorite": false,
+        "Played": false,
+        "Key": "1773b28c21c4a5b07e73315c3b58e433",
+        "ItemId": "1773b28c21c4a5b07e73315c3b58e433"
+      },
+      "People": []
+    }
+  ],
+  "TotalRecordCount": 1,
+  "StartIndex": 0
+}

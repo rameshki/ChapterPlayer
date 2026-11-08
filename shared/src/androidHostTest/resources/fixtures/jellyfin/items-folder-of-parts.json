@@ -1,0 +1,74 @@
+{
+  "Items": [
+    {
+      "Name": "Part 01",
+      "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+      "Id": "71e4829cd3b67973c8edc6ae2ffef229",
+      "DateCreated": "2026-10-05T11:00:00.0000000Z",
+      "CanDownload": true,
+      "Container": "mp3",
+      "RunTimeTicks": 72000000000,
+      "ProductionYear": 2021,
+      "IsFolder": false,
+      "Type": "AudioBook",
+      "ParentId": "68d66245116d4eb78244a31d82208a33",
+      "Overview": "A synthetic description of Part 01.",
+      "Genres": [
+        "Fiction"
+      ],
+      "ProviderIds": {},
+      "MediaType": "Audio",
+      "AlbumArtist": "Gus Fixture",
+      "Artists": [
+        "Gus Fixture"
+      ],
+      "ImageTags": {},
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 0,
+        "IsFavorite": false,
+        "Played": false,
+        "Key": "71e4829cd3b67973c8edc6ae2ffef229",
+        "ItemId": "71e4829cd3b67973c8edc6ae2ffef229"
+      },
+      "People": [],
+      "IndexNumber": 1
+    },
+    {
+      "Name": "Part 02",
+      "ServerId": "36b7674f7149d16771400fae9b9eb1f9",
+      "Id": "8357f1072c06dd51737ad6e46a6f34e4",
+      "DateCreated": "2026-10-05T11:00:00.0000000Z",
+      "CanDownload": true,
+      "Container": "mp3",
+      "RunTimeTicks": 45000000000,
+      "ProductionYear": 2021,
+      "IsFolder": false,
+      "Type": "AudioBook",
+      "ParentId": "68d66245116d4eb78244a31d82208a33",
+      "Overview": "A synthetic description of Part 02.",
+      "Genres": [
+        "Fiction"
+      ],
+      "ProviderIds": {},
+      "MediaType": "Audio",
+      "AlbumArtist": "Gus Fixture",
+      "Artists": [
+        "Gus Fixture"
+      ],
+      "ImageTags": {},
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 0,
+        "IsFavorite": false,
+        "Played": false,
+        "Key": "8357f1072c06dd51737ad6e46a6f34e4",
+        "ItemId": "8357f1072c06dd51737ad6e46a6f34e4"
+      },
+      "People": [],
+      "IndexNumber": 2
+    }
+  ],
+  "TotalRecordCount": 2,
+  "StartIndex": 0
+}
