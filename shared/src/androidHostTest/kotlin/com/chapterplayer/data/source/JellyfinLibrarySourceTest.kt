@@ -465,4 +465,26 @@ class JellyfinLibrarySourceTest {
         assertFailsWith<SignInRequiredException> { src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919") }
         assertEquals(listOf("row-1"), signedOut.map { it.id })
     }
+
+    // ---- J1 writes nothing back ----
+
+    @Test
+    fun `a live report is refused as not yet, so it is queued rather than counted as sent`() = runTest {
+        val src = source { Answer(fixture("jellyfin/item-detail-media-sources.json")) }
+        val session = src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919")
+        val before = requests.size
+
+        val e = assertFailsWith<Exception> { src.syncPlayback(server, session.sessionId, 60_000L, 10_000L, session.durationMs) }
+        assertEquals("ProgressNotReportedYetException", e::class.simpleName)
+        assertEquals(before, requests.size)
+    }
+
+    @Test
+    fun `a queued position or mark is not delivered yet, so the row stays queued`() = runTest {
+        val src = source { Answer("{}") }
+        val e = assertFailsWith<Exception> { src.pushProgress(server, "jf_0bdd952d73af33d8d4421dfdb2f25919", 60_000L, 3_600_000L, isFinished = false) }
+        assertEquals("ProgressNotReportedYetException", e::class.simpleName)
+        assertTrue(requests.isEmpty())
+        assertTrue(signedOut.isEmpty())
+    }
 }

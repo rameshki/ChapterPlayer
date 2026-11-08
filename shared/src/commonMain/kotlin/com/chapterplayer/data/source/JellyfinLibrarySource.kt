@@ -48,6 +48,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 
+/** A Jellyfin server does not take progress from the app yet (stage J1; J2 adds it). Fixed text, no details. */
+class ProgressNotReportedYetException : Exception("This server does not take progress from the app yet")
+
 /**
  * Reads a Jellyfin server: its Books views, their `AudioBook` items (one file per book; a multi-file folder passes
  * through as the separate items Jellyfin lists, never grouped), one book's details, and the user's play state. J1
@@ -132,6 +135,27 @@ class JellyfinLibrarySource(
     override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
         sessionsLock.withLock { sessions.remove(sessionId) }
     }
+
+    /**
+     * J1 cannot report yet, and says so instead of pretending it did: a live report that "succeeded" would let
+     * `ProgressSyncer` delete the book's queued rows (its own and mirrors) although nothing reached the server. Failing,
+     * it queues the position (one row per book) and keeps what was queued. J2 replaces this with the session reports.
+     */
+    override suspend fun syncPlayback(
+        server: ServerConfig,
+        sessionId: String,
+        positionMs: Long,
+        listenedMs: Long,
+        durationMs: Long,
+        isPlaying: Boolean,
+    ): Unit = throw ProgressNotReportedYetException()
+
+    /**
+     * J1 cannot deliver queued positions or marks yet: failing keeps the row queued (the flusher backs off and tries again;
+     * a server reading newer than the row still drops it), so J2 delivers it with the UserData write.
+     */
+    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean): Unit =
+        throw ProgressNotReportedYetException()
 
     /** What the last snapshot of a server read: when, every book's progress and every book's length. */
     private class SnapshotCache(val atMs: Long, val progress: Map<String, ServerProgress>, val lengths: Map<String, Long>)
