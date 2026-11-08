@@ -123,7 +123,7 @@ class JellyfinApiServiceTest {
             url.parameters.names().associateWith { url.parameters.getAll(it)!!.single() })
         assertEquals("AudioBook", item.type)
         assertEquals(360_000_000_000L, item.runTimeTicks)
-        assertEquals("m4b", item.mediaSources.single().container)
+        assertEquals("mov,mp4,m4a,3gp,3g2,mj2", item.mediaSources.single().container)
         assertEquals(4, item.chapters.size)
         assertEquals(listOf("Author" to "Ada Example", "Narrator" to "Ned Reader"), item.people.map { it.type to it.name })
         assertEquals("Example Press", item.studios.single().name)

@@ -377,7 +377,9 @@ class JellyfinLibrarySourceTest {
 
     @Test
     fun `a container the app cannot play fails with the format text`() = runTest {
-        val wma = fixture("jellyfin/item-detail-media-sources.json").replace("\"Container\": \"m4b\"", "\"Container\": \"wma\"")
+        val wma = fixture("jellyfin/item-detail-media-sources.json")
+            .replace("\"Container\": \"mov,mp4,m4a,3gp,3g2,mj2\"", "\"Container\": \"asf\"")
+        assertTrue(wma.contains("\"asf\""))
         val src = source { Answer(wma) }
         val e = assertFailsWith<com.chapterplayer.data.playback.PlaybackStartException> {
             src.startPlayback(server, "jf_0bdd952d73af33d8d4421dfdb2f25919")

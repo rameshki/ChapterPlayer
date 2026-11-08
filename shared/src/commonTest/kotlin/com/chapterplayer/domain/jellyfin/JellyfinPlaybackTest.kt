@@ -10,8 +10,25 @@ import kotlin.test.assertTrue
 class JellyfinPlaybackTest {
 
     @Test
+    fun `the comma list Jellyfin reports for MP4 audio is MP4`() {
+        // ffprobe's format_name as Jellyfin stores it for an .m4b or .m4a file.
+        assertEquals("audio/mp4", jellyfinMimeType("mov,mp4,m4a,3gp,3g2,mj2"))
+        assertEquals("audio/mp4", jellyfinMimeType(" MOV , mp4,m4a "))
+        assertTrue(jellyfinContainerSupported("mov,mp4,m4a,3gp,3g2,mj2"))
+        // The first known part decides; unknown parts are skipped.
+        assertEquals("audio/mpeg", jellyfinMimeType("xyz,mp3"))
+        assertEquals("", jellyfinMimeType("asf,wma"))
+        assertEquals("", jellyfinMimeType(",,"))
+    }
+
+    @Test
+    fun `raw aac is aac, not mp4`() {
+        assertEquals("audio/aac", jellyfinMimeType("aac"))
+    }
+
+    @Test
     fun `containers map to their media types`() {
-        for (c in listOf("m4b", "m4a", "mp4", "aac", "M4B")) assertEquals("audio/mp4", jellyfinMimeType(c), c)
+        for (c in listOf("m4b", "m4a", "mp4", "mov", "3gp", "3g2", "M4B")) assertEquals("audio/mp4", jellyfinMimeType(c), c)
         assertEquals("audio/mpeg", jellyfinMimeType("mp3"))
         assertEquals("audio/flac", jellyfinMimeType("flac"))
         for (c in listOf("ogg", "oga", "opus")) assertEquals("audio/ogg", jellyfinMimeType(c), c)
@@ -22,7 +39,7 @@ class JellyfinPlaybackTest {
 
     @Test
     fun `an unknown container is unsupported`() {
-        for (c in listOf("m4b", "mp3", "flac", "ogg", "opus", "wav", "aac")) assertTrue(jellyfinContainerSupported(c), c)
+        for (c in listOf("m4b", "mp3", "flac", "ogg", "opus", "wav", "aac", "mov")) assertTrue(jellyfinContainerSupported(c), c)
         assertFalse(jellyfinContainerSupported("wma"))
         assertFalse(jellyfinContainerSupported(""))
         assertFalse(jellyfinContainerSupported(null))

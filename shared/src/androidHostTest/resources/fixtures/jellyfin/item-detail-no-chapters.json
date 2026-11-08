@@ -4,7 +4,7 @@
   "Id": "3a68b8d5c009572d209b2205cfc1bda8",
   "DateCreated": "2026-10-02T09:15:30.1234567Z",
   "CanDownload": true,
-  "Container": "m4b",
+  "Container": "mov,mp4,m4a,3gp,3g2,mj2",
   "RunTimeTicks": 270000000000,
   "ProductionYear": 2021,
   "IsFolder": false,
