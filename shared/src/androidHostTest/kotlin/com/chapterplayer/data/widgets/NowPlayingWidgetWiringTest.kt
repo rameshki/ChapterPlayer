@@ -119,4 +119,7 @@ class CountingHost(private val fail: Boolean = false) : WidgetHost {
         listen++
         if (fail) error("widget host gone")
     }
+    /** Whether a Listen widget is placed, as the host reports it at start. */
+    var placed = true
+    override suspend fun listenPlaced(): Boolean = placed
 }

@@ -44,15 +44,20 @@ import androidx.glance.text.TextStyle
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.widgets.EXTRA_RESUME_BOOK_ID
 import com.chapterplayer.data.widgets.WidgetActions
+import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.domain.widgets.LISTEN_EXPANDED_MIN_HEIGHT_DP
-import com.chapterplayer.domain.widgets.LISTEN_STANDARD_MIN_HEIGHT_DP
+import com.chapterplayer.domain.widgets.LISTEN_ROOMY_MIN_DP
+import com.chapterplayer.domain.widgets.LISTEN_SHORT_MIN_HEIGHT_DP
+import com.chapterplayer.domain.widgets.LISTEN_STACKED_MIN_HEIGHT_DP
 import com.chapterplayer.domain.widgets.LISTEN_WIDE_MIN_DP
+import com.chapterplayer.domain.widgets.ListenControlsMetrics
+import com.chapterplayer.domain.widgets.ListenDimens
 import com.chapterplayer.domain.widgets.ListenLayout
 import com.chapterplayer.domain.widgets.ListenSize
 import com.chapterplayer.domain.widgets.ListenWidgetState
 import com.chapterplayer.domain.widgets.coverBookId
-import com.chapterplayer.domain.widgets.listenCoverDescription
+import com.chapterplayer.domain.widgets.listenControlsMetrics
 import com.chapterplayer.domain.widgets.listenEmptyText
 import com.chapterplayer.domain.widgets.listenLayout
 import com.chapterplayer.domain.widgets.listenPlayDescription
@@ -74,16 +79,20 @@ import org.koin.core.component.get
  */
 class ListenWidget : GlanceAppWidget(), KoinComponent {
 
-    override val sizeMode = SizeMode.Responsive(setOf(COMPACT, STANDARD, EXPANDED))
+    override val sizeMode = SizeMode.Responsive(setOf(COMPACT, SHORT, STANDARD, STANDARD_ROOMY, EXPANDED, EXPANDED_ROOMY))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val states = get<WidgetStates>()
         val settings = get<AppSettings>()
         val covers = get<ListenCoverCache>()
+        val refresher = get<WidgetRefresher>()
+        // Drawn means placed (or resized, or updated by the system): share the state from now on and ask for a missing cover.
+        refresher.listenPlacementChanged(true)
+        refresher.requestCover()
         val initial = states.listen.first()
         val initialMode = themeOrSystem(settings.themeMode)
         provideContent {
-            val state by states.listen.collectAsState(initial)
+            val state by refresher.listen.collectAsState(initial)
             val mode by settings.themeMode.collectAsState(initialMode)
             // Read so a cover that arrives while the session runs is drawn; the lookup itself never loads.
             val coverVersion by covers.version.collectAsState()
@@ -93,20 +102,37 @@ class ListenWidget : GlanceAppWidget(), KoinComponent {
     }
 
     companion object {
+        // The size classes of listenSize; the roomy widths give every control a 48 dp target (listenControlsMetrics).
         val COMPACT = DpSize(110.dp, 40.dp)
-        val STANDARD = DpSize(LISTEN_WIDE_MIN_DP.dp, LISTEN_STANDARD_MIN_HEIGHT_DP.dp)
+        val SHORT = DpSize(LISTEN_WIDE_MIN_DP.dp, LISTEN_SHORT_MIN_HEIGHT_DP.dp)
+        val STANDARD = DpSize(LISTEN_WIDE_MIN_DP.dp, LISTEN_STACKED_MIN_HEIGHT_DP.dp)
+        val STANDARD_ROOMY = DpSize(LISTEN_ROOMY_MIN_DP.dp, LISTEN_STACKED_MIN_HEIGHT_DP.dp)
         val EXPANDED = DpSize(LISTEN_WIDE_MIN_DP.dp, LISTEN_EXPANDED_MIN_HEIGHT_DP.dp)
+        val EXPANDED_ROOMY = DpSize(LISTEN_ROOMY_MIN_DP.dp, LISTEN_EXPANDED_MIN_HEIGHT_DP.dp)
     }
 }
 
-class ListenWidgetReceiver : GlanceAppWidgetReceiver() {
+class ListenWidgetReceiver : GlanceAppWidgetReceiver(), KoinComponent {
     override val glanceAppWidget: GlanceAppWidget = ListenWidget()
+
+    // The first Listen widget placed and the last one removed: the refresher computes its state only in between.
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        get<WidgetRefresher>().listenPlacementChanged(true)
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        get<WidgetRefresher>().listenPlacementChanged(false)
+    }
 }
 
 @Composable
 private fun ListenContent(context: Context, state: ListenWidgetState, cover: Bitmap?, colors: WidgetColors) {
     val size = listenSize(LocalSize.current.width.value, LocalSize.current.height.value)
     val layout = listenLayout(size, state)
+    val metrics = listenControlsMetrics(LocalSize.current.width.value)
+    val vertical = ListenDimens.VERTICAL_PADDING_DP.dp
     // The body opens the player while a book is loaded, else the app.
     val open = openAppIntent(context, openPlayer = state is ListenWidgetState.Controls)
     var body = GlanceModifier.fillMaxSize().background(colors.background).cornerRadius(16.dp)
@@ -127,17 +153,28 @@ private fun ListenContent(context: Context, state: ListenWidgetState, cover: Bit
                 modifier = GlanceModifier.defaultWeight(),
             )
         }
-        else -> Column(modifier = body.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        // Low: the title and chapter beside back 15 / play-pause / forward 30, so nothing is clipped.
+        layout.controlsBesideTitle && state is ListenWidgetState.Controls ->
+            Row(modifier = body.padding(horizontal = metrics.horizontalPaddingDp.dp, vertical = vertical), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = GlanceModifier.defaultWeight()) { BookText(state, layout, colors, roomy = false) }
+                ControlButtons(context, state, layout, metrics, colors)
+            }
+        else -> Column(modifier = body.padding(horizontal = metrics.horizontalPaddingDp.dp, vertical = vertical)) {
             Row(modifier = GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
                 if (layout.showCover) {
-                    Cover(state, cover, colors)
+                    Cover(cover, colors)
                     Spacer(GlanceModifier.width(12.dp))
                 }
-                Column(modifier = GlanceModifier.defaultWeight()) { BookText(state, layout, colors, roomy = size == ListenSize.EXPANDED) }
-                if (state is ListenWidgetState.Resume) PlayButton(context, state, colors, 52.dp)
+                Column(modifier = GlanceModifier.defaultWeight()) { BookText(state, layout, colors, roomy = layout.showCover) }
+                if (state is ListenWidgetState.Resume) PlayButton(context, state, colors, ListenDimens.RESUME_PLAY_DP.dp)
             }
             if (layout.showProgress) Progress(state, colors)
-            if (state is ListenWidgetState.Controls) ControlsRow(context, state, layout, colors)
+            if (state is ListenWidgetState.Controls) {
+                Spacer(GlanceModifier.height(ListenDimens.CONTROLS_GAP_DP.dp))
+                Row(modifier = GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalAlignment = Alignment.CenterVertically) {
+                    ControlButtons(context, state, layout, metrics, colors)
+                }
+            }
         }
     }
 }
@@ -152,22 +189,27 @@ private fun titleOf(state: ListenWidgetState): String = when (state) {
 private fun BookText(state: ListenWidgetState, layout: ListenLayout, colors: WidgetColors, roomy: Boolean) {
     Text(
         text = titleOf(state),
-        style = TextStyle(color = colors.textPrimary, fontSize = if (roomy) 16.sp else 14.sp, fontWeight = FontWeight.Medium),
+        style = TextStyle(
+            color = colors.textPrimary,
+            fontSize = if (roomy) ListenDimens.TITLE_EXPANDED_SP.sp else ListenDimens.TITLE_SP.sp,
+            fontWeight = FontWeight.Medium,
+        ),
         maxLines = if (roomy) 2 else 1,
     )
     if (!layout.showSecondLine) return
     // Expanded shows the author and, while loaded, the chapter below it; smaller sizes show one line.
     if (roomy && state is ListenWidgetState.Controls && state.chapterTitle != null && state.author.isNotEmpty()) {
-        Text(text = state.author, style = TextStyle(color = colors.textSecondary, fontSize = 12.sp), maxLines = 1)
+        Text(text = state.author, style = TextStyle(color = colors.textSecondary, fontSize = ListenDimens.SMALL_SP.sp), maxLines = 1)
     }
     listenSecondLine(state)?.let { line ->
-        Text(text = line, style = TextStyle(color = colors.textSecondary, fontSize = 12.sp), maxLines = 1)
+        Text(text = line, style = TextStyle(color = colors.textSecondary, fontSize = ListenDimens.SMALL_SP.sp), maxLines = 1)
     }
 }
 
 @Composable
-private fun Cover(state: ListenWidgetState, cover: Bitmap?, colors: WidgetColors) {
-    val description = listenCoverDescription(state)
+private fun Cover(cover: Bitmap?, colors: WidgetColors) {
+    // Decorative: the title beside it says what it is, so TalkBack does not read the title twice.
+    val description: String? = null
     if (cover == null) {
         // No cover, or not loaded yet: the placeholder look of the other widgets.
         Image(
@@ -193,38 +235,38 @@ private fun ColumnScope.Progress(state: ListenWidgetState, colors: WidgetColors)
         is ListenWidgetState.Controls -> state.percent
         is ListenWidgetState.Empty -> return
     }
-    Spacer(GlanceModifier.height(6.dp))
+    Spacer(GlanceModifier.height(ListenDimens.PROGRESS_GAP_DP.dp))
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Before Android 12 Glance ignores these colours and the bar takes the system's default tint.
         LinearProgressIndicator(
             progress = percent / 100f,
-            modifier = GlanceModifier.defaultWeight().height(4.dp).cornerRadius(2.dp),
+            modifier = GlanceModifier.defaultWeight().height(ListenDimens.PROGRESS_BAR_DP.dp).cornerRadius(2.dp),
             color = colors.accent,
             backgroundColor = colors.track,
         )
         listenProgressText(state)?.let { text ->
             Spacer(GlanceModifier.width(8.dp))
-            Text(text = text, style = TextStyle(color = colors.accent, fontSize = 12.sp), maxLines = 1)
+            Text(text = text, style = TextStyle(color = colors.accent, fontSize = ListenDimens.SMALL_SP.sp), maxLines = 1)
         }
     }
 }
 
+/** The control buttons, sized by [metrics] so five fit the width (48 dp targets where it is roomy). */
 @Composable
-private fun ControlsRow(context: Context, state: ListenWidgetState.Controls, layout: ListenLayout, colors: WidgetColors) {
-    Spacer(GlanceModifier.height(4.dp))
-    Row(modifier = GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalAlignment = Alignment.CenterVertically) {
-        if (layout.showChapterButtons) {
-            WidgetIconButton(R.drawable.ic_widget_previous_chapter, "Previous chapter", colors.accent, actionRunCallback<ListenPreviousChapterAction>())
-        }
-        if (layout.showSkips) {
-            WidgetIconButton(R.drawable.ic_widget_back, "Back 15 seconds", colors.accent, actionRunCallback<ListenSkipBackAction>(), label = "15")
-        }
-        PlayButton(context, state, colors, 48.dp)
-        if (layout.showSkips) {
-            WidgetIconButton(R.drawable.ic_widget_forward, "Forward 30 seconds", colors.accent, actionRunCallback<ListenSkipForwardAction>(), label = "30")
-        }
-        if (layout.showChapterButtons) {
-            WidgetIconButton(R.drawable.ic_widget_next_chapter, "Next chapter", colors.accent, actionRunCallback<ListenNextChapterAction>())
-        }
+private fun ControlButtons(context: Context, state: ListenWidgetState.Controls, layout: ListenLayout, metrics: ListenControlsMetrics, colors: WidgetColors) {
+    val side = metrics.sideButtonDp.dp
+    if (layout.showChapterButtons) {
+        WidgetIconButton(R.drawable.ic_widget_previous_chapter, "Previous chapter", colors.accent, actionRunCallback<ListenPreviousChapterAction>(), size = side)
+    }
+    if (layout.showSkips) {
+        WidgetIconButton(R.drawable.ic_widget_back, "Back 15 seconds", colors.accent, actionRunCallback<ListenSkipBackAction>(), size = side, label = "15")
+    }
+    PlayButton(context, state, colors, metrics.playButtonDp.dp)
+    if (layout.showSkips) {
+        WidgetIconButton(R.drawable.ic_widget_forward, "Forward 30 seconds", colors.accent, actionRunCallback<ListenSkipForwardAction>(), size = side, label = "30")
+    }
+    if (layout.showChapterButtons) {
+        WidgetIconButton(R.drawable.ic_widget_next_chapter, "Next chapter", colors.accent, actionRunCallback<ListenNextChapterAction>(), size = side)
     }
 }
 
@@ -249,7 +291,7 @@ private fun PlayButton(context: Context, state: ListenWidgetState, colors: Widge
     )
 }
 
-private val COVER_SIZE = 72.dp
+private val COVER_SIZE = ListenDimens.COVER_DP.dp
 
 /** The Listen buttons: they act on the loaded book only; with nothing loaded the app opens and the widget is redrawn. */
 private suspend fun onListen(context: Context, glanceId: GlanceId, block: WidgetActions.() -> Boolean) =

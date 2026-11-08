@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Listen: Resume, then the playback controls. Placed at four by two cells (title, progress and the controls);
-  two cells wide or one tall it is one row (play/pause and the title); about three cells tall it adds the cover.
+  Listen: Resume, then the playback controls. Placed at four by two cells (title, progress and the controls; when
+  that is low, 110 to 150 dp, the controls sit beside the title); two cells wide or one tall it is one row
+  (play/pause and the title); about three cells tall it adds the cover.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_listen_description"

@@ -10,5 +10,4 @@
     <string name="widget_listen_label">Listen</string>
     <string name="widget_listen_description">Resume your last book, then play, pause, skip and change chapters</string>
     <string name="widget_preview_title">Book title</string>
-    <string name="widget_preview_author">Author</string>
 </resources>

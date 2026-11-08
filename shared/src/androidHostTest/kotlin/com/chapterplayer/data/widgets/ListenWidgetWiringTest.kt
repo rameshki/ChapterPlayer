@@ -6,7 +6,10 @@ import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.domain.playback.OpenPlayerRequest
+import com.chapterplayer.domain.widgets.COVER_MAX_ATTEMPTS
+import com.chapterplayer.domain.widgets.COVER_RETRY_MS
 import com.chapterplayer.domain.widgets.ContinueWidgetState
+import com.chapterplayer.domain.widgets.CoverFetch
 import com.chapterplayer.domain.widgets.ListenWidgetState
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
@@ -144,10 +147,10 @@ class ListenWidgetWiringTest {
         val have = mutableSetOf<String>()
         val covers = WidgetCovers { id ->
             asked += id
-            if (id in have) false else {
+            if (id in have) CoverFetch.CACHED else {
                 gate.await()
                 have += id
-                true
+                CoverFetch.LOADED
             }
         }
         val host = CountingHost()
@@ -179,6 +182,105 @@ class ListenWidgetWiringTest {
         controller.playback.value = PlaybackState(bookId = "a", durationMs = 100_000)
         runCurrent()
         assertEquals(2, host.listen)
+    }
+
+    @Test
+    fun aFailedCoverIsTriedAgainAfterTheBackoffAndThenStops() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        val results = ArrayDeque(listOf(CoverFetch.FAILED, CoverFetch.LOADED))
+        var asks = 0
+        val host = CountingHost()
+        WidgetRefresher(states, host, backgroundScope, continueQuietMs = 1_000L, covers = { asks++; results.removeFirstOrNull() ?: CoverFetch.CACHED }).start()
+        advanceTimeBy(1_001L)
+        runCurrent()
+        assertEquals(1, asks)
+        assertEquals(1, host.listen)
+
+        advanceTimeBy(COVER_RETRY_MS)
+        runCurrent()
+        assertEquals(2, asks) // after the loader's backoff
+        assertEquals(2, host.listen) // the cover arrived: one redraw
+
+        advanceTimeBy(10 * COVER_RETRY_MS)
+        runCurrent()
+        assertEquals(2, asks) // nothing more: no loop
+        assertEquals(2, host.listen)
+    }
+
+    @Test
+    fun aBookWithoutACoverIsAskedForAFewTimesOnly() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        var asks = 0
+        WidgetRefresher(states, CountingHost(), backgroundScope, continueQuietMs = 1_000L, covers = { asks++; CoverFetch.FAILED }).start()
+        advanceTimeBy(20 * COVER_RETRY_MS)
+        runCurrent()
+        assertEquals(COVER_MAX_ATTEMPTS, asks)
+    }
+
+    @Test
+    fun theNetworkComingBackAsksForTheCoverAgain() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        downloads.states.value = mapOf("a" to DownloadState.DOWNLOADED) // offered offline too: the state does not change
+        connectivity.online.value = false
+        var online = false
+        var asks = 0
+        val host = CountingHost()
+        WidgetRefresher(states, host, backgroundScope, continueQuietMs = 1_000L, covers = { asks++; if (online) CoverFetch.LOADED else CoverFetch.FAILED }).start()
+        advanceTimeBy(5 * COVER_RETRY_MS)
+        runCurrent()
+        assertEquals(1, asks) // offline: no retries
+        val drawn = host.listen
+
+        online = true
+        connectivity.online.value = true
+        runCurrent()
+        assertEquals(2, asks)
+        assertEquals(drawn + 1, host.listen)
+    }
+
+    @Test
+    fun theWidgetAskingForItsCoverFetchesAMissingOne() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        var asks = 0
+        val refresher = WidgetRefresher(states, CountingHost(), backgroundScope, continueQuietMs = 1_000L, covers = { asks++; CoverFetch.CACHED })
+        refresher.start()
+        runCurrent()
+        assertEquals(1, asks)
+        // Placed again, resized or updated by the system with the same state: the cover is asked for again.
+        refresher.requestCover()
+        runCurrent()
+        assertEquals(2, asks)
+    }
+
+    @Test
+    fun nothingIsComputedOrLoadedWhileNoListenWidgetIsPlaced() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        var asks = 0
+        val host = CountingHost().apply { placed = false }
+        val refresher = WidgetRefresher(states, host, backgroundScope, continueQuietMs = 1_000L, covers = { asks++; CoverFetch.LOADED })
+        refresher.start()
+        advanceTimeBy(5_000L)
+        runCurrent()
+        assertEquals(0, host.listen)
+        assertEquals(0, asks)
+        assertEquals(1, host.nowPlaying) // the other widgets as before
+
+        // The receiver reports the first Listen widget: drawn, and its cover loaded.
+        refresher.listenPlacementChanged(true)
+        advanceTimeBy(1_001L)
+        runCurrent()
+        assertEquals(1, asks)
+        assertTrue(host.listen >= 1)
+        assertIs<ListenWidgetState.Resume>(refresher.listen.first())
+
+        // The last one removed: state changes no longer redraw it.
+        refresher.listenPlacementChanged(false)
+        runCurrent()
+        val drawn = host.listen
+        controller.playback.value = PlaybackState(bookId = "a", durationMs = 100_000)
+        advanceTimeBy(1_001L)
+        runCurrent()
+        assertEquals(drawn, host.listen)
     }
 
     @Test

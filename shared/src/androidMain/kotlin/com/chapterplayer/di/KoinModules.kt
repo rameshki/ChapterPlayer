@@ -183,7 +183,7 @@ val widgetModule = module {
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
     single<WidgetHost> { GlanceWidgetHost(androidContext()) }
     // The Listen widget's covers: loaded in the app through the authenticated cover loader, kept per book as small bitmaps.
-    single { ListenCoverCache(get(), androidContext(), Dispatchers.IO) } bind WidgetCovers::class
+    single { ListenCoverCache(get(), Dispatchers.IO) } bind WidgetCovers::class
     single { WidgetRefresher(get(), get(), get(AppScopeQualifier), covers = get()) }
     // The Continue widget's Resume: the main activity hands it the book (the one load path, offline rules apply).
     // It runs in the app scope, so a rotation or leaving the activity does not cut a start short.

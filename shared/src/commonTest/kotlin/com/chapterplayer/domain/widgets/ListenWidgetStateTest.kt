@@ -144,25 +144,36 @@ class ListenWidgetStateTest {
     @Test
     fun sizeClasses() {
         assertEquals(ListenSize.COMPACT, listenSize(110f, 40f))
-        assertEquals(ListenSize.COMPACT, listenSize(180f, 110f)) // two cells wide is one row whatever the height
+        assertEquals(ListenSize.COMPACT, listenSize(180f, 160f)) // two cells wide is one row whatever the height
         assertEquals(ListenSize.COMPACT, listenSize(300f, 60f)) // one cell tall
-        assertEquals(ListenSize.STANDARD, listenSize(LISTEN_WIDE_MIN_DP, LISTEN_STANDARD_MIN_HEIGHT_DP))
-        assertEquals(ListenSize.STANDARD, listenSize(320f, 150f))
+        assertEquals(ListenSize.SHORT, listenSize(LISTEN_WIDE_MIN_DP, LISTEN_SHORT_MIN_HEIGHT_DP))
+        assertEquals(ListenSize.SHORT, listenSize(320f, 130f)) // a 4x2 held sideways, or a low two-row launcher
+        assertEquals(ListenSize.STANDARD, listenSize(LISTEN_WIDE_MIN_DP, LISTEN_STACKED_MIN_HEIGHT_DP))
+        assertEquals(ListenSize.STANDARD, listenSize(320f, 220f))
         assertEquals(ListenSize.EXPANDED, listenSize(LISTEN_WIDE_MIN_DP, LISTEN_EXPANDED_MIN_HEIGHT_DP))
-        assertEquals(ListenSize.EXPANDED, listenSize(320f, 260f))
+        assertEquals(ListenSize.EXPANDED, listenSize(320f, 330f))
     }
 
     @Test
     fun whatEachSizeShows() {
         val controls = ListenWidgetState.Controls("a", "T", "A", "C", 10, isPlaying = true, canSkip = true, canJumpChapters = true)
-        val compact = listenLayout(ListenSize.COMPACT, controls)
-        assertEquals(ListenLayout(showCover = false, showSecondLine = false, showProgress = false, showSkips = false, showChapterButtons = false), compact)
-
-        val standard = listenLayout(ListenSize.STANDARD, controls)
-        assertEquals(ListenLayout(showCover = false, showSecondLine = true, showProgress = true, showSkips = true, showChapterButtons = true), standard)
-
-        val expanded = listenLayout(ListenSize.EXPANDED, controls)
-        assertEquals(ListenLayout(showCover = true, showSecondLine = true, showProgress = true, showSkips = true, showChapterButtons = true), expanded)
+        assertEquals(
+            ListenLayout(showCover = false, showSecondLine = false, showProgress = false, showSkips = false, showChapterButtons = false, controlsBesideTitle = false),
+            listenLayout(ListenSize.COMPACT, controls),
+        )
+        // Low: one row, the title and chapter beside back 15 / play-pause / forward 30; no progress row, no chapter buttons.
+        assertEquals(
+            ListenLayout(showCover = false, showSecondLine = true, showProgress = false, showSkips = true, showChapterButtons = false, controlsBesideTitle = true),
+            listenLayout(ListenSize.SHORT, controls),
+        )
+        assertEquals(
+            ListenLayout(showCover = false, showSecondLine = true, showProgress = true, showSkips = true, showChapterButtons = true, controlsBesideTitle = false),
+            listenLayout(ListenSize.STANDARD, controls),
+        )
+        assertEquals(
+            ListenLayout(showCover = true, showSecondLine = true, showProgress = true, showSkips = true, showChapterButtons = true, controlsBesideTitle = false),
+            listenLayout(ListenSize.EXPANDED, controls),
+        )
 
         // No chapters, unknown length: those buttons are hidden in every size.
         val bare = controls.copy(canSkip = false, canJumpChapters = false)
@@ -171,12 +182,44 @@ class ListenWidgetStateTest {
             assertFalse(listenLayout(size, bare).showChapterButtons)
         }
 
-        // Resume: the cover only when expanded, never transport buttons; Empty: no cover at all.
+        // Resume: the low size draws as the standard one (it fits); the cover only when expanded; Empty: no cover.
         val resume = ListenWidgetState.Resume("a", "T", "A", 25, "1 h left")
+        assertEquals(listenLayout(ListenSize.STANDARD, resume), listenLayout(ListenSize.SHORT, resume))
+        assertTrue(listenLayout(ListenSize.SHORT, resume).showProgress)
         assertTrue(listenLayout(ListenSize.EXPANDED, resume).showCover)
         assertFalse(listenLayout(ListenSize.STANDARD, resume).showCover)
         assertFalse(listenLayout(ListenSize.EXPANDED, resume).showSkips)
         assertFalse(listenLayout(ListenSize.EXPANDED, ListenWidgetState.Empty(everPlayed = true)).showCover)
+    }
+
+    @Test
+    fun everyLayoutFitsItsLowestHeightAtLargeText() {
+        val controls = ListenWidgetState.Controls("a", "T", "A", "C", 10, isPlaying = true, canSkip = true, canJumpChapters = true)
+        val resume = ListenWidgetState.Resume("a", "T", "A", 25, "1 h left")
+        val lowest = mapOf(
+            ListenSize.SHORT to LISTEN_SHORT_MIN_HEIGHT_DP,
+            ListenSize.STANDARD to LISTEN_STACKED_MIN_HEIGHT_DP,
+            ListenSize.EXPANDED to LISTEN_EXPANDED_MIN_HEIGHT_DP,
+        )
+        for (fontScale in listOf(1.0f, 1.3f)) for ((size, height) in lowest) for (state in listOf(controls, resume)) {
+            val needed = listenContentHeightDp(listenLayout(size, state), state, fontScale)
+            assertTrue(needed <= height, "$size ${state::class.simpleName} at font scale $fontScale needs $needed dp of $height")
+        }
+        // The old standard layout (stacked controls) did not fit 110 dp: that is why the low size has one row.
+        val stackedAtLow = listenContentHeightDp(listenLayout(ListenSize.STANDARD, controls), controls, 1.3f)
+        assertTrue(stackedAtLow > LISTEN_SHORT_MIN_HEIGHT_DP)
+    }
+
+    @Test
+    fun theControlsRowFitsEveryWidth() {
+        for (width in listOf(LISTEN_WIDE_MIN_DP, 232f, LISTEN_ROOMY_MIN_DP, 360f)) {
+            val m = listenControlsMetrics(width)
+            val row = 4 * m.sideButtonDp + m.playButtonDp + 2 * m.horizontalPaddingDp
+            assertTrue(row <= width, "five buttons at $width dp need $row dp")
+            assertTrue(m.sideButtonDp >= 40f && m.playButtonDp >= 44f, "touch targets at $width dp")
+        }
+        // Wide enough: every button is 48 dp.
+        assertEquals(ListenControlsMetrics(sideButtonDp = 48f, playButtonDp = 48f, horizontalPaddingDp = 12f), listenControlsMetrics(LISTEN_ROOMY_MIN_DP))
     }
 
     // -- Texts ---------------------------------------------------------------------------------
@@ -186,7 +229,6 @@ class ListenWidgetStateTest {
         val resume = ListenWidgetState.Resume("a", "Dune", "Frank Herbert", 25, "6 h left")
         assertEquals("25% · 6 h left", listenProgressText(resume))
         assertEquals("Play Dune", listenPlayDescription(resume))
-        assertEquals("Cover of Dune", listenCoverDescription(resume))
 
         val controls = ListenWidgetState.Controls("a", "Dune", "Frank Herbert", "Chapter 3", 40, isPlaying = true, canSkip = true, canJumpChapters = true)
         assertEquals("Chapter 3", listenSecondLine(controls))
@@ -205,11 +247,30 @@ class ListenWidgetStateTest {
         assertNull(ListenWidgetState.Empty(everPlayed = true).coverBookId)
     }
 
+    // -- Cover fetching ------------------------------------------------------------------------
+
+    @Test
+    fun aLoadedCoverRedrawsOnceAndACachedOneDoesNothing() {
+        assertEquals(CoverStep.Redraw, coverNextStep(CoverFetch.LOADED, online = true, attempts = 1))
+        assertEquals(CoverStep.Done, coverNextStep(CoverFetch.CACHED, online = true, attempts = 1))
+    }
+
+    @Test
+    fun aFailedCoverIsTriedAgainAfterTheBackoffWhileOnline() {
+        // The loader refuses the same book for 60 s after a failure, so the retry waits longer than that.
+        val retry = assertIs<CoverStep.RetryAfter>(coverNextStep(CoverFetch.FAILED, online = true, attempts = 1))
+        assertTrue(retry.delayMs > 60_000L)
+        // Offline nothing is tried: the network's return starts it again.
+        assertEquals(CoverStep.Done, coverNextStep(CoverFetch.FAILED, online = false, attempts = 1))
+        // A book with no cover at all is not asked for forever.
+        assertEquals(CoverStep.Done, coverNextStep(CoverFetch.FAILED, online = true, attempts = COVER_MAX_ATTEMPTS))
+    }
+
     @Test
     fun theWidgetCoverIsSmall() {
-        // 256 x 256 ARGB is 256 KiB, the most one placed widget holds (the cover is in the expanded layout only).
+        // 256 x 256 RGB_565 is 128 KiB; two layouts carry it (expanded and expanded wide): 256 KiB per placed widget.
         assertEquals(256, WIDGET_COVER_MAX_SIDE)
-        assertEquals(262_144L, widgetCoverBytes(256, 256))
-        assertEquals(256L * 170 * 4, widgetCoverBytes(256, 170))
+        assertEquals(131_072L, widgetCoverBytes(256, 256))
+        assertEquals(256L * 170 * 2, widgetCoverBytes(256, 170))
     }
 }

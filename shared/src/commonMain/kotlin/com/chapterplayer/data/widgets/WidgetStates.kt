@@ -58,6 +58,10 @@ class WidgetStates(
             listenWidgetState(state, loaded, items, online, downloadedOnly)
         }.distinctUntilChanged()
 
+    /** Whether the phone is online (the Listen cover is asked for again when it comes back). */
+    val online: Flow<Boolean>
+        get() = connectivity.isOnline.distinctUntilChanged()
+
     /** Whether a Resume tap may start [bookId] now (see [widgetMayResume]). */
     suspend fun mayResume(bookId: String): Boolean =
         widgetMayResume(observeBrowseItems(books, downloads, merging).first(), connectivity.isOnline.first(), settings.downloadedOnly.first(), bookId)

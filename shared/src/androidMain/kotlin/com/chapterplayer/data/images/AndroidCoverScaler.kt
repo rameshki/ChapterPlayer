@@ -43,17 +43,20 @@ object AndroidCoverScaler {
     }
 
     /**
-     * [bytes] decoded as a bitmap of at most [maxSide] px on the long side (the Listen widget's cover), sampled while
-     * decoding as [downscale] does. Null when they are not an image. Blocking: run it off the main thread.
+     * [bytes] decoded as a bitmap of at most [maxSide] px on the long side (the Listen widget's cover) in [config],
+     * sampled while decoding as [downscale] does. Null when they are not an image. Blocking: run it off the main thread.
      */
-    fun decodeScaledBitmap(bytes: ByteArray, maxSide: Int): Bitmap? = try {
+    fun decodeScaledBitmap(bytes: ByteArray, maxSide: Int, config: Bitmap.Config = Bitmap.Config.ARGB_8888): Bitmap? = try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         val target = coverTargetSize(bounds.outWidth, bounds.outHeight, maxSide)
         if (target == null) {
             null
         } else {
-            val options = BitmapFactory.Options().apply { inSampleSize = coverSampleSize(bounds.outWidth, bounds.outHeight, maxSide) }
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = coverSampleSize(bounds.outWidth, bounds.outHeight, maxSide)
+                inPreferredConfig = config
+            }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { decoded ->
                 if (decoded.width == target.width && decoded.height == target.height) {
                     decoded
