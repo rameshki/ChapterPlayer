@@ -72,6 +72,13 @@ import com.chapterplayer.data.remote.abs.AbsSessionManager
 import com.chapterplayer.data.remote.abs.AbsSignIn
 import com.chapterplayer.data.remote.createHttpClient
 import com.chapterplayer.data.remote.createProbeHttpClient
+import com.chapterplayer.data.AppInfo
+import com.chapterplayer.data.auth.JellyfinSignInPort
+import com.chapterplayer.data.remote.InstallId
+import com.chapterplayer.data.remote.JELLYFIN_DEVICE_NAME
+import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
+import com.chapterplayer.data.remote.jellyfin.JellyfinSignIn
+import com.chapterplayer.domain.jellyfin.JellyfinClient
 import com.chapterplayer.data.remote.plex.KtorPlexConnectionProbe
 import com.chapterplayer.data.remote.plex.PlexApiService
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
@@ -134,6 +141,9 @@ val ServerStatusStoreQualifier = named("serverStatus")
 /** The HTTP client that probes Plex connections: 5 s timeouts, no redirects. */
 val ProbeClientQualifier = named("probeClient")
 
+/** The Jellyfin API on the probe client (public info only). */
+val JellyfinProbeApiQualifier = named("jellyfinProbeApi")
+
 /** The app-long coroutine scope, and the dispatcher the browse view models do their list work on. */
 val AppScopeQualifier = named("appScope")
 val IoDispatcherQualifier = named("io")
@@ -176,7 +186,17 @@ val commonNetworkModule = module {
     single(ProbeClientQualifier) { createProbeHttpClient(get<Boolean>(DebuggableQualifier)) }
     single<PlexConnectionProbe> { KtorPlexConnectionProbe(get(ProbeClientQualifier)) }
     single<PlexCandidateLookup> { PlexTvCandidateLookup(get(), get()) }
+    // Jellyfin: the app's own id for this install (Plex's stored client id; Jellyfin's DeviceId is built from it per row),
+    // the API on the app client, a second one on the probe client (public info: no redirects, no token) and the sign-in.
+    single<InstallId> { get<PlexClientIdentifier>() }
+    single { JellyfinApiService(get(), jellyfinClientInfo(get())) }
+    single(JellyfinProbeApiQualifier) { JellyfinApiService(get(ProbeClientQualifier), jellyfinClientInfo(get())) }
+    single<JellyfinSignInPort> { JellyfinSignIn(get(), get(JellyfinProbeApiQualifier), get()) }
 }
+
+/** What the app tells Jellyfin about itself for a DeviceId: the generic device name and the app version. */
+private fun jellyfinClientInfo(appInfo: AppInfo): (String) -> JellyfinClient =
+    { deviceId -> JellyfinClient(JELLYFIN_DEVICE_NAME, deviceId, appInfo.versionName) }
 
 /** The stores on the platform's DataStore files (the credential store is the platform's own). */
 val commonStoreModule = module {

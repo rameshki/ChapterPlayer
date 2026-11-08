@@ -178,6 +178,12 @@ class KoinModulesTest {
         assertNotNull(koin.get<com.chapterplayer.data.sync.PlexConnectionProbe>())
         assertNotNull(koin.get<com.chapterplayer.data.remote.plex.PlexApiService>())
         assertNotNull(koin.get<com.chapterplayer.data.auth.AbsSignInPort>())
+        // Jellyfin: the API on the app client, a second instance on the probe client, the install id and the sign-in.
+        val jellyfinApi = koin.get<com.chapterplayer.data.remote.jellyfin.JellyfinApiService>()
+        val jellyfinProbe = koin.get<com.chapterplayer.data.remote.jellyfin.JellyfinApiService>(JellyfinProbeApiQualifier)
+        assertTrue(jellyfinApi !== jellyfinProbe)
+        assertEquals(com.chapterplayer.testing.TestPlexClientId.value, koin.get<com.chapterplayer.data.remote.InstallId>().value)
+        assertNotNull(koin.get<com.chapterplayer.data.auth.JellyfinSignInPort>())
         koin.close()
     }
 

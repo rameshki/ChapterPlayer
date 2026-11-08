@@ -8,6 +8,9 @@ import com.chapterplayer.data.remote.jellyfin.dto.JellyfinPublicInfoDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUserDataDto
 import com.chapterplayer.domain.jellyfin.JellyfinClient
 import com.chapterplayer.domain.jellyfin.jellyfinAuthHeader
+import com.chapterplayer.data.remote.ApiJson
+import com.chapterplayer.data.remote.HttpStatusException
+import com.chapterplayer.data.remote.JELLYFIN_DEVICE_NAME
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
@@ -16,10 +19,12 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
+import io.ktor.http.isSuccess
 
 /**
  * The Jellyfin REST API (the calls of J1). Every call takes the server address as typed ([base], which may carry a
@@ -27,18 +32,28 @@ import io.ktor.http.encodeURLPathPart
  * travels only in the `Authorization: MediaBrowser ...` header, never in a URL. A non-2xx answer throws
  * `HttpStatusException` (the client's `installApiDefaults`).
  *
- * [clientInfo] builds what the app tells the server about itself for a DeviceId (device name, app version).
+ * [clientInfo] builds what the app tells the server about itself for a DeviceId (device name, app version). Koin always
+ * passes the real one (with the app version); the default (no version) exists so Koin's `verify()`, which cannot
+ * resolve a function-typed parameter, skips it, as it does for the sources' `markSignedOut`.
  */
 class JellyfinApiService(
     private val client: HttpClient,
-    private val clientInfo: (deviceId: String) -> JellyfinClient,
+    private val clientInfo: (deviceId: String) -> JellyfinClient = { JellyfinClient(JELLYFIN_DEVICE_NAME, it, "") },
 ) {
 
-    /** `GET /System/Info/Public`, with no auth header at all (setup and Test connection use the probe client). */
-    suspend fun getPublicInfo(base: String): JellyfinPublicInfoDto =
-        client.get(endpoint(base, "System/Info/Public")) {
+    /**
+     * `GET /System/Info/Public`, with no auth header at all (setup and Test connection use the probe client). The status
+     * is checked and the text decoded here, because the probe client has no JSON converter and leaves statuses to the
+     * caller: a non-2xx (a redirect too) throws `HttpStatusException`, a body that is not this JSON (a web page) throws
+     * a serialization error.
+     */
+    suspend fun getPublicInfo(base: String): JellyfinPublicInfoDto {
+        val response = client.get(endpoint(base, "System/Info/Public")) {
             header(HttpHeaders.Accept, JSON)
-        }.body()
+        }
+        if (!response.status.isSuccess()) throw HttpStatusException(response.status)
+        return ApiJson.decodeFromString(JellyfinPublicInfoDto.serializer(), response.bodyAsText())
+    }
 
     /** `POST /Users/AuthenticateByName` with the header but no token yet. */
     suspend fun authenticateByName(base: String, deviceId: String, username: String, password: String): JellyfinAuthResultDto =

@@ -17,7 +17,7 @@ His answers (2026-11-08):
 - **One address** per Jellyfin server. No home / outside pair, no connection chooser.
 - **Badge rule unchanged**: source badges show only when servers of two or more kinds are added; Jellyfin gets its own colour and label under that rule.
 - **The same books will be on Jellyfin, Audiobookshelf and Plex.** From J2, a book is one entry with up to three copies, and progress mirrors across all three (section 9.1).
-- Still open: his Jellyfin version (section 12). Not blocking.
+- His Jellyfin version (answered 2026-11-08, section 12): **12.4**, so chapters and narrator tags are available (full features). The 10.10.7 minimum stands for other servers.
 
 **Approval (2026-11-08).** Robert approved this design with **one change: Quick Connect sign-in is added to stage J3, together with downloads** (designed in 5.1). Everything else stands as written; he said "apart from that it's good to start", so every builder's **call** in section 12 is an approved default (he can still change any of them later). His Jellyfin version stays the only open item and does not block J1.
 
@@ -277,7 +277,7 @@ Each step: its own plan in `docs/superpowers/plans/`, branch `stage-j/<name>`, f
 ## 12. Open questions
 **Approved 2026-11-08.** Robert approved the design with Quick Connect added to J3 and said "apart from that it's good to start": the calls below are the approved defaults. The one open question does not block J1.
 
-**Robert must answer (non-blocking)**
+**Answered (2026-11-08): Robert's server runs Jellyfin 12.4.** That is full features (audiobook chapters and narrator tags, 12.0+); the 10.10.7 minimum and the 10.10 / 10.11 fallbacks stay for other servers. The original question, kept for the record:
 1. Which Jellyfin version does your server run (Dashboard, top of the page)? This does not block building: the app is built for 10.10.7 and newer, with chapters and narrators from 12.0. Below 10.10 the app refuses; on 10.10 / 10.11 books play with one chapter and no narrator. If the server is older than 12.0, updating it is the fix.
 
 **Answered by Robert (2026-11-08)**: one `.m4b` per book and no folder grouping; one address; badge rule unchanged; the same books on ABS, Plex and Jellyfin (section 1).
