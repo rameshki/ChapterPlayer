@@ -171,6 +171,16 @@ class JellyfinApiServiceTest {
     }
 
     @Test
+    fun `public info larger than 64 KB is refused`() = runTest {
+        val huge = "{\"ProductName\":\"Jellyfin Server\",\"Padding\":\"" + "x".repeat(100_000) + "\"}"
+        val api = service({ huge })
+        assertFailsWith<IllegalStateException> { api.getPublicInfo("https://jf.test") }
+        // Just under the cap still reads.
+        val fine = "{\"ProductName\":\"Jellyfin Server\",\"Version\":\"12.4.0\",\"Id\":\"x\",\"Padding\":\"" + "x".repeat(60_000) + "\"}"
+        assertEquals("12.4.0", service({ fine }).getPublicInfo("https://jf.test").version)
+    }
+
+    @Test
     fun `a non-2xx answer throws`() = runTest {
         val api = service({ "{}" }, status = HttpStatusCode.Unauthorized)
         val e = assertFailsWith<Exception> { api.getUserViews("https://jf.test", deviceId, token) }

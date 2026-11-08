@@ -114,6 +114,10 @@ class ServersViewModelTest {
         assertTrue(downRow.result.isNotBlank())
         assertFalse(downRow.result.contains("secret-jf"))
 
+        val moved = viewModel(probe { Triple("", HttpStatusCode.MovedPermanently, "text/html") })
+        moved.testConnection("j1")
+        assertEquals(com.chapterplayer.domain.jellyfin.JELLYFIN_REDIRECT_TEXT, moved.finishedTest().rows.single().result)
+
         val error = viewModel(probe { Triple("", HttpStatusCode.BadGateway, "text/plain") })
         error.testConnection("j1")
         assertEquals("The server answered with HTTP 502", error.finishedTest().rows.single().result)

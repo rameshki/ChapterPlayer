@@ -15,6 +15,11 @@ import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
 import com.chapterplayer.data.remote.jellyfin.fetchAllAudiobooks
 import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NO_BOOKS_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_OTHER_SERVER_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_UNREADABLE_SYNC_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_UNREADABLE_VIEW_TEXT
+import com.chapterplayer.domain.plex.classifyConnectionError
+import kotlinx.io.IOException
 import com.chapterplayer.domain.jellyfin.jellyfinBookViews
 import com.chapterplayer.domain.jellyfin.jellyfinChapters
 import com.chapterplayer.domain.jellyfin.jellyfinDeviceId
@@ -47,6 +52,11 @@ class JellyfinLibrarySource(
     private val installId: InstallId,
     private val markSignedOut: suspend (ServerConfig) -> Unit = {},
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /**
+     * The Jellyfin server id kept for a row at its first sign-in (null when none is known). Before a sync sends the token,
+     * the address's anonymous public info must name that server, so a reused address never receives the token.
+     */
+    private val expectedServerId: suspend (rowId: String) -> String? = { null },
 ) : LibrarySource {
 
     override val type: ServerSource = ServerSource.JELLYFIN
@@ -86,6 +96,7 @@ class JellyfinLibrarySource(
      * sync fail with that error. A server with no Books view at all says so.
      */
     override suspend fun fetchSnapshot(server: ServerConfig): SourceSnapshot = signedIn(server) {
+        checkIdentity(server)
         val views = bookViews(server)
         if (views.isEmpty()) error(JELLYFIN_NO_BOOKS_TEXT)
         val read = views.filter { it.id !in server.excludedLibraryIds }
@@ -106,11 +117,12 @@ class JellyfinLibrarySource(
             } catch (e: Exception) {
                 // A refused token is the whole server's, not one view's.
                 if (e is HttpStatusException && e.status.value == 401) throw e
-                failed[view.id] = "${view.name}: ${e.message ?: "Unknown error"}"
+                // Fixed words, never the server's own text (a decode error quotes the answer).
+                failed[view.id] = "${view.name}: ${viewFailureText(e)}"
                 if (firstError == null) firstError = e
             }
         }
-        firstError?.let { if (failed.size == read.size) throw it }
+        firstError?.let { if (failed.size == read.size) throw syncFailure(it) }
         cacheLock.withLock {
             cache[server.id] = SnapshotCache(nowMs(), progress, books.associate { it.id to it.durationMs })
         }
@@ -166,6 +178,23 @@ class JellyfinLibrarySource(
         return jellyfinServerProgress(data, durationMs)
     }
 
+    /**
+     * The address must still belong to the server signed in to: its public info (no token) names the server id kept at
+     * sign-in. A row with no id kept is not checked. An address that cannot be read now is left to the sync's own calls,
+     * which fail the same way.
+     */
+    private suspend fun checkIdentity(server: ServerConfig) {
+        val expected = expectedServerId(server.id)?.takeIf { it.isNotBlank() } ?: return
+        val answered = try {
+            api.getPublicInfo(server.baseUrl).id
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return
+        }
+        check(answered != null && answered.equals(expected, ignoreCase = true)) { JELLYFIN_OTHER_SERVER_TEXT }
+    }
+
     private suspend fun bookViews(server: ServerConfig): List<LibraryInfo> =
         jellyfinBookViews(api.getUserViews(server.baseUrl, deviceId(server), server.token).items, server.id)
 
@@ -173,6 +202,18 @@ class JellyfinLibrarySource(
         requireNotNull(jellyfinItemId(bookId)) { "Not a Jellyfin book" }
 
     private companion object {
+        /** A view's failure in fixed words: the status, the kind of connection problem, or an unreadable answer. */
+        fun viewFailureText(e: Exception): String = when (e) {
+            // Before IOException: HttpStatusException is one.
+            is HttpStatusException -> "the server answered with HTTP ${e.status.value}"
+            is IOException -> classifyConnectionError(e).text
+            else -> JELLYFIN_UNREADABLE_VIEW_TEXT
+        }
+
+        /** What a sync whose every view failed throws: status and connection errors as they are, anything else in fixed words. */
+        fun syncFailure(e: Exception): Exception =
+            if (e is IOException) e else IllegalStateException(JELLYFIN_UNREADABLE_SYNC_TEXT)
+
         /** How long a snapshot's user data stands in for a fresh read of every book's progress. */
         const val SNAPSHOT_REUSE_MS = 60_000L
     }

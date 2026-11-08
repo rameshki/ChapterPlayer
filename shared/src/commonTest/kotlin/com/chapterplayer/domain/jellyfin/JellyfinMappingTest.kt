@@ -145,6 +145,27 @@ class JellyfinMappingTest {
     }
 
     @Test
+    fun `played and listened again is in progress at the real position`() {
+        // Jellyfin keeps Played while a finished book is heard again, and the position moves on.
+        val data = JellyfinUserDataDto(playbackPositionTicks = 3 * hourTicks, played = true, lastPlayedDate = "2026-10-25T21:00:00.0000000Z")
+        assertEquals(ServerProgress(3 * hourMs, 10 * hourMs, false, 1_792_962_000_000L), jellyfinServerProgress(data, 10 * hourMs))
+    }
+
+    @Test
+    fun `played with a position in the last five minutes is finished`() {
+        val nearEnd = JellyfinUserDataDto(playbackPositionTicks = 10 * hourTicks - 4 * 60 * 10_000_000L, played = true)
+        assertEquals(ServerProgress(10 * hourMs, 10 * hourMs, true, 0L), jellyfinServerProgress(nearEnd, 10 * hourMs))
+        val atBand = JellyfinUserDataDto(playbackPositionTicks = 10 * hourTicks - 5 * 60 * 10_000_000L, played = true)
+        assertEquals(false, jellyfinServerProgress(atBand, 10 * hourMs)!!.isFinished)
+    }
+
+    @Test
+    fun `played with an unknown length is finished`() {
+        val data = JellyfinUserDataDto(playbackPositionTicks = hourTicks, played = true)
+        assertEquals(true, jellyfinServerProgress(data, 0L)!!.isFinished)
+    }
+
+    @Test
     fun `zero and not played is no progress`() {
         assertNull(jellyfinServerProgress(JellyfinUserDataDto(playbackPositionTicks = 0, played = false), hourMs))
         assertNull(jellyfinServerProgress(JellyfinUserDataDto(), hourMs))

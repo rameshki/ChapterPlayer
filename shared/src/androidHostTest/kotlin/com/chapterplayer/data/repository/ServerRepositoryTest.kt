@@ -157,10 +157,45 @@ class ServerRepositoryTest {
     }
 
     /** A store whose reads fail for a while (the iOS Keychain before the first unlock), its secrets intact. */
-    private class FlakyCredentials(val inner: FakeCredentials, var failing: Boolean = false) : CredentialStore {
+    private class FlakyCredentials(val inner: FakeCredentials, var failing: Boolean = false, var failRemove: Boolean = false) : CredentialStore {
         override suspend fun get(serverId: String): String? = if (failing) error("Keychain status -25308") else inner.get(serverId)
         override suspend fun put(serverId: String, token: String) = inner.put(serverId, token)
-        override suspend fun remove(serverId: String) = inner.remove(serverId)
+        override suspend fun remove(serverId: String) = if (failRemove) error("Keychain status -25308") else inner.remove(serverId)
+    }
+
+    @Test
+    fun `an address move with an unreadable store removes the old token`() = runTest {
+        val inner = FakeCredentials()
+        val creds = FlakyCredentials(inner)
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), creds, FakeBookDao(), InMemoryLibraryDao(), InMemoryCollectionDao(), InMemoryBookmarkDao(), InMemoryHistoryDao())
+        repo.save(config("a", "tok-a"))
+        creds.failing = true
+        val read = repo.getById("a")!!
+
+        // The address moved and the token was dropped on purpose: the old token must not come back for the new address.
+        repo.save(read.copy(baseUrl = "http://other.test", token = ""))
+
+        assertNull(inner.tokens["a"])
+        creds.failing = false
+        assertEquals("", repo.getById("a")?.token)
+        assertEquals("http://other.test", repo.getById("a")?.baseUrl)
+    }
+
+    @Test
+    fun `an address move whose old token cannot be removed fails and changes nothing`() = runTest {
+        val inner = FakeCredentials()
+        val creds = FlakyCredentials(inner)
+        val dao = FakeDao()
+        val repo = ServerRepositoryImpl(dao, FakeExcludedDao(), creds, FakeBookDao(), InMemoryLibraryDao(), InMemoryCollectionDao(), InMemoryBookmarkDao(), InMemoryHistoryDao())
+        repo.save(config("a", "tok-a"))
+        creds.failing = true
+        val read = repo.getById("a")!!
+        creds.failRemove = true
+
+        assertFailsWith<IllegalStateException> { repo.save(read.copy(baseUrl = "http://other.test", token = "")) }
+
+        assertEquals("http://s.test", dao.rows.value.getValue("a").baseUrl)
+        assertEquals("tok-a", inner.tokens["a"])
     }
 
     @Test

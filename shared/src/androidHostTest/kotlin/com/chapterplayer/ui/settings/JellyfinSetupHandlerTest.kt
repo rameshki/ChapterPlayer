@@ -13,7 +13,12 @@ import com.chapterplayer.data.remote.plex.PlexTvApiService
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.sync.ServerStatusRecord
 import com.chapterplayer.data.sync.ServerStatusStore
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_MISSING_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_UNREADABLE_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_INVALID_ADDRESS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_JELLYFIN_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_REDIRECT_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_TLS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NO_BOOKS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_OTHER_SERVER_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_TOO_OLD_TEXT
@@ -82,10 +87,16 @@ class JellyfinSetupHandlerTest {
 
     private class FakeStatusStore : ServerStatusStore {
         val records = mutableMapOf<String, ServerStatusRecord>()
+        var failGet = false
+        var failUpdate = false
         override val all: Flow<Map<String, ServerStatusRecord>> = MutableStateFlow(emptyMap())
-        override suspend fun get(serverId: String) = records[serverId] ?: ServerStatusRecord()
+        override suspend fun get(serverId: String): ServerStatusRecord {
+            if (failGet) error("datastore unreadable")
+            return records[serverId] ?: ServerStatusRecord()
+        }
         override suspend fun update(serverId: String, transform: (ServerStatusRecord) -> ServerStatusRecord) {
-            records[serverId] = transform(get(serverId))
+            if (failUpdate) error("disk full")
+            records[serverId] = transform(records[serverId] ?: ServerStatusRecord())
         }
         override suspend fun remove(serverId: String) { records.remove(serverId) }
     }
@@ -187,6 +198,9 @@ class JellyfinSetupHandlerTest {
             JellyfinSignInError.NoBooksLibrary to JELLYFIN_NO_BOOKS_TEXT,
             JellyfinSignInError.OtherServer to JELLYFIN_OTHER_SERVER_TEXT,
             JellyfinSignInError.ServerError(502) to "The server returned an error (code 502).",
+            JellyfinSignInError.InvalidAddress to JELLYFIN_INVALID_ADDRESS_TEXT,
+            JellyfinSignInError.Redirected to JELLYFIN_REDIRECT_TEXT,
+            JellyfinSignInError.SecureConnection to JELLYFIN_TLS_TEXT,
         )
         for ((error, message) in cases) {
             val vm = viewModel(FakePort { throw JellyfinSignInException(error) })
@@ -244,6 +258,94 @@ class JellyfinSetupHandlerTest {
     }
 
     @Test
+    fun `sign in again without a stored server id is refused`() {
+        repo.stored["row-9"] = ServerConfig("row-9", ServerSource.JELLYFIN, "Den", "https://jf.test/jellyfin", "")
+        val port = FakePort()
+        val vm = viewModel(port)
+        vm.loadServer("row-9")
+        vm.onJellyfinPasswordChanged("pw-made-up")
+
+        vm.onJellyfinSignInAgain("row-9")
+
+        assertTrue(port.calls.isEmpty())
+        assertEquals(JELLYFIN_ID_MISSING_TEXT, vm.uiState.value.jellyfin.signInError)
+        assertTrue(repo.saved.isEmpty())
+        assertFalse(vm.uiState.value.jellyfin.isSigningIn)
+    }
+
+    @Test
+    fun `sign in again is refused when the stored server id cannot be read`() {
+        repo.stored["row-9"] = ServerConfig("row-9", ServerSource.JELLYFIN, "Den", "https://jf.test/jellyfin", "")
+        status.records["row-9"] = ServerStatusRecord(jellyfinServerId = serverId)
+        status.failGet = true
+        val port = FakePort()
+        val vm = viewModel(port)
+        vm.loadServer("row-9")
+
+        vm.onJellyfinSignInAgain("row-9")
+
+        assertTrue(port.calls.isEmpty())
+        assertEquals(JELLYFIN_ID_UNREADABLE_TEXT, vm.uiState.value.jellyfin.signInError)
+        assertTrue(repo.saved.isEmpty())
+    }
+
+    @Test
+    fun `an address edit without a stored server id is refused`() {
+        repo.stored["row-9"] = ServerConfig("row-9", ServerSource.JELLYFIN, "Den", "https://jf.test/jellyfin", token)
+        val vm = viewModel(FakePort())
+        vm.loadServer("row-9")
+        vm.onBaseUrlChanged("https://other.test/jellyfin")
+
+        vm.saveServer("row-9")
+
+        assertTrue(repo.saved.isEmpty())
+        assertEquals(JELLYFIN_ID_MISSING_TEXT, vm.uiState.value.saveError)
+    }
+
+    @Test
+    fun `an address edit is refused when the stored server id cannot be read`() {
+        repo.stored["row-9"] = ServerConfig("row-9", ServerSource.JELLYFIN, "Den", "https://jf.test/jellyfin", token)
+        status.records["row-9"] = ServerStatusRecord(jellyfinServerId = serverId)
+        status.failGet = true
+        val vm = viewModel(FakePort())
+        vm.loadServer("row-9")
+        vm.onBaseUrlChanged("https://other.test/jellyfin")
+
+        vm.saveServer("row-9")
+
+        assertTrue(repo.saved.isEmpty())
+        assertEquals(JELLYFIN_ID_UNREADABLE_TEXT, vm.uiState.value.saveError)
+    }
+
+    @Test
+    fun `adding fails loudly when the server id cannot be kept`() {
+        status.failUpdate = true
+        val vm = viewModel(FakePort())
+        vm.startAdd()
+        vm.onJellyfinSignIn()
+
+        vm.onJellyfinSave()
+
+        assertTrue(repo.saved.isEmpty())
+        assertEquals(SAVE_FAILED_MESSAGE, vm.uiState.value.jellyfin.saveError)
+        assertFalse(vm.uiState.value.savedSuccessfully)
+        assertFalse(vm.uiState.value.jellyfin.isSaving)
+    }
+
+    @Test
+    fun `the server id is kept before the row is saved`() {
+        val vm = viewModel(FakePort())
+        vm.startAdd()
+        vm.onJellyfinSignIn()
+        val rowId = vm.uiState.value.jellyfin.pendingRowId
+
+        vm.onJellyfinSave()
+
+        assertEquals(serverId, status.records.getValue(rowId).jellyfinServerId)
+        assertEquals(rowId, repo.saved.single().id)
+    }
+
+    @Test
     fun `an edit never loads the token`() {
         repo.stored["row-9"] = ServerConfig("row-9", ServerSource.JELLYFIN, "Den", "https://jf.test/jellyfin", token)
         val vm = viewModel(FakePort())
@@ -254,6 +356,7 @@ class JellyfinSetupHandlerTest {
     @Test
     fun `an address edit asks for sign in again`() {
         repo.stored["row-9"] = ServerConfig("row-9", ServerSource.JELLYFIN, "Den", "https://jf.test/jellyfin", token)
+        status.records["row-9"] = ServerStatusRecord(jellyfinServerId = serverId)
         val vm = viewModel(FakePort())
         vm.loadServer("row-9")
         vm.onBaseUrlChanged("https://other.test/jellyfin")

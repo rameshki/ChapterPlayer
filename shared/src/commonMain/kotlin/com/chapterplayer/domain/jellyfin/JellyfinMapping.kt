@@ -86,16 +86,23 @@ fun jellyfinChapters(chapters: List<JellyfinChapterDto>, durationMs: Long): List
     }
 }
 
+/** The server's default end band for audiobooks (`MaxAudiobookResume`, 5 min): less than this left counts as the end. */
+const val JELLYFIN_END_BAND_MS = 5 * 60_000L
+
 /**
- * The server's progress from the user's play state. Played is finished at the end; a position of 0 that is not played
- * is no progress at all (null), so the server's 5-minute rule never pulls a book back to the start. The time is
+ * The server's progress from the user's play state. Played is finished at the end only when its position is 0 or in
+ * the end band ([JELLYFIN_END_BAND_MS] or less left): Jellyfin keeps Played while a finished book is listened to again,
+ * so a played book with a position earlier in it is in progress there. A position of 0 that is not played is no
+ * progress at all (null), so the server's 5-minute rule never pulls a book back to the start. The time is
  * `LastPlayedDate` (0 when missing, so it is never newer than anything).
  */
 fun jellyfinServerProgress(data: JellyfinUserDataDto?, durationMs: Long): ServerProgress? {
     if (data == null) return null
     val updatedAt = jellyfinTimeMs(data.lastPlayedDate)
-    if (data.played == true) return ServerProgress(durationMs, durationMs, true, updatedAt)
     val position = jellyfinTicksToMs(data.playbackPositionTicks)
+    if (data.played == true && (position <= 0L || durationMs - position < JELLYFIN_END_BAND_MS)) {
+        return ServerProgress(durationMs, durationMs, true, updatedAt)
+    }
     if (position <= 0L) return null
     return ServerProgress(if (durationMs > 0L) position.coerceAtMost(durationMs) else position, durationMs, false, updatedAt)
 }

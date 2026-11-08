@@ -13,6 +13,12 @@ sealed interface JellyfinSignInError {
     /** Sign in again found another server (another `Id`) at the stored address. */
     data object OtherServer : JellyfinSignInError
     data class ServerError(val code: Int) : JellyfinSignInError
+    /** The address typed is empty or not an http(s) address. */
+    data object InvalidAddress : JellyfinSignInError
+    /** The address answered with a redirect (http to https, a path, a login page): nothing is followed. */
+    data object Redirected : JellyfinSignInError
+    /** The secure connection failed (a certificate problem). */
+    data object SecureConnection : JellyfinSignInError
 }
 
 /** The only exception a Jellyfin sign-in throws. The message is fixed so no server text, password or token leaks. */

@@ -44,7 +44,7 @@ class JellyfinLibrarySourceTest {
 
     private data class Answer(val body: String, val status: HttpStatusCode = HttpStatusCode.OK)
 
-    private fun source(route: (HttpRequestData) -> Answer?): JellyfinLibrarySource {
+    private fun source(expectedServerId: String? = null, route: (HttpRequestData) -> Answer?): JellyfinLibrarySource {
         val client = HttpClient(MockEngine { request ->
             requests += request
             val a = route(request)
@@ -57,6 +57,7 @@ class JellyfinLibrarySourceTest {
             object : InstallId { override val value = "client-1" },
             markSignedOut = { signedOut += it },
             nowMs = { now },
+            expectedServerId = { expectedServerId },
         )
     }
 
@@ -127,6 +128,73 @@ class JellyfinLibrarySourceTest {
         assertEquals(setOf(otherBooksView), snapshot.failedLibraries.keys)
         assertTrue(snapshot.failedLibraries.getValue(otherBooksView).startsWith("Kids Books: "))
         assertTrue(!snapshot.failedLibraries.values.single().contains(token))
+    }
+
+    @Test
+    fun `a failing view is reported in fixed words, never the server's text`() = runTest {
+        val src = source { r ->
+            val p = r.url.encodedPath
+            when {
+                p.endsWith("/UserViews") -> Answer(twoBooksViews)
+                p.endsWith("/Items") && r.url.parameters["ParentId"] == otherBooksView ->
+                    Answer("""{"Items": "<html>private page text</html>"}""")
+                p.endsWith("/Items") -> Answer(fixture("jellyfin/items-audiobooks-page-1.json"))
+                else -> null
+            }
+        }
+        val text = src.fetchSnapshot(server).failedLibraries.getValue(otherBooksView)
+        assertEquals("Kids Books: the server's answer could not be read", text)
+    }
+
+    @Test
+    fun `every view failing on an unreadable answer fails in fixed words`() = runTest {
+        val src = source { r ->
+            if (r.url.encodedPath.endsWith("/UserViews")) Answer(twoBooksViews) else Answer("""{"Items": "<html>private</html>"}""")
+        }
+        val e = assertFailsWith<IllegalStateException> { src.fetchSnapshot(server) }
+        assertEquals("The server's answer could not be read", e.message)
+    }
+
+    @Test
+    fun `a view answering an error status is reported with the status`() = runTest {
+        val src = source { r ->
+            val p = r.url.encodedPath
+            when {
+                p.endsWith("/UserViews") -> Answer(twoBooksViews)
+                p.endsWith("/Items") && r.url.parameters["ParentId"] == otherBooksView -> Answer("oops <b>secret</b>", HttpStatusCode.BadGateway)
+                p.endsWith("/Items") -> Answer(fixture("jellyfin/items-audiobooks-page-1.json"))
+                else -> null
+            }
+        }
+        assertEquals("Kids Books: the server answered with HTTP 502", src.fetchSnapshot(server).failedLibraries.getValue(otherBooksView))
+    }
+
+    @Test
+    fun `a sync first checks the address still belongs to this server`() = runTest {
+        val other = source(expectedServerId = "11111111111111111111111111111111") { r ->
+            if (r.url.encodedPath.endsWith("/System/Info/Public")) Answer(fixture("jellyfin/system-info-public.json")) else Answer("{}")
+        }
+        val e = assertFailsWith<IllegalStateException> { other.fetchSnapshot(server) }
+        assertEquals("This address now belongs to another Jellyfin server. Remove this server and add it again.", e.message)
+        // Only the public info was asked, with no token.
+        assertEquals(listOf("/jellyfin/System/Info/Public"), requests.map { it.url.encodedPath })
+        assertNull(requests.single().headers[HttpHeaders.Authorization])
+        assertTrue(signedOut.isEmpty())
+    }
+
+    @Test
+    fun `a sync on the same server goes ahead after the check`() = runTest {
+        val src = source(expectedServerId = "36B7674F7149D16771400FAE9B9EB1F9") { r ->
+            val p = r.url.encodedPath
+            when {
+                p.endsWith("/System/Info/Public") -> Answer(fixture("jellyfin/system-info-public.json"))
+                p.endsWith("/UserViews") -> Answer(fixture("jellyfin/user-views.json"))
+                p.endsWith("/Items") -> Answer(fixture("jellyfin/items-folder-of-parts.json"))
+                else -> null
+            }
+        }
+        assertEquals(2, src.fetchSnapshot(server).books.size)
+        assertEquals("/jellyfin/System/Info/Public", requests.first().url.encodedPath)
     }
 
     @Test

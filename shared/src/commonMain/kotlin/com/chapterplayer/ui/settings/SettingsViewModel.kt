@@ -12,6 +12,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.auth.AbsSignInPort
 import com.chapterplayer.data.auth.JellyfinSignInPort
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_MISSING_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_UNREADABLE_TEXT
 import com.chapterplayer.data.auth.normalizeServerAddress
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
@@ -397,8 +399,8 @@ class ServerSetupViewModel(
     private val work: CoroutineDispatcher = Dispatchers.Default,
     /** Signs in to Jellyfin servers; null offers no Jellyfin sign-in (it fails with the unreachable words). */
     jellyfinSignIn: JellyfinSignInPort? = null,
-    /** Keeps a Jellyfin server's own id for the identity check on Sign in again. */
-    statusStore: ServerStatusStore = NoServerStatusStore,
+    /** Keeps a Jellyfin server's own id for the identity check on Sign in again and on an address change. */
+    private val statusStore: ServerStatusStore = NoServerStatusStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ServerSetupUiState(plexClientId = plexClientIdentifier.value))
@@ -711,6 +713,15 @@ class ServerSetupViewModel(
                         // The token belongs to the old address: a new one asks for Sign in again, which checks the
                         // server's id, so no token or progress is mixed between two servers.
                         val moved = address != (normalizeServerAddress(stored.baseUrl) ?: stored.baseUrl)
+                        if (moved) {
+                            // Fail closed: the Sign in again after the move checks the server id kept at the first
+                            // sign-in, so a row without one (or one that cannot be read now) cannot move.
+                            when (storedServerId(statusStore, stored.id)) {
+                                StoredServerId.Unreadable -> { fail(JELLYFIN_ID_UNREADABLE_TEXT); return@launch }
+                                StoredServerId.Missing -> { fail(JELLYFIN_ID_MISSING_TEXT); return@launch }
+                                is StoredServerId.Known -> Unit
+                            }
+                        }
                         stored.copy(name = state.name.trim(), baseUrl = address, token = if (moved) "" else stored.token)
                     }
                     stored.source == ServerSource.ABS -> {

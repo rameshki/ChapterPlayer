@@ -4,6 +4,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
+import com.chapterplayer.domain.browse.serverKindName
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -198,14 +201,25 @@ fun ServerSetupScreen(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 ServerSource.entries.forEach { source ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The whole row is the radio button, so the label is read with it and tapping the name works.
+                    Row(
+                        modifier = Modifier
+                            .selectable(
+                                selected = uiState.source == source,
+                                onClick = { viewModel.onSourceChanged(source) },
+                                role = Role.RadioButton
+                            )
+                            .heightIn(min = 48.dp)
+                            .padding(end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         RadioButton(
                             selected = uiState.source == source,
-                            onClick = { viewModel.onSourceChanged(source) },
+                            onClick = null,
                             colors = RadioButtonDefaults.colors(selectedColor = AmberGold)
                         )
                         Text(
-                            text = source.name,
+                            text = serverKindName(source),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground
                         )

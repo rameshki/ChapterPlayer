@@ -217,7 +217,12 @@ val commonSourceModule = module {
     // Jellyfin tokens cannot be refreshed either: a refused one is blanked the same way.
     single {
         val servers = get<ServerRepository>()
-        JellyfinLibrarySource(get(), get(), markSignedOut = { refused -> blankRefusedPlexToken(servers, refused) })
+        val status = get<ServerStatusStore>()
+        JellyfinLibrarySource(
+            get(), get(),
+            markSignedOut = { refused -> blankRefusedPlexToken(servers, refused) },
+            expectedServerId = { rowId -> status.get(rowId).jellyfinServerId },
+        )
     } bind LibrarySource::class
 }
 

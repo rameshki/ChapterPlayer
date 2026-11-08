@@ -11,6 +11,8 @@ import com.chapterplayer.domain.jellyfin.JellyfinServerCheck
 import com.chapterplayer.domain.jellyfin.checkJellyfinServer
 import com.chapterplayer.domain.jellyfin.jellyfinBookViews
 import com.chapterplayer.domain.jellyfin.jellyfinDeviceId
+import com.chapterplayer.domain.plex.ProblemKind
+import com.chapterplayer.domain.plex.classifyConnectionError
 import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
 
@@ -34,9 +36,16 @@ class JellyfinSignIn(
         password: String,
         expectedServerId: String?,
     ): JellyfinSignInResult {
-        val base = normalizeServerAddress(address) ?: fail(JellyfinSignInError.NotJellyfin)
-        // A web page, a proxy's login redirect or another app answering the address is "not Jellyfin".
-        val info = call({ if (it >= 500) JellyfinSignInError.ServerError(it) else JellyfinSignInError.NotJellyfin }) {
+        val base = normalizeServerAddress(address) ?: fail(JellyfinSignInError.InvalidAddress)
+        // A web page or another app answering the address is "not Jellyfin"; a redirect (http to https, a path, a
+        // proxy's login page) is said to be one, and is not followed.
+        val info = call({
+            when {
+                it in 300..399 -> JellyfinSignInError.Redirected
+                it >= 500 -> JellyfinSignInError.ServerError(it)
+                else -> JellyfinSignInError.NotJellyfin
+            }
+        }) {
             probeApi.getPublicInfo(base)
         }
         val check = when (val c = checkJellyfinServer(info)) {
@@ -68,7 +77,9 @@ class JellyfinSignIn(
                 when (t) {
                     // Before IOException: HttpStatusException is one.
                     is HttpStatusException -> whenHttp(t.status.value)
-                    is IOException -> JellyfinSignInError.Unreachable
+                    is IOException ->
+                        if (classifyConnectionError(t).kind == ProblemKind.TLS) JellyfinSignInError.SecureConnection
+                        else JellyfinSignInError.Unreachable
                     // A body that is not Jellyfin's JSON (a web page, another app).
                     else -> JellyfinSignInError.NotJellyfin
                 }

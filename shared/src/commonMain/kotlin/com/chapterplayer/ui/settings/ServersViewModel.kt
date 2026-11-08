@@ -14,6 +14,7 @@ import com.chapterplayer.domain.settings.serverStatusLine
 import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_JELLYFIN_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_REDIRECT_TEXT
 import com.chapterplayer.domain.jellyfin.checkJellyfinServer
 import com.chapterplayer.domain.plex.classifyConnectionError
 import com.chapterplayer.domain.settings.JELLYFIN_CONNECTION_KIND
@@ -181,7 +182,8 @@ class ServersViewModel(
             if (e is CancellationException) throw e
             false to when (e) {
                 // Before IOException: HttpStatusException is one.
-                is HttpStatusException -> jellyfinHttpStatusText(e.status.value)
+                is HttpStatusException ->
+                    if (e.status.value in 300..399) JELLYFIN_REDIRECT_TEXT else jellyfinHttpStatusText(e.status.value)
                 is IOException -> classifyConnectionError(e).text
                 // A body that is not Jellyfin's JSON (a web page, another app).
                 else -> JELLYFIN_NOT_JELLYFIN_TEXT

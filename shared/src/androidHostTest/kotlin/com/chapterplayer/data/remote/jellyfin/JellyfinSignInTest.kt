@@ -120,11 +120,11 @@ class JellyfinSignInTest {
     }
 
     @Test
-    fun `a redirect to a login page is not jellyfin`() = runTest {
+    fun `a redirect is said to be one and sends no password`() = runTest {
         val e = error {
             signIn { Triple("", HttpStatusCode.Found, "text/html") }.withPassword("https://jf.test", "row-1", "u", "p")
         }
-        assertEquals(JellyfinSignInError.NotJellyfin, e)
+        assertEquals(JellyfinSignInError.Redirected, e)
         assertFalse(sentPassword())
         assertEquals(1, requests.size)
     }
@@ -191,9 +191,20 @@ class JellyfinSignInTest {
     }
 
     @Test
-    fun `a bad address is not jellyfin and nothing is asked`() = runTest {
-        assertEquals(JellyfinSignInError.NotJellyfin, error { server().withPassword("ftp://jf.test", "row-1", "u", "p") })
+    fun `an empty or invalid address asks for a valid one and nothing is asked`() = runTest {
+        assertEquals(JellyfinSignInError.InvalidAddress, error { server().withPassword("ftp://jf.test", "row-1", "u", "p") })
+        assertEquals(JellyfinSignInError.InvalidAddress, error { server().withPassword("  ", "row-1", "u", "p") })
         assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `a certificate problem is a secure connection error`() = runTest {
+        val api = JellyfinApiService(HttpClient(MockEngine { throw javax.net.ssl.SSLHandshakeException("bad cert") }) { installApiDefaults(false) }) {
+            JellyfinClient("Android", it, "0.4.1")
+        }
+        assertEquals(JellyfinSignInError.SecureConnection, error {
+            JellyfinSignIn(api, api, installId).withPassword("https://jf.test", "row-1", "u", "p")
+        })
     }
 
     @Test

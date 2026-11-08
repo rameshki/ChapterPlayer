@@ -92,10 +92,18 @@ class ServerRepositoryImpl(
     override suspend fun save(config: ServerConfig) {
         ensureTokensMigrated()
         migrationLock.withLock {
-            val isNew = serverConfigDao.getById(config.id) == null
+            val stored = serverConfigDao.getById(config.id)
+            val isNew = stored == null
             try {
-                // An empty value that only reflects a failed read is not written over the stored secret.
-                if (config.token.isNotEmpty() || !lastReadFailed(config.id)) credentials.put(config.id, config.token)
+                // An empty value that only reflects a failed read is not written over the stored secret, unless the
+                // address moved: the old token belongs to the old address and must not come back for the new one when
+                // the store is readable again, so it is removed for sure (a failure fails the save).
+                val moved = stored != null && stored.baseUrl.trimEnd('/') != config.baseUrl.trimEnd('/')
+                if (config.token.isEmpty() && lastReadFailed(config.id) && moved) {
+                    credentials.remove(config.id)
+                } else if (config.token.isNotEmpty() || !lastReadFailed(config.id)) {
+                    credentials.put(config.id, config.token)
+                }
                 if (config.refreshToken != null) {
                     credentials.put(refreshKey(config.id), config.refreshToken)
                 } else if (!lastReadFailed(refreshKey(config.id))) {

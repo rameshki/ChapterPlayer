@@ -19,7 +19,11 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.contentLength
+import io.ktor.utils.io.readRemaining
+import kotlinx.io.readByteArray
+import com.chapterplayer.domain.jellyfin.JELLYFIN_PUBLIC_INFO_MAX_BYTES
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
@@ -52,7 +56,12 @@ class JellyfinApiService(
             header(HttpHeaders.Accept, JSON)
         }
         if (!response.status.isSuccess()) throw HttpStatusException(response.status)
-        return ApiJson.decodeFromString(JellyfinPublicInfoDto.serializer(), response.bodyAsText())
+        // An address that serves something big (a file, a page) must not fill memory: a real answer is under 1 KB.
+        val declared = response.contentLength()
+        check(declared == null || declared <= JELLYFIN_PUBLIC_INFO_MAX_BYTES) { "The answer is too large" }
+        val bytes = response.bodyAsChannel().readRemaining(JELLYFIN_PUBLIC_INFO_MAX_BYTES + 1L).readByteArray()
+        check(bytes.size <= JELLYFIN_PUBLIC_INFO_MAX_BYTES) { "The answer is too large" }
+        return ApiJson.decodeFromString(JellyfinPublicInfoDto.serializer(), bytes.decodeToString())
     }
 
     /** `POST /Users/AuthenticateByName` with the header but no token yet. */

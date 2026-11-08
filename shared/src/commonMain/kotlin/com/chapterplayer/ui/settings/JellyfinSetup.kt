@@ -11,7 +11,12 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.sync.ServerStatusStore
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_MISSING_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_ID_UNREADABLE_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_INVALID_ADDRESS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_JELLYFIN_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_REDIRECT_TEXT
+import com.chapterplayer.domain.jellyfin.JELLYFIN_TLS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NO_BOOKS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_OTHER_SERVER_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_TOO_OLD_TEXT
@@ -52,6 +57,22 @@ data class JellyfinSetupState(
 private const val JELLYFIN_UNREACHABLE_TEXT = "Couldn't reach the server. Check the address and your network."
 private const val JELLYFIN_SIGN_IN_FAILED_TEXT = "Couldn't sign in. Please try again."
 
+/** The Jellyfin server id kept for a row at its first sign-in, as far as it can be read. */
+internal sealed interface StoredServerId {
+    data class Known(val id: String) : StoredServerId
+    data object Missing : StoredServerId
+    data object Unreadable : StoredServerId
+}
+
+/** Reads the id kept for [rowId]; a read that throws is [StoredServerId.Unreadable], none kept is [StoredServerId.Missing]. */
+internal suspend fun storedServerId(statusStore: ServerStatusStore, rowId: String): StoredServerId =
+    try {
+        statusStore.get(rowId).jellyfinServerId?.takeIf { it.isNotBlank() }?.let { StoredServerId.Known(it) } ?: StoredServerId.Missing
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        StoredServerId.Unreadable
+    }
+
 /** The words for a failed Jellyfin sign-in (spec section 9). */
 internal fun jellyfinSignInMessage(error: JellyfinSignInError): String = when (error) {
     JellyfinSignInError.Unreachable -> JELLYFIN_UNREACHABLE_TEXT
@@ -61,6 +82,9 @@ internal fun jellyfinSignInMessage(error: JellyfinSignInError): String = when (e
     JellyfinSignInError.NoBooksLibrary -> JELLYFIN_NO_BOOKS_TEXT
     JellyfinSignInError.OtherServer -> JELLYFIN_OTHER_SERVER_TEXT
     is JellyfinSignInError.ServerError -> "The server returned an error (code ${error.code})."
+    JellyfinSignInError.InvalidAddress -> JELLYFIN_INVALID_ADDRESS_TEXT
+    JellyfinSignInError.Redirected -> JELLYFIN_REDIRECT_TEXT
+    JellyfinSignInError.SecureConnection -> JELLYFIN_TLS_TEXT
 }
 
 /**
@@ -142,14 +166,16 @@ internal class JellyfinSetupHandler(
             libraryId = null,
         )
         scope.launch {
+            // The server's id is kept first: without it a later Sign in again or address change could not check that
+            // the address still belongs to this server, so a failure here fails the whole setup.
             try {
+                statusStore.update(config.id) { it.copy(jellyfinServerId = signedIn.serverId) }
                 serverRepository.save(config)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 edit { copy(isSaving = false, saveError = SAVE_FAILED_MESSAGE) }
                 return@launch
             }
-            rememberServerId(config.id, signedIn.serverId)
             result = null
             edit { copy(isSaving = false) }
             state.update { it.copy(savedSuccessfully = true) }
@@ -178,11 +204,17 @@ internal class JellyfinSetupHandler(
                 state.update { it.copy(saveError = SERVER_GONE_MESSAGE) }
                 return@launch
             }
-            val expected = try {
-                statusStore.get(serverId).jellyfinServerId
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                null
+            // Fail closed: without the id kept at the first sign-in, the answering server cannot be checked.
+            val expected = when (val id = storedServerId(statusStore, serverId)) {
+                StoredServerId.Unreadable -> {
+                    edit { copy(isSigningIn = false, signInError = JELLYFIN_ID_UNREADABLE_TEXT) }
+                    return@launch
+                }
+                StoredServerId.Missing -> {
+                    edit { copy(isSigningIn = false, signInError = JELLYFIN_ID_MISSING_TEXT) }
+                    return@launch
+                }
+                is StoredServerId.Known -> id.id
             }
             val signedIn = try {
                 signInPort().withPassword(address, serverId, current.username.trim(), current.password, expectedServerId = expected)
@@ -200,7 +232,6 @@ internal class JellyfinSetupHandler(
                 state.update { it.copy(saveError = SAVE_FAILED_MESSAGE) }
                 return@launch
             }
-            rememberServerId(serverId, signedIn.serverId)
             edit { copy(isSigningIn = false, password = "") }
             state.update { it.copy(savedSuccessfully = true) }
         }
@@ -213,15 +244,6 @@ internal class JellyfinSetupHandler(
             if (e is CancellationException) throw e
             null
         }
-
-    /** Keeps the server's `Id` for the identity check of a later Sign in again; best effort (the row is saved). */
-    private suspend fun rememberServerId(rowId: String, jellyfinServerId: String) {
-        try {
-            statusStore.update(rowId) { it.copy(jellyfinServerId = jellyfinServerId) }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-        }
-    }
 
     private fun signInPort(): JellyfinSignInPort = port ?: throw JellyfinSignInException(JellyfinSignInError.Unreachable)
 
