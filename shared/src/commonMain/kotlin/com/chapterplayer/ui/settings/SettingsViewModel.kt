@@ -752,7 +752,11 @@ class ServerSetupViewModel(
                         )
                     }
                 }
-                serverRepository.save(config)
+                if (stored?.source == ServerSource.JELLYFIN && config.baseUrl != stored.baseUrl && config.token.isEmpty()) {
+                    serverRepository.saveUserAddressChange(config)
+                } else {
+                    serverRepository.save(config)
+                }
                 rememberPlexConnections(config, stored, state)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e

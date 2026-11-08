@@ -172,13 +172,33 @@ class ServerRepositoryTest {
         creds.failing = true
         val read = repo.getById("a")!!
 
-        // The address moved and the token was dropped on purpose: the old token must not come back for the new address.
-        repo.save(read.copy(baseUrl = "http://other.test", token = ""))
+        // The user moved the address and the token was dropped on purpose: the old token must not come back for it.
+        repo.saveUserAddressChange(read.copy(baseUrl = "http://other.test", token = ""))
 
         assertNull(inner.tokens["a"])
         creds.failing = false
         assertEquals("", repo.getById("a")?.token)
         assertEquals("http://other.test", repo.getById("a")?.baseUrl)
+    }
+
+    @Test
+    fun `an automatic address switch with an unreadable store keeps the token and saves`() = runTest {
+        // Plex's connection manager saves the server on another of its verified addresses (switchTo): the same server,
+        // so the token stays, and a locked store must not make the switch fail.
+        val inner = FakeCredentials()
+        val creds = FlakyCredentials(inner)
+        val repo = ServerRepositoryImpl(FakeDao(), FakeExcludedDao(), creds, FakeBookDao(), InMemoryLibraryDao(), InMemoryCollectionDao(), InMemoryBookmarkDao(), InMemoryHistoryDao())
+        repo.save(config("p", "plex-token").copy(source = ServerSource.PLEX))
+        creds.failing = true
+        val read = repo.getById("p")!!
+        creds.failRemove = true
+
+        repo.save(read.copy(baseUrl = "https://other-connection.test:32400"))
+
+        assertEquals("plex-token", inner.tokens["p"])
+        creds.failing = false
+        assertEquals("plex-token", repo.getById("p")?.token)
+        assertEquals("https://other-connection.test:32400", repo.getById("p")?.baseUrl)
     }
 
     @Test
@@ -192,7 +212,7 @@ class ServerRepositoryTest {
         val read = repo.getById("a")!!
         creds.failRemove = true
 
-        assertFailsWith<IllegalStateException> { repo.save(read.copy(baseUrl = "http://other.test", token = "")) }
+        assertFailsWith<IllegalStateException> { repo.saveUserAddressChange(read.copy(baseUrl = "http://other.test", token = "")) }
 
         assertEquals("http://s.test", dao.rows.value.getValue("a").baseUrl)
         assertEquals("tok-a", inner.tokens["a"])

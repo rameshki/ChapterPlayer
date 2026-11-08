@@ -74,6 +74,11 @@ class JellyfinSetupHandlerTest {
 
     private class FakeRepository : ServerRepository {
         val saved = mutableListOf<ServerConfig>()
+        val userAddressChanges = mutableListOf<ServerConfig>()
+        override suspend fun saveUserAddressChange(config: ServerConfig) {
+            userAddressChanges += config
+            save(config)
+        }
         val stored = mutableMapOf<String, ServerConfig>()
         override fun observeAll(): Flow<List<ServerConfig>> = emptyFlow()
         override suspend fun getById(id: String): ServerConfig? = stored[id]
@@ -367,6 +372,8 @@ class JellyfinSetupHandlerTest {
         assertEquals("https://other.test/jellyfin", saved.baseUrl)
         assertEquals("", saved.token)
         assertTrue(saved.needsSignIn)
+        // Saved as the user's own address change, so the repository removes the old token for sure.
+        assertEquals(listOf(saved), repo.userAddressChanges)
     }
 
     @Test
@@ -381,6 +388,7 @@ class JellyfinSetupHandlerTest {
         val saved = repo.saved.single()
         assertEquals("Living Room", saved.name)
         assertEquals(token, saved.token)
+        assertTrue(repo.userAddressChanges.isEmpty())
     }
 
     @Test
