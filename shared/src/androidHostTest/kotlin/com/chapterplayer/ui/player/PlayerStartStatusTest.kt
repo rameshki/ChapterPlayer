@@ -27,7 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The "nothing is playing" landing Robert saw after a widget's Play: the full player must never claim nothing is playing
+ * The "nothing is playing" landing seen on the phone after a widget's Play: the full player must never claim nothing is playing
  * while a start is under way, must show why a start failed, and closes itself when it was only left on the back stack.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
