@@ -29,7 +29,7 @@ class NowPlayingWidgetWiringTest {
     fun theStateNamesTheLoadedBook() = runTest {
         assertEquals(NowPlayingWidgetState.Idle, states.nowPlaying.first())
         controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, durationMs = 1_000)
-        assertEquals(NowPlayingWidgetState.Book("Alpha", "Ann", null, isPlaying = true, canSkip = true), states.nowPlaying.first())
+        assertEquals(NowPlayingWidgetState.Book("Alpha", "Ann", null, isPlaying = true, canSkip = true, bookId = "a"), states.nowPlaying.first())
     }
 
     @Test
@@ -116,10 +116,16 @@ class CountingHost(private val fail: Boolean = false) : WidgetHost {
     }
     var listen = 0
     override suspend fun redrawListen() {
+        duringListenRedraw()
         listen++
         if (fail) error("widget host gone")
     }
     /** Whether a Listen widget is placed, as the host reports it at start. */
     var placed = true
     override suspend fun listenPlaced(): Boolean = placed
+    /** Whether any widget is placed, as the host reports it at start. */
+    var somePlaced = true
+    override suspend fun anyPlaced(): Boolean = somePlaced
+    /** Runs inside each Listen redraw (a Glance session calling provideGlance). */
+    var duringListenRedraw: suspend () -> Unit = {}
 }

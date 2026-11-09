@@ -3,7 +3,7 @@ package com.chapterplayer.data.widgets
 import com.chapterplayer.domain.widgets.CoverFetch
 
 /**
- * Covers for the Listen widget, loaded in the app process before the widget is drawn (Android: `ListenCoverCache`
+ * Covers for the widgets, loaded in the app process before a widget is drawn (Android: `WidgetCoverCache`
  * over the authenticated cover loader, so no server address or token ever reaches the widget). [prefetch] loads the
  * cover of a book into the platform's memory cache: [CoverFetch.LOADED] when a cover was newly loaded (the refresher
  * redraws once), [CoverFetch.CACHED] when it was there already, [CoverFetch.FAILED] when there is none now. It may

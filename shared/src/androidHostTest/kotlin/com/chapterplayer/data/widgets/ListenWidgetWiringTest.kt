@@ -20,6 +20,7 @@ import com.chapterplayer.testing.FakePlaybackController
 import com.chapterplayer.testing.testBook
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -262,8 +263,12 @@ class ListenWidgetWiringTest {
         advanceTimeBy(5_000L)
         runCurrent()
         assertEquals(0, host.listen)
-        assertEquals(0, asks)
-        assertEquals(1, host.nowPlaying) // the other widgets as before
+        // Continue Listening shows the same book: its cover is loaded (the platform cache loads nothing while no
+        // widget at all is placed), and the Listen widget is not drawn for it.
+        assertEquals(1, asks)
+        // The other widgets as before: their first state, then once more when the cover arrived.
+        assertEquals(2, host.nowPlaying)
+        assertEquals(0, host.listen) // the cover never draws a Listen widget that is not placed
 
         // The receiver reports the first Listen widget: drawn, and its cover loaded.
         refresher.listenPlacementChanged(true)
@@ -281,6 +286,47 @@ class ListenWidgetWiringTest {
         advanceTimeBy(1_001L)
         runCurrent()
         assertEquals(drawn, host.listen)
+    }
+
+    @Test
+    fun aCoverRequestDuringTheRedrawsDoesNotCutThemShort() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        var loaded = false
+        val host = CountingHost()
+        val refresher = WidgetRefresher(states, host, backgroundScope, continueQuietMs = 1_000L, covers = {
+            if (loaded) CoverFetch.CACHED else { loaded = true; CoverFetch.LOADED }
+        })
+        // Drawing Listen starts its session, whose provideGlance asks for the cover again before the others are drawn.
+        host.duringListenRedraw = {
+            refresher.requestCover()
+            delay(10)
+        }
+        refresher.start()
+        advanceTimeBy(5_000L)
+        runCurrent()
+        val nowPlaying = host.nowPlaying
+        val continueListening = host.continueListening
+        assertTrue(loaded)
+        // The first states (1 each) and the cover's redraw (1 each), although a request came in during the Listen redraw.
+        assertEquals(2, nowPlaying)
+        assertEquals(2, continueListening)
+    }
+
+    @Test
+    fun noCoverIsLoadedWhileNoWidgetIsPlaced() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        var asks = 0
+        val host = CountingHost().apply { somePlaced = false; placed = false }
+        val refresher = WidgetRefresher(states, host, backgroundScope, continueQuietMs = 1_000L, covers = { asks++; CoverFetch.LOADED })
+        refresher.start()
+        advanceTimeBy(5_000L)
+        runCurrent()
+        assertEquals(0, asks)
+
+        // A widget is drawn (placed): its covers are asked for.
+        refresher.requestCover()
+        runCurrent()
+        assertEquals(1, asks)
     }
 
     @Test

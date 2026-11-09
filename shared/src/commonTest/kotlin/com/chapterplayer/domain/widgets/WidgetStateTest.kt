@@ -44,7 +44,7 @@ class WidgetStateTest {
     fun loadedBookShowsTitleAuthorAndChapter() {
         val state = PlaybackState(bookId = "a", isPlaying = true, positionMs = 700_000, durationMs = 3_600_000, chapterIndex = 1, chapters = chapters)
         val shown = nowPlayingWidgetState(state, book("a", chapters = chapters))
-        assertEquals(NowPlayingWidgetState.Book("Title a", "Author a", "Second", isPlaying = true, canSkip = true), shown)
+        assertEquals(NowPlayingWidgetState.Book("Title a", "Author a", "Second", isPlaying = true, canSkip = true, bookId = "a"), shown)
     }
 
     @Test

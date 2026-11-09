@@ -1,26 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The widget picker's preview of Listen before Android 12: its own dark card, visible on any picker. -->
+<!-- The widget picker's preview of Listen before Android 12: the wide card. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="250dp"
     android:height="110dp"
     android:viewportWidth="250"
     android:viewportHeight="110">
     <path
-        android:fillColor="#FF151A2B"
-        android:pathData="M16,0h218a16,16 0 0 1 16,16v78a16,16 0 0 1 -16,16h-218a16,16 0 0 1 -16,-16v-78a16,16 0 0 1 16,-16z" />
+        android:fillColor="#FF2C2C2F"
+        android:pathData="M24,0h202a24,24 0 0 1 24,24v62a24,24 0 0 1 -24,24h-202a24,24 0 0 1 -24,-24v-62a24,24 0 0 1 24,-24z" />
     <path
-        android:fillColor="#FFF0EDE8"
-        android:pathData="M14,14h120v8h-120z" />
+        android:fillColor="#FF2F4A6B"
+        android:pathData="M20,10h70a10,10 0 0 1 10,10v70a10,10 0 0 1 -10,10h-70a10,10 0 0 1 -10,-10v-70a10,10 0 0 1 10,-10z" />
     <path
-        android:fillColor="#FFAEABA4"
-        android:pathData="M14,30h80v6h-80z" />
+        android:fillColor="#FFD9A441"
+        android:pathData="M10,72 L40,52 L62,66 L100,46 V90 a10,10 0 0 1 -10,10 H20 a10,10 0 0 1 -10,-10 Z" />
     <path
-        android:fillColor="#FF1E2742"
-        android:pathData="M14,50h190v4h-190z" />
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M110,14h110v8h-110z" />
     <path
-        android:fillColor="#FFE8B84B"
-        android:pathData="M14,50h60v4h-60z M212,48h24v8h-24z" />
+        android:fillColor="#FFC2C2C7"
+        android:pathData="M110,28h70v6h-70z" />
     <path
-        android:fillColor="#FFE8B84B"
-        android:pathData="M45,72h3v16h-3z M50,80l10,8V72z M114,70v20l16,-10z M195,88l10,-8l-10,-8z M207,72h3v16h-3z" />
+        android:fillColor="#FF6B6B70"
+        android:pathData="M110,42h128v4h-128z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M110,42h90v4h-90z" />
+    <path
+        android:fillColor="#FFC2C2C7"
+        android:pathData="M110,52h44v5h-44z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M128,84m-18,0a18,18 0 1,0 36,0a18,18 0 1,0 -36,0" />
+    <path
+        android:fillColor="#FF19191B"
+        android:pathData="M123,75v18l14,-9z" />
 </vector>
