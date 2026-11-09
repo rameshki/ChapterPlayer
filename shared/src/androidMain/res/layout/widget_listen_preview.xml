@@ -1,83 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The widget picker's preview of Listen (Android 12 and later): the standard size with the controls. Synthetic text only. -->
+<!-- The widget picker's preview of Listen (Android 12 and later): the wide card. Synthetic text and cover only. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF151A2B"
-    android:orientation="vertical"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="10dp">
+    android:background="@drawable/widget_card_dark"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="10dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:maxLines="1"
-        android:text="@string/widget_preview_title"
-        android:textColor="#FFF0EDE8"
-        android:textSize="14sp" />
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:maxLines="1"
-        android:text="@string/widget_preview_chapter"
-        android:textColor="#FFAEABA4"
-        android:textSize="12sp" />
-
-    <ProgressBar
-        style="@android:style/Widget.ProgressBar.Horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="4dp"
-        android:layout_marginTop="6dp"
-        android:progress="25"
-        android:progressBackgroundTint="#FF1E2742"
-        android:progressTint="#FFE8B84B" />
+    <ImageView
+        android:layout_width="92dp"
+        android:layout_height="92dp"
+        android:contentDescription="@null"
+        android:src="@drawable/widget_preview_cover" />
 
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:gravity="center"
-        android:orientation="horizontal">
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="@null"
-            android:padding="8dp"
-            android:src="@drawable/ic_widget_previous_chapter"
-            android:tint="#FFE8B84B" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:text="@string/widget_preview_title"
+            android:textColor="#FFFFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="@null"
-            android:padding="8dp"
-            android:src="@drawable/ic_widget_back"
-            android:tint="#FFE8B84B" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:text="@string/widget_preview_author"
+            android:textColor="#FFC2C2C7"
+            android:textSize="13sp" />
 
-        <ImageView
+        <ProgressBar
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:progress="70"
+            android:progressBackgroundTint="#FF6B6B70"
+            android:progressTint="#FFFFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:text="@string/widget_preview_time_left"
+            android:textColor="#FFC2C2C7"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp" />
+
+        <FrameLayout
             android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@null"
-            android:padding="8dp"
-            android:src="@drawable/ic_widget_pause"
-            android:tint="#FFE8B84B" />
+            android:layout_height="48dp">
 
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="@null"
-            android:padding="8dp"
-            android:src="@drawable/ic_widget_forward"
-            android:tint="#FFE8B84B" />
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:padding="3dp"
+                android:src="@drawable/widget_play_circle" />
 
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="@null"
-            android:padding="8dp"
-            android:src="@drawable/ic_widget_next_chapter"
-            android:tint="#FFE8B84B" />
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:padding="12dp"
+                android:src="@drawable/ic_widget_play"
+                android:tint="#FF19191B" />
+        </FrameLayout>
     </LinearLayout>
 </LinearLayout>

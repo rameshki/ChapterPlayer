@@ -1,19 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The widget picker's preview of Now Playing (Android 12 and later). Synthetic text only. -->
+<!-- The widget picker's preview of Now Playing (Android 12 and later). Synthetic text and cover only. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF151A2B"
+    android:background="@drawable/widget_card_dark"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="8dp">
+    android:paddingHorizontal="8dp">
 
     <ImageView
-        android:layout_width="32dp"
-        android:layout_height="32dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:contentDescription="@null"
-        android:src="@drawable/ic_widget_book"
-        android:tint="#FFAEABA4" />
+        android:src="@drawable/widget_preview_cover" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -26,16 +25,17 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:maxLines="1"
-            android:text="@string/widget_now_playing_label"
-            android:textColor="#FFF0EDE8"
-            android:textSize="14sp" />
+            android:text="@string/widget_preview_title"
+            android:textColor="#FFFFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:text="@string/widget_preview_chapter"
-            android:textColor="#FFAEABA4"
+            android:textColor="#FFC2C2C7"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -43,23 +43,35 @@
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:contentDescription="@null"
-        android:padding="8dp"
+        android:padding="9dp"
         android:src="@drawable/ic_widget_back"
-        android:tint="#FFE8B84B" />
+        android:tint="#FFFFFFFF" />
+
+    <FrameLayout
+        android:layout_width="44dp"
+        android:layout_height="44dp">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:padding="3dp"
+            android:src="@drawable/widget_play_circle" />
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:padding="11dp"
+            android:src="@drawable/ic_widget_pause"
+            android:tint="#FF19191B" />
+    </FrameLayout>
 
     <ImageView
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:contentDescription="@null"
-        android:padding="6dp"
-        android:src="@drawable/ic_widget_pause"
-        android:tint="#FFE8B84B" />
-
-    <ImageView
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:contentDescription="@null"
-        android:padding="8dp"
+        android:padding="9dp"
         android:src="@drawable/ic_widget_forward"
-        android:tint="#FFE8B84B" />
+        android:tint="#FFFFFFFF" />
 </LinearLayout>

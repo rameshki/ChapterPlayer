@@ -29,7 +29,7 @@ class NowPlayingWidgetWiringTest {
     fun theStateNamesTheLoadedBook() = runTest {
         assertEquals(NowPlayingWidgetState.Idle, states.nowPlaying.first())
         controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, durationMs = 1_000)
-        assertEquals(NowPlayingWidgetState.Book("Alpha", "Ann", null, isPlaying = true, canSkip = true), states.nowPlaying.first())
+        assertEquals(NowPlayingWidgetState.Book("Alpha", "Ann", null, isPlaying = true, canSkip = true, bookId = "a"), states.nowPlaying.first())
     }
 
     @Test

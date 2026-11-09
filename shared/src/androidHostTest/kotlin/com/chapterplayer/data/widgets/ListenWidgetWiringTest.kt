@@ -262,8 +262,12 @@ class ListenWidgetWiringTest {
         advanceTimeBy(5_000L)
         runCurrent()
         assertEquals(0, host.listen)
-        assertEquals(0, asks)
-        assertEquals(1, host.nowPlaying) // the other widgets as before
+        // Continue Listening shows the same book: its cover is loaded (the platform cache loads nothing while no
+        // widget at all is placed), and the Listen widget is not drawn for it.
+        assertEquals(1, asks)
+        // The other widgets as before: their first state, then once more when the cover arrived.
+        assertEquals(2, host.nowPlaying)
+        assertEquals(0, host.listen) // the cover never draws a Listen widget that is not placed
 
         // The receiver reports the first Listen widget: drawn, and its cover loaded.
         refresher.listenPlacementChanged(true)

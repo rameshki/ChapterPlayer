@@ -89,124 +89,190 @@ val ListenWidgetState.coverBookId: String?
 
 /** The Listen widget's layouts, from the size the launcher gives it. */
 enum class ListenSize {
-    /** One row: play/pause and the title. */
-    COMPACT,
+    /** Too low or narrow for a cover: play/pause and the title in one row. */
+    MINI,
 
-    /** Low (about 110 to 150 dp): one row of the title and chapter beside back 15 / play-pause / forward 30. */
-    SHORT,
+    /** A slim long bar (about 4x1): cover thumbnail, title and one line, the buttons on the right. */
+    BAR,
 
-    /** Title, chapter, progress and the full controls row below. */
-    STANDARD,
+    /** About 2x2: cover at the top left, the title, a round play button with the time left beside it. */
+    SQUARE,
 
-    /** As standard, with the cover. */
-    EXPANDED,
+    /** About 4x2: cover at the left; title, author or chapter, progress, time left and the buttons beside it. */
+    WIDE,
+
+    /** About 4x3 or taller: a bigger cover, title, author and chapter, progress and the full control row. */
+    LARGE,
 }
 
-/** Narrower than this (about three cells) the widget is one row: play/pause and the title. */
-const val LISTEN_WIDE_MIN_DP = 220f
+/** From this width the bar has its cover (and, for a loaded book, back 15 and forward 30). */
+const val LISTEN_BAR_MIN_WIDTH_DP = 250f
 
-/** From this width every control is a 48 dp target (see [listenControlsMetrics]). */
-const val LISTEN_ROOMY_MIN_DP = 300f
+/** From this height the bar has room for its cover and two lines at font scale 1.3 (a 4x1 upright is about 102 dp). */
+const val LISTEN_BAR_MIN_HEIGHT_DP = 68f
 
-/** Lower than this (one cell, up to about 102 dp upright) the widget is one row too. */
-const val LISTEN_SHORT_MIN_HEIGHT_DP = 110f
+/** From this height the widget is a square, wide or large card instead of a bar. */
+const val LISTEN_TALL_MIN_HEIGHT_DP = 160f
 
-/** From this height the controls fit in their own row under the title, chapter and progress, also at font scale 1.3. */
-const val LISTEN_STACKED_MIN_HEIGHT_DP = 150f
+/** The narrowest square. */
+const val LISTEN_SQUARE_MIN_WIDTH_DP = 110f
 
-/** From this height (about three cells on a phone held upright) the widget shows the cover. */
-const val LISTEN_EXPANDED_MIN_HEIGHT_DP = 250f
+/** From this width a tall widget is wide (cover beside the text) instead of square. */
+const val LISTEN_WIDE_MIN_WIDTH_DP = 250f
+
+/** From this height (and [LISTEN_WIDE_MIN_WIDTH_DP] wide) the widget is large. */
+const val LISTEN_LARGE_MIN_HEIGHT_DP = 250f
 
 fun listenSize(widthDp: Float, heightDp: Float): ListenSize = when {
-    widthDp < LISTEN_WIDE_MIN_DP || heightDp < LISTEN_SHORT_MIN_HEIGHT_DP -> ListenSize.COMPACT
-    heightDp < LISTEN_STACKED_MIN_HEIGHT_DP -> ListenSize.SHORT
-    heightDp < LISTEN_EXPANDED_MIN_HEIGHT_DP -> ListenSize.STANDARD
-    else -> ListenSize.EXPANDED
+    heightDp < LISTEN_TALL_MIN_HEIGHT_DP ->
+        if (widthDp >= LISTEN_BAR_MIN_WIDTH_DP && heightDp >= LISTEN_BAR_MIN_HEIGHT_DP) ListenSize.BAR else ListenSize.MINI
+    widthDp < LISTEN_WIDE_MIN_WIDTH_DP -> ListenSize.SQUARE
+    heightDp < LISTEN_LARGE_MIN_HEIGHT_DP -> ListenSize.WIDE
+    else -> ListenSize.LARGE
 }
 
-/** What a layout draws besides the title and the play button (which every size has). */
+/** What one Listen layout draws, in dp and sp; the Glance code draws exactly this. */
 data class ListenLayout(
-    val showCover: Boolean,
-    /** The author, or the chapter while a book is loaded. */
+    val size: ListenSize,
+    /** The rounded cover's side; 0 for none. */
+    val coverDp: Float,
+    val titleSp: Float,
+    val titleLines: Int,
+    /** The author (Resume) or the chapter (a loaded book) under the title. */
     val showSecondLine: Boolean,
-    /** The progress bar and its percent text. */
+    /** Large, a loaded book: the author and the chapter under the title. */
+    val showAuthorAndChapter: Boolean,
     val showProgress: Boolean,
+    /** "2h 34m left" (Resume) or the percent (a loaded book). */
+    val showMeta: Boolean,
     val showSkips: Boolean,
     val showChapterButtons: Boolean,
-    /** The controls sit in the title's row (the low size) instead of a row of their own. */
-    val controlsBesideTitle: Boolean,
+    val sideButtonDp: Float,
+    val playButtonDp: Float,
+    val horizontalPaddingDp: Float,
+    val verticalPaddingDp: Float,
 )
 
-/**
- * The cover only in [ListenSize.EXPANDED]; buttons only for a loaded book that allows them; compact is one row. The
- * low size puts a loaded book's title and chapter beside its three main buttons (no progress row, no chapter
- * buttons), so nothing is clipped; the Resume layout fits there as it is and draws as the standard one.
- */
-fun listenLayout(size: ListenSize, state: ListenWidgetState): ListenLayout {
-    val controls = state as? ListenWidgetState.Controls
-    val effective = if (size == ListenSize.SHORT && controls == null) ListenSize.STANDARD else size
-    val roomy = effective != ListenSize.COMPACT
-    val oneRow = effective == ListenSize.SHORT
-    val book = state !is ListenWidgetState.Empty
-    return ListenLayout(
-        showCover = effective == ListenSize.EXPANDED && book,
-        showSecondLine = roomy && book,
-        showProgress = roomy && book && !oneRow,
-        showSkips = roomy && controls?.canSkip == true,
-        showChapterButtons = roomy && !oneRow && controls?.canJumpChapters == true,
-        controlsBesideTitle = oneRow,
-    )
-}
-
-/** Sizes in the Listen layout, shared with the Glance code so the height check below measures what is drawn. */
+/** Sizes in the Listen layout (and its height check). */
 object ListenDimens {
-    const val VERTICAL_PADDING_DP = 10f
-    const val TITLE_SP = 14f
-    const val TITLE_EXPANDED_SP = 16f
-    const val SMALL_SP = 12f
+    const val PADDING_DP = 10f
+    const val BAR_VERTICAL_PADDING_DP = 8f
+    const val BAR_COVER_DP = 44f
+    const val SQUARE_COVER_DP = 52f
+    const val WIDE_COVER_DP = 92f
+    const val LARGE_COVER_DP = 112f
+    const val TITLE_SP = 15f
+    const val TITLE_LARGE_SP = 17f
+    const val SECOND_SP = 13f
+    const val META_SP = 12f
+    const val LINE_GAP_DP = 4f
     const val PROGRESS_GAP_DP = 6f
     const val PROGRESS_BAR_DP = 4f
-    const val CONTROLS_GAP_DP = 4f
-    const val RESUME_PLAY_DP = 52f
-    const val COVER_DP = 72f
+    const val BUTTONS_GAP_DP = 6f
+
+    /** The bar keeps at least this much for its title. */
+    const val BAR_TEXT_MIN_DP = 40f
 
     /** A text line's height per sp: Roboto's ascent plus descent with the font padding, rounded up. */
     const val LINE_HEIGHT_PER_SP = 1.33f
 }
 
 /**
+ * The layout for a [widthDp] x [heightDp] widget showing [state]. Back 15 / forward 30 and the chapter buttons appear
+ * only for a loaded book that allows them and only where they fit beside the cover ([listenButtonsRoomDp]).
+ */
+fun listenLayout(widthDp: Float, heightDp: Float, state: ListenWidgetState): ListenLayout {
+    val size = listenSize(widthDp, heightDp)
+    val controls = state as? ListenWidgetState.Controls
+    val book = state !is ListenWidgetState.Empty
+    val side = WidgetDimens.SIDE_BUTTON_DP
+    val base = when (size) {
+        ListenSize.MINI -> ListenLayout(
+            size, coverDp = 0f, titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = false, showAuthorAndChapter = false,
+            showProgress = false, showMeta = false, showSkips = false, showChapterButtons = false, sideButtonDp = side,
+            playButtonDp = (heightDp - 8f).coerceIn(40f, WidgetDimens.PLAY_TARGET_DP), horizontalPaddingDp = 6f, verticalPaddingDp = 0f,
+        )
+        ListenSize.BAR -> ListenLayout(
+            size, coverDp = ListenDimens.BAR_COVER_DP, titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = book,
+            showAuthorAndChapter = false, showProgress = false, showMeta = false, showSkips = false, showChapterButtons = false,
+            sideButtonDp = side, playButtonDp = WidgetDimens.PLAY_TARGET_DP, horizontalPaddingDp = ListenDimens.PADDING_DP,
+            verticalPaddingDp = ListenDimens.BAR_VERTICAL_PADDING_DP,
+        )
+        ListenSize.SQUARE -> ListenLayout(
+            size, coverDp = ListenDimens.SQUARE_COVER_DP, titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = false,
+            showAuthorAndChapter = false, showProgress = false, showMeta = book, showSkips = false, showChapterButtons = false,
+            sideButtonDp = side, playButtonDp = WidgetDimens.PLAY_TARGET_DP, horizontalPaddingDp = ListenDimens.PADDING_DP,
+            verticalPaddingDp = ListenDimens.PADDING_DP,
+        )
+        ListenSize.WIDE -> ListenLayout(
+            size, coverDp = ListenDimens.WIDE_COVER_DP, titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = book,
+            showAuthorAndChapter = false, showProgress = book, showMeta = book, showSkips = false, showChapterButtons = false,
+            sideButtonDp = side, playButtonDp = WidgetDimens.PLAY_TARGET_DP, horizontalPaddingDp = ListenDimens.PADDING_DP,
+            verticalPaddingDp = ListenDimens.PADDING_DP,
+        )
+        ListenSize.LARGE -> ListenLayout(
+            size, coverDp = ListenDimens.LARGE_COVER_DP, titleSp = ListenDimens.TITLE_LARGE_SP, titleLines = 2, showSecondLine = book,
+            showAuthorAndChapter = controls?.chapterTitle != null && controls.author.isNotEmpty(), showProgress = book, showMeta = book,
+            showSkips = false, showChapterButtons = false, sideButtonDp = side, playButtonDp = WidgetDimens.PLAY_TARGET_DP,
+            horizontalPaddingDp = ListenDimens.PADDING_DP, verticalPaddingDp = ListenDimens.PADDING_DP,
+        )
+    }
+    if (!book) return base.copy(coverDp = 0f)
+    if (controls == null || size == ListenSize.MINI || size == ListenSize.SQUARE) return base
+    val room = listenButtonsRoomDp(base, widthDp)
+    val skips = controls.canSkip && base.playButtonDp + 2 * side <= room
+    val chapters = skips && controls.canJumpChapters && size != ListenSize.BAR && base.playButtonDp + 4 * side <= room
+    return base.copy(showSkips = skips, showChapterButtons = chapters)
+}
+
+/** The width the buttons of [layout] take. */
+fun listenButtonsWidthDp(layout: ListenLayout): Float {
+    var width = layout.playButtonDp
+    if (layout.showSkips) width += 2 * layout.sideButtonDp
+    if (layout.showChapterButtons) width += 2 * layout.sideButtonDp
+    return width
+}
+
+/**
+ * The width the buttons may use in a [widthDp] wide widget: the whole row (mini, square, large), the text column
+ * beside the cover (wide) or what the cover and the title leave (bar).
+ */
+fun listenButtonsRoomDp(layout: ListenLayout, widthDp: Float): Float {
+    val inner = widthDp - 2 * layout.horizontalPaddingDp
+    val coverAndGap = if (layout.coverDp > 0f) layout.coverDp + WidgetDimens.GAP_DP else 0f
+    return when (layout.size) {
+        ListenSize.MINI -> inner
+        ListenSize.SQUARE, ListenSize.LARGE -> inner
+        ListenSize.WIDE -> inner - coverAndGap
+        ListenSize.BAR -> inner - coverAndGap - ListenDimens.BAR_TEXT_MIN_DP - ListenDimens.BUTTONS_GAP_DP
+    }
+}
+
+/**
  * The height [layout] needs for [state] at [fontScale], in dp (an estimate on the generous side). Tests check every
- * size's layout fits the lowest height of its size class at font scale 1.3.
+ * size class fits its smallest box at font scale 1.3.
  */
 fun listenContentHeightDp(layout: ListenLayout, state: ListenWidgetState, fontScale: Float): Float {
     fun line(sp: Float) = sp * fontScale * ListenDimens.LINE_HEIGHT_PER_SP
-    val expanded = layout.showCover
-    var text = if (expanded) 2 * line(ListenDimens.TITLE_EXPANDED_SP) else line(ListenDimens.TITLE_SP)
-    if (layout.showSecondLine) {
-        text += line(ListenDimens.SMALL_SP)
-        val authorToo = state is ListenWidgetState.Controls && state.chapterTitle != null && state.author.isNotEmpty()
-        if (expanded && authorToo) text += line(ListenDimens.SMALL_SP)
+    val title = layout.titleLines * line(layout.titleSp)
+    val second = if (layout.showSecondLine) line(ListenDimens.SECOND_SP) * (if (layout.showAuthorAndChapter) 2 else 1) else 0f
+    val progress = if (layout.showProgress) ListenDimens.PROGRESS_GAP_DP + ListenDimens.PROGRESS_BAR_DP else 0f
+    val meta = if (layout.showMeta) line(ListenDimens.META_SP) else 0f
+    val play = layout.playButtonDp
+    val content = when (layout.size) {
+        ListenSize.MINI -> maxOf(play, title)
+        ListenSize.BAR -> maxOf(layout.coverDp, title + second, play)
+        // Cover, title, then the play button with the time left beside it.
+        ListenSize.SQUARE -> layout.coverDp + ListenDimens.PROGRESS_GAP_DP + title + ListenDimens.LINE_GAP_DP + maxOf(play, meta)
+        // Beside the cover: title, second line, progress, time left, then the buttons.
+        ListenSize.WIDE -> maxOf(layout.coverDp, title + second + progress + ListenDimens.LINE_GAP_DP + meta + ListenDimens.BUTTONS_GAP_DP + play)
+        // Cover and text, then the progress with the time left beside it, then the control row.
+        ListenSize.LARGE -> maxOf(layout.coverDp, title + second) + ListenDimens.PROGRESS_GAP_DP +
+            maxOf(ListenDimens.PROGRESS_BAR_DP, meta) + ListenDimens.BUTTONS_GAP_DP + play
     }
-    val playDp = listenControlsMetrics(LISTEN_ROOMY_MIN_DP).playButtonDp // the taller of the two
-    var top = text
-    if (layout.showCover) top = maxOf(top, ListenDimens.COVER_DP)
-    if (state is ListenWidgetState.Resume) top = maxOf(top, ListenDimens.RESUME_PLAY_DP)
-    if (layout.controlsBesideTitle) top = maxOf(top, playDp)
-    var height = 2 * ListenDimens.VERTICAL_PADDING_DP + top
-    if (layout.showProgress) height += ListenDimens.PROGRESS_GAP_DP + maxOf(ListenDimens.PROGRESS_BAR_DP, line(ListenDimens.SMALL_SP))
-    if (state is ListenWidgetState.Controls && !layout.controlsBesideTitle) height += ListenDimens.CONTROLS_GAP_DP + playDp
-    return height
+    if (state is ListenWidgetState.Empty) return 2 * layout.verticalPaddingDp + maxOf(line(ListenDimens.TITLE_SP), 32f)
+    return 2 * layout.verticalPaddingDp + content
 }
-
-/** Button sizes and the side padding of the controls row at a width. */
-data class ListenControlsMetrics(val sideButtonDp: Float, val playButtonDp: Float, val horizontalPaddingDp: Float)
-
-/**
- * Five buttons in a row: from [LISTEN_ROOMY_MIN_DP] every one is 48 dp; narrower (down to [LISTEN_WIDE_MIN_DP]) 40 dp
- * with a 44 dp play button and 8 dp sides, so the row is at most 220 dp and never runs over.
- */
-fun listenControlsMetrics(widthDp: Float): ListenControlsMetrics =
-    if (widthDp >= LISTEN_ROOMY_MIN_DP) ListenControlsMetrics(48f, 48f, 12f) else ListenControlsMetrics(40f, 44f, 8f)
 
 // -- Texts ------------------------------------------------------------------------------------
 
@@ -220,9 +286,16 @@ fun listenSecondLine(state: ListenWidgetState): String? = when (state) {
     is ListenWidgetState.Empty -> null
 }
 
-/** Beside the progress bar: percent and time left to resume (as Continue Listening), the percent while loaded. */
-fun listenProgressText(state: ListenWidgetState): String? = when (state) {
-    is ListenWidgetState.Resume -> "${state.percent}% · ${state.timeLeftText}"
+/** The bar's line under the title: the time left to resume, the chapter (else author) of a loaded book. */
+fun listenBarSecondLine(state: ListenWidgetState): String? = when (state) {
+    is ListenWidgetState.Resume -> state.timeLeftText
+    is ListenWidgetState.Controls -> listenSecondLine(state)
+    is ListenWidgetState.Empty -> null
+}
+
+/** Under the progress bar or beside the play button: the time left to resume, the percent while loaded. */
+fun listenMetaText(state: ListenWidgetState): String? = when (state) {
+    is ListenWidgetState.Resume -> state.timeLeftText
     is ListenWidgetState.Controls -> "${state.percent}%"
     is ListenWidgetState.Empty -> null
 }
@@ -237,12 +310,16 @@ fun listenPlayDescription(state: ListenWidgetState): String = when (state) {
 // -- Cover ------------------------------------------------------------------------------------
 
 /**
- * The longest side of the widget's cover bitmap. Drawn at 72 dp (216 px on a 3x screen), so 256 px is sharp enough.
- * Decoded as RGB_565 (covers are JPEGs, no alpha), a 256 x 256 cover is 128 KiB; the two expanded layouts (220 and
- * 300 dp wide) each carry it, 256 KiB per placed widget: far under the RemoteViews bitmap limit (screen width x
- * height x 4 x 1.5 bytes, about 15 MB on a 1080 x 2400 phone) and the 1 MB binder transaction.
+ * The longest side of a widget cover bitmap. Drawn at up to 112 dp (336 px on a 3x screen; 256 px is sharp enough at
+ * the usual sizes). Decoded as RGB_565 (covers are JPEGs, no alpha), a 256 x 256 cover is 128 KiB. The Listen widget's
+ * four cover layouts ([LISTEN_COVER_LAYOUTS]) hold the same bitmap: Android 12+ sends a size map whose views share one
+ * bitmap cache, so it travels once (128 KiB); counted as four copies it is 512 KiB, still under the 1 MB binder
+ * transaction and far under the RemoteViews bitmap limit (screen width x height x 4 x 1.5 bytes, about 15 MB).
  */
 const val WIDGET_COVER_MAX_SIDE = 256
+
+/** The Listen layouts that draw the cover: bar, square, wide and large (not the mini bar). */
+const val LISTEN_COVER_LAYOUTS = 4
 
 /** Bytes of an RGB_565 bitmap of [width] x [height]. */
 fun widgetCoverBytes(width: Int, height: Int): Long = width.toLong() * height * 2

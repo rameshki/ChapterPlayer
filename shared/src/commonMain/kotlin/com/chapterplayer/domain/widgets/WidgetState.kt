@@ -26,6 +26,8 @@ sealed interface NowPlayingWidgetState {
         val isPlaying: Boolean,
         /** Back 15 / forward 30 make sense: the book's length is known. */
         val canSkip: Boolean,
+        /** The loaded book (its cover). */
+        val bookId: String,
     ) : NowPlayingWidgetState
 }
 
@@ -43,6 +45,7 @@ fun nowPlayingWidgetState(state: PlaybackState, book: AudioBook?): NowPlayingWid
         chapterTitle = chapter?.title,
         isPlaying = playPauseCommand(state) == WidgetCommand.PAUSE,
         canSkip = canSkip(state),
+        bookId = bookId,
     )
 }
 

@@ -2,6 +2,7 @@ package com.chapterplayer.ui.widgets
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,16 +20,12 @@ import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
-import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
-import androidx.glance.background
 import androidx.glance.layout.Alignment
-import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.RowScope
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.padding
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
@@ -37,10 +34,14 @@ import androidx.glance.text.TextStyle
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.data.widgets.WidgetActions
+import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
+import com.chapterplayer.domain.widgets.NOW_PLAYING_COVER_MIN_DP
 import com.chapterplayer.domain.widgets.NOW_PLAYING_WIDE_MIN_DP
 import com.chapterplayer.domain.widgets.NowPlayingWidgetState
+import com.chapterplayer.domain.widgets.WidgetDimens
 import com.chapterplayer.domain.widgets.nowPlayingIsWide
+import com.chapterplayer.domain.widgets.nowPlayingShowsCover
 import com.chapterplayer.shared.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -52,29 +53,36 @@ import org.koin.core.component.get
 
 /**
  * The Now Playing home screen widget. Narrow it is play/pause only; from [NOW_PLAYING_WIDE_MIN_DP] wide it shows
- * the title and back 15 / play-pause / forward 30. Tapping the body opens the app on the player. The buttons act
+ * the title and back 15 / play-pause / forward 30, from [NOW_PLAYING_COVER_MIN_DP] with the book's cover first (the
+ * shared look of WidgetUi.kt: rounded card, round play button). Tapping the body opens the app on the player. The buttons act
  * on the loaded book through the app's one controller (see [WidgetActions]); with nothing loaded the widget only
  * opens the app. [com.chapterplayer.data.widgets.WidgetRefresher] redraws it when its state changes.
  */
 class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
 
-    override val sizeMode = SizeMode.Responsive(setOf(NARROW, WIDE))
+    override val sizeMode = SizeMode.Responsive(setOf(NARROW, WIDE, WIDE_COVER))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val states = get<WidgetStates>()
         val settings = get<AppSettings>()
+        val covers = get<WidgetCoverCache>()
+        // Placed, resized or updated by the system: ask for the loaded book's cover if it is missing.
+        get<WidgetRefresher>().requestCover()
         val initial = states.nowPlaying.first()
         val initialMode = themeOrSystem(settings.themeMode)
         provideContent {
             val state by states.nowPlaying.collectAsState(initial)
             val mode by settings.themeMode.collectAsState(initialMode)
-            NowPlayingContent(context, state, widgetColors(mode))
+            val coverVersion by covers.version.collectAsState()
+            val cover = if (coverVersion >= 0) (state as? NowPlayingWidgetState.Book)?.bookId?.let(covers::cached) else null
+            NowPlayingContent(context, state, cover, widgetColors(mode))
         }
     }
 
     companion object {
         val NARROW = DpSize(40.dp, 40.dp)
         val WIDE = DpSize(NOW_PLAYING_WIDE_MIN_DP.dp, 40.dp)
+        val WIDE_COVER = DpSize(NOW_PLAYING_COVER_MIN_DP.dp, 40.dp)
     }
 }
 
@@ -92,21 +100,22 @@ internal suspend fun themeOrSystem(mode: Flow<ThemeMode>): ThemeMode = try {
 }
 
 @Composable
-private fun NowPlayingContent(context: Context, state: NowPlayingWidgetState, colors: WidgetColors) {
-    val wide = nowPlayingIsWide(LocalSize.current.width.value)
+private fun NowPlayingContent(context: Context, state: NowPlayingWidgetState, cover: Bitmap?, colors: WidgetColors) {
+    val width = LocalSize.current.width.value
+    val wide = nowPlayingIsWide(width)
     val open = openAppIntent(context, openPlayer = state is NowPlayingWidgetState.Book)
-    var body = GlanceModifier.fillMaxSize().background(colors.background).cornerRadius(16.dp)
+    var body = cardModifier(colors)
     if (open != null) body = body.clickable(actionStartActivity(open))
     Row(
-        modifier = body.padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = body.padding(horizontal = WidgetDimens.ROW_PADDING_DP.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally,
     ) {
         when (state) {
             NowPlayingWidgetState.Idle -> {
-                WidgetCoverPlaceholder(colors.textSecondary)
+                WidgetCover(null, 32.dp, colors)
                 if (wide) {
-                    Spacer(GlanceModifier.width(8.dp))
+                    Spacer(GlanceModifier.width(WidgetDimens.GAP_DP.dp))
                     Text(
                         text = "Nothing playing",
                         style = TextStyle(color = colors.textSecondary, fontSize = 14.sp),
@@ -114,17 +123,21 @@ private fun NowPlayingContent(context: Context, state: NowPlayingWidgetState, co
                     )
                 }
             }
-            is NowPlayingWidgetState.Book -> if (wide) WideBook(state, colors) else PlayPause(state, colors)
+            is NowPlayingWidgetState.Book -> if (wide) WideBook(state, cover, nowPlayingShowsCover(width), colors) else PlayPause(state, colors)
         }
     }
 }
 
 @Composable
-private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, colors: WidgetColors) {
+private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, cover: Bitmap?, showCover: Boolean, colors: WidgetColors) {
+    if (showCover) {
+        WidgetCover(cover, WidgetDimens.ROW_COVER_DP.dp, colors)
+        Spacer(GlanceModifier.width(WidgetDimens.GAP_DP.dp))
+    }
     Column(modifier = GlanceModifier.defaultWeight().padding(end = 4.dp)) {
         Text(
             text = state.title,
-            style = TextStyle(color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium),
+            style = TextStyle(color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold),
             maxLines = 1,
         )
         val second = state.chapterTitle ?: state.author
@@ -133,25 +146,23 @@ private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, colors: WidgetC
         }
     }
     if (state.canSkip) {
-        WidgetIconButton(R.drawable.ic_widget_back, "Back 15 seconds", colors.accent, actionRunCallback<SkipBackAction>(), label = "15")
+        WidgetIconButton(R.drawable.ic_widget_back, "Back 15 seconds", colors.icon, actionRunCallback<SkipBackAction>(), label = "15")
     }
     PlayPause(state, colors)
     if (state.canSkip) {
-        WidgetIconButton(R.drawable.ic_widget_forward, "Forward 30 seconds", colors.accent, actionRunCallback<SkipForwardAction>(), label = "30")
+        WidgetIconButton(R.drawable.ic_widget_forward, "Forward 30 seconds", colors.icon, actionRunCallback<SkipForwardAction>(), label = "30")
     }
 }
 
 @Composable
 private fun PlayPause(state: NowPlayingWidgetState.Book, colors: WidgetColors) {
-    Box(contentAlignment = Alignment.Center) {
-        WidgetIconButton(
-            icon = if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
-            description = if (state.isPlaying) "Pause" else "Play",
-            tint = colors.accent,
-            onClick = actionRunCallback<PlayPauseAction>(),
-            size = 44.dp,
-        )
-    }
+    WidgetPlayButton(
+        pause = state.isPlaying,
+        description = if (state.isPlaying) "Pause" else "Play",
+        onClick = actionRunCallback<PlayPauseAction>(),
+        colors = colors,
+        target = WidgetDimens.ROW_PLAY_DP.dp,
+    )
 }
 
 /**

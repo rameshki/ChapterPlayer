@@ -141,85 +141,118 @@ class ListenWidgetStateTest {
 
     // -- Sizes ---------------------------------------------------------------------------------
 
+    private val controls = ListenWidgetState.Controls("a", "T", "A", "C", 10, isPlaying = true, canSkip = true, canJumpChapters = true)
+    private val resume = ListenWidgetState.Resume("a", "T", "A", 25, "1 h left")
+
+    /** Each size class's smallest box (the Glance buckets) and a few wider or taller ones that land in it. */
+    private val boxes = mapOf(
+        ListenSize.MINI to listOf(110f to 40f, 200f to 60f, 240f to 159f),
+        ListenSize.BAR to listOf(LISTEN_BAR_MIN_WIDTH_DP to LISTEN_BAR_MIN_HEIGHT_DP, 276f to 102f, 360f to 140f),
+        ListenSize.SQUARE to listOf(LISTEN_SQUARE_MIN_WIDTH_DP to LISTEN_TALL_MIN_HEIGHT_DP, 130f to 220f, 203f to 337f),
+        ListenSize.WIDE to listOf(LISTEN_WIDE_MIN_WIDTH_DP to LISTEN_TALL_MIN_HEIGHT_DP, 276f to 220f, 360f to 240f),
+        ListenSize.LARGE to listOf(LISTEN_WIDE_MIN_WIDTH_DP to LISTEN_LARGE_MIN_HEIGHT_DP, 276f to 337f, 360f to 455f),
+    )
+
     @Test
     fun sizeClasses() {
-        assertEquals(ListenSize.COMPACT, listenSize(110f, 40f))
-        assertEquals(ListenSize.COMPACT, listenSize(180f, 160f)) // two cells wide is one row whatever the height
-        assertEquals(ListenSize.COMPACT, listenSize(300f, 60f)) // one cell tall
-        assertEquals(ListenSize.SHORT, listenSize(LISTEN_WIDE_MIN_DP, LISTEN_SHORT_MIN_HEIGHT_DP))
-        assertEquals(ListenSize.SHORT, listenSize(320f, 130f)) // a 4x2 held sideways, or a low two-row launcher
-        assertEquals(ListenSize.STANDARD, listenSize(LISTEN_WIDE_MIN_DP, LISTEN_STACKED_MIN_HEIGHT_DP))
-        assertEquals(ListenSize.STANDARD, listenSize(320f, 220f))
-        assertEquals(ListenSize.EXPANDED, listenSize(LISTEN_WIDE_MIN_DP, LISTEN_EXPANDED_MIN_HEIGHT_DP))
-        assertEquals(ListenSize.EXPANDED, listenSize(320f, 330f))
+        boxes.forEach { (size, list) -> list.forEach { (w, h) -> assertEquals(size, listenSize(w, h), "$w x $h") } }
+        // A 4x1 held sideways (about 51 dp) is too low for the bar with its cover: the mini bar.
+        assertEquals(ListenSize.MINI, listenSize(554f, 51f))
+        // Two cells wide is never the bar: there is no room for the cover, the title and the buttons.
+        assertEquals(ListenSize.MINI, listenSize(130f, 102f))
+    }
+
+    @Test
+    fun theCoverIsInEverySizeButTheMiniBar() {
+        for ((size, list) in boxes) for ((w, h) in list) for (state in listOf(controls, resume)) {
+            val layout = listenLayout(w, h, state)
+            if (size == ListenSize.MINI) assertEquals(0f, layout.coverDp) else assertTrue(layout.coverDp > 0f, "$size cover")
+        }
+        // Bigger sizes, bigger covers.
+        val covers = listOf(ListenSize.BAR, ListenSize.SQUARE, ListenSize.WIDE, ListenSize.LARGE).map { size ->
+            val (w, h) = boxes.getValue(size).first()
+            listenLayout(w, h, resume).coverDp
+        }
+        assertEquals(covers.sorted(), covers)
+        assertFalse(listenLayout(110f, 40f, ListenWidgetState.Empty(everPlayed = true)).coverDp > 0f)
     }
 
     @Test
     fun whatEachSizeShows() {
-        val controls = ListenWidgetState.Controls("a", "T", "A", "C", 10, isPlaying = true, canSkip = true, canJumpChapters = true)
-        assertEquals(
-            ListenLayout(showCover = false, showSecondLine = false, showProgress = false, showSkips = false, showChapterButtons = false, controlsBesideTitle = false),
-            listenLayout(ListenSize.COMPACT, controls),
-        )
-        // Low: one row, the title and chapter beside back 15 / play-pause / forward 30; no progress row, no chapter buttons.
-        assertEquals(
-            ListenLayout(showCover = false, showSecondLine = true, showProgress = false, showSkips = true, showChapterButtons = false, controlsBesideTitle = true),
-            listenLayout(ListenSize.SHORT, controls),
-        )
-        assertEquals(
-            ListenLayout(showCover = false, showSecondLine = true, showProgress = true, showSkips = true, showChapterButtons = true, controlsBesideTitle = false),
-            listenLayout(ListenSize.STANDARD, controls),
-        )
-        assertEquals(
-            ListenLayout(showCover = true, showSecondLine = true, showProgress = true, showSkips = true, showChapterButtons = true, controlsBesideTitle = false),
-            listenLayout(ListenSize.EXPANDED, controls),
-        )
+        val bar = listenLayout(LISTEN_BAR_MIN_WIDTH_DP, LISTEN_BAR_MIN_HEIGHT_DP, controls)
+        assertTrue(bar.showSkips) // play/pause with back 15 and forward 30
+        assertFalse(bar.showChapterButtons)
+        assertFalse(bar.showProgress)
+        assertTrue(bar.showSecondLine)
+
+        val square = listenLayout(LISTEN_SQUARE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP, resume)
+        assertTrue(square.showMeta) // "1 h left" beside the play button
+        assertFalse(square.showProgress)
+        assertFalse(square.showSkips)
+
+        val wide = listenLayout(LISTEN_WIDE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP, resume)
+        assertTrue(wide.showSecondLine && wide.showProgress && wide.showMeta)
+        assertFalse(wide.showSkips) // Resume: Play only
+        val wideControls = listenLayout(LISTEN_WIDE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP, controls)
+        assertTrue(wideControls.showSkips)
+        assertFalse(wideControls.showChapterButtons) // no room beside the cover at 250 dp
+        assertTrue(listenLayout(380f, 200f, controls).showChapterButtons) // they fit when wider
+
+        val large = listenLayout(LISTEN_WIDE_MIN_WIDTH_DP, LISTEN_LARGE_MIN_HEIGHT_DP, controls)
+        assertTrue(large.showSkips && large.showChapterButtons && large.showProgress && large.showAuthorAndChapter)
+        assertEquals(2, large.titleLines)
+
+        val mini = listenLayout(110f, 40f, controls)
+        assertFalse(mini.showSkips || mini.showSecondLine || mini.showProgress)
 
         // No chapters, unknown length: those buttons are hidden in every size.
         val bare = controls.copy(canSkip = false, canJumpChapters = false)
-        ListenSize.entries.forEach { size ->
-            assertFalse(listenLayout(size, bare).showSkips)
-            assertFalse(listenLayout(size, bare).showChapterButtons)
+        for ((_, list) in boxes) for ((w, h) in list) {
+            assertFalse(listenLayout(w, h, bare).showSkips)
+            assertFalse(listenLayout(w, h, bare).showChapterButtons)
         }
-
-        // Resume: the low size draws as the standard one (it fits); the cover only when expanded; Empty: no cover.
-        val resume = ListenWidgetState.Resume("a", "T", "A", 25, "1 h left")
-        assertEquals(listenLayout(ListenSize.STANDARD, resume), listenLayout(ListenSize.SHORT, resume))
-        assertTrue(listenLayout(ListenSize.SHORT, resume).showProgress)
-        assertTrue(listenLayout(ListenSize.EXPANDED, resume).showCover)
-        assertFalse(listenLayout(ListenSize.STANDARD, resume).showCover)
-        assertFalse(listenLayout(ListenSize.EXPANDED, resume).showSkips)
-        assertFalse(listenLayout(ListenSize.EXPANDED, ListenWidgetState.Empty(everPlayed = true)).showCover)
     }
 
     @Test
-    fun everyLayoutFitsItsLowestHeightAtLargeText() {
-        val controls = ListenWidgetState.Controls("a", "T", "A", "C", 10, isPlaying = true, canSkip = true, canJumpChapters = true)
-        val resume = ListenWidgetState.Resume("a", "T", "A", 25, "1 h left")
-        val lowest = mapOf(
-            ListenSize.SHORT to LISTEN_SHORT_MIN_HEIGHT_DP,
-            ListenSize.STANDARD to LISTEN_STACKED_MIN_HEIGHT_DP,
-            ListenSize.EXPANDED to LISTEN_EXPANDED_MIN_HEIGHT_DP,
-        )
-        for (fontScale in listOf(1.0f, 1.3f)) for ((size, height) in lowest) for (state in listOf(controls, resume)) {
-            val needed = listenContentHeightDp(listenLayout(size, state), state, fontScale)
-            assertTrue(needed <= height, "$size ${state::class.simpleName} at font scale $fontScale needs $needed dp of $height")
+    fun everyLayoutFitsItsBoxAtLargeText() {
+        for (fontScale in listOf(1.0f, 1.3f)) for ((size, list) in boxes) for ((w, h) in list) for (state in listOf(controls, resume)) {
+            val layout = listenLayout(w, h, state)
+            val needed = listenContentHeightDp(layout, state, fontScale)
+            assertTrue(needed <= h, "$size ${state::class.simpleName} $w x $h at font scale $fontScale needs $needed dp")
         }
-        // The old standard layout (stacked controls) did not fit 110 dp: that is why the low size has one row.
-        val stackedAtLow = listenContentHeightDp(listenLayout(ListenSize.STANDARD, controls), controls, 1.3f)
-        assertTrue(stackedAtLow > LISTEN_SHORT_MIN_HEIGHT_DP)
     }
 
     @Test
-    fun theControlsRowFitsEveryWidth() {
-        for (width in listOf(LISTEN_WIDE_MIN_DP, 232f, LISTEN_ROOMY_MIN_DP, 360f)) {
-            val m = listenControlsMetrics(width)
-            val row = 4 * m.sideButtonDp + m.playButtonDp + 2 * m.horizontalPaddingDp
-            assertTrue(row <= width, "five buttons at $width dp need $row dp")
-            assertTrue(m.sideButtonDp >= 40f && m.playButtonDp >= 44f, "touch targets at $width dp")
+    fun theButtonsFitTheirRowAndKeepTheirTargets() {
+        for ((size, list) in boxes) for ((w, h) in list) for (state in listOf(controls, resume)) {
+            val layout = listenLayout(w, h, state)
+            val row = listenButtonsWidthDp(layout)
+            val room = listenButtonsRoomDp(layout, w)
+            assertTrue(row <= room, "$size $w x $h buttons need $row dp of $room")
+            assertTrue(layout.playButtonDp >= 40f && (!layout.showSkips || layout.sideButtonDp >= 40f), "$size touch targets")
         }
-        // Wide enough: every button is 48 dp.
-        assertEquals(ListenControlsMetrics(sideButtonDp = 48f, playButtonDp = 48f, horizontalPaddingDp = 12f), listenControlsMetrics(LISTEN_ROOMY_MIN_DP))
+        // Where the widget is tall enough, the play button is a full 48 dp target.
+        assertEquals(48f, listenLayout(LISTEN_WIDE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP, controls).playButtonDp)
+        assertEquals(48f, listenLayout(LISTEN_SQUARE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP, controls).playButtonDp)
+    }
+
+    // -- Now Playing and Continue Listening ----------------------------------------------------
+
+    @Test
+    fun nowPlayingShowsItsCoverOnlyWhereItFits() {
+        assertFalse(nowPlayingShowsCover(180f))
+        assertTrue(nowPlayingShowsCover(NOW_PLAYING_COVER_MIN_DP))
+        for (width in listOf(NOW_PLAYING_WIDE_MIN_DP, 220f, NOW_PLAYING_COVER_MIN_DP, 320f)) {
+            val cover = if (nowPlayingShowsCover(width)) WidgetDimens.ROW_COVER_DP + WidgetDimens.GAP_DP else 0f
+            val used = 2 * WidgetDimens.ROW_PADDING_DP + cover + 2 * WidgetDimens.SIDE_BUTTON_DP + WidgetDimens.ROW_PLAY_DP
+            assertTrue(width - used >= WidgetDimens.ROW_TEXT_MIN_DP, "Now Playing at $width dp leaves ${width - used} dp for the title")
+        }
+    }
+
+    @Test
+    fun continueListeningFitsItsSmallestSize() {
+        val used = 2 * WidgetDimens.ROW_PADDING_DP + WidgetDimens.ROW_COVER_DP + WidgetDimens.GAP_DP + WidgetDimens.ROW_PLAY_DP
+        assertTrue(CONTINUE_MIN_WIDTH_DP - used >= WidgetDimens.ROW_TEXT_MIN_DP)
     }
 
     // -- Texts ---------------------------------------------------------------------------------
@@ -227,17 +260,20 @@ class ListenWidgetStateTest {
     @Test
     fun texts() {
         val resume = ListenWidgetState.Resume("a", "Dune", "Frank Herbert", 25, "6 h left")
-        assertEquals("25% · 6 h left", listenProgressText(resume))
+        assertEquals("6 h left", listenMetaText(resume))
         assertEquals("Play Dune", listenPlayDescription(resume))
 
         val controls = ListenWidgetState.Controls("a", "Dune", "Frank Herbert", "Chapter 3", 40, isPlaying = true, canSkip = true, canJumpChapters = true)
         assertEquals("Chapter 3", listenSecondLine(controls))
         assertEquals("Frank Herbert", listenSecondLine(controls.copy(chapterTitle = null)))
-        assertEquals("40%", listenProgressText(controls))
+        assertEquals("40%", listenMetaText(controls))
         assertEquals("Pause", listenPlayDescription(controls))
         assertEquals("Play", listenPlayDescription(controls.copy(isPlaying = false)))
         assertEquals("Frank Herbert", listenSecondLine(resume))
         assertNull(listenSecondLine(ListenWidgetState.Empty(everPlayed = false)))
+        assertNull(listenMetaText(ListenWidgetState.Empty(everPlayed = false)))
+        assertEquals("6 h left", listenBarSecondLine(resume))
+        assertEquals("Chapter 3", listenBarSecondLine(controls))
     }
 
     @Test
@@ -268,7 +304,8 @@ class ListenWidgetStateTest {
 
     @Test
     fun theWidgetCoverIsSmall() {
-        // 256 x 256 RGB_565 is 128 KiB; two layouts carry it (expanded and expanded wide): 256 KiB per placed widget.
+        // 256 x 256 RGB_565 is 128 KiB; even counted once per cover layout it stays at 512 KiB per placed widget.
+        assertTrue(widgetCoverBytes(256, 256) * LISTEN_COVER_LAYOUTS <= 512L * 1024)
         assertEquals(256, WIDGET_COVER_MAX_SIDE)
         assertEquals(131_072L, widgetCoverBytes(256, 256))
         assertEquals(256L * 170 * 2, widgetCoverBytes(256, 170))
