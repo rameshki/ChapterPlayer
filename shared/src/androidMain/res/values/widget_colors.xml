@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The widget picker previews' colours by day (the widgets themselves set theirs in code). Colours: WidgetPalette (ui/theme), checked by WidgetPaletteContrastTest. -->
 <resources>
-    <color name="widget_text">#FF111114</color>
-    <color name="widget_text_secondary">#FF55555C</color>
-    <color name="widget_icon">#FF1C1C1E</color>
-    <color name="widget_play_fill">#FF1C1C1E</color>
+    <color name="widget_text">#FF1D1B17</color>
+    <color name="widget_text_secondary">#FF5F5A50</color>
+    <color name="widget_icon">#FF1D1B17</color>
+    <color name="widget_play_fill">#FF8A5A00</color>
     <color name="widget_play_glyph">#FFFFFFFF</color>
-    <color name="widget_progress">#FF1C1C1E</color>
-    <color name="widget_track">#FFC6C6CC</color>
+    <color name="widget_progress">#FF8A5A00</color>
+    <color name="widget_track">#FFDDD8CC</color>
 </resources>

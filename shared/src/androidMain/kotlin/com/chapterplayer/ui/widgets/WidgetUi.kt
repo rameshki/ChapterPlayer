@@ -40,8 +40,9 @@ import com.chapterplayer.ui.theme.WidgetLightPalette
 import com.chapterplayer.ui.theme.WidgetPalette
 
 /**
- * The widgets' shared look (ui/theme/WidgetPalette, domain/widgets/WidgetLook): a rounded card with a vertical
- * gradient, white text and a round white play button in the dark theme, reversed in the light one. They follow the
+ * The widgets' shared look (ui/theme/WidgetPalette, domain/widgets/WidgetLook): the app's midnight theme, a rounded
+ * navy card with a vertical gradient, the app's text colours and a round amber play button (warm paper and the darker
+ * amber in the light theme). They follow the
  * app's theme setting; "follow system" lets the launcher pick day or night without a redraw.
  */
 internal class WidgetColors(
@@ -180,7 +181,7 @@ internal fun WidgetCover(cover: Bitmap?, size: Dp, colors: WidgetColors) {
     }
 }
 
-/** The thin progress bar (white on grey in the dark theme). Before Android 12 Glance ignores the colours (system tint). */
+/** The thin progress bar (amber on a dim navy track in the dark theme). Before Android 12 Glance ignores the colours (system tint). */
 @Composable
 internal fun WidgetProgressBar(percent: Int, colors: WidgetColors, modifier: GlanceModifier) {
     LinearProgressIndicator(

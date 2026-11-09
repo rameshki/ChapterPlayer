@@ -31,11 +31,51 @@ class WidgetPaletteContrastTest {
     @Test fun `the dark widget look is readable`() = check("dark", WidgetDarkPalette)
     @Test fun `the light widget look is readable`() = check("light", WidgetLightPalette)
 
-    @Test fun `the dark look is white on charcoal and the light one reverses it`() {
-        assertEquals(Color.White, WidgetDarkPalette.textPrimary)
-        assertEquals(Color.White, WidgetDarkPalette.playFill)
-        assertEquals(Color.White, WidgetLightPalette.playGlyph)
-        assertTrue(WidgetDarkPalette.cardTop.luminance() > WidgetDarkPalette.cardBottom.luminance(), "lighter at the top")
+    /** The widgets wear the app's midnight theme: the palette's own colours, nothing unrelated. */
+    @Test fun `the dark look is the app's navy and amber`() {
+        val d = WidgetDarkPalette
+        assertEquals(DarkPalette.surfaceSecondary, d.cardTop)
+        assertEquals(DarkPalette.textPrimary, d.textPrimary)
+        assertEquals(DarkPalette.textSecondary, d.textSecondary)
+        assertEquals(DarkPalette.textPrimary, d.icon) // light side buttons
+        assertEquals(DarkPalette.amber, d.playFill)
+        assertEquals(DarkPalette.onAmber, d.playGlyph) // a dark glyph on the amber circle
+        assertEquals(DarkPalette.amber, d.progress)
+        // The deeper navy lies between surfaceElevated and the background, channel by channel, and is bluest.
+        assertBetween(d.cardBottom, DarkPalette.surfaceElevated, DarkPalette.background)
+        assertTrue(d.cardBottom.blue > d.cardBottom.red, "the bottom stays navy")
+        // The track is a dim navy between the card and the secondary text.
+        assertBetween(d.track, DarkPalette.surfaceSecondary, DarkPalette.textSecondary)
+        assertTrue(d.cardTop.luminance() > d.cardBottom.luminance(), "lighter at the top")
+    }
+
+    @Test fun `the light look is the app's warm paper with the dark amber`() {
+        val l = WidgetLightPalette
+        assertEquals(LightPalette.surfaceElevated, l.cardTop)
+        assertEquals(LightPalette.surfaceSecondary, l.cardBottom)
+        assertEquals(LightPalette.textPrimary, l.textPrimary)
+        assertEquals(LightPalette.textSecondary, l.textSecondary)
+        assertEquals(LightPalette.amber, l.playFill)
+        assertEquals(Color.White, l.playGlyph)
+        assertEquals(LightPalette.amber, l.progress)
+    }
+
+    private fun assertBetween(c: Color, a: Color, b: Color) {
+        fun inRange(v: Float, x: Float, y: Float) = v >= minOf(x, y) - 0.002f && v <= maxOf(x, y) + 0.002f
+        assertTrue(inRange(c.red, a.red, b.red) && inRange(c.green, a.green, b.green) && inRange(c.blue, a.blue, b.blue), "$c between $a and $b")
+    }
+
+    /** The pre-Android 12 picker images draw the dark look with the palette's colours (and the synthetic cover's). */
+    @Test fun `the old picker images use the dark palette`() {
+        fun hex(c: Color) = "#%08X".format(c.toArgb())
+        val d = WidgetDarkPalette
+        val allowed = setOf(d.cardTop, d.textPrimary, d.textSecondary, d.playFill, d.playGlyph, d.progress, d.track).map(::hex).toSet() +
+            setOf("#FF2F4A6B", "#FFD9A441", "#FFF2E6C9") // the synthetic cover
+        for (name in listOf("widget_preview_listen", "widget_preview_now_playing", "widget_preview_continue")) {
+            val xml = File("src/androidMain/res/drawable/$name.xml").readText()
+            val used = Regex("android:fillColor=\"(#[0-9A-Fa-f]{8})\"").findAll(xml).map { it.groupValues[1].uppercase() }.toSet()
+            assertTrue(used.isNotEmpty() && allowed.containsAll(used), "$name uses ${used - allowed}")
+        }
     }
 
     /** The gradient drawables carry the palette's card colours (resources cannot read Kotlin constants). */

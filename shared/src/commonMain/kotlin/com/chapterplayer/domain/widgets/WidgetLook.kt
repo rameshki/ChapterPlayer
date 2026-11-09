@@ -3,8 +3,8 @@ package com.chapterplayer.domain.widgets
 import com.chapterplayer.data.settings.ThemeMode
 
 /*
- * The look the three home screen widgets share (a design reference, not code: a rounded charcoal card, a rounded cover,
- * white text and a round white play button; the light theme reverses it). Sizes here, colours in ui/theme/WidgetPalette.
+ * The look the three home screen widgets share (the layout follows a design reference, not its code: a rounded card, a
+ * rounded cover and a round play button; the colours are the app's midnight theme). Sizes here, colours in ui/theme/WidgetPalette.
  */
 
 /** Sizes every widget uses. */
