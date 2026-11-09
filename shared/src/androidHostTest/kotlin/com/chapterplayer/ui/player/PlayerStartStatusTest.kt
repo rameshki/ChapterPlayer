@@ -4,6 +4,10 @@ import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.domain.playback.NEEDS_CONNECTION_TO_PLAY_TEXT
 import com.chapterplayer.domain.playback.PlayerEmptyView
+import com.chapterplayer.domain.playback.START_FAILURE_SHOWN_MS
+import com.chapterplayer.domain.playback.StartStatus
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlin.test.assertTrue
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeConnectivity
@@ -87,6 +91,54 @@ class PlayerStartStatusTest {
         vm.dismissStartFailure()
         assertEquals(PlayerEmptyView.LEAVE, state().emptyView)
         assertNull(state().startError)
+    }
+
+    @Test
+    fun aFailureExpiresAfterItsTimeSoAnOpenPlayerCloses() = runTest {
+        starter.clock = { testScheduler.currentTime }
+        connectivity.online.value = false
+        val state = ui()
+        starter.start(book)
+        assertEquals(PlayerEmptyView.FAILED, state().emptyView)
+        advanceTimeBy(START_FAILURE_SHOWN_MS - 1)
+        runCurrent()
+        assertEquals(PlayerEmptyView.FAILED, state().emptyView)
+        advanceTimeBy(2)
+        runCurrent()
+        assertEquals(PlayerEmptyView.LEAVE, state().emptyView)
+    }
+
+    @Test
+    fun aFailureFromBeforeThePlayerWasWatchedIsNeverShown() = runTest {
+        // A widget or the car failed to start another book in the background; later the player is opened.
+        connectivity.online.value = false
+        starter.start(testBook("other", title = "Other").copy(durationMs = 100_000L))
+        val state = ui()
+        assertEquals(PlayerEmptyView.LEAVE, state().emptyView)
+        assertNull(state().startError)
+    }
+
+    @Test
+    fun aSuccessfulStartClearsAFailure() = runTest {
+        connectivity.online.value = false
+        val state = ui()
+        starter.start(book)
+        assertEquals(PlayerEmptyView.FAILED, state().emptyView)
+        connectivity.online.value = true
+        starter.start(book)
+        assertEquals(PlayerEmptyView.NONE, state().emptyView)
+    }
+
+    @Test
+    fun dismissingForgetsOnlyTheFailureThatWasShown() {
+        connectivity.online.value = false
+        kotlinx.coroutines.runBlocking { starter.start(book) }
+        val first = starter.status.value as StartStatus.Failed
+        kotlinx.coroutines.runBlocking { starter.start(book) }
+        starter.dismissFailure(first.attempt) // an old view going away
+        assertTrue(starter.status.value is StartStatus.Failed) // the newer failure stays
+        starter.dismissFailure((starter.status.value as StartStatus.Failed).attempt)
+        assertEquals(StartStatus.Idle, starter.status.value)
     }
 
     @Test

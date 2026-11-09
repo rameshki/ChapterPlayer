@@ -105,11 +105,15 @@ class WidgetRefresher(
         }
     }
 
-    @OptIn(FlowPreview::class)
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     fun start() {
         if (started) return
         started = true
-        scope.launch { sharedNowPlaying.collect { safely { host.redrawNowPlaying() } } }
+        // Now Playing (and its offer, which needs the merged library) only while some widget is placed (unknown counts).
+        scope.launch {
+            anyPlaced.flatMapLatest { placed -> if (placed == false) emptyFlow() else sharedNowPlaying }
+                .collect { safely { host.redrawNowPlaying() } }
+        }
         scope.launch { sharedContinue.debounce(continueQuietMs).collect { safely { host.redrawContinueListening() } } }
         scope.launch {
             var placed = false

@@ -30,7 +30,9 @@ import com.chapterplayer.domain.playback.locate
 import com.chapterplayer.domain.playback.seekByTarget
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.di.blankRefusedPlexToken
-import com.chapterplayer.ui.widgets.HeadlessStarts
+import com.chapterplayer.domain.widgets.ForegroundRefusalAction
+import com.chapterplayer.domain.widgets.foregroundRefusalAction
+import com.chapterplayer.ui.widgets.PlaybackNotices
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -124,10 +126,15 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         val covers = get<CoverBytesLoader>()
         builder.setBitmapLoader(CoverArtworkBitmapLoader(coverAuthority(packageName), covers::load, scope))
         // Android 12+ may refuse the foreground start when the app is in the background (Media3 catches it and tells us):
-        // right after a widget's Play the app opens so the person can carry on; otherwise nothing (see WidgetPlayAction).
+        // a book playing without its foreground service has no notification and can be stopped at any moment, so it is
+        // paused and a notification "Tap to keep listening" opens the player (a legal way in; an activity started from
+        // the background would be blocked). See WidgetPlayAction.
         setListener(object : MediaSessionService.Listener {
             override fun onForegroundServiceStartNotAllowedException() {
-                get<HeadlessStarts>().onForegroundRefused()
+                if (foregroundRefusalAction(playbackController.state.value.bookId != null) == ForegroundRefusalAction.PAUSE_AND_NOTIFY) {
+                    playbackController.pause()
+                    get<PlaybackNotices>().keepListening()
+                }
             }
         })
         session = builder.build().also {

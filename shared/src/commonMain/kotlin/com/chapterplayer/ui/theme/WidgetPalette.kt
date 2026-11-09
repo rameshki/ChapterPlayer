@@ -38,7 +38,8 @@ val WidgetDarkPalette = WidgetPalette(
     progress = DarkPalette.amber,
     // A dim navy: a quarter of the way from surfaceSecondary (0xFF1E2742) to textSecondary (0xFFAEABA4).
     track = Color(0xFF42485A),
-    placeholder = DarkPalette.divider,
+    // The same dim navy, so the empty cover square stands out from the card at both ends of the gradient.
+    placeholder = Color(0xFF42485A),
 )
 
 val WidgetLightPalette = WidgetPalette(
@@ -50,6 +51,8 @@ val WidgetLightPalette = WidgetPalette(
     playFill = LightPalette.amber,
     playGlyph = LightPalette.onAmber,
     progress = LightPalette.amber,
-    track = LightPalette.divider,
-    placeholder = LightPalette.divider,
+    // A warm grey 65% of the way from fieldBorder (0xFF8D877B) to divider (0xFFDDD8CC): the divider alone vanishes into
+    // the paper, and this stays light enough for the amber progress to keep 3:1 on it.
+    track = Color(0xFFC1BBAF),
+    placeholder = Color(0xFFC1BBAF),
 )

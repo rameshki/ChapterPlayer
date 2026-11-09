@@ -4,7 +4,12 @@ import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.domain.playback.OpenPlayerRequest
+import com.chapterplayer.data.playback.CANNOT_REACH_TEXT
 import com.chapterplayer.data.playback.PlaybackStartException
+import com.chapterplayer.domain.widgets.ANOTHER_BOOK_PLAYING_TEXT
+import com.chapterplayer.domain.widgets.WIDGET_START_WAIT_MS
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.chapterplayer.domain.widgets.ContinueWidgetState
 import com.chapterplayer.domain.widgets.ListenWidgetState
 import com.chapterplayer.domain.widgets.NowPlayingWidgetState
@@ -176,7 +181,7 @@ class ContinueWidgetWiringTest {
         resumer().launchHeadless("a") { reactions += it }
         runCurrent()
 
-        assertEquals(listOf(WidgetStartReaction(NEEDS_CONNECTION_TO_PLAY_TEXT, openApp = false)), reactions)
+        assertEquals(listOf(WidgetStartReaction(NEEDS_CONNECTION_TO_PLAY_TEXT, offerApp = false)), reactions)
         assertEquals(emptyList(), controller.loads)
         assertFalse(openPlayer.pending.value)
     }
@@ -188,16 +193,125 @@ class ContinueWidgetWiringTest {
         val reactions = mutableListOf<WidgetStartReaction>()
         resumer().launchHeadless("a") { reactions += it }
         runCurrent()
-        assertEquals(listOf(WidgetStartReaction("Sign in again in Settings", openApp = true)), reactions)
+        assertEquals(listOf(WidgetStartReaction("Sign in again in Settings", offerApp = true)), reactions)
 
         // A server that cannot be reached: a toast only.
         controller.onLoad = { _, _ -> throw PlaybackStartException("Cannot reach the server") }
         reactions.clear()
         resumer().launchHeadless("a") { reactions += it }
         runCurrent()
-        assertEquals(listOf(WidgetStartReaction(SERVER_NOT_REACHABLE_TEXT, openApp = false)), reactions)
+        assertEquals(listOf(WidgetStartReaction(SERVER_NOT_REACHABLE_TEXT, offerApp = false)), reactions)
         // Still the Resume card: nothing was loaded.
         assertIs<ListenWidgetState.Resume>(states.listen.first())
+    }
+
+    // -- A widget Play never replaces a loaded book ----------------------------------------------
+
+    @Test
+    fun theCarPlayingAIsNotReplacedByContinueListeningsB() = runTest {
+        // The car streams A while "Downloaded only" is on (the car ignores it): Continue offers the downloaded B.
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 5L), ReadingProgress("b", 10_000L, 100_000L, 1L))
+        downloads.states.value = mapOf("b" to DownloadState.DOWNLOADED)
+        settings.downloadedOnlyFlow.value = true
+        controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, durationMs = 100_000L)
+        assertEquals("b", assertIs<ContinueWidgetState.Book>(states.continueListening.first()).bookId)
+
+        val reactions = mutableListOf<WidgetStartReaction>()
+        resumer().launchHeadless("b") { reactions += it }
+        runCurrent()
+
+        assertEquals(emptyList(), controller.loads) // A stays
+        assertEquals("a", controller.playback.value.bookId)
+        assertEquals(listOf(WidgetStartReaction(ANOTHER_BOOK_PLAYING_TEXT, offerApp = false)), reactions)
+    }
+
+    @Test
+    fun aStaleListenCardDoesNotReplaceTheBookLoadedSinceItWasDrawn() = runTest {
+        repo.progress.value = listOf(ReadingProgress("b", 25_000L, 100_000L, 2L))
+        assertEquals("b", assertIs<ListenWidgetState.Resume>(states.listen.first()).bookId) // the card is drawn with B
+        // Then the notification or a headset loads A (paused); the redraw has not happened yet.
+        controller.playback.value = PlaybackState(bookId = "a", durationMs = 100_000L)
+
+        val reactions = mutableListOf<WidgetStartReaction>()
+        resumer().launchHeadless("b") { reactions += it }
+        runCurrent()
+
+        assertEquals(emptyList(), controller.loads)
+        assertEquals(0, controller.plays)
+        assertEquals(listOf(ANOTHER_BOOK_PLAYING_TEXT), reactions.map { it.text })
+    }
+
+    @Test
+    fun anotherCopyOfTheTappedBookPlaysOnInsteadOfBeingReloaded() = runTest {
+        // One book on two servers is one entry; the Plex copy is loaded and paused, the card names the ABS copy.
+        val abs = testBook("abs_c", title = "Gamma", author = "Cy").copy(durationMs = 100_000L)
+        val plex = testBook("plex_c", title = "Gamma", author = "Cy").copy(durationMs = 100_000L, serverId = "s2")
+        val two = FakeBookRepository(listOf(abs, plex))
+        two.progress.value = listOf(ReadingProgress("abs_c", 25_000L, 100_000L, 2L))
+        val merging = object : com.chapterplayer.data.merge.SourceMerging {
+            override val context = kotlinx.coroutines.flow.flowOf<com.chapterplayer.domain.browse.MergeContext?>(com.chapterplayer.domain.browse.MergeContext())
+        }
+        val twoStates = WidgetStates(controller, two, downloads, connectivity, settings, merging)
+        val resumer = WidgetResumer(twoStates, two, PlaybackStarter(controller, two, settings, connectivity, FakeLocalBookFiles()), openPlayer, backgroundScope, EmptyCoroutineContext)
+        controller.playback.value = PlaybackState(bookId = "plex_c", durationMs = 100_000L)
+
+        val reactions = mutableListOf<WidgetStartReaction>()
+        resumer.launchHeadless("abs_c") { reactions += it }
+        runCurrent()
+
+        assertEquals(emptyList(), controller.loads) // the loaded copy is not swapped
+        assertEquals(1, controller.plays) // it just plays on
+        assertEquals(emptyList(), reactions)
+    }
+
+    // -- The widget callback waits for the start (bounded) ---------------------------------------
+
+    @Test
+    fun theCallbackWaitsForAQuickStart() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        assertTrue(resumer().playFromWidget("a") { })
+        assertEquals(listOf("a" to 25_000L), controller.loads)
+    }
+
+    @Test
+    fun theCallbackWaitsForAFailureAndItsToast() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        controller.onLoad = { _, _ -> throw PlaybackStartException(CANNOT_REACH_TEXT) }
+        val reactions = mutableListOf<WidgetStartReaction>()
+        assertTrue(resumer().playFromWidget("a") { reactions += it })
+        assertEquals(listOf(SERVER_NOT_REACHABLE_TEXT), reactions.map { it.text }) // reported before the callback returns
+    }
+
+    @Test
+    fun aSlowStartOutlastsTheWaitAndStillFinishes() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        controller.onLoad = { book, _ ->
+            delay(WIDGET_START_WAIT_MS + 10_000L) // a server far slower than the wait
+            controller.playback.value = PlaybackState(bookId = book.id, durationMs = book.durationMs)
+        }
+        val started = testScheduler.currentTime
+        assertFalse(resumer().playFromWidget("a") { })
+        assertEquals(WIDGET_START_WAIT_MS, testScheduler.currentTime - started) // bounded
+        advanceTimeBy(11_000L)
+        runCurrent()
+        assertEquals("a", controller.playback.value.bookId) // the start went on in the app scope
+    }
+
+    @Test
+    fun cancellingTheWaitDoesNotCancelTheStart() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        val gate = CompletableDeferred<Unit>()
+        controller.onLoad = { book, _ ->
+            gate.await()
+            controller.playback.value = PlaybackState(bookId = book.id, durationMs = book.durationMs)
+        }
+        val resumer = resumer()
+        val waiting = launch { resumer.playFromWidget("a") { } }
+        runCurrent()
+        waiting.cancel() // the broadcast went away
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals("a", controller.playback.value.bookId)
     }
 
     @Test

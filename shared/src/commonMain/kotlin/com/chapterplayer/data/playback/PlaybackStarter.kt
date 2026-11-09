@@ -29,11 +29,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
+
+import kotlin.time.TimeSource
 
 /**
  * Starts a book playing: works out where it begins, loads it, applies the saved speed and plays.
  * Every screen that starts a book (details, Home) goes through here.
  */
+@OptIn(ExperimentalAtomicApi::class)
 class PlaybackStarter(
     private val controller: PlaybackController,
     private val books: BookRepository,
@@ -47,7 +53,16 @@ class PlaybackStarter(
 ) {
 
     private val _status = MutableStateFlow<StartStatus>(StartStatus.Idle)
-    private var attempts = 0L
+
+    // Starts come from the app, the widgets, the car and Up next: numbered atomically so two never share a number.
+    private val attempts = AtomicLong(0L)
+    private val origin = TimeSource.Monotonic.markNow()
+
+    /** Milliseconds on a monotonic clock (when a failure happened, [StartStatus.Failed.atMs]); replaceable in tests. */
+    var clock: () -> Long = { origin.elapsedNow().inWholeMilliseconds }
+
+    /** The number of the latest start begun (0 before any). */
+    val lastAttempt: Long get() = attempts.load()
 
     /**
      * What the starter is doing (the latest start): the player screen shows a loading view while a start is under way and
@@ -55,9 +70,12 @@ class PlaybackStarter(
      */
     val status: StateFlow<StartStatus> = _status.asStateFlow()
 
-    /** The person saw a failed start's reason (and left the player): forget it. */
-    fun dismissFailure() {
-        _status.update { if (it is StartStatus.Failed) StartStatus.Idle else it }
+    /**
+     * The person saw a failed start's reason and left the player (its Back button or the system back): forget it. With
+     * [attempt] only that failure is forgotten, never a newer one.
+     */
+    fun dismissFailure(attempt: Long? = null) {
+        _status.update { if (it is StartStatus.Failed && (attempt == null || it.attempt == attempt)) StartStatus.Idle else it }
     }
 
     /**
@@ -71,7 +89,7 @@ class PlaybackStarter(
      * does not follow that setting).
      */
     suspend fun start(book: AudioBook, atMs: Long? = null, ignoreDownloadedOnly: Boolean = false): Result<Unit> {
-        val mine = StartStatus.Starting(book.id, book.title, ++attempts)
+        val mine = StartStatus.Starting(book.id, book.title, attempts.incrementAndFetch())
         _status.value = mine
         var result: Result<Unit>? = null
         try {
@@ -81,7 +99,7 @@ class PlaybackStarter(
             // Cancelled (result null): nothing to report.
             val failure = result?.exceptionOrNull()
             val end = if (failure == null) StartStatus.Idle else
-                StartStatus.Failed(book.id, book.title, failure.message ?: PlaybackStartException.DEFAULT_MESSAGE, mine.attempt)
+                StartStatus.Failed(book.id, book.title, failure.message ?: PlaybackStartException.DEFAULT_MESSAGE, mine.attempt, atMs = clock())
             _status.update { afterStart(it, mine, end) }
         }
     }

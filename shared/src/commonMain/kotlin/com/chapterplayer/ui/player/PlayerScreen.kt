@@ -52,6 +52,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +70,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -187,7 +190,11 @@ fun PlayerContent(
         // the back stack after the book was released (or restored after the app was gone) closes itself.
         when (state.emptyView) {
             PlayerEmptyView.STARTING -> StartingView(state.startingTitle.orEmpty(), onBack, modifier)
-            PlayerEmptyView.FAILED -> StartFailedView(state.startError.orEmpty(), { onDismissStartFailure(); onBack() }, modifier)
+            PlayerEmptyView.FAILED -> {
+                StartFailedView(state.startError.orEmpty(), { onDismissStartFailure(); onBack() }, modifier)
+                // The system back (or any other way the view goes) forgets the failure too.
+                DisposableEffect(Unit) { onDispose { onDismissStartFailure() } }
+            }
             PlayerEmptyView.LEAVE, PlayerEmptyView.NONE -> {
                 Box(modifier.fillMaxSize().background(BackgroundDeep))
                 LaunchedEffect(Unit) { onBack() }
@@ -346,7 +353,8 @@ private fun StartingView(title: String, onBack: () -> Unit, modifier: Modifier) 
             text = if (title.isBlank()) "Starting…" else "Starting $title…",
             style = MaterialTheme.typography.bodyLarge,
             color = TextSecondary,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
         )
         Spacer(Modifier.height(16.dp))
         TextButton(onClick = onBack) { Text("Back", color = AmberGold) }
@@ -373,7 +381,9 @@ private fun StartFailedView(message: String, onBack: () -> Unit, modifier: Modif
             text = message,
             style = MaterialTheme.typography.bodyLarge,
             color = TextSecondary,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            // Read out when a start turns into a failure (TalkBack would not hear the new view otherwise).
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
         )
         Spacer(Modifier.height(16.dp))
         Button(

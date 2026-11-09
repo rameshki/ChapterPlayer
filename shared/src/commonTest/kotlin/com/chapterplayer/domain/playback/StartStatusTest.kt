@@ -32,6 +32,19 @@ class StartStatusTest {
     }
 
     @Test
+    fun aFailureShowsOnlyIfItsStartWasWatchedAndItIsRecent() {
+        val f = StartStatus.Failed("a", "Alpha", "x", attempt = 3, atMs = 1_000L)
+        assertEquals(f, visibleStartStatus(f, watchedFrom = 3, nowMs = 1_000L))
+        assertEquals(f, visibleStartStatus(f, watchedFrom = 2, nowMs = 1_000L + START_FAILURE_SHOWN_MS - 1))
+        // Old news.
+        assertEquals(StartStatus.Idle, visibleStartStatus(f, watchedFrom = 3, nowMs = 1_000L + START_FAILURE_SHOWN_MS))
+        // Begun before the player was watched (the car, a widget, another book): never shown.
+        assertEquals(StartStatus.Idle, visibleStartStatus(f, watchedFrom = 4, nowMs = 1_000L))
+        // Other statuses pass through.
+        assertEquals(starting, visibleStartStatus(starting, watchedFrom = 9, nowMs = 0L))
+    }
+
+    @Test
     fun onlyTheLatestAttemptEnds() {
         val first = StartStatus.Starting("a", "Alpha", attempt = 1)
         val second = StartStatus.Starting("b", "Beta", attempt = 2)

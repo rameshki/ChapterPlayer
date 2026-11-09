@@ -11,7 +11,14 @@ sealed interface StartStatus {
     data class Starting(val bookId: String, val title: String, val attempt: Long) : StartStatus
 
     /** [message] is safe to show (a [com.chapterplayer.data.playback.PlaybackStartException] text). */
-    data class Failed(val bookId: String, val title: String, val message: String, val attempt: Long) : StartStatus
+    data class Failed(
+        val bookId: String,
+        val title: String,
+        val message: String,
+        val attempt: Long,
+        /** When it failed, on the starter's monotonic clock. */
+        val atMs: Long = 0L,
+    ) : StartStatus
 }
 
 /**
@@ -20,6 +27,21 @@ sealed interface StartStatus {
  */
 fun afterStart(current: StartStatus, mine: StartStatus.Starting, result: StartStatus): StartStatus =
     if (current == mine) result else current
+
+/** How long after a failed start the player still shows its reason; after that it is old news and the player closes. */
+const val START_FAILURE_SHOWN_MS = 30_000L
+
+/**
+ * The status the player screen may show. A failure shows only when its start began while the player's state was being
+ * watched ([watchedFrom]: the first attempt number begun since, so never a failure of a start made in the background,
+ * by the car or a widget, nor one for another book before the screen opened) and for [START_FAILURE_SHOWN_MS] after it
+ * happened ([nowMs], [StartStatus.Failed.atMs]); otherwise it reads as Idle.
+ */
+fun visibleStartStatus(status: StartStatus, watchedFrom: Long, nowMs: Long): StartStatus = when (status) {
+    is StartStatus.Failed ->
+        if (status.attempt >= watchedFrom && nowMs - status.atMs in 0 until START_FAILURE_SHOWN_MS) status else StartStatus.Idle
+    else -> status
+}
 
 /** What the full player shows when no book is loaded. */
 enum class PlayerEmptyView {

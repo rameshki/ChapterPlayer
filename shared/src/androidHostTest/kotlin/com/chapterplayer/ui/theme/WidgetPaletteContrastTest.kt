@@ -26,6 +26,12 @@ class WidgetPaletteContrastTest {
         }
         assertTrue(contrast(p.playGlyph, p.playFill) >= 4.5, "$name play glyph on its circle")
         assertTrue(contrast(p.progress, p.track) >= 3.0, "$name progress on its track")
+        // Shapes that carry no text still have to be seen: the empty track and the cover placeholder.
+        listOf(p.cardTop, p.cardBottom).forEach { card ->
+            assertTrue(contrast(p.track, card) >= 1.5, "$name track against the card")
+            assertTrue(contrast(p.placeholder, card) >= 1.5, "$name cover placeholder against the card")
+        }
+        assertTrue(contrast(p.textSecondary, p.placeholder) >= 3.0, "$name placeholder book symbol")
     }
 
     @Test fun `the dark widget look is readable`() = check("dark", WidgetDarkPalette)
@@ -44,8 +50,9 @@ class WidgetPaletteContrastTest {
         // The deeper navy lies between surfaceElevated and the background, channel by channel, and is bluest.
         assertBetween(d.cardBottom, DarkPalette.surfaceElevated, DarkPalette.background)
         assertTrue(d.cardBottom.blue > d.cardBottom.red, "the bottom stays navy")
-        // The track is a dim navy between the card and the secondary text.
+        // The track (and the cover placeholder) is a dim navy between the card and the secondary text.
         assertBetween(d.track, DarkPalette.surfaceSecondary, DarkPalette.textSecondary)
+        assertBetween(d.placeholder, DarkPalette.surfaceSecondary, DarkPalette.textSecondary)
         assertTrue(d.cardTop.luminance() > d.cardBottom.luminance(), "lighter at the top")
     }
 
@@ -58,6 +65,9 @@ class WidgetPaletteContrastTest {
         assertEquals(LightPalette.amber, l.playFill)
         assertEquals(Color.White, l.playGlyph)
         assertEquals(LightPalette.amber, l.progress)
+        // The track and the placeholder: a warm grey between the palette's fieldBorder and divider.
+        assertBetween(l.track, LightPalette.fieldBorder, LightPalette.divider)
+        assertBetween(l.placeholder, LightPalette.fieldBorder, LightPalette.divider)
     }
 
     private fun assertBetween(c: Color, a: Color, b: Color) {

@@ -98,7 +98,7 @@ internal fun safeStartMessage(failure: Throwable): String = when {
         404 -> "This book is no longer on the server"
         else -> "The server could not start playback"
     }
-    failure is IOException -> "Cannot reach the server"
+    failure is IOException -> CANNOT_REACH_TEXT
     failure.message in OWN_START_MESSAGES -> failure.message!!
     else -> PlaybackStartException.DEFAULT_MESSAGE
 }

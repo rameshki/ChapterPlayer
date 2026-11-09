@@ -57,7 +57,7 @@ import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.data.widgets.WidgetHost
 import com.chapterplayer.data.widgets.WidgetResumer
-import com.chapterplayer.ui.widgets.HeadlessStarts
+import com.chapterplayer.ui.widgets.PlaybackNotices
 import com.chapterplayer.data.widgets.WidgetCovers
 import com.chapterplayer.ui.widgets.GlanceWidgetHost
 import com.chapterplayer.ui.widgets.WidgetCoverCache
@@ -179,7 +179,8 @@ val viewModelModule = module {
 
 val widgetModule = module {
     // What the home screen widgets show, and the Now Playing buttons (they act on the loaded book only).
-    single { WidgetStates(get(), get(), get(), get(), get(), merging = get()) }
+    // The app scope lets the three widgets share one merged-library computation while any of them is collected.
+    single { WidgetStates(get(), get(), get(), get(), get(), merging = get(), scope = get(AppScopeQualifier)) }
     single { WidgetActions(get()) }
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
     single<WidgetHost> { GlanceWidgetHost(androidContext(), get(AppScopeQualifier)) }
@@ -189,8 +190,8 @@ val widgetModule = module {
     // The widgets' Play: starts the offered book headless from the widget's callback (the one load path, offline rules
     // apply); the activity's older resume_book_id path uses it too. It runs in the app scope, so nothing cuts a start short.
     single { WidgetResumer(get(), get(), get(), get(), get(AppScopeQualifier)) }
-    // A refused foreground start right after a widget's Play opens the app (see WidgetPlayAction).
-    single { HeadlessStarts(androidContext()) }
+    // Notifications that lead back into the app from the background (a refused foreground start, Sign in again).
+    single { PlaybackNotices(androidContext()) }
 }
 
 /** Everything the shared module declares. The app adds what only it knows. */

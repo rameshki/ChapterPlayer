@@ -7,5 +7,5 @@
     <color name="widget_play_fill">#FF8A5A00</color>
     <color name="widget_play_glyph">#FFFFFFFF</color>
     <color name="widget_progress">#FF8A5A00</color>
-    <color name="widget_track">#FFDDD8CC</color>
+    <color name="widget_track">#FFC1BBAF</color>
 </resources>
