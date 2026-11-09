@@ -105,8 +105,8 @@ enum class ListenSize {
     LARGE,
 }
 
-/** From this width the bar has its cover (and, for a loaded book, back 15 and forward 30). */
-const val LISTEN_BAR_MIN_WIDTH_DP = 250f
+/** From this width (three cells) the low widget is the bar with its cover. */
+const val LISTEN_BAR_MIN_WIDTH_DP = 190f
 
 /** From this height the bar has room for its cover and two lines at font scale 1.3 (a 4x1 upright is about 102 dp). */
 const val LISTEN_BAR_MIN_HEIGHT_DP = 68f
@@ -117,11 +117,39 @@ const val LISTEN_TALL_MIN_HEIGHT_DP = 160f
 /** The narrowest square. */
 const val LISTEN_SQUARE_MIN_WIDTH_DP = 110f
 
-/** From this width a tall widget is wide (cover beside the text) instead of square. */
-const val LISTEN_WIDE_MIN_WIDTH_DP = 250f
+/** From this width (three cells) a tall widget is wide (cover beside the text) instead of square. */
+const val LISTEN_WIDE_MIN_WIDTH_DP = 200f
+
+/** From this width the wide card's cover is the big one. */
+const val LISTEN_WIDE_BIG_COVER_MIN_DP = 260f
+
+/** From this width the large card's cover is the big one. */
+const val LISTEN_LARGE_BIG_COVER_MIN_DP = 270f
 
 /** From this height (and [LISTEN_WIDE_MIN_WIDTH_DP] wide) the widget is large. */
 const val LISTEN_LARGE_MIN_HEIGHT_DP = 250f
+
+/** One size Glance lays the widget out at ([LISTEN_BUCKETS]). */
+data class ListenBucket(val name: String, val widthDp: Float, val heightDp: Float)
+
+/**
+ * The sizes the widget is laid out at (`SizeMode.Responsive`). Glance composes each one with `LocalSize` = the bucket,
+ * never the launcher's real size, and the launcher shows the closest one that fits; so every width rule here is reached
+ * only through a bucket. The roomy buckets exist so the buttons that fit at those widths really appear: the bar's
+ * back 15 / forward 30 (340 dp), the wide card's skips (260) and chapter buttons (330), the large card's 48 dp row (270).
+ */
+val LISTEN_BUCKETS: List<ListenBucket> = listOf(
+    ListenBucket("MINI", 110f, 40f),
+    ListenBucket("MINI_TALL", 110f, 56f),
+    ListenBucket("BAR", LISTEN_BAR_MIN_WIDTH_DP, LISTEN_BAR_MIN_HEIGHT_DP),
+    ListenBucket("BAR_ROOMY", 340f, LISTEN_BAR_MIN_HEIGHT_DP),
+    ListenBucket("SQUARE", LISTEN_SQUARE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP),
+    ListenBucket("WIDE", LISTEN_WIDE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP),
+    ListenBucket("WIDE_MID", LISTEN_WIDE_BIG_COVER_MIN_DP, LISTEN_TALL_MIN_HEIGHT_DP),
+    ListenBucket("WIDE_ROOMY", 330f, LISTEN_TALL_MIN_HEIGHT_DP),
+    ListenBucket("LARGE", LISTEN_WIDE_MIN_WIDTH_DP, LISTEN_LARGE_MIN_HEIGHT_DP),
+    ListenBucket("LARGE_ROOMY", LISTEN_LARGE_BIG_COVER_MIN_DP, LISTEN_LARGE_MIN_HEIGHT_DP),
+)
 
 fun listenSize(widthDp: Float, heightDp: Float): ListenSize = when {
     heightDp < LISTEN_TALL_MIN_HEIGHT_DP ->
@@ -160,7 +188,9 @@ object ListenDimens {
     const val BAR_COVER_DP = 44f
     const val SQUARE_COVER_DP = 52f
     const val WIDE_COVER_DP = 92f
+    const val WIDE_SMALL_COVER_DP = 72f
     const val LARGE_COVER_DP = 112f
+    const val LARGE_SMALL_COVER_DP = 80f
     const val TITLE_SP = 15f
     const val TITLE_LARGE_SP = 17f
     const val SECOND_SP = 13f
@@ -170,16 +200,20 @@ object ListenDimens {
     const val PROGRESS_BAR_DP = 4f
     const val BUTTONS_GAP_DP = 6f
 
-    /** The bar keeps at least this much for its title. */
-    const val BAR_TEXT_MIN_DP = 40f
+    /** The bar shows back 15 / forward 30 only when its title keeps at least this much. */
+    const val BAR_TEXT_MIN_DP = 110f
+
+    /** Back 15, forward 30 and the chapter buttons where there is room for full targets. */
+    const val ROOMY_SIDE_BUTTON_DP = 48f
 
     /** A text line's height per sp: Roboto's ascent plus descent with the font padding, rounded up. */
     const val LINE_HEIGHT_PER_SP = 1.33f
 }
 
 /**
- * The layout for a [widthDp] x [heightDp] widget showing [state]. Back 15 / forward 30 and the chapter buttons appear
- * only for a loaded book that allows them and only where they fit beside the cover ([listenButtonsRoomDp]).
+ * The layout for a [widthDp] x [heightDp] widget showing [state] (in production always one of [LISTEN_BUCKETS]).
+ * Back 15 / forward 30 and the chapter buttons appear only for a loaded book that allows them and only where they fit
+ * ([listenButtonsRoomDp]); more buttons win over bigger ones, and side buttons are 48 dp where that still fits, else 40.
  */
 fun listenLayout(widthDp: Float, heightDp: Float, state: ListenWidgetState): ListenLayout {
     val size = listenSize(widthDp, heightDp)
@@ -205,13 +239,15 @@ fun listenLayout(widthDp: Float, heightDp: Float, state: ListenWidgetState): Lis
             verticalPaddingDp = ListenDimens.PADDING_DP,
         )
         ListenSize.WIDE -> ListenLayout(
-            size, coverDp = ListenDimens.WIDE_COVER_DP, titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = book,
+            size, coverDp = if (widthDp >= LISTEN_WIDE_BIG_COVER_MIN_DP) ListenDimens.WIDE_COVER_DP else ListenDimens.WIDE_SMALL_COVER_DP,
+            titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = book,
             showAuthorAndChapter = false, showProgress = book, showMeta = book, showSkips = false, showChapterButtons = false,
             sideButtonDp = side, playButtonDp = WidgetDimens.PLAY_TARGET_DP, horizontalPaddingDp = ListenDimens.PADDING_DP,
             verticalPaddingDp = ListenDimens.PADDING_DP,
         )
         ListenSize.LARGE -> ListenLayout(
-            size, coverDp = ListenDimens.LARGE_COVER_DP, titleSp = ListenDimens.TITLE_LARGE_SP, titleLines = 2, showSecondLine = book,
+            size, coverDp = if (widthDp >= LISTEN_LARGE_BIG_COVER_MIN_DP) ListenDimens.LARGE_COVER_DP else ListenDimens.LARGE_SMALL_COVER_DP,
+            titleSp = ListenDimens.TITLE_LARGE_SP, titleLines = 2, showSecondLine = book,
             showAuthorAndChapter = controls?.chapterTitle != null && controls.author.isNotEmpty(), showProgress = book, showMeta = book,
             showSkips = false, showChapterButtons = false, sideButtonDp = side, playButtonDp = WidgetDimens.PLAY_TARGET_DP,
             horizontalPaddingDp = ListenDimens.PADDING_DP, verticalPaddingDp = ListenDimens.PADDING_DP,
@@ -219,10 +255,14 @@ fun listenLayout(widthDp: Float, heightDp: Float, state: ListenWidgetState): Lis
     }
     if (!book) return base.copy(coverDp = 0f)
     if (controls == null || size == ListenSize.MINI || size == ListenSize.SQUARE) return base
+    if (!controls.canSkip) return base
     val room = listenButtonsRoomDp(base, widthDp)
-    val skips = controls.canSkip && base.playButtonDp + 2 * side <= room
-    val chapters = skips && controls.canJumpChapters && size != ListenSize.BAR && base.playButtonDp + 4 * side <= room
-    return base.copy(showSkips = skips, showChapterButtons = chapters)
+    val sides = listOf(ListenDimens.ROOMY_SIDE_BUTTON_DP, side)
+    if (controls.canJumpChapters && size != ListenSize.BAR) {
+        sides.firstOrNull { base.playButtonDp + 4 * it <= room }?.let { return base.copy(showSkips = true, showChapterButtons = true, sideButtonDp = it) }
+    }
+    val skipSide = sides.firstOrNull { base.playButtonDp + 2 * it <= room } ?: return base
+    return base.copy(showSkips = true, sideButtonDp = skipSide)
 }
 
 /** The width the buttons of [layout] take. */
@@ -311,15 +351,13 @@ fun listenPlayDescription(state: ListenWidgetState): String = when (state) {
 
 /**
  * The longest side of a widget cover bitmap. Drawn at up to 112 dp (336 px on a 3x screen; 256 px is sharp enough at
- * the usual sizes). Decoded as RGB_565 (covers are JPEGs, no alpha), a 256 x 256 cover is 128 KiB. The Listen widget's
- * four cover layouts ([LISTEN_COVER_LAYOUTS]) hold the same bitmap: Android 12+ sends a size map whose views share one
- * bitmap cache, so it travels once (128 KiB); counted as four copies it is 512 KiB, still under the 1 MB binder
- * transaction and far under the RemoteViews bitmap limit (screen width x height x 4 x 1.5 bytes, about 15 MB).
+ * the usual sizes). Decoded as RGB_565 (covers are JPEGs, no alpha), a 256 x 256 cover is 128 KiB. Every Listen bucket
+ * with a cover (eight of [LISTEN_BUCKETS]) draws the same Bitmap instance; RemoteViews keeps one bitmap cache for the
+ * whole size map (and the portrait / landscape pair before Android 12) that matches bitmaps by identity, so it is
+ * sent once: 128 KiB per placed widget, far under the 1 MB binder transaction and the RemoteViews bitmap limit
+ * (screen width x height x 4 x 1.5 bytes, about 15 MB).
  */
 const val WIDGET_COVER_MAX_SIDE = 256
-
-/** The Listen layouts that draw the cover: bar, square, wide and large (not the mini bar). */
-const val LISTEN_COVER_LAYOUTS = 4
 
 /** Bytes of an RGB_565 bitmap of [width] x [height]. */
 fun widgetCoverBytes(width: Int, height: Int): Long = width.toLong() * height * 2

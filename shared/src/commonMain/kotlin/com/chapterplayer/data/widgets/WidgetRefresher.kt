@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
@@ -37,6 +38,9 @@ interface WidgetHost {
 
     /** Whether a Listen widget is on the home screen (asked once at start; the receiver reports changes). */
     suspend fun listenPlaced(): Boolean
+
+    /** Whether any of the app's widgets is on the home screen (covers are loaded only then). */
+    suspend fun anyPlaced(): Boolean
 }
 
 /**
@@ -48,8 +52,10 @@ interface WidgetHost {
  * only while a Listen widget is placed. The covers of the books the three widgets show are loaded by [covers] off the
  * redraw and, once one arrives, the widgets are drawn again (a redraw never waits for a cover); a cover is asked for
  * again when a state changes, when the network comes back, when a widget asks ([requestCover]: placed, resized, redrawn
- * by the system) and after a failure once the loader's backoff has passed ([coverNextStep]). A failed redraw (no widget
- * host, a launcher that went away) is ignored.
+ * by the system) and after a failure once the loader's backoff has passed ([coverNextStep]). The covers are asked for
+ * only while some widget is placed, from the same shared state flows the redraws use, and the redraw for a new cover
+ * runs on its own (a request arriving meanwhile, e.g. from the redraw's own `provideGlance`, never cuts it short).
+ * A failed redraw (no widget host, a launcher that went away) is ignored.
  */
 class WidgetRefresher(
     private val states: WidgetStates,
@@ -63,6 +69,13 @@ class WidgetRefresher(
     /** Null until known: the host is asked at [start], the receiver reports changes ([listenPlacementChanged]). */
     private val listenPlaced = MutableStateFlow<Boolean?>(null)
     private val coverRequests = MutableStateFlow(0)
+
+    /** Null until known: the host is asked at [start]; a drawn widget says yes, a removed one makes it ask again. */
+    private val anyPlaced = MutableStateFlow<Boolean?>(null)
+
+    // Each widget state is computed once for the redraws and the cover look-up.
+    private val sharedNowPlaying = states.nowPlaying.shareIn(scope, SharingStarted.WhileSubscribed(), replay = 1)
+    private val sharedContinue = states.continueListening.shareIn(scope, SharingStarted.WhileSubscribed(), replay = 1)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val sharedListen: SharedFlow<ListenWidgetState> =
@@ -78,22 +91,37 @@ class WidgetRefresher(
         listenPlaced.value = placed
     }
 
-    /** The Listen widget is being drawn (placed, resized, a system update): ask for its cover again if it is missing. */
+    /** A widget is being drawn (placed, resized, a system update): ask for its cover again if it is missing. */
     fun requestCover() {
+        anyPlaced.value = true
         coverRequests.update { it + 1 }
+    }
+
+    /** The last widget of a kind was removed: is any widget left? */
+    fun widgetsRemoved() {
+        scope.launch {
+            var placed = true
+            safely { placed = host.anyPlaced() }
+            anyPlaced.value = placed
+        }
     }
 
     @OptIn(FlowPreview::class)
     fun start() {
         if (started) return
         started = true
-        scope.launch { states.nowPlaying.collect { safely { host.redrawNowPlaying() } } }
-        scope.launch { states.continueListening.debounce(continueQuietMs).collect { safely { host.redrawContinueListening() } } }
+        scope.launch { sharedNowPlaying.collect { safely { host.redrawNowPlaying() } } }
+        scope.launch { sharedContinue.debounce(continueQuietMs).collect { safely { host.redrawContinueListening() } } }
         scope.launch {
             var placed = false
             safely { placed = host.listenPlaced() }
             // A report from the receiver while the host was asked wins.
             listenPlaced.compareAndSet(null, placed)
+        }
+        scope.launch {
+            var placed = true
+            safely { placed = host.anyPlaced() }
+            anyPlaced.compareAndSet(null, placed)
         }
         scope.launch {
             sharedListen
@@ -106,12 +134,19 @@ class WidgetRefresher(
         }
     }
 
-    /** The books whose covers the widgets show: Listen's (while placed), the loaded book's and Continue's. */
-    private fun coverBookIds(): Flow<Set<String>> = combine(
-        sharedListen.map { it.coverBookId }.onStart { emit(null) },
-        states.nowPlaying.map { (it as? NowPlayingWidgetState.Book)?.bookId },
-        states.continueListening.map { (it as? ContinueWidgetState.Book)?.bookId },
-    ) { listen, playing, resume -> setOfNotNull(listen, playing, resume) }.distinctUntilChanged()
+    /** The books whose covers the widgets show (Listen's while placed, the loaded book's, Continue's); none while no widget is placed. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun coverBookIds(): Flow<Set<String>> = anyPlaced.flatMapLatest { placed ->
+        if (placed != true) {
+            flowOf(emptySet())
+        } else {
+            combine(
+                sharedListen.map { it.coverBookId }.onStart { emit(null) },
+                sharedNowPlaying.map { (it as? NowPlayingWidgetState.Book)?.bookId },
+                sharedContinue.map { (it as? ContinueWidgetState.Book)?.bookId },
+            ) { listen, playing, resume -> setOfNotNull(listen, playing, resume) }
+        }
+    }.distinctUntilChanged()
 
     /** Loads [bookId]'s cover; redraws once when it arrives, retries a failure while online (bounded, see [coverNextStep]). */
     private suspend fun fetchCover(bookId: String, online: Boolean) {
@@ -121,7 +156,11 @@ class WidgetRefresher(
             var result = CoverFetch.FAILED
             safely { result = covers.prefetch(bookId) }
             when (val step = coverNextStep(result, online, attempts)) {
-                CoverStep.Redraw -> return redrawCovers()
+                // On its own: a cover request during the redraws restarts the look-up but must not cut them short.
+                CoverStep.Redraw -> {
+                    scope.launch { redrawCovers() }
+                    return
+                }
                 CoverStep.Done -> return
                 is CoverStep.RetryAfter -> delay(step.delayMs)
             }

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Listen: Resume, then the playback controls. Placed at four by two cells (the wide card). One row tall it is the
-  slim bar (the mini bar when very low or narrow), two cells wide the square, about four by three the large card.
+  slim bar from three cells (the mini bar when very low or two cells wide), two cells wide and taller the square,
+  three cells and two rows the wide card, three rows the large card (layout buckets: LISTEN_BUCKETS).
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_listen_description"

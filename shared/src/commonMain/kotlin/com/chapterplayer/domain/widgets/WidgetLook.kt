@@ -1,5 +1,7 @@
 package com.chapterplayer.domain.widgets
 
+import com.chapterplayer.data.settings.ThemeMode
+
 /*
  * The look the three home screen widgets share (a design reference, not code: a rounded charcoal card, a rounded cover,
  * white text and a round white play button; the light theme reverses it). Sizes here, colours in ui/theme/WidgetPalette.
@@ -41,3 +43,27 @@ const val NOW_PLAYING_COVER_MIN_DP = 250f
 const val CONTINUE_MIN_WIDTH_DP = 180f
 
 fun nowPlayingShowsCover(widthDp: Float): Boolean = widthDp >= NOW_PLAYING_COVER_MIN_DP
+
+/** Which card drawable a widget draws on. */
+enum class WidgetCard { DARK, LIGHT, SYSTEM }
+
+/** From this Android version (12, API 31) the launcher resolves day / night colours itself. */
+const val WIDGET_NIGHT_COLOURS_SDK = 31
+
+/**
+ * The card for the theme [mode]. "Follow system" uses the day / night card the launcher picks from Android 12; before
+ * that Glance bakes the text and button colours with the app's own night mode ([systemNight]), so the card is baked from
+ * the same one (a launcher-picked card could turn dark under dark text).
+ */
+fun widgetCard(mode: ThemeMode, sdkInt: Int, systemNight: Boolean): WidgetCard = when (mode) {
+    ThemeMode.DARK -> WidgetCard.DARK
+    ThemeMode.LIGHT -> WidgetCard.LIGHT
+    ThemeMode.SYSTEM -> when {
+        sdkInt >= WIDGET_NIGHT_COLOURS_SDK -> WidgetCard.SYSTEM
+        systemNight -> WidgetCard.DARK
+        else -> WidgetCard.LIGHT
+    }
+}
+
+/** Before Android 12 the baked colours are stale after a day / night switch: the widgets are drawn again then. */
+fun widgetsRedrawOnNightChange(sdkInt: Int): Boolean = sdkInt < WIDGET_NIGHT_COLOURS_SDK

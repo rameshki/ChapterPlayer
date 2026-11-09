@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker previews' colours at night. Colours: WidgetPalette (ui/theme), checked by WidgetPaletteContrastTest. -->
+<resources>
+    <color name="widget_text">#FFFFFFFF</color>
+    <color name="widget_text_secondary">#FFC2C2C7</color>
+    <color name="widget_icon">#FFFFFFFF</color>
+    <color name="widget_play_fill">#FFFFFFFF</color>
+    <color name="widget_play_glyph">#FF19191B</color>
+    <color name="widget_progress">#FFFFFFFF</color>
+    <color name="widget_track">#FF6B6B70</color>
+</resources>

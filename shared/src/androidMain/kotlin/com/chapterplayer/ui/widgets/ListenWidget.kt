@@ -37,12 +37,7 @@ import com.chapterplayer.data.widgets.EXTRA_RESUME_BOOK_ID
 import com.chapterplayer.data.widgets.WidgetActions
 import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
-import com.chapterplayer.domain.widgets.LISTEN_BAR_MIN_HEIGHT_DP
-import com.chapterplayer.domain.widgets.LISTEN_BAR_MIN_WIDTH_DP
-import com.chapterplayer.domain.widgets.LISTEN_LARGE_MIN_HEIGHT_DP
-import com.chapterplayer.domain.widgets.LISTEN_SQUARE_MIN_WIDTH_DP
-import com.chapterplayer.domain.widgets.LISTEN_TALL_MIN_HEIGHT_DP
-import com.chapterplayer.domain.widgets.LISTEN_WIDE_MIN_WIDTH_DP
+import com.chapterplayer.domain.widgets.LISTEN_BUCKETS
 import com.chapterplayer.domain.widgets.ListenDimens
 import com.chapterplayer.domain.widgets.ListenLayout
 import com.chapterplayer.domain.widgets.ListenSize
@@ -70,7 +65,8 @@ import org.koin.core.component.get
  */
 class ListenWidget : GlanceAppWidget(), KoinComponent {
 
-    override val sizeMode = SizeMode.Responsive(setOf(MINI, BAR, SQUARE, WIDE, LARGE))
+    // Laid out at every bucket of LISTEN_BUCKETS; the launcher shows the closest one that fits.
+    override val sizeMode = SizeMode.Responsive(LISTEN_BUCKETS.map { DpSize(it.widthDp.dp, it.heightDp.dp) }.toSet())
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val states = get<WidgetStates>()
@@ -85,20 +81,13 @@ class ListenWidget : GlanceAppWidget(), KoinComponent {
         provideContent {
             val state by refresher.listen.collectAsState(initial)
             val mode by settings.themeMode.collectAsState(initialMode)
+            // Read so a day / night switch before Android 12 draws the baked colours again.
+            GlanceWidgetHost.nightTicks.collectAsState().value
             // Read so a cover that arrives while the session runs is drawn; the lookup itself never loads.
             val coverVersion by covers.version.collectAsState()
             val cover = if (coverVersion >= 0) state.coverBookId?.let(covers::cached) else null
-            ListenContent(context, state, cover, widgetColors(mode))
+            ListenContent(context, state, cover, widgetColors(mode, context))
         }
-    }
-
-    companion object {
-        // The smallest box of each size class of listenSize (Glance draws the largest one that fits).
-        val MINI = DpSize(110.dp, 40.dp)
-        val BAR = DpSize(LISTEN_BAR_MIN_WIDTH_DP.dp, LISTEN_BAR_MIN_HEIGHT_DP.dp)
-        val SQUARE = DpSize(LISTEN_SQUARE_MIN_WIDTH_DP.dp, LISTEN_TALL_MIN_HEIGHT_DP.dp)
-        val WIDE = DpSize(LISTEN_WIDE_MIN_WIDTH_DP.dp, LISTEN_TALL_MIN_HEIGHT_DP.dp)
-        val LARGE = DpSize(LISTEN_WIDE_MIN_WIDTH_DP.dp, LISTEN_LARGE_MIN_HEIGHT_DP.dp)
     }
 }
 
@@ -114,6 +103,7 @@ class ListenWidgetReceiver : GlanceAppWidgetReceiver(), KoinComponent {
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
         get<WidgetRefresher>().listenPlacementChanged(false)
+        get<WidgetRefresher>().widgetsRemoved()
     }
 }
 

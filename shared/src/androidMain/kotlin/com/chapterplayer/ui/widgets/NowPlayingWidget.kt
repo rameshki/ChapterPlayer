@@ -73,9 +73,11 @@ class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
         provideContent {
             val state by states.nowPlaying.collectAsState(initial)
             val mode by settings.themeMode.collectAsState(initialMode)
+            // Read so a day / night switch before Android 12 draws the baked colours again.
+            GlanceWidgetHost.nightTicks.collectAsState().value
             val coverVersion by covers.version.collectAsState()
             val cover = if (coverVersion >= 0) (state as? NowPlayingWidgetState.Book)?.bookId?.let(covers::cached) else null
-            NowPlayingContent(context, state, cover, widgetColors(mode))
+            NowPlayingContent(context, state, cover, widgetColors(mode, context))
         }
     }
 
@@ -86,8 +88,14 @@ class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
     }
 }
 
-class NowPlayingWidgetReceiver : GlanceAppWidgetReceiver() {
+class NowPlayingWidgetReceiver : GlanceAppWidgetReceiver(), KoinComponent {
     override val glanceAppWidget: GlanceAppWidget = NowPlayingWidget()
+
+    // The last Now Playing widget removed: covers are loaded only while some widget is placed.
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        get<WidgetRefresher>().widgetsRemoved()
+    }
 }
 
 /** The theme setting, or "follow system" when it cannot be read. */

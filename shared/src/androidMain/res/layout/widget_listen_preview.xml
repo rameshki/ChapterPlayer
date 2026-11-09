@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The widget picker's preview of Listen (Android 12 and later): the wide card. Synthetic text and cover only. -->
+<!-- The widget picker's preview of Listen (Android 12 and later): the wide card; follows day / night (colour resources). Synthetic text and cover only. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_card_dark"
+    android:background="@drawable/widget_card_system"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:padding="10dp">
@@ -26,7 +26,7 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:text="@string/widget_preview_title"
-            android:textColor="#FFFFFFFF"
+            android:textColor="@color/widget_text"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -35,7 +35,7 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:text="@string/widget_preview_author"
-            android:textColor="#FFC2C2C7"
+            android:textColor="@color/widget_text_secondary"
             android:textSize="13sp" />
 
         <ProgressBar
@@ -44,15 +44,15 @@
             android:layout_height="4dp"
             android:layout_marginTop="6dp"
             android:progress="70"
-            android:progressBackgroundTint="#FF6B6B70"
-            android:progressTint="#FFFFFFFF" />
+            android:progressBackgroundTint="@color/widget_track"
+            android:progressTint="@color/widget_progress" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:text="@string/widget_preview_time_left"
-            android:textColor="#FFC2C2C7"
+            android:textColor="@color/widget_text_secondary"
             android:textSize="12sp"
             android:layout_marginTop="4dp" />
 
@@ -65,7 +65,8 @@
                 android:layout_height="match_parent"
                 android:contentDescription="@null"
                 android:padding="3dp"
-                android:src="@drawable/widget_play_circle" />
+                android:src="@drawable/widget_play_circle"
+                android:tint="@color/widget_play_fill" />
 
             <ImageView
                 android:layout_width="match_parent"
@@ -73,7 +74,7 @@
                 android:contentDescription="@null"
                 android:padding="12dp"
                 android:src="@drawable/ic_widget_play"
-                android:tint="#FF19191B" />
+                android:tint="@color/widget_play_glyph" />
         </FrameLayout>
     </LinearLayout>
 </LinearLayout>

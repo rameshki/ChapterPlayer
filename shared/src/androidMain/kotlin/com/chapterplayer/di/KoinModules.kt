@@ -181,7 +181,7 @@ val widgetModule = module {
     single { WidgetStates(get(), get(), get(), get(), get(), merging = get()) }
     single { WidgetActions(get()) }
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
-    single<WidgetHost> { GlanceWidgetHost(androidContext()) }
+    single<WidgetHost> { GlanceWidgetHost(androidContext(), get(AppScopeQualifier)) }
     // The Listen widget's covers: loaded in the app through the authenticated cover loader, kept per book as small bitmaps.
     single { WidgetCoverCache(get(), androidContext(), Dispatchers.IO) } bind WidgetCovers::class
     single { WidgetRefresher(get(), get(), get(AppScopeQualifier), covers = get()) }

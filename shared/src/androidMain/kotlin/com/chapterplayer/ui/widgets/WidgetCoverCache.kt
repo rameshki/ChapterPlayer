@@ -32,7 +32,8 @@ class WidgetCoverCache(
 ) : WidgetCovers {
     private val app = context.applicationContext
     private val lock = Any()
-    private val bitmaps = LinkedHashMap<String, Bitmap>()
+    // In access order: a cover that is looked at stays, the one unused longest goes first.
+    private val bitmaps = LinkedHashMap<String, Bitmap>(8, 0.75f, true)
     private val _version = MutableStateFlow(0)
 
     /** Moves on whenever a cover arrives, so a running widget session draws it. */
@@ -69,7 +70,7 @@ internal suspend fun listenWidgetPlaced(context: Context): Boolean =
     GlanceAppWidgetManager(context).getGlanceIds(ListenWidget::class.java).isNotEmpty()
 
 /** Whether any of the app's widgets is on the home screen (a failed look-up counts as yes). */
-private suspend fun anyWidgetPlaced(context: Context): Boolean = try {
+internal suspend fun anyWidgetPlaced(context: Context): Boolean = try {
     val manager = GlanceAppWidgetManager(context)
     listOf(ListenWidget::class.java, NowPlayingWidget::class.java, ContinueListeningWidget::class.java)
         .any { manager.getGlanceIds(it).isNotEmpty() }

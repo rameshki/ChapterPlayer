@@ -55,4 +55,18 @@ class WidgetPaletteContrastTest {
         assertEquals(light, colours("drawable/widget_card_system.xml"))
         assertEquals(dark, colours("drawable-night/widget_card_system.xml"))
     }
+
+    /** The picker previews' colour resources (day and night) carry the palette. */
+    @Test fun `the preview colours use the palette`() {
+        fun hex(c: Color) = "#%08X".format(c.toArgb())
+        fun read(path: String): Map<String, String> = Regex("<color name=\"(\\w+)\">(#[0-9A-Fa-f]{8})</color>")
+            .findAll(File("src/androidMain/res", path).readText()).associate { it.groupValues[1] to it.groupValues[2].uppercase() }
+        fun expected(p: WidgetPalette) = mapOf(
+            "widget_text" to hex(p.textPrimary), "widget_text_secondary" to hex(p.textSecondary), "widget_icon" to hex(p.icon),
+            "widget_play_fill" to hex(p.playFill), "widget_play_glyph" to hex(p.playGlyph), "widget_progress" to hex(p.progress),
+            "widget_track" to hex(p.track),
+        )
+        assertEquals(expected(WidgetLightPalette), read("values/widget_colors.xml"))
+        assertEquals(expected(WidgetDarkPalette), read("values-night/widget_colors.xml"))
+    }
 }

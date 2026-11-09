@@ -3,6 +3,7 @@ package com.chapterplayer.ui.widgets
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -30,7 +31,9 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
+import com.chapterplayer.domain.widgets.WidgetCard
 import com.chapterplayer.domain.widgets.WidgetDimens
+import com.chapterplayer.domain.widgets.widgetCard
 import com.chapterplayer.shared.R
 import com.chapterplayer.ui.theme.WidgetDarkPalette
 import com.chapterplayer.ui.theme.WidgetLightPalette
@@ -54,11 +57,16 @@ internal class WidgetColors(
     val placeholder: ColorProvider,
 )
 
-internal fun widgetColors(mode: ThemeMode): WidgetColors = when (mode) {
-    ThemeMode.DARK -> fixed(WidgetDarkPalette, R.drawable.widget_card_dark)
-    ThemeMode.LIGHT -> fixed(WidgetLightPalette, R.drawable.widget_card_light)
-    // "Follow system": drawable-night and day/night colours, picked by the launcher.
-    ThemeMode.SYSTEM -> {
+/**
+ * The colours for the theme [mode] ([widgetCard]): "follow system" lets the launcher pick day or night from Android 12;
+ * before that Glance bakes the colours with [context]'s night mode, so the card is chosen from the same one.
+ */
+internal fun widgetColors(mode: ThemeMode, context: Context): WidgetColors =
+    when (widgetCard(mode, Build.VERSION.SDK_INT, GlanceWidgetHost.isNight(context.resources.configuration))) {
+    WidgetCard.DARK -> fixed(WidgetDarkPalette, R.drawable.widget_card_dark)
+    WidgetCard.LIGHT -> fixed(WidgetLightPalette, R.drawable.widget_card_light)
+    // Android 12+: drawable-night and day/night colours, picked by the launcher.
+    WidgetCard.SYSTEM -> {
         val day = WidgetLightPalette
         val night = WidgetDarkPalette
         WidgetColors(

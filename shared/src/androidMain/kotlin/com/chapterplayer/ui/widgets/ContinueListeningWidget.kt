@@ -53,15 +53,23 @@ class ContinueListeningWidget : GlanceAppWidget(), KoinComponent {
         provideContent {
             val state by states.continueListening.collectAsState(initial)
             val mode by settings.themeMode.collectAsState(initialMode)
+            // Read so a day / night switch before Android 12 draws the baked colours again.
+            GlanceWidgetHost.nightTicks.collectAsState().value
             val coverVersion by covers.version.collectAsState()
             val cover = if (coverVersion >= 0) (state as? ContinueWidgetState.Book)?.bookId?.let(covers::cached) else null
-            ContinueContent(context, state, cover, widgetColors(mode))
+            ContinueContent(context, state, cover, widgetColors(mode, context))
         }
     }
 }
 
-class ContinueListeningWidgetReceiver : GlanceAppWidgetReceiver() {
+class ContinueListeningWidgetReceiver : GlanceAppWidgetReceiver(), KoinComponent {
     override val glanceAppWidget: GlanceAppWidget = ContinueListeningWidget()
+
+    // The last Continue Listening widget removed: covers are loaded only while some widget is placed.
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        get<WidgetRefresher>().widgetsRemoved()
+    }
 }
 
 @Composable
