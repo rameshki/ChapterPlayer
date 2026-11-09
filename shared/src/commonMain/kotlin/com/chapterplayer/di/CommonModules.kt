@@ -388,7 +388,7 @@ val commonViewModelModule = module {
         ) }
     // The other copies' descriptions a book details page asked for, kept for the app session.
     single { CopyDescriptions() }
-    viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier), get<PlaybackStarter>()) }
     // The player's Up next sheet.
     viewModel { UpNextViewModel(get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }

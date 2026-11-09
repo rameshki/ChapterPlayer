@@ -57,6 +57,7 @@ import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.data.widgets.WidgetHost
 import com.chapterplayer.data.widgets.WidgetResumer
+import com.chapterplayer.ui.widgets.HeadlessStarts
 import com.chapterplayer.data.widgets.WidgetCovers
 import com.chapterplayer.ui.widgets.GlanceWidgetHost
 import com.chapterplayer.ui.widgets.WidgetCoverCache
@@ -185,9 +186,11 @@ val widgetModule = module {
     // The Listen widget's covers: loaded in the app through the authenticated cover loader, kept per book as small bitmaps.
     single { WidgetCoverCache(get(), androidContext(), Dispatchers.IO) } bind WidgetCovers::class
     single { WidgetRefresher(get(), get(), get(AppScopeQualifier), covers = get()) }
-    // The Continue widget's Resume: the main activity hands it the book (the one load path, offline rules apply).
-    // It runs in the app scope, so a rotation or leaving the activity does not cut a start short.
+    // The widgets' Play: starts the offered book headless from the widget's callback (the one load path, offline rules
+    // apply); the activity's older resume_book_id path uses it too. It runs in the app scope, so nothing cuts a start short.
     single { WidgetResumer(get(), get(), get(), get(), get(AppScopeQualifier)) }
+    // A refused foreground start right after a widget's Play opens the app (see WidgetPlayAction).
+    single { HeadlessStarts(androidContext()) }
 }
 
 /** Everything the shared module declares. The app adds what only it knows. */

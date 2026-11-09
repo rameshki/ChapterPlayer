@@ -4,7 +4,6 @@ import com.chapterplayer.domain.widgets.ContinueWidgetState
 import com.chapterplayer.domain.widgets.CoverFetch
 import com.chapterplayer.domain.widgets.CoverStep
 import com.chapterplayer.domain.widgets.ListenWidgetState
-import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.coverBookId
 import com.chapterplayer.domain.widgets.coverNextStep
 import kotlinx.coroutines.CancellationException
@@ -142,7 +141,7 @@ class WidgetRefresher(
         } else {
             combine(
                 sharedListen.map { it.coverBookId }.onStart { emit(null) },
-                sharedNowPlaying.map { (it as? NowPlayingWidgetState.Book)?.bookId },
+                sharedNowPlaying.map { it.coverBookId },
                 sharedContinue.map { (it as? ContinueWidgetState.Book)?.bookId },
             ) { listen, playing, resume -> setOfNotNull(listen, playing, resume) }
         }

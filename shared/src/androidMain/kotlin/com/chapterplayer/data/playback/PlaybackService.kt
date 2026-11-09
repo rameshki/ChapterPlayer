@@ -17,6 +17,7 @@ import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
 import com.chapterplayer.data.images.CoverArtworkBitmapLoader
 import com.chapterplayer.data.images.CoverBytesLoader
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
@@ -29,6 +30,7 @@ import com.chapterplayer.domain.playback.locate
 import com.chapterplayer.domain.playback.seekByTarget
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.di.blankRefusedPlexToken
+import com.chapterplayer.ui.widgets.HeadlessStarts
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +123,13 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         // loaded here through the authenticated cover loader. Not Media3's CacheBitmapLoader: it would keep a failed load.
         val covers = get<CoverBytesLoader>()
         builder.setBitmapLoader(CoverArtworkBitmapLoader(coverAuthority(packageName), covers::load, scope))
+        // Android 12+ may refuse the foreground start when the app is in the background (Media3 catches it and tells us):
+        // right after a widget's Play the app opens so the person can carry on; otherwise nothing (see WidgetPlayAction).
+        setListener(object : MediaSessionService.Listener {
+            override fun onForegroundServiceStartNotAllowedException() {
+                get<HeadlessStarts>().onForegroundRefused()
+            }
+        })
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
             it.setMediaButtonPreferences(
@@ -172,6 +181,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     }
 
     override fun onDestroy() {
+        clearListener()
         endSession()
         scope.cancel()
         session?.release()

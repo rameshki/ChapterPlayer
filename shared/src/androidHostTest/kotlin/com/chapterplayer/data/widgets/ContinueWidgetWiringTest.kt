@@ -4,7 +4,13 @@ import com.chapterplayer.data.model.DownloadState
 import com.chapterplayer.data.model.ReadingProgress
 import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.domain.playback.OpenPlayerRequest
+import com.chapterplayer.data.playback.PlaybackStartException
 import com.chapterplayer.domain.widgets.ContinueWidgetState
+import com.chapterplayer.domain.widgets.ListenWidgetState
+import com.chapterplayer.domain.widgets.NowPlayingWidgetState
+import com.chapterplayer.domain.widgets.SERVER_NOT_REACHABLE_TEXT
+import com.chapterplayer.domain.widgets.WidgetStartReaction
+import com.chapterplayer.domain.widgets.widgetStartReaction
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeBookRepository
 import com.chapterplayer.testing.FakeConnectivity
@@ -139,6 +145,87 @@ class ContinueWidgetWiringTest {
         resumer().launch("missing") { failures += it }
         runCurrent()
         assertEquals(listOf(WidgetResumer.NOTHING_TO_RESUME), failures)
+    }
+
+    // -- The widgets' headless Play (no app, no player screen) ---------------------------------
+
+    @Test
+    fun headlessPlayStartsTheBookWithoutOpeningTheAppAndTheWidgetsFlip() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        // All three offer the same book first.
+        assertEquals("a", assertIs<ListenWidgetState.Resume>(states.listen.first()).bookId)
+        assertEquals("a", assertIs<NowPlayingWidgetState.Resume>(states.nowPlaying.first()).bookId)
+
+        val reactions = mutableListOf<WidgetStartReaction>()
+        resumer().launchHeadless("a") { reactions += it }
+        runCurrent()
+
+        assertEquals(listOf("a" to 25_000L), controller.loads)
+        assertEquals(1, controller.plays)
+        assertFalse(openPlayer.pending.value) // no player screen is asked for
+        assertEquals(emptyList(), reactions)
+        assertIs<ListenWidgetState.Controls>(states.listen.first())
+        assertIs<NowPlayingWidgetState.Book>(states.nowPlaying.first())
+    }
+
+    @Test
+    fun headlessPlayOfflineSaysWhyAndKeepsTheResumeCard() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        connectivity.online.value = false // the widget was drawn before the connection went
+        val reactions = mutableListOf<WidgetStartReaction>()
+        resumer().launchHeadless("a") { reactions += it }
+        runCurrent()
+
+        assertEquals(listOf(WidgetStartReaction(NEEDS_CONNECTION_TO_PLAY_TEXT, openApp = false)), reactions)
+        assertEquals(emptyList(), controller.loads)
+        assertFalse(openPlayer.pending.value)
+    }
+
+    @Test
+    fun headlessPlayOpensTheAppOnlyToSignInAgain() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        controller.onLoad = { _, _ -> throw PlaybackStartException("Sign in again in Settings") }
+        val reactions = mutableListOf<WidgetStartReaction>()
+        resumer().launchHeadless("a") { reactions += it }
+        runCurrent()
+        assertEquals(listOf(WidgetStartReaction("Sign in again in Settings", openApp = true)), reactions)
+
+        // A server that cannot be reached: a toast only.
+        controller.onLoad = { _, _ -> throw PlaybackStartException("Cannot reach the server") }
+        reactions.clear()
+        resumer().launchHeadless("a") { reactions += it }
+        runCurrent()
+        assertEquals(listOf(WidgetStartReaction(SERVER_NOT_REACHABLE_TEXT, openApp = false)), reactions)
+        // Still the Resume card: nothing was loaded.
+        assertIs<ListenWidgetState.Resume>(states.listen.first())
+    }
+
+    @Test
+    fun headlessPlayKeepsTheSafetyRules() = runTest {
+        repo.progress.value = listOf(ReadingProgress("a", 25_000L, 100_000L, 2L))
+        val reactions = mutableListOf<WidgetStartReaction>()
+        // A book the widget does not offer (another app sending the broadcast): refused.
+        resumer().launchHeadless("b") { reactions += it }
+        runCurrent()
+        assertEquals(emptyList(), controller.loads)
+        assertEquals(listOf(widgetStartReaction(WidgetResumer.NOTHING_TO_RESUME)), reactions)
+
+        // A double tap: one start, and the second tap is not an error.
+        val gate = CompletableDeferred<Unit>()
+        controller.onLoad = { book, _ ->
+            gate.await()
+            controller.playback.value = PlaybackState(bookId = book.id, durationMs = book.durationMs)
+        }
+        reactions.clear()
+        val resumer = resumer()
+        resumer.launchHeadless("a") { reactions += it }
+        runCurrent()
+        resumer.launchHeadless("a") { reactions += it }
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("a" to 25_000L), controller.loads)
+        assertEquals(emptyList(), reactions)
     }
 
     @Test

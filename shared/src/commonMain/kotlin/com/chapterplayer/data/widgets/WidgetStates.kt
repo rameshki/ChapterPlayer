@@ -32,9 +32,19 @@ class WidgetStates(
     private val merging: SourceMerging = SourceMerging.None,
 ) {
 
+    /**
+     * The loaded book's controls; with nothing loaded the last book with Play (the same book as [continueListening] and
+     * [listen]), "Nothing played yet" only when there is no history.
+     */
     val nowPlaying: Flow<NowPlayingWidgetState>
-        get() = combine(controller.state, books.observeAllBooks()) { state, all ->
-            nowPlayingWidgetState(state, state.bookId?.let { id -> all.firstOrNull { it.id == id } })
+        get() = combine(
+            controller.state,
+            books.observeAllBooks(),
+            observeBrowseItems(books, downloads, merging),
+            connectivity.isOnline,
+            settings.downloadedOnly,
+        ) { state, all, items, online, downloadedOnly ->
+            nowPlayingWidgetState(state, state.bookId?.let { id -> all.firstOrNull { it.id == id } }, items, online, downloadedOnly)
         }.distinctUntilChanged()
 
     val continueListening: Flow<ContinueWidgetState>

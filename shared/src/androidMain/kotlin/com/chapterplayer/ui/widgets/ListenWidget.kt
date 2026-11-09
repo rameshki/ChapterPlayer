@@ -33,7 +33,6 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.chapterplayer.data.settings.AppSettings
-import com.chapterplayer.data.widgets.EXTRA_RESUME_BOOK_ID
 import com.chapterplayer.data.widgets.WidgetActions
 import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
@@ -57,9 +56,9 @@ import org.koin.core.component.get
 
 /**
  * The Listen home screen widget: Resume and the playback controls in one (rules in `domain/widgets/ListenWidget.kt`,
- * look in `WidgetUi.kt`). With nothing loaded it offers the Continue Listening book; Play goes through the widget Resume
- * path (the app starts it with [com.chapterplayer.data.widgets.WidgetResumer] and opens the player). With a book loaded
- * it shows the controls, which act on that book only ([WidgetActions]). Sizes: a mini bar, a slim bar, a square, a wide
+ * look in `WidgetUi.kt`). With nothing loaded it offers the Continue Listening book. With a book loaded
+ * Play starts the book headless ([WidgetPlayAction]: no app, no player screen), then the widget shows the controls,
+ * which act on that book only ([WidgetActions]). Sizes: a mini bar, a slim bar, a square, a wide
  * card and a large card, each with the cover from [WidgetCoverCache] but the mini bar (a bitmap loaded in the app,
  * never an address). [com.chapterplayer.data.widgets.WidgetRefresher] redraws it when its state changes or a cover arrives.
  */
@@ -253,10 +252,8 @@ private fun Buttons(context: Context, state: ListenWidgetState, layout: ListenLa
 @Composable
 private fun PlayButton(context: Context, state: ListenWidgetState, colors: WidgetColors, size: androidx.compose.ui.unit.Dp) {
     val action: Action = when (state) {
-        is ListenWidgetState.Resume -> {
-            val resume = openAppIntent(context, openPlayer = false, extras = mapOf(EXTRA_RESUME_BOOK_ID to state.bookId)) ?: return
-            actionStartActivity(resume)
-        }
+        // Starts the book without opening the app; the widget flips to the controls by itself.
+        is ListenWidgetState.Resume -> widgetPlayAction(state.bookId)
         is ListenWidgetState.Controls -> actionRunCallback<ListenPlayPauseAction>()
         is ListenWidgetState.Empty -> return
     }

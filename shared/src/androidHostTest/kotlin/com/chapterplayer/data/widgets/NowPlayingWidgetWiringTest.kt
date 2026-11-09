@@ -27,7 +27,8 @@ class NowPlayingWidgetWiringTest {
 
     @Test
     fun theStateNamesTheLoadedBook() = runTest {
-        assertEquals(NowPlayingWidgetState.Idle, states.nowPlaying.first())
+        // Nothing ever played: the only empty text left.
+        assertEquals(NowPlayingWidgetState.Empty(everPlayed = false), states.nowPlaying.first())
         controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, durationMs = 1_000)
         assertEquals(NowPlayingWidgetState.Book("Alpha", "Ann", null, isPlaying = true, canSkip = true, bookId = "a"), states.nowPlaying.first())
     }
