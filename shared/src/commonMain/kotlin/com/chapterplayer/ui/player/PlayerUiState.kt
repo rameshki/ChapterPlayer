@@ -1,11 +1,18 @@
 package com.chapterplayer.ui.player
 
 import com.chapterplayer.domain.browse.ChapterRow
+import com.chapterplayer.domain.playback.PlayerEmptyView
 import com.chapterplayer.domain.playback.SleepTimer
 
 /** What the full player screen shows. Every text is ready to display; none holds raw exception text. */
 data class PlayerUiState(
     val nothingPlaying: Boolean = true,
+    /** With [nothingPlaying]: a start under way, a failed start, or a screen to close (never "Nothing is playing"). */
+    val emptyView: PlayerEmptyView = PlayerEmptyView.LEAVE,
+    /** The book a start in flight is loading. */
+    val startingTitle: String? = null,
+    /** Why the last start failed (safe to show). */
+    val startError: String? = null,
     val title: String = "",
     val author: String = "",
     val coverUrl: String? = null,

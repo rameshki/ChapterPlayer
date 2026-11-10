@@ -4,7 +4,6 @@ import com.chapterplayer.domain.widgets.ContinueWidgetState
 import com.chapterplayer.domain.widgets.CoverFetch
 import com.chapterplayer.domain.widgets.CoverStep
 import com.chapterplayer.domain.widgets.ListenWidgetState
-import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.coverBookId
 import com.chapterplayer.domain.widgets.coverNextStep
 import kotlinx.coroutines.CancellationException
@@ -106,11 +105,15 @@ class WidgetRefresher(
         }
     }
 
-    @OptIn(FlowPreview::class)
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     fun start() {
         if (started) return
         started = true
-        scope.launch { sharedNowPlaying.collect { safely { host.redrawNowPlaying() } } }
+        // Now Playing (and its offer, which needs the merged library) only while some widget is placed (unknown counts).
+        scope.launch {
+            anyPlaced.flatMapLatest { placed -> if (placed == false) emptyFlow() else sharedNowPlaying }
+                .collect { safely { host.redrawNowPlaying() } }
+        }
         scope.launch { sharedContinue.debounce(continueQuietMs).collect { safely { host.redrawContinueListening() } } }
         scope.launch {
             var placed = false
@@ -142,7 +145,7 @@ class WidgetRefresher(
         } else {
             combine(
                 sharedListen.map { it.coverBookId }.onStart { emit(null) },
-                sharedNowPlaying.map { (it as? NowPlayingWidgetState.Book)?.bookId },
+                sharedNowPlaying.map { it.coverBookId },
                 sharedContinue.map { (it as? ContinueWidgetState.Book)?.bookId },
             ) { listen, playing, resume -> setOfNotNull(listen, playing, resume) }
         }

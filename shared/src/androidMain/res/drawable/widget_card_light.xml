@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The widgets' card, light: white at the top, light grey at the bottom. Colours: WidgetPalette (ui/theme), checked by WidgetPaletteContrastTest. -->
+<!-- The widgets' card, light: the app's white surface at the top, its warm paper at the bottom. Colours: WidgetPalette (ui/theme), checked by WidgetPaletteContrastTest. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <corners android:radius="24dp" />
     <gradient
         android:angle="270"
-        android:endColor="#FFE6E6EB"
+        android:endColor="#FFEBE8E0"
         android:startColor="#FFFFFFFF"
         android:type="linear" />
 </shape>

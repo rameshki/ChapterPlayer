@@ -273,7 +273,10 @@ fun AppNavigation() {
 
                     composable(Screen.Player.route) {
                         PlayerScreen(
-                            onBack = { navController.popBackStack() },
+                            // Only ever pops the player itself (the auto-close can run during a transition).
+                            onBack = {
+                                if (navController.currentBackStackEntry?.destination?.route == Screen.Player.route) navController.popBackStack()
+                            },
                             onOpenBook = openBook,
                             onOpenGroup = openGroup,
                             onOpenSettings = { openSettings() },

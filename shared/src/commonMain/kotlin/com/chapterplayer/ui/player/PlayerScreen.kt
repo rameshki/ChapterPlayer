@@ -52,6 +52,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +70,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -79,6 +82,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.PlayerEmptyView
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.ui.components.BookCoverPlaceholder
 import com.chapterplayer.ui.library.LibraryView
@@ -136,7 +140,8 @@ fun PlayerScreen(
         onRenameBookmark = viewModel::renameBookmark,
         onDeleteBookmark = viewModel::deleteBookmark,
         onJumpTo = viewModel::jumpTo,
-        onDismissError = viewModel::dismissError
+        onDismissError = viewModel::dismissError,
+        onDismissStartFailure = viewModel::dismissStartFailure,
     )
 }
 
@@ -175,11 +180,26 @@ fun PlayerContent(
     modifier: Modifier = Modifier,
     /** The Up next sheet (its own view model); a stand-in can be passed where there is none. */
     upNextSheet: @Composable (onDismiss: () -> Unit) -> Unit = { UpNextSheet(onDismiss = it) },
+    /** Back from a failed start's view: the failure is forgotten before the screen closes. */
+    onDismissStartFailure: () -> Unit = {},
 ) {
     var sheet by rememberSaveable { mutableStateOf(SHEET_NONE) }
 
     if (state.nothingPlaying) {
-        NothingPlaying(onBack, modifier)
+        // Never "Nothing is playing": a start under way shows its book, a failed one its reason, and a player left on
+        // the back stack after the book was released (or restored after the app was gone) closes itself.
+        when (state.emptyView) {
+            PlayerEmptyView.STARTING -> StartingView(state.startingTitle.orEmpty(), onBack, modifier)
+            PlayerEmptyView.FAILED -> {
+                StartFailedView(state.startError.orEmpty(), { onDismissStartFailure(); onBack() }, modifier)
+                // The system back (or any other way the view goes) forgets the failure too.
+                DisposableEffect(Unit) { onDispose { onDismissStartFailure() } }
+            }
+            PlayerEmptyView.LEAVE, PlayerEmptyView.NONE -> {
+                Box(modifier.fillMaxSize().background(BackgroundDeep))
+                LaunchedEffect(Unit) { onBack() }
+            }
+        }
         return
     }
 
@@ -318,18 +338,52 @@ fun PlayerContent(
     }
 }
 
+/** A start under way (the server is asked, the player prepared): the book's title and a spinner. */
 @Composable
-private fun NothingPlaying(onBack: () -> Unit, modifier: Modifier) {
+private fun StartingView(title: String, onBack: () -> Unit, modifier: Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize().background(BackgroundDeep).padding(32.dp)
+            .semantics(mergeDescendants = true) { },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(color = AmberGold)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = if (title.isBlank()) "Starting…" else "Starting $title…",
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+        )
+        Spacer(Modifier.height(16.dp))
+        TextButton(onClick = onBack) { Text("Back", color = AmberGold) }
+    }
+}
+
+/** The last start failed: its reason (a safe, fixed text) and Back. */
+@Composable
+private fun StartFailedView(message: String, onBack: () -> Unit, modifier: Modifier) {
     Column(
         modifier = modifier.fillMaxSize().background(BackgroundDeep).padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Nothing is playing",
+            text = "Could not play",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { heading() }
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = message,
             style = MaterialTheme.typography.bodyLarge,
             color = TextSecondary,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            // Read out when a start turns into a failure (TalkBack would not hear the new view otherwise).
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
         )
         Spacer(Modifier.height(16.dp))
         Button(

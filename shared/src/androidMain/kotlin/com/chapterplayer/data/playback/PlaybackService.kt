@@ -17,6 +17,7 @@ import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
 import com.chapterplayer.data.images.CoverArtworkBitmapLoader
 import com.chapterplayer.data.images.CoverBytesLoader
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
@@ -29,6 +30,9 @@ import com.chapterplayer.domain.playback.locate
 import com.chapterplayer.domain.playback.seekByTarget
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.di.blankRefusedPlexToken
+import com.chapterplayer.domain.widgets.ForegroundRefusalAction
+import com.chapterplayer.domain.widgets.foregroundRefusalAction
+import com.chapterplayer.ui.widgets.PlaybackNotices
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +125,18 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         // loaded here through the authenticated cover loader. Not Media3's CacheBitmapLoader: it would keep a failed load.
         val covers = get<CoverBytesLoader>()
         builder.setBitmapLoader(CoverArtworkBitmapLoader(coverAuthority(packageName), covers::load, scope))
+        // Android 12+ may refuse the foreground start when the app is in the background (Media3 catches it and tells us):
+        // a book playing without its foreground service has no notification and can be stopped at any moment, so it is
+        // paused and a notification "Tap to keep listening" opens the player (a legal way in; an activity started from
+        // the background would be blocked). See WidgetPlayAction.
+        setListener(object : MediaSessionService.Listener {
+            override fun onForegroundServiceStartNotAllowedException() {
+                if (foregroundRefusalAction(playbackController.state.value.bookId != null) == ForegroundRefusalAction.PAUSE_AND_NOTIFY) {
+                    playbackController.pause()
+                    get<PlaybackNotices>().keepListening()
+                }
+            }
+        })
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
             it.setMediaButtonPreferences(
@@ -172,6 +188,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     }
 
     override fun onDestroy() {
+        clearListener()
         endSession()
         scope.cancel()
         session?.release()

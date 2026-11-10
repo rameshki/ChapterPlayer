@@ -24,9 +24,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.chapterplayer.data.settings.AppSettings
-import com.chapterplayer.data.widgets.EXTRA_RESUME_BOOK_ID
 import com.chapterplayer.data.widgets.WidgetRefresher
-import com.chapterplayer.data.widgets.WidgetResumer
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.domain.widgets.ContinueWidgetState
 import com.chapterplayer.domain.widgets.WidgetDimens
@@ -36,8 +34,8 @@ import org.koin.core.component.get
 
 /**
  * The Continue Listening home screen widget: Home's Resume-card book (among the books that can play now) with its
- * cover, progress and a round Resume button (the shared look of WidgetUi.kt). Resume opens the app, which starts the book through [WidgetResumer] and then shows
- * the player; the body opens the app. [com.chapterplayer.data.widgets.WidgetRefresher] redraws it when progress,
+ * cover, progress and a round Resume button (the shared look of WidgetUi.kt). Resume starts the book without opening the
+ * app ([WidgetPlayAction]); the body opens the app. [com.chapterplayer.data.widgets.WidgetRefresher] redraws it when progress,
  * downloads or the network change, and the system's widget update after a boot draws it from the database.
  */
 class ContinueListeningWidget : GlanceAppWidget(), KoinComponent {
@@ -107,16 +105,14 @@ private fun ContinueContent(context: Context, state: ContinueWidgetState, cover:
                         maxLines = 1,
                     )
                 }
-                val resume = openAppIntent(context, openPlayer = false, extras = mapOf(EXTRA_RESUME_BOOK_ID to state.bookId))
-                if (resume != null) {
-                    WidgetPlayButton(
-                        pause = false,
-                        description = "Resume ${state.title}",
-                        onClick = actionStartActivity(resume),
-                        colors = colors,
-                        target = WidgetDimens.ROW_PLAY_DP.dp,
-                    )
-                }
+                // Starts the book without opening the app (WidgetPlayAction).
+                WidgetPlayButton(
+                    pause = false,
+                    description = "Resume ${state.title}",
+                    onClick = widgetPlayAction(state.bookId),
+                    colors = colors,
+                    target = WidgetDimens.ROW_PLAY_DP.dp,
+                )
             }
         }
     }

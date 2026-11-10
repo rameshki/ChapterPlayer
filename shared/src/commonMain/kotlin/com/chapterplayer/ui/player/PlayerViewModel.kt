@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.playback.PlaybackStarter
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.settings.AppSettings
@@ -14,6 +15,15 @@ import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.SleepTimer
+import com.chapterplayer.domain.playback.StartStatus
+import com.chapterplayer.domain.playback.playerEmptyView
+import com.chapterplayer.domain.playback.START_FAILURE_SHOWN_MS
+import com.chapterplayer.domain.playback.visibleStartStatus
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.transformLatest
 import com.chapterplayer.domain.playback.bookFraction
 import com.chapterplayer.domain.playback.chapterFraction
 import com.chapterplayer.domain.playback.nextChapterStart
@@ -43,8 +53,31 @@ class PlayerViewModel(
     private val controller: PlaybackController,
     private val books: BookRepository,
     private val settings: AppSettings,
-    dispatcher: CoroutineDispatcher
+    dispatcher: CoroutineDispatcher,
+    /** The one start path: what it is doing ([PlaybackStarter.status]) shows while nothing is loaded. */
+    private val starter: PlaybackStarter? = null,
 ) : ViewModel() {
+
+    /**
+     * The start status as the screen may show it ([visibleStartStatus]): a failure only of a start begun while this
+     * state is watched (from the subscription on; a start in flight then counts), and only for
+     * [START_FAILURE_SHOWN_MS], after which it reads as Idle (a player left open then closes).
+     */
+    private val startStatus: Flow<StartStatus> = starter?.let { s ->
+        flow {
+            val watchedFrom = (s.status.value as? StartStatus.Starting)?.attempt ?: (s.lastAttempt + 1)
+            emitAll(
+                s.status.transformLatest { status ->
+                    val shown = visibleStartStatus(status, watchedFrom, s.clock())
+                    emit(shown)
+                    if (shown is StartStatus.Failed) {
+                        delay((START_FAILURE_SHOWN_MS - (s.clock() - shown.atMs)).coerceAtLeast(0L))
+                        emit(StartStatus.Idle)
+                    }
+                }
+            )
+        }
+    } ?: MutableStateFlow(StartStatus.Idle)
 
     /** The error text the person dismissed; hidden until the text changes or clears. */
     private val dismissedError = MutableStateFlow<String?>(null)
@@ -56,13 +89,14 @@ class PlayerViewModel(
     }
 
     val uiState: StateFlow<PlayerUiState> = combine(
-        controller.state, controller.sleepTimer, playingBook, dismissedError
-    ) { state, timer, book, dismissed -> buildState(state, timer, book, dismissed) }
+        controller.state, controller.sleepTimer, playingBook, dismissedError, startStatus
+    ) { state, timer, book, dismissed, start -> buildState(state, timer, book, dismissed, start) }
         .flowOn(dispatcher)
         // Seeded from the player, so a screen opened while a book plays draws it from the first frame.
         .stateIn(
             viewModelScope, SharingStarted.WhileSubscribed(5_000),
-            buildState(controller.state.value, controller.sleepTimer.value, null, null)
+            // A start in flight shows from the first frame; a failure only once it is known to be this screen's.
+            buildState(controller.state.value, controller.sleepTimer.value, null, null, (starter?.status?.value as? StartStatus.Starting) ?: StartStatus.Idle)
         )
 
     private val currentBookId = controller.state.map { it.bookId }.distinctUntilChanged()
@@ -86,7 +120,7 @@ class PlayerViewModel(
         }
     }
 
-    private fun buildState(state: PlaybackState, timer: SleepTimer, book: AudioBook?, dismissed: String?): PlayerUiState {
+    private fun buildState(state: PlaybackState, timer: SleepTimer, book: AudioBook?, dismissed: String?, start: StartStatus): PlayerUiState {
         val chapters = state.chapters
         val index = currentIndex(state)
         val chapter = index?.let { chapters[it] }
@@ -94,6 +128,9 @@ class PlayerViewModel(
         val duration = state.durationMs
         return PlayerUiState(
             nothingPlaying = state.bookId == null,
+            emptyView = playerEmptyView(bookLoaded = state.bookId != null, status = start),
+            startingTitle = (start as? StartStatus.Starting)?.title,
+            startError = (start as? StartStatus.Failed)?.message,
             title = book?.title ?: if (state.bookId == null) "" else FALLBACK_TITLE,
             author = book?.author.orEmpty(),
             coverUrl = book?.coverUrl,
@@ -233,6 +270,12 @@ class PlayerViewModel(
     }
 
     fun setSleepTimer(timer: SleepTimer) = controller.setSleepTimer(timer)
+
+    /** Back from a failed start's view: the failure is forgotten, so the player is not left showing it. */
+    fun dismissStartFailure() {
+        val starter = starter ?: return
+        (starter.status.value as? StartStatus.Failed)?.let { starter.dismissFailure(it.attempt) }
+    }
 
     fun dismissError() {
         dismissedError.value = controller.state.value.error

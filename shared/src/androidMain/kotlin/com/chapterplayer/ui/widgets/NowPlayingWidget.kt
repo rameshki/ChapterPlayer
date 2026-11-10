@@ -40,6 +40,8 @@ import com.chapterplayer.domain.widgets.NOW_PLAYING_COVER_MIN_DP
 import com.chapterplayer.domain.widgets.NOW_PLAYING_WIDE_MIN_DP
 import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.WidgetDimens
+import com.chapterplayer.domain.widgets.coverBookId
+import com.chapterplayer.domain.widgets.nowPlayingEmptyText
 import com.chapterplayer.domain.widgets.nowPlayingIsWide
 import com.chapterplayer.domain.widgets.nowPlayingShowsCover
 import com.chapterplayer.shared.R
@@ -55,8 +57,9 @@ import org.koin.core.component.get
  * The Now Playing home screen widget. Narrow it is play/pause only; from [NOW_PLAYING_WIDE_MIN_DP] wide it shows
  * the title and back 15 / play-pause / forward 30, from [NOW_PLAYING_COVER_MIN_DP] with the book's cover first (the
  * shared look of WidgetUi.kt: rounded card, round play button). Tapping the body opens the app on the player. The buttons act
- * on the loaded book through the app's one controller (see [WidgetActions]); with nothing loaded the widget only
- * opens the app. [com.chapterplayer.data.widgets.WidgetRefresher] redraws it when its state changes.
+ * on the loaded book through the app's one controller (see [WidgetActions]). With nothing loaded it offers the last book
+ * (the Listen and Continue Listening book) with Play, which starts it without opening the app ([WidgetPlayAction]);
+ * "Nothing played yet" only when there is no history. [com.chapterplayer.data.widgets.WidgetRefresher] redraws it when its state changes.
  */
 class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
 
@@ -76,7 +79,7 @@ class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
             // Read so a day / night switch before Android 12 draws the baked colours again.
             GlanceWidgetHost.nightTicks.collectAsState().value
             val coverVersion by covers.version.collectAsState()
-            val cover = if (coverVersion >= 0) (state as? NowPlayingWidgetState.Book)?.bookId?.let(covers::cached) else null
+            val cover = if (coverVersion >= 0) state.coverBookId?.let(covers::cached) else null
             NowPlayingContent(context, state, cover, widgetColors(mode, context))
         }
     }
@@ -120,12 +123,15 @@ private fun NowPlayingContent(context: Context, state: NowPlayingWidgetState, co
         horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally,
     ) {
         when (state) {
-            NowPlayingWidgetState.Idle -> {
+            // Nothing loaded: the last book with Play (the same book as Listen and Continue Listening), started headless.
+            is NowPlayingWidgetState.Resume -> if (wide) WideResume(state, cover, nowPlayingShowsCover(width), colors) else ResumePlay(state, colors)
+            // Truly nothing to offer ("Nothing played yet", or nothing that can play now); Idle is not shown by the widget.
+            is NowPlayingWidgetState.Empty, NowPlayingWidgetState.Idle -> {
                 WidgetCover(null, 32.dp, colors)
                 if (wide) {
                     Spacer(GlanceModifier.width(WidgetDimens.GAP_DP.dp))
                     Text(
-                        text = "Nothing playing",
+                        text = nowPlayingEmptyText(state as? NowPlayingWidgetState.Empty ?: NowPlayingWidgetState.Empty(everPlayed = false)),
                         style = TextStyle(color = colors.textSecondary, fontSize = 14.sp),
                         maxLines = 1,
                     )
@@ -163,6 +169,35 @@ private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, cover: Bitmap?,
 }
 
 @Composable
+private fun RowScope.WideResume(state: NowPlayingWidgetState.Resume, cover: Bitmap?, showCover: Boolean, colors: WidgetColors) {
+    if (showCover) {
+        WidgetCover(cover, WidgetDimens.ROW_COVER_DP.dp, colors)
+        Spacer(GlanceModifier.width(WidgetDimens.GAP_DP.dp))
+    }
+    Column(modifier = GlanceModifier.defaultWeight().padding(end = 4.dp)) {
+        Text(
+            text = state.title,
+            style = TextStyle(color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+            maxLines = 1,
+        )
+        Text(text = state.timeLeftText, style = TextStyle(color = colors.textSecondary, fontSize = 12.sp), maxLines = 1)
+    }
+    ResumePlay(state, colors)
+}
+
+/** Play for the last book: starts it without opening the app ([WidgetPlayAction]). */
+@Composable
+private fun ResumePlay(state: NowPlayingWidgetState.Resume, colors: WidgetColors) {
+    WidgetPlayButton(
+        pause = false,
+        description = "Play ${state.title}",
+        onClick = widgetPlayAction(state.bookId),
+        colors = colors,
+        target = WidgetDimens.ROW_PLAY_DP.dp,
+    )
+}
+
+@Composable
 private fun PlayPause(state: NowPlayingWidgetState.Book, colors: WidgetColors) {
     WidgetPlayButton(
         pause = state.isPlaying,
@@ -193,7 +228,7 @@ internal suspend fun runWidgetButton(context: Context, block: WidgetActions.() -
         try {
             context.startActivity(intent)
         } catch (_: Exception) {
-            // The system refused a start from the background; the redraw below still shows "Nothing playing".
+            // The system refused a start from the background; the redraw below shows the Resume card again.
         }
     }
     try {

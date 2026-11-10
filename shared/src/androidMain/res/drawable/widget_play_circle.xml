@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The round play button's circle (tinted by the widget: white in the dark theme, near black in the light one). -->
+<!-- The round play button's circle (tinted by the widget: the app's amber, darker in the light theme). -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
     <solid android:color="#FFFFFFFF" />

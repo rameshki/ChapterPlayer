@@ -15,8 +15,23 @@ const val NOW_PLAYING_FALLBACK_TITLE = "Now playing"
  * the widget is redrawn only when this value changes.
  */
 sealed interface NowPlayingWidgetState {
-    /** Nothing is loaded in the player: the widget only opens the app. */
+    /** Nothing is loaded in the player (the two-argument [nowPlayingWidgetState]; the widget itself shows [Resume] or [Empty]). */
     data object Idle : NowPlayingWidgetState
+
+    /**
+     * Nothing is loaded: the last book (the Continue Listening book, the same rule as the other widgets) with Play, which
+     * starts it without opening the app.
+     */
+    data class Resume(
+        val bookId: String,
+        val title: String,
+        val author: String,
+        val percent: Int,
+        val timeLeftText: String,
+    ) : NowPlayingWidgetState
+
+    /** Nothing to offer: nothing was ever played ([everPlayed] false), or nothing played can play now. */
+    data class Empty(val everPlayed: Boolean) : NowPlayingWidgetState
 
     data class Book(
         val title: String,
@@ -48,6 +63,38 @@ fun nowPlayingWidgetState(state: PlaybackState, book: AudioBook?): NowPlayingWid
         bookId = bookId,
     )
 }
+
+/**
+ * The Now Playing widget: the loaded book's controls; with nothing loaded the book the Listen and Continue Listening
+ * widgets offer ([listenWidgetState], hence [continueWidgetState]), so all three agree, and "Nothing played yet" only
+ * when there is truly nothing.
+ */
+fun nowPlayingWidgetState(
+    state: PlaybackState,
+    book: AudioBook?,
+    items: List<BrowseItem>,
+    online: Boolean,
+    downloadedOnly: Boolean,
+): NowPlayingWidgetState {
+    val loaded = nowPlayingWidgetState(state, book)
+    if (loaded is NowPlayingWidgetState.Book) return loaded
+    return when (val offered = listenWidgetState(PlaybackState(), null, items, online, downloadedOnly)) {
+        is ListenWidgetState.Resume -> NowPlayingWidgetState.Resume(offered.bookId, offered.title, offered.author, offered.percent, offered.timeLeftText)
+        is ListenWidgetState.Empty -> NowPlayingWidgetState.Empty(offered.everPlayed)
+        is ListenWidgetState.Controls -> NowPlayingWidgetState.Empty(everPlayed = true) // not reached: nothing is loaded
+    }
+}
+
+/** The Now Playing widget's text when it has nothing to offer (never "Nothing playing"). */
+fun nowPlayingEmptyText(state: NowPlayingWidgetState.Empty): String = listenEmptyText(ListenWidgetState.Empty(state.everPlayed))
+
+/** The book whose cover the Now Playing widget may show. */
+val NowPlayingWidgetState.coverBookId: String?
+    get() = when (this) {
+        is NowPlayingWidgetState.Book -> bookId
+        is NowPlayingWidgetState.Resume -> bookId
+        NowPlayingWidgetState.Idle, is NowPlayingWidgetState.Empty -> null
+    }
 
 /** What the Continue Listening widget shows. */
 sealed interface ContinueWidgetState {

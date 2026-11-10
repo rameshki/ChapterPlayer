@@ -85,6 +85,51 @@ class WidgetStateTest {
         assertEquals(nowPlayingWidgetState(first, book("a", chapters = chapters)), nowPlayingWidgetState(later, book("a", chapters = chapters)))
     }
 
+    // -- Now Playing with nothing loaded: the last book, ready to play --------------------------
+
+    @Test
+    fun nothingLoadedOffersTheLastBookNotNothingPlaying() {
+        val items = listOf(item("a", positionMs = 900_000, lastPlayedAt = 2), item("b", positionMs = 100, lastPlayedAt = 1))
+        val shown = nowPlayingWidgetState(PlaybackState(), null, items, online = true, downloadedOnly = false)
+        assertEquals(NowPlayingWidgetState.Resume("a", "Title a", "Author a", percent = 25, timeLeftText = "45 min left"), shown)
+        assertEquals("a", shown.coverBookId)
+    }
+
+    @Test
+    fun nothingPlayedYetIsTheOnlyEmptyText() {
+        val never = assertIs<NowPlayingWidgetState.Empty>(nowPlayingWidgetState(PlaybackState(), null, listOf(item("a")), online = true, downloadedOnly = false))
+        assertEquals("Nothing played yet", nowPlayingEmptyText(never))
+        // Played, but nothing of it can play offline: said so, not "Nothing playing".
+        val offline = assertIs<NowPlayingWidgetState.Empty>(
+            nowPlayingWidgetState(PlaybackState(), null, listOf(item("a", positionMs = 900_000)), online = false, downloadedOnly = false)
+        )
+        assertEquals("Nothing to resume now", nowPlayingEmptyText(offline))
+    }
+
+    @Test
+    fun aLoadedBookStillShowsItsControls() {
+        val items = listOf(item("b", positionMs = 900_000, lastPlayedAt = 9))
+        val state = PlaybackState(bookId = "a", isPlaying = true, durationMs = 3_600_000)
+        assertIs<NowPlayingWidgetState.Book>(nowPlayingWidgetState(state, book("a"), items, online = true, downloadedOnly = false))
+    }
+
+    /** The three widgets offer the same book whatever the network, downloads and "Downloaded only" say. */
+    @Test
+    fun theThreeWidgetsAgreeOnTheBook() {
+        val items = listOf(
+            item("streamed", positionMs = 900_000, lastPlayedAt = 9),
+            item("onPhone", positionMs = 1_800_000, lastPlayedAt = 5, state = DownloadState.DOWNLOADED),
+            item("older", positionMs = 60_000, lastPlayedAt = 1),
+        )
+        for (online in listOf(true, false)) for (downloadedOnly in listOf(true, false)) {
+            val cont = (continueWidgetState(items, online, downloadedOnly) as? ContinueWidgetState.Book)?.bookId
+            val listen = (listenWidgetState(PlaybackState(), null, items, online, downloadedOnly) as? ListenWidgetState.Resume)?.bookId
+            val nowPlaying = (nowPlayingWidgetState(PlaybackState(), null, items, online, downloadedOnly) as? NowPlayingWidgetState.Resume)?.bookId
+            assertEquals(cont, listen, "online=$online downloadedOnly=$downloadedOnly")
+            assertEquals(cont, nowPlaying, "online=$online downloadedOnly=$downloadedOnly")
+        }
+    }
+
     // -- Continue Listening -------------------------------------------------------------------
 
     @Test

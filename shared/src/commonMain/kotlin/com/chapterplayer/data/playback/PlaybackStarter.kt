@@ -12,6 +12,8 @@ import com.chapterplayer.domain.playback.LocalCopy
 import com.chapterplayer.domain.playback.MirrorPeer
 import com.chapterplayer.domain.playback.PlaybackSource
 import com.chapterplayer.domain.playback.ServerProgress
+import com.chapterplayer.domain.playback.StartStatus
+import com.chapterplayer.domain.playback.afterStart
 import com.chapterplayer.domain.playback.choosePlaybackSource
 import com.chapterplayer.domain.playback.chooseStartPosition
 import com.chapterplayer.domain.playback.newestAcrossCopies
@@ -21,13 +23,23 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
+
+import kotlin.time.TimeSource
 
 /**
  * Starts a book playing: works out where it begins, loads it, applies the saved speed and plays.
  * Every screen that starts a book (details, Home) goes through here.
  */
+@OptIn(ExperimentalAtomicApi::class)
 class PlaybackStarter(
     private val controller: PlaybackController,
     private val books: BookRepository,
@@ -40,6 +52,32 @@ class PlaybackStarter(
     private val features: PlatformFeatures = PlatformFeatures.Full,
 ) {
 
+    private val _status = MutableStateFlow<StartStatus>(StartStatus.Idle)
+
+    // Starts come from the app, the widgets, the car and Up next: numbered atomically so two never share a number.
+    private val attempts = AtomicLong(0L)
+    private val origin = TimeSource.Monotonic.markNow()
+
+    /** Milliseconds on a monotonic clock (when a failure happened, [StartStatus.Failed.atMs]); replaceable in tests. */
+    var clock: () -> Long = { origin.elapsedNow().inWholeMilliseconds }
+
+    /** The number of the latest start begun (0 before any). */
+    val lastAttempt: Long get() = attempts.load()
+
+    /**
+     * What the starter is doing (the latest start): the player screen shows a loading view while a start is under way and
+     * the reason when it failed, instead of "nothing is playing" (see [com.chapterplayer.domain.playback.playerEmptyView]).
+     */
+    val status: StateFlow<StartStatus> = _status.asStateFlow()
+
+    /**
+     * The person saw a failed start's reason and left the player (its Back button or the system back): forget it. With
+     * [attempt] only that failure is forgotten, never a newer one.
+     */
+    fun dismissFailure(attempt: Long? = null) {
+        _status.update { if (it is StartStatus.Failed && (attempt == null || it.attempt == attempt)) StartStatus.Idle else it }
+    }
+
     /**
      * Starts [book] at [atMs] when given. Otherwise it starts where this phone left off
      * (see [startPositionFor]); a book that is already loaded in the player (and not in an error) is never reloaded: it plays on
@@ -50,7 +88,23 @@ class PlaybackStarter(
      * [ignoreDownloadedOnly] lets a book that is not downloaded stream even with "Downloaded only" on (the car
      * does not follow that setting).
      */
-    suspend fun start(book: AudioBook, atMs: Long? = null, ignoreDownloadedOnly: Boolean = false): Result<Unit> = try {
+    suspend fun start(book: AudioBook, atMs: Long? = null, ignoreDownloadedOnly: Boolean = false): Result<Unit> {
+        val mine = StartStatus.Starting(book.id, book.title, attempts.incrementAndFetch())
+        _status.value = mine
+        var result: Result<Unit>? = null
+        try {
+            result = startTracked(book, atMs, ignoreDownloadedOnly)
+            return result
+        } finally {
+            // Cancelled (result null): nothing to report.
+            val failure = result?.exceptionOrNull()
+            val end = if (failure == null) StartStatus.Idle else
+                StartStatus.Failed(book.id, book.title, failure.message ?: PlaybackStartException.DEFAULT_MESSAGE, mine.attempt, atMs = clock())
+            _status.update { afterStart(it, mine, end) }
+        }
+    }
+
+    private suspend fun startTracked(book: AudioBook, atMs: Long?, ignoreDownloadedOnly: Boolean): Result<Unit> = try {
         if (!features.playback) throw PlaybackStartException(PLAYBACK_NOT_ON_IOS_TEXT)
         if (atMs == null && controller.state.value.let { it.bookId == book.id && it.error == null }) {
             // Already loaded: carry on from the live position. A reload would restart from the last saved one.
