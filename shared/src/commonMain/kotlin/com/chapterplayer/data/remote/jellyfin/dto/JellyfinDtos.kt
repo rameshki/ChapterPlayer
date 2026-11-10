@@ -114,3 +114,13 @@ data class JellyfinItemDto(
     @SerialName("UserData") val userData: JellyfinUserDataDto? = null,
     @SerialName("ProviderIds") val providerIds: Map<String, String> = emptyMap(),
 )
+
+/**
+ * `GET /System/Configuration`: only the audiobook resume thresholds are read. A position under [minAudiobookResume]
+ * minutes is stored as 0 by a session report, and less than [maxAudiobookResume] minutes left marks the book played.
+ */
+@Serializable
+data class JellyfinConfigurationDto(
+    @SerialName("MinAudiobookResume") val minAudiobookResume: Int? = null,
+    @SerialName("MaxAudiobookResume") val maxAudiobookResume: Int? = null,
+)
