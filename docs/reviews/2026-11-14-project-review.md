@@ -2,12 +2,14 @@
 
 Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadmap, the recorded decisions, CI and the docs. Written to be handed to the agents that work on the project.
 
+Updated the same day with Robert's answers to the open decisions.
+
 ## How to use this file (for agents)
 
 - Each finding has an id (R1, R2, ...), a priority, the evidence it rests on, what to do and a 'done when' test. Take one finding or one batch per branch and PR.
 - 'Confidence' says how the finding was established. 'Needs a device check' means the logic was read but the behaviour was not observed.
 - Follow the project's usual process: a plan in `docs/superpowers/plans/`, an implementer, an independent review, one fix wave, CI, squash merge.
-- Do not start anything listed under 'Decisions needed from Robert' until he has answered.
+- A finding's 'Decision / update' line, where present, is Robert's answer and overrides the text above it. Do not start work that depends on a decision still marked open.
 - When a finding is done, record it in `docs/PROJECT_STATUS.md` and tick it here.
 
 ## The project in numbers
@@ -16,7 +18,7 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 |---|---|
 | App code | 45,600 lines of Kotlin in 412 files (shared, Android, iOS) |
 | Test code | 44,200 lines; 2,989 host tests |
-| Findings | 30: 9 to do first, 12 to do next, 9 later |
+| Findings | 31: 9 to do first, 11 to do next, 11 later |
 
 ## What is strong (keep doing it)
 
@@ -46,12 +48,12 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 | R13 | Do next | Architecture | L | A few classes have grown to do several jobs |
 | R14 | Do next | Architecture | S | No static analysis, coverage report or dependency updates |
 | R15 | Do next | Docs and process | S | No .gitattributes or .editorconfig: the CRLF working tree keeps costing time |
-| R16 | Do next | Architecture | L | Every user-facing text is a hard-coded English string |
 | R17 | Do next | Docs and process | S | README and ROADMAP no longer match the app |
 | R18 | Do next | Docs and process | S | Decisions are scattered and several are still open |
 | R23 | Do next | Verification | S | The M4B converter has never encoded a real file, and its tests are not in CI |
 | R24 | Do next | Product | M | Accessibility has been designed for but never tested |
-| R30 | Do next | Verification | M | The iOS app has never been launched, yet every feature pays for it |
+| R31 | Do next | Product | L | Nothing is in place yet for a Google Play release |
+| R16 | Later | Architecture | S | Every user-facing text is a hard-coded English string |
 | R19 | Later | Security | S | Car and cover access trust a package name, and the simulator is trusted in release builds |
 | R20 | Later | Correctness | S | Only one database migration is tested |
 | R21 | Later | Architecture | S | The R8 keep rules are far broader than needed |
@@ -61,6 +63,7 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 | R27 | Later | Product | M | Data that lives only on the phone cannot be exported or moved |
 | R28 | Later | Product | S | No first-run guidance and no 'what's new' |
 | R29 | Later | Product | S | Notifications still use Android's placeholder icons |
+| R30 | Later | Verification | M | The iOS app has never been launched, yet every feature pays for it |
 
 ## Do first
 
@@ -107,6 +110,7 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - **Evidence:** androidApp/build.gradle.kts: compileSdk = 37, targetSdk = 34. PROJECT_STATUS: 'the Android 15 dataSync 6 h limit (app targets SDK 34 so it does not apply yet)'.
 - **What to do:** Plan the move in two steps (35, then 36): handle Service.onTimeout for the download worker (save, reschedule, tell the user), re-check foreground-service starts from the widgets and from boot, predictive back, edge-to-edge, and notification/media permissions. Run the DEVICE_CHECKS table on Android 15 and 16 after each step.
 - **Done when:** targetSdk equals the current Play requirement; a download that outlives the 6 hour window pauses and resumes cleanly.
+- **Decision / update:** Robert, 14 Nov: the app will go on Google Play, so this is required, not optional. See R31 for the rest of the Play work.
 - [ ] Done
 
 ### R6. Jellyfin stage 2 is half built and stopped; 0.5.3 never sends progress to Jellyfin
@@ -116,6 +120,7 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - **Evidence:** Worktree .claude/worktrees/agent-aa67a47bcdb3591e2, branch stage-j/j2: one commit (8873a14 'Jellyfin: progress rules', Task 10) and seven uncommitted files (Task 11). Not pushed.
 - **What to do:** Resume that agent (or a new one on the same plan, docs/superpowers/plans/2026-11-08-jellyfin-j1-j2.md) from the worktree: finish Tasks 11 to 14, independent review, CI, then the J2 phone check (Task 15) on Robert's Jellyfin 12.4. Confirm the queued J1 rows are delivered or dropped correctly on upgrade.
 - **Done when:** A Jellyfin book's position and finished state show in Jellyfin web after listening in the app; no stale rows remain in pending_progress.
+- **Decision / update:** Robert, 14 Nov: Jellyfin stage 2 will be resumed on 15 Nov. Leave the stage-j/j2 worktree and branch as they are until then.
 - [ ] Done
 
 ### R7. Release testers cannot report a problem: no crash capture, Diagnostics is debug-only
@@ -125,6 +130,7 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - **Evidence:** No UncaughtExceptionHandler, crash library or log file in the source; 'showDiagnosticsRow' is true only when the build is debuggable.
 - **What to do:** Add a release-safe 'Report a problem' row in Settings, About: it builds the existing redacted report (app version, Android version, servers by kind, last sync results, the queue, the last crash trace saved locally by an UncaughtExceptionHandler, the last few hundred redacted log lines kept in memory) and hands it to the Android share sheet. No network call, no analytics. Keep the book-level Diagnostics page available behind a long-press on the version number.
 - **Done when:** A tester on a release build can share a redacted text report after a crash or a failed sync.
+- **Decision / update:** Robert, 14 Nov: approved. A 'Report a problem' row that shares a redacted text report is acceptable in release builds.
 - [ ] Done
 
 ### R8. CLAUDE.md is 78 KB and is loaded into every session and every subagent
@@ -174,6 +180,16 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - **Done when:** Pushing a tag produces a signed APK on GitHub; any commit can be rebuilt to the same APK.
 - [ ] Done
 
+### R31. Nothing is in place yet for a Google Play release
+
+- **Area:** Product. **Effort:** Large (a week or more). **Confidence:** Confirmed in the repo.
+- **Why it matters:** Robert decided on 14 November that the app will go on Google Play. Beyond the targetSdk move (R5), Play needs things the project has never produced: an app bundle signed for Play App Signing, a privacy policy and the Data safety form, declarations for the two foreground service types (media playback and data sync) with a short video of each, a content rating, store listing text and screenshots, and a closed test with at least 12 testers for 14 days on a new personal developer account. The app also allows cleartext traffic everywhere, which Play's pre-launch report flags.
+- **Evidence:** No privacy policy, store listing assets or bundle configuration in the repo; AndroidManifest declares FOREGROUND_SERVICE_MEDIA_PLAYBACK and FOREGROUND_SERVICE_DATA_SYNC; usesCleartextTraffic=true. Checked on the 0.5.3 release APK: its two native libraries are zip-aligned for 16 KB pages (their ELF alignment was not checked).
+- **What to do:** Write docs/PLAY_RELEASE.md as the checklist and work through it: (1) R5 first; (2) build an .aab in the release workflow (R12) and enrol in Play App Signing, keeping the current key as the upload key; (3) a short privacy policy page (no analytics, no data leaves the phone except to the user's own servers) and the Data safety answers; (4) the foreground service declarations and their demo videos; (5) confirm 16 KB page-size support on an Android 15+ emulator with 16 KB pages; (6) listing text, feature graphic and screenshots from the screenshot tests (R2); (7) run Play's pre-launch report and fix what it finds; (8) the closed test. Decide whether Android Auto distribution is wanted at launch, because Play reviews Auto apps separately. Check each Play requirement against the current Play Console help pages before relying on the numbers here.
+- **Done when:** An internal-testing release is live on Play, built by CI from a tag, with the policy forms accepted.
+- **Decision / update:** New on 14 Nov, from Robert's answer that the app will go on Google Play.
+- [ ] Done
+
 ### R13. A few classes have grown to do several jobs
 
 - **Area:** Architecture. **Effort:** Large (a week or more). **Confidence:** Confirmed in code.
@@ -199,15 +215,6 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - **Evidence:** Neither file exists at the repo root; PROJECT_STATUS 'Windows quirks' section.
 - **What to do:** Add .gitattributes ('* text=auto eol=lf', binary rules for png, jks, ttf) and .editorconfig (utf-8, lf, 4 spaces, max line 120 for Kotlin). Renormalise once ('git add --renormalize .') in its own PR while no feature branches are open, then delete the CRLF instructions from the plans and docs.
 - **Done when:** A plain editor edit produces a clean diff on Windows; plans no longer mention line endings.
-- [ ] Done
-
-### R16. Every user-facing text is a hard-coded English string
-
-- **Area:** Architecture. **Effort:** Large (a week or more). **Confidence:** Confirmed in code.
-- **Why it matters:** No screen uses string resources (0 stringResource calls; about 150 literal texts in screens plus many text constants in the domain layer). That is a fair choice for a personal English app, but it is undocumented, it blocks translation, and it makes a wording review impossible without reading code.
-- **Evidence:** grep stringResource( in commonMain: 0; androidApp strings.xml has 4 lines.
-- **What to do:** Decide (Robert): English only, or translatable. If English only, record it in DECISIONS.md and stop. If translatable, move texts to Compose Multiplatform resources screen by screen, starting with new work, and keep the pure 'text rule' functions returning keys plus arguments.
-- **Done when:** The decision is recorded; if translatable, new screens contain no literal user-facing text.
 - [ ] Done
 
 ### R17. README and ROADMAP no longer match the app
@@ -246,6 +253,18 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - **Done when:** Every main flow can be completed with TalkBack; nothing essential is clipped at the largest font.
 - [ ] Done
 
+## Later
+
+### R16. Every user-facing text is a hard-coded English string
+
+- **Area:** Architecture. **Effort:** Small (under a day). **Confidence:** Confirmed in code.
+- **Why it matters:** No screen uses string resources (0 stringResource calls; about 150 literal texts in screens plus many text constants in the domain layer). That is a fair choice for a personal English app, but it is undocumented, it blocks translation, and it makes a wording review impossible without reading code.
+- **Evidence:** grep stringResource( in commonMain: 0; androidApp strings.xml has 4 lines.
+- **What to do:** Record 'English only' in docs/DECISIONS.md and in CLAUDE.md so no agent starts a string-resource migration. Keep user-facing texts as named constants next to their rules (as most already are) so wording can still be reviewed in one place per area. Nothing else to build.
+- **Done when:** The decision is recorded; reviewers stop flagging hard-coded English text.
+- **Decision / update:** Robert, 14 Nov: English only. This finding is now only a note to record.
+- [ ] Done
+
 ### R30. The iOS app has never been launched, yet every feature pays for it
 
 - **Area:** Verification. **Effort:** Medium (one to three days). **Confidence:** Confirmed in the docs.
@@ -253,9 +272,8 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - **Evidence:** CLAUDE.md: 'The iOS app has never run on a simulator or a phone'; CI builds for 'generic/platform=iOS Simulator' but never boots one for the app.
 - **What to do:** Use the macOS runner to launch the app for the first time: boot a simulator, install the built app, launch it, wait, take a screenshot and fail on a crash ('xcrun simctl'). Upload the screenshot as an artifact. Later add an XCUITest that adds a mock server and opens the library. Until a device exists, limit new iOS-only work to keeping this green.
 - **Done when:** CI proves on every merge that the iOS app starts and shows its first screen.
+- **Decision / update:** Robert, 14 Nov: wait for a phone, for now. Do not build the simulator launch check yet; keep iOS compiling and linked in CI and start no new iOS-only work.
 - [ ] Done
-
-## Later
 
 ### R19. Car and cover access trust a package name, and the simulator is trusted in release builds
 
@@ -287,10 +305,11 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 ### R22. Repository housekeeping: old branches, worktrees, one stale PR, missing tags
 
 - **Area:** Docs and process. **Effort:** Small (under a day). **Confidence:** Confirmed in the repo.
-- **Why it matters:** There are 66 remote branches (squash merges leave them behind), 8 finished agent worktree folders and one prunable worktree, PR #61 untouched since 1 November, and no v0.5.x tags. It makes it hard to see which branch still holds unmerged work (today exactly one: stage-j/j2).
-- **Evidence:** git branch -r: 66; git worktree list; gh pr list: #61 'Docs: device session checklist'.
-- **What to do:** With Robert's OK: delete remote branches whose PRs are merged or closed, remove finished worktrees (never the stage-j/j2 one), close or fold PR #61 into DEVICE_CHECKS.md, turn on 'automatically delete head branches' in the repo settings, tag v0.5.3.
+- **Why it matters:** Old local branches, empty agent worktree folders, a stale worktree entry, PR #61 untouched since 1 November and no v0.5.x tag made it hard to see which branch still holds unmerged work (exactly one: stage-j/j2). Correction to the first version of this review: it said there were 66 remote branches. That was a count of stale tracking references on the development PC; after a prune the remote had 6.
+- **Evidence:** After the clean-up on 14 Nov: remote branches are main, docs/project-review, fix/plex-progress-call and stage-1/plugin-settings; local adds stage-j/j2; one worktree (stage-j/j2).
+- **What to do:** Done on 14 Nov with Robert's approval: PR #61 closed and its branch deleted, the merged remote branch stage-2/book-details deleted, 20 merged local branches deleted, 8 empty worktree folders and the stale worktree entry removed, v0.5.3 tagged at cfd6ed1. Still to do: decide whether to delete the two branches whose PRs were closed without merging (fix/plex-progress-call, the abandoned /:/progress experiment, and stage-1/plugin-settings), turn on 'Automatically delete head branches' in the repository settings, and add '.claude/worktrees/' to .gitignore.
 - **Done when:** Remote branches equal open work; every released version has a tag.
+- **Decision / update:** Robert, 14 Nov: approved. Mostly done; three small items remain (see 'What to do').
 - [ ] Done
 
 ### R25. Tablets, landscape and foldables are untested
@@ -368,12 +387,12 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - R8: CLAUDE.md is 78 KB and is loaded into every session and every subagent
 - R18: Decisions are scattered and several are still open
 
-**5. Bigger engineering**
+**5. Bigger engineering (R5 and R31 are now required for Google Play)**
 
 - R5: targetSdk is 34 while the app compiles against 37
+- R31: Nothing is in place yet for a Google Play release
 - R2: There are no UI tests and no screenshot tests
 - R10: The merged library is recomputed separately by every screen and service
-- R30: The iOS app has never been launched, yet every feature pays for it
 
 **6. When there is room**
 
@@ -387,17 +406,19 @@ Reviewed at `main` cfd6ed1 (version 0.5.3): the code, the requirements and roadm
 - R27: Data that lives only on the phone cannot be exported or moved
 - R28: No first-run guidance and no 'what's new'
 - R29: Notifications still use Android's placeholder icons
+- R30: The iOS app has never been launched, yet every feature pays for it
 
-## Decisions needed from Robert
+## Decisions (Robert)
 
-1. **How will the app be distributed: sideloaded APKs only, or Google Play as well?** Decides how urgent the targetSdk move (R5) and a privacy note are, and how releases are signed (R12).
-2. **Should Jellyfin stage 2 be resumed now? It was stopped part-way.** Until it lands, Jellyfin never receives listening progress (R6).
-3. **May merged branches and finished worktrees be deleted, and PR #61 closed?** Housekeeping (R22). The one branch with unmerged work, stage-j/j2, is kept.
-4. **Is a 'Report a problem' row that shares a redacted text report acceptable in release builds?** Gives outside testers a way to send evidence (R7). Nothing is sent without the tester choosing where.
-5. **English only, or should the app be translatable?** Settles R16 either way.
-6. **Which font: stay with Playfair Display and DM Sans, or one of the five alternatives shown?** Open since the font examples; affects widgets and long titles.
-7. **The six questions at the end of docs/AUDIBLE.md.** Nothing Audible-related is built until they are answered. 'Do nothing' is a valid answer.
-8. **iOS: wait for an unmanaged iPhone, or have CI launch the app on a simulator now?** R30. The simulator check costs CI time but would be the first time the iOS app has ever run.
+1. **How will the app be distributed: sideloaded APKs only, or Google Play as well?** Decides how urgent the targetSdk move (R5) is and adds the Play work (R31). **Answered (14 Nov): It will go on Google Play.**
+2. **Should Jellyfin stage 2 be resumed now? It was stopped part-way.** Until it lands, Jellyfin never receives listening progress (R6). **Answered (14 Nov): It will be resumed on 15 November.**
+3. **May merged branches and finished worktrees be deleted, and PR #61 closed?** Housekeeping (R22). **Answered (14 Nov): Yes. Done on 14 November; stage-j/j2 was kept.**
+4. **Is a 'Report a problem' row that shares a redacted text report acceptable in release builds?** Gives outside testers a way to send evidence (R7). **Answered (14 Nov): Yes.**
+5. **English only, or should the app be translatable?** Settles R16. **Answered (14 Nov): English only.**
+6. **iOS: wait for an unmanaged iPhone, or have CI launch the app on a simulator now?** R30. **Answered (14 Nov): Wait for a phone, for now.**
+7. **Which font: stay with Playfair Display and DM Sans, or one of the five alternatives shown?** Affects widgets and long titles. Nothing is blocked; the app keeps its current fonts until decided. **Still open.**
+8. **The six questions at the end of docs/AUDIBLE.md.** Nothing Audible-related is built until they are answered. 'Do nothing' is a valid answer. **Still open.**
+9. **Delete the two branches whose PRs were closed without merging (fix/plex-progress-call and stage-1/plugin-settings)?** They were not covered by 'merged branches', so they were left in place (R22). **Still open.**
 
 ## What this review did not cover
 

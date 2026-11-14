@@ -23,3 +23,6 @@ Thumbs.db
 
 # Kotlin tooling caches (metadata libraries, sessions)
 .kotlin/
+
+# Agent worktrees (isolated checkouts made by Claude Code)
+.claude/worktrees/
