@@ -59,3 +59,16 @@ Do **(c)** first, in a small form: an ASIN-aware merge and an "Open in Audible" 
 4. Which Audible marketplace (.com, .co.uk, ...)? The links and the export differ by region.
 5. Is an ASIN shown in ABS for your Audible-sourced books today? (Check one book's details.)
 6. Are you comfortable with any request to Amazon from the app beyond opening a link? We assume not.
+
+## Owner's answers (Robert, 2026-11-14)
+
+**Decision: skip Audible for now. Nothing Audible-related is to be built** (no hand-off link, no ASIN matching work, no import) until Robert reopens it.
+
+Answers recorded for when it is reopened:
+
+- Question 2: purchases only; no Plus Catalogue titles to cater for.
+- Question 3: the Amazon "Request My Data" export: maybe later (not filed).
+- Question 4: marketplace audible.com.au (links would be `https://www.audible.com.au/pd/<ASIN>`; unverified).
+- Questions 5 and 6 were not asked, since the decision made them moot. The assumption for 6 stands: no request to Amazon beyond opening a link.
+
+Books bought on Audible that Robert already hosts on Audiobookshelf, Plex or Jellyfin keep working as they do today; that is not affected by this decision. Never remove DRM.

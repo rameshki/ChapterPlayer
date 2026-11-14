@@ -19,7 +19,7 @@ reliable progress sync, offline listening, car integration and widgets.
 | 1 | Audiobookshelf | Full: browse, stream, download, progress & session sync, bookmarks |
 | 2 | Plex | Full: sign-in via plex.tv, browse music/audiobook sections, stream, download, progress via Plex timeline |
 | 2b | Jellyfin | J1 built (browse, stream, resume read; host-tested only), J2 progress back and three-copy mirroring next, J3 downloads and Quick Connect. Design `docs/superpowers/specs/2026-11-07-jellyfin-source-design.md` |
-| 3 | Audible | **Undecided**: research done, see `docs/AUDIBLE.md` (recommends an ASIN-aware merge and an "Open in Audible" hand-off; owner questions open). No DRM removal under any option |
+| 3 | Audible | **Skipped for now** (Robert, 2026-11-14): research done, see `docs/AUDIBLE.md` (recommends an ASIN-aware merge and an "Open in Audible" hand-off; owner questions open). No DRM removal under any option |
 
 ### Platforms & surfaces
 
@@ -191,7 +191,7 @@ Design: `docs/superpowers/specs/2026-10-30-stage-5-ios-design.md` (seven steps; 
 
 ### Stage 6: Audible (priority 3, scope to be decided)
 - [x] Research spike: unofficial Audible API state, terms-of-service risk, account-flag risk (`docs/AUDIBLE.md`, 2026-11-07)
-- [ ] Decide between: (a) library view + hand-off to the Audible app, (b) via Audiobookshelf only (Libation/OpenAudible imports), or (c) skip
+- [x] Decided 2026-11-14 (Robert): skip Audible for now; nothing Audible-related is built until he reopens it (answers in `docs/AUDIBLE.md`). The options were: (a) library view + hand-off to the Audible app, (b) via Audiobookshelf only (Libation/OpenAudible imports), or (c) skip
 - [ ] Never: in-app DRM removal
 
 ## Git workflow
