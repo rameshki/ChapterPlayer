@@ -229,7 +229,7 @@ Updated the same day with Robert's answers to the open decisions.
 ### R18. Decisions are scattered and several are still open
 
 - **Area:** Docs and process. **Effort:** Small (under a day). **Confidence:** Confirmed in the docs.
-- **Why it matters:** Robert's decisions live partly in the status file and partly only in chat (the warm tab bar, Apache-2.0, no in-place mode for the converter, white then amber widgets, the 18 Jellyfin design calls). Open questions have no home, so they are re-asked or forgotten: the font, the six Audible questions, English-only or not, and how the app will be distributed.
+- **Why it matters:** Robert's decisions live partly in the status file and partly only in chat (the warm tab bar, Apache-2.0, no in-place mode for the converter, white then amber widgets, the 18 Jellyfin design calls, and the answers of 14 November: Google Play, English only, Audible skipped for now). Open questions have no home, so they are re-asked or forgotten; today the only one left is the font.
 - **Evidence:** PROJECT_STATUS 'Decisions (Robert)' has six dated entries, none after 2026-11-01; docs/AUDIBLE.md ends with six unanswered questions.
 - **What to do:** Create docs/DECISIONS.md: a dated list (decision, why, who) plus an 'Open decisions' section. Back-fill from the session history. Reference it from CLAUDE.md so agents check it before re-opening a settled question.
 - **Done when:** Every settled choice has one dated line; open choices are listed with what they block.
@@ -306,10 +306,10 @@ Updated the same day with Robert's answers to the open decisions.
 
 - **Area:** Docs and process. **Effort:** Small (under a day). **Confidence:** Confirmed in the repo.
 - **Why it matters:** Old local branches, empty agent worktree folders, a stale worktree entry, PR #61 untouched since 1 November and no v0.5.x tag made it hard to see which branch still holds unmerged work (exactly one: stage-j/j2). Correction to the first version of this review: it said there were 66 remote branches. That was a count of stale tracking references on the development PC; after a prune the remote had 6.
-- **Evidence:** After the clean-up on 14 Nov: remote branches are main, docs/project-review, fix/plex-progress-call and stage-1/plugin-settings; local adds stage-j/j2; one worktree (stage-j/j2).
-- **What to do:** Done on 14 Nov with Robert's approval: PR #61 closed and its branch deleted, the merged remote branch stage-2/book-details deleted, 20 merged local branches deleted, 8 empty worktree folders and the stale worktree entry removed, v0.5.3 tagged at cfd6ed1. Still to do: decide whether to delete the two branches whose PRs were closed without merging (fix/plex-progress-call, the abandoned /:/progress experiment, and stage-1/plugin-settings), turn on 'Automatically delete head branches' in the repository settings, and add '.claude/worktrees/' to .gitignore.
+- **Evidence:** After the clean-up on 14 Nov: remote branches are main and docs/project-review (this review's PR); local adds stage-j/j2; one worktree (stage-j/j2).
+- **What to do:** Done on 14 Nov with Robert's approval: PR #61 closed and its branch deleted, the merged remote branch stage-2/book-details deleted, 20 merged local branches deleted, 8 empty worktree folders and the stale worktree entry removed, v0.5.3 tagged at cfd6ed1. Also deleted, with a second approval: the two branches whose PRs were closed without merging (fix/plex-progress-call and stage-1/plugin-settings); '.claude/worktrees/' is in .gitignore. Still to do: turn on 'Automatically delete head branches' in the repository settings.
 - **Done when:** Remote branches equal open work; every released version has a tag.
-- **Decision / update:** Robert, 14 Nov: approved. Mostly done; three small items remain (see 'What to do').
+- **Decision / update:** Robert, 14 Nov: approved. Done except one repository setting (see 'What to do').
 - [ ] Done
 
 ### R25. Tablets, landscape and foldables are untested
@@ -417,8 +417,8 @@ Updated the same day with Robert's answers to the open decisions.
 5. **English only, or should the app be translatable?** Settles R16. **Answered (14 Nov): English only.**
 6. **iOS: wait for an unmanaged iPhone, or have CI launch the app on a simulator now?** R30. **Answered (14 Nov): Wait for a phone, for now.**
 7. **Which font: stay with Playfair Display and DM Sans, or one of the five alternatives shown?** Affects widgets and long titles. Nothing is blocked; the app keeps its current fonts until decided. **Still open.**
-8. **The six questions at the end of docs/AUDIBLE.md.** Nothing Audible-related is built until they are answered. 'Do nothing' is a valid answer. **Still open.**
-9. **Delete the two branches whose PRs were closed without merging (fix/plex-progress-call and stage-1/plugin-settings)?** They were not covered by 'merged branches', so they were left in place (R22). **Still open.**
+8. **The six questions at the end of docs/AUDIBLE.md.** Nothing Audible-related is built until they are answered. 'Do nothing' is a valid answer. **Answered (14 Nov): Skip Audible for now: build nothing Audible-related. For when it is reopened: purchases only (no Plus titles), marketplace audible.com.au, the Amazon data export 'maybe later'.**
+9. **Delete the two branches whose PRs were closed without merging (fix/plex-progress-call and stage-1/plugin-settings)?** They were not covered by 'merged branches', so they were left in place at first (R22). **Answered (14 Nov): Yes. Deleted on 14 November; their commits (40481b5 and e332f92) stay reachable through the closed PRs #68 and #17.**
 
 ## What this review did not cover
 
