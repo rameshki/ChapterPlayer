@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,6 +29,8 @@ import com.chapterplayer.domain.widgets.shouldHandleWidgetResume
 import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
 import com.chapterplayer.domain.playback.OpenPlayerRequest
 import com.chapterplayer.navigation.AppNavigation
+import com.chapterplayer.ui.components.LocalTextSharer
+import com.chapterplayer.ui.components.TextSharer
 import com.chapterplayer.ui.theme.ChapterPlayerTheme
 import com.chapterplayer.ui.theme.DarkPalette
 import com.chapterplayer.ui.theme.LightPalette
@@ -84,9 +87,21 @@ class MainActivity : ComponentActivity() {
                 onDispose { }
             }
             ChapterPlayerTheme(mode, font) {
-                AppNavigation()
+                // Report a problem hands its text to the system share sheet; the person picks where it goes.
+                CompositionLocalProvider(LocalTextSharer provides TextSharer { title, text -> shareText(title, text) }) {
+                    AppNavigation()
+                }
             }
         }
+    }
+
+    private fun shareText(title: String, text: String) {
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_SUBJECT, title)
+            putExtra(android.content.Intent.EXTRA_TEXT, text)
+        }
+        startActivity(android.content.Intent.createChooser(send, title))
     }
 
     override fun onDestroy() {

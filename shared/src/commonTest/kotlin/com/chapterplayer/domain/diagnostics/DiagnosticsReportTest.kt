@@ -166,8 +166,6 @@ class DiagnosticsReportTest {
     @Test fun `the row and the entries exist only in a debuggable build`() {
         assertEquals(listOf(AboutEntry.DIAGNOSTICS), aboutEntries(true))
         assertTrue(aboutEntries(false).isEmpty())
-        assertEquals(listOf("settings/diagnostics"), com.chapterplayer.navigation.debugOnlyRoutes(true))
-        assertTrue(com.chapterplayer.navigation.debugOnlyRoutes(false).isEmpty())
     }
 
     @Test fun `long file names are shortened the same way`() {

@@ -4,6 +4,8 @@ import com.chapterplayer.data.AppInfo
 import com.chapterplayer.data.PathProvider
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.createPreferencesDataStore
+import com.chapterplayer.data.diagnostics.CrashStore
+import com.chapterplayer.data.diagnostics.NoCrashStore
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.security.CredentialStore
@@ -56,4 +58,6 @@ fun platformModule(parts: PlatformParts): Module = module {
     single<CoroutineDispatcher>(BlockingIoQualifier) { parts.blockingIo }
     single<DayZone> { parts.dayZone() }
     single<ListeningClock> { parts.listeningClock() }
+    // No crash capture on iOS yet.
+    single<CrashStore> { NoCrashStore }
 }
