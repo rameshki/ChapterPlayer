@@ -28,6 +28,13 @@ jobs:
       - name: Build debug APK and run unit tests
         run: ./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest :shared:testAndroidHostTest --stacktrace
 
+      - name: Build the minified release APK and run Android lint
+        # The APK testers get is the R8 release build; lint fails on anything not in androidApp/lint-baseline.xml.
+        run: ./gradlew :androidApp:assembleRelease :androidApp:lintRelease --stacktrace
+
+      - name: Check R8 still keeps the widget callbacks and receivers
+        run: bash scripts/check-r8-seeds.sh
+
       - name: Check the Room schema did not change
         # The build regenerates shared/schemas. A difference means an entity changed without a migration.
         run: git diff --exit-code -- shared/schemas
@@ -36,6 +43,12 @@ jobs:
         with:
           name: app-debug
           path: androidApp/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-unsigned
+          path: androidApp/build/outputs/apk/release/*.apk
           retention-days: 14
 
   ios:

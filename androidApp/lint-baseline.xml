@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 9.3.3" type="baseline" client="gradle" dependencies="false" name="AGP (9.3.3)" variant="all" version="9.3.3">
+
+    <issue
+        id="MissingClass"
+        message="Class referenced in the manifest, `androidx.work.impl.foreground.SystemForegroundService`, was not found in the project or the libraries"
+        errorLine1="            android:name=&quot;androidx.work.impl.foreground.SystemForegroundService&quot;"
+        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="70"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="MissingIntentFilterForMediaSearch"
+        message="Missing `intent-filter` for action `android.media.action.MEDIA_PLAY_FROM_SEARCH`."
+        errorLine1="    &lt;application"
+        errorLine2="    ^">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="18"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="OldTargetApi"
+        message="Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the `android.os.Build.VERSION_CODES` javadoc for details."
+        errorLine1="        targetSdk = 34"
+        errorLine2="        ~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="13"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="ExportedContentProvider"
+        message="Exported content providers can provide access to potentially sensitive data"
+        errorLine1="        &lt;provider"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="62"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="ExportedService"
+        message="Exported service does not require permission"
+        errorLine1="        &lt;service"
+        errorLine2="         ~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="50"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="This folder configuration (`v26`) is unnecessary; `minSdkVersion` is 26. Merge all the resources in this folder into `mipmap-anydpi`.">
+        <location
+            file="src/main/res/mipmap-anydpi-v26"/>
+    </issue>
+
+    <issue
+        id="NotShrinkingResources"
+        message="If enabling minification, also set isShrinkResources = true"
+        errorLine1="            isMinifyEnabled = true"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="25"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `Int.toDrawable` instead?"
+        errorLine1="            ColorDrawable((if (startDark) DarkPalette else LightPalette).background.toArgb())"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/chapterplayer/MainActivity.kt"
+            line="75"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putBoolean(&quot;asked_notifications&quot;, true).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/kotlin/com/chapterplayer/MainActivity.kt"
+            line="134"
+            column="9"/>
+    </issue>
+
+</issues>
