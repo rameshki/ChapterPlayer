@@ -99,7 +99,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 updateStopTimer(exo)
                 val byFocusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
-                if (focusWatch.onPlayWhenReadyChanged(playWhenReady, byFocusLoss, appInFront = isAppInFront())) {
+                if (focusWatch.onPlayWhenReadyChanged(playWhenReady, byFocusLoss, appInFront = isAppInFront(), nowMs = SystemClock.elapsedRealtime())) {
                     onPlaybackRefused()
                 }
             }

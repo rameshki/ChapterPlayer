@@ -49,9 +49,22 @@ class DownloadTimeLimitTest {
 
     @Test
     fun `opening the app releases a recorded hold only`() {
-        assertTrue(releaseHoldOnAppOpen(heldAtMs = 1_000L))
-        assertTrue(releaseHoldOnAppOpen(heldAtMs = 0L))
-        assertFalse(releaseHoldOnAppOpen(heldAtMs = null))
+        assertTrue(releaseHoldOnAppOpen(heldAtMs = 1_000L, nowMs = 1_000L))
+        assertTrue(releaseHoldOnAppOpen(heldAtMs = 1_000L, nowMs = 1_000L + 60_000))
+        assertFalse(releaseHoldOnAppOpen(heldAtMs = null, nowMs = 1_000L))
+    }
+
+    @Test
+    fun `a hold a day old is not released because its delayed jobs already ran`() {
+        val heldAt = 5_000L
+        assertTrue(releaseHoldOnAppOpen(heldAt, nowMs = heldAt + TIME_LIMIT_HOLD_MS - 1))
+        assertFalse(releaseHoldOnAppOpen(heldAt, nowMs = heldAt + TIME_LIMIT_HOLD_MS))
+        assertFalse(releaseHoldOnAppOpen(heldAt, nowMs = heldAt + 3 * TIME_LIMIT_HOLD_MS))
+    }
+
+    @Test
+    fun `a hold recorded after the clock was set back is still released`() {
+        assertTrue(releaseHoldOnAppOpen(heldAtMs = 10_000L, nowMs = 2_000L))
     }
 
     @Test

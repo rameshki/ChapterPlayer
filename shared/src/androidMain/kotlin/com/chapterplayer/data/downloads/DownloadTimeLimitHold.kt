@@ -13,6 +13,8 @@ import com.chapterplayer.domain.downloads.releaseHoldOnAppOpen
 import com.chapterplayer.domain.downloads.timeLimitNotice
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 /**
@@ -32,22 +34,31 @@ class DownloadTimeLimitHold(
 
     /** The job of [bookId] stopped; [timedOut] when the dataSync time limit stopped it. */
     suspend fun afterStop(bookId: String, timedOut: Boolean) {
-        val followUp = controller.afterStop(bookId, timedOut, appVisible = isAppInFront())
-        if (followUp.action == AfterJobStop.HOLD_UNTIL_APP_OPENS) {
-            prefs.edit().putLong(KEY_HELD_AT, nowMs()).apply()
+        // The hold is recorded before the delayed jobs are scheduled: an app opened in between finds it and releases it.
+        val followUp = controller.afterStop(
+            bookId, timedOut, appVisible = isAppInFront(),
+            beforeHold = { prefs.edit().putLong(KEY_HELD_AT, nowMs()).commit() },
+        )
+        if (followUp.action != AfterJobStop.HOLD_UNTIL_APP_OPENS) return
+        if (isAppInFront()) {
+            // The app came to the front while the hold was being set up, and its onStart may have seen no hold yet.
+            withContext(Dispatchers.Main) { onAppVisible() }
+        } else {
             postNotice(followUp.waitingBooks)
         }
     }
 
     /** The app came to the front: a recorded hold is released and the waiting downloads start again. Main thread. */
     fun onAppVisible() {
-        val heldAt = if (prefs.contains(KEY_HELD_AT)) prefs.getLong(KEY_HELD_AT, 0L) else null
-        if (!releaseHoldOnAppOpen(heldAt)) return
+        if (!prefs.contains(KEY_HELD_AT)) return
+        val heldAt = prefs.getLong(KEY_HELD_AT, 0L)
         prefs.edit().remove(KEY_HELD_AT).apply()
         try {
             NotificationManagerCompat.from(context).cancel(NOTICE_ID)
         } catch (_: Exception) {
         }
+        // A day-old hold: its delayed jobs already ran by themselves; restarting them would stop transferring downloads.
+        if (!releaseHoldOnAppOpen(heldAt, nowMs())) return
         scope.launch {
             try {
                 controller.releaseTimeLimitHold()

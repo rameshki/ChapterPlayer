@@ -40,8 +40,13 @@ fun afterJobStop(timedOut: Boolean, waitingBooks: Int, appVisible: Boolean): Aft
 /** The downloads held by the time limit: those still waiting or running, never a paused, failed or finished one. */
 fun heldByTimeLimit(status: DownloadStatus?): Boolean = status != null && resumesOnStart(status)
 
-/** When the app comes to the front: a hold recorded at [heldAtMs] (null = none) is released and the queue starts again. */
-fun releaseHoldOnAppOpen(heldAtMs: Long?): Boolean = heldAtMs != null
+/**
+ * When the app comes to the front at [nowMs]: a hold recorded at [heldAtMs] (null = none) is released and the queue
+ * starts again. A hold [TIME_LIMIT_HOLD_MS] or older is not: its delayed jobs have already run by themselves, and
+ * restarting them would stop downloads that are transferring. A hold "in the future" (the clock was set back) is released.
+ */
+fun releaseHoldOnAppOpen(heldAtMs: Long?, nowMs: Long): Boolean =
+    heldAtMs != null && nowMs - heldAtMs < TIME_LIMIT_HOLD_MS
 
 /** The notification posted when the time limit holds the downloads. Never names a book, a server or an address. */
 data class TimeLimitNotice(val title: String, val text: String)

@@ -128,9 +128,15 @@ class DefaultDownloadController(
      * newer job that has started since. Only the scheduling follows ([afterJobStop]): in front, the stopped book starts
      * again at once; in the background every waiting download is held for [TIME_LIMIT_HOLD_MS] (a job started now could
      * not run in the foreground) and the caller tells the person that opening the app continues them
-     * ([releaseTimeLimitHold]).
+     * ([releaseTimeLimitHold]). [beforeHold] runs before the delayed jobs are scheduled, so the hold is on record before
+     * anything could release it.
      */
-    suspend fun afterStop(bookId: String, timedOut: Boolean, appVisible: Boolean): StopFollowUp {
+    suspend fun afterStop(
+        bookId: String,
+        timedOut: Boolean,
+        appVisible: Boolean,
+        beforeHold: suspend () -> Unit = {},
+    ): StopFollowUp {
         if (!timedOut) return StopFollowUp(AfterJobStop.NOTHING, 0)
         val waiting = dao.observeAll().first().filter { heldByTimeLimit(downloadStatusOf(it.status)) }
         val action = afterJobStop(timedOut, waiting.size, appVisible)
@@ -139,8 +145,10 @@ class DefaultDownloadController(
             AfterJobStop.NOTHING -> Unit
             AfterJobStop.CONTINUE_NOW ->
                 if (waiting.any { it.bookId == bookId }) scheduler.schedule(bookId, wifiOnly, replace = true)
-            AfterJobStop.HOLD_UNTIL_APP_OPENS ->
+            AfterJobStop.HOLD_UNTIL_APP_OPENS -> {
+                beforeHold()
                 waiting.forEach { scheduler.scheduleLater(it.bookId, wifiOnly, TIME_LIMIT_HOLD_MS) }
+            }
         }
         return StopFollowUp(action, waiting.size)
     }

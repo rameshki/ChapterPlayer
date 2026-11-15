@@ -315,13 +315,14 @@ class DefaultDownloadControllerTest {
             )
         )
 
-        val followUp = rig.controller.afterStop(bookId, timedOut = true, appVisible = false)
+        val followUp = rig.controller.afterStop(bookId, timedOut = true, appVisible = false, beforeHold = { rig.scheduler.log += "hold recorded" })
 
         assertEquals(StopFollowUp(AfterJobStop.HOLD_UNTIL_APP_OPENS, waitingBooks = 3), followUp)
         // Statuses stay as the stopping job left them: the bytes are kept and the books wait in the queue.
         assertEquals("QUEUED", rig.status())
         assertEquals(
             listOf(
+                "hold recorded",
                 "later $bookId wifiOnly=true delayMs=$TIME_LIMIT_HOLD_MS",
                 "later b wifiOnly=true delayMs=$TIME_LIMIT_HOLD_MS",
                 "later c wifiOnly=true delayMs=$TIME_LIMIT_HOLD_MS",
@@ -334,7 +335,7 @@ class DefaultDownloadControllerTest {
     fun `after the time limit with the app in front the stopped download continues at once`() = runTest {
         val rig = Rig(listOf(row(DownloadStatus.QUEUED), row(DownloadStatus.QUEUED, "b")))
 
-        val followUp = rig.controller.afterStop(bookId, timedOut = true, appVisible = true)
+        val followUp = rig.controller.afterStop(bookId, timedOut = true, appVisible = true, beforeHold = { rig.scheduler.log += "hold recorded" })
 
         assertEquals(StopFollowUp(AfterJobStop.CONTINUE_NOW, waitingBooks = 2), followUp)
         assertEquals(listOf("schedule $bookId wifiOnly=true replace=true"), rig.scheduler.log)

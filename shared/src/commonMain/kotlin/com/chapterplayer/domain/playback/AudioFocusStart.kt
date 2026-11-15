@@ -13,16 +13,22 @@ class AudioFocusStartWatch {
     /** Play was asked for and no sound has played since. */
     private var waitingForSound = false
 
+    /** When Play was asked for (a monotonic clock in ms). */
+    private var playAskedAtMs = 0L
+
     /**
      * playWhenReady changed; [byFocusLoss] when ExoPlayer changed it for audio focus, [appInFront] whether the app is the
-     * top app. True when this is a refused focus request at a start (to be told to the person), false otherwise.
+     * top app, [nowMs] a monotonic clock. True when this is a refused focus request at a start (to be told to the
+     * person), false otherwise. A refusal arrives within milliseconds of Play, so only a loss within
+     * [FOCUS_REFUSAL_WINDOW_MS] counts; a later one (say during slow buffering) is another app taking the audio.
      */
-    fun onPlayWhenReadyChanged(playWhenReady: Boolean, byFocusLoss: Boolean, appInFront: Boolean): Boolean {
+    fun onPlayWhenReadyChanged(playWhenReady: Boolean, byFocusLoss: Boolean, appInFront: Boolean, nowMs: Long): Boolean {
         if (playWhenReady) {
             waitingForSound = true
+            playAskedAtMs = nowMs
             return false
         }
-        val refused = byFocusLoss && waitingForSound && !appInFront
+        val refused = byFocusLoss && waitingForSound && !appInFront && nowMs - playAskedAtMs in 0..FOCUS_REFUSAL_WINDOW_MS
         waitingForSound = false
         return refused
     }
@@ -32,3 +38,6 @@ class AudioFocusStartWatch {
         if (isPlaying) waitingForSound = false
     }
 }
+
+/** How soon after Play a focus loss still counts as a refused request (refusals come within milliseconds). */
+const val FOCUS_REFUSAL_WINDOW_MS: Long = 1_000
