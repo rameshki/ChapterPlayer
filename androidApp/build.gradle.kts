@@ -45,6 +45,12 @@ android {
         buildConfig = true
     }
 
+    lint {
+        // New problems fail the build; what already existed is in lint-baseline.xml.
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
