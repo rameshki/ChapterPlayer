@@ -20,6 +20,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -97,7 +99,7 @@ class JellyfinLiveSessionTest {
         src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
         src.syncPlayback(server, s.sessionId, hour + 10_000L, 10_000L, book, isPlaying = true)
 
-        assertEquals(listOf("/Sessions/Playing", "/Sessions/Playing/Progress"), paths())
+        assertEquals(listOf("/Sessions/Playing", "/UserItems/$itemId/UserData", "/Sessions/Playing/Progress"), paths())
         val start = bodyOf(requests[0])
         assertEquals(itemId, start.getValue("ItemId").jsonPrimitive.content)
         assertEquals(itemId, start.getValue("MediaSourceId").jsonPrimitive.content)
@@ -108,7 +110,7 @@ class JellyfinLiveSessionTest {
         assertEquals("DirectPlay", start.getValue("PlayMethod").jsonPrimitive.content)
         assertEquals(false, start.getValue("IsPaused").jsonPrimitive.boolean)
 
-        val progress = bodyOf(requests[1])
+        val progress = bodyOf(requests[2])
         assertEquals((hour + 10_000L) * 10_000L, progress.ticks("PositionTicks"))
         assertEquals(false, progress.getValue("IsPaused").jsonPrimitive.boolean)
         assertEquals("timeupdate", progress.getValue("EventName").jsonPrimitive.content)
@@ -331,7 +333,7 @@ class JellyfinLiveSessionTest {
         fail = false
         requests.clear()
         src.syncPlayback(server, s.sessionId, hour + 10_000L, 10_000L, book, isPlaying = true)
-        assertEquals(listOf("/Sessions/Playing"), paths())
+        assertEquals(listOf("/Sessions/Playing", "/UserItems/$itemId/UserData"), paths())
     }
 
     @Test
@@ -347,5 +349,146 @@ class JellyfinLiveSessionTest {
             assertFalse(r.url.toString().contains(token), r.url.toString())
             assertTrue(r.headers[HttpHeaders.Authorization].orEmpty().contains("Token=\"$token\""))
         }
+    }
+
+    // ---- review fixes: the end, the close and the start write ----
+
+    @Test
+    fun `the start always writes the exact place`() = runTest {
+        val src = source()
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
+        assertEquals(listOf("/Sessions/Playing", "/UserItems/$itemId/UserData"), paths())
+        val write = bodyOf(requests[1])
+        assertEquals(hour * 10_000L, write.ticks("PlaybackPositionTicks"))
+        assertEquals(false, write.getValue("Played").jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `paused at the end then closed stops at the end once and never writes not played`() = runTest {
+        val src = source()
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
+        requests.clear()
+        src.syncPlayback(server, s.sessionId, book - 500L, 5_000L, book, isPlaying = false)
+        assertEquals(listOf("/Sessions/Playing/Stopped"), paths())
+        assertEquals(book * 10_000L, bodyOf(requests.single()).ticks("PositionTicks"))
+        requests.clear()
+        // Later reports at the end and the close send nothing more.
+        src.syncPlayback(server, s.sessionId, book, 0L, book, isPlaying = false)
+        src.closePlayback(server, s.sessionId, book - 500L, 0L)
+        assertTrue(requests.isEmpty(), paths().toString())
+    }
+
+    @Test
+    fun `closed at the end then a pause report at the end is queued, not sent`() = runTest {
+        val src = source()
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
+        requests.clear()
+        src.closePlayback(server, s.sessionId, book - 500L, 0L)
+        assertEquals(listOf("/Sessions/Playing/Stopped"), paths())
+        assertEquals(book * 10_000L, bodyOf(requests.single()).ticks("PositionTicks"))
+        requests.clear()
+        assertFailsWith<IllegalStateException> { src.syncPlayback(server, s.sessionId, book - 500L, 0L, book, isPlaying = false) }
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `a first report at the end stops at the end without a not played write`() = runTest {
+        val src = source()
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, book - 200L, 5_000L, book, isPlaying = true)
+        assertEquals(listOf("/Sessions/Playing", "/Sessions/Playing/Stopped"), paths())
+        assertTrue(requests.none { it.url.encodedPath.endsWith("/UserData") })
+    }
+
+    @Test
+    fun `playing again from before the end reports again`() = runTest {
+        val src = source()
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
+        src.syncPlayback(server, s.sessionId, book - 500L, 5_000L, book, isPlaying = false)
+        requests.clear()
+        src.syncPlayback(server, s.sessionId, 2 * hour, 10_000L, book, isPlaying = true)
+        assertEquals(listOf("/Sessions/Playing", "/UserItems/$itemId/UserData"), paths())
+    }
+
+    @Test
+    fun `a failed write after the stop says the place was not saved`() = runTest {
+        val src = source { r -> if (r.url.encodedPath.endsWith("/UserData") && r.method == HttpMethod.Post) Answer("", HttpStatusCode.ServiceUnavailable) else null }
+        val s = src.open()
+        // The start's own write fails too; the start report itself went through.
+        runCatching { src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true) }
+        requests.clear()
+        val e = assertFailsWith<PlaceNotSavedException> { src.closePlayback(server, s.sessionId, book - 3 * 60_000L, 0L) }
+        assertEquals(listOf("/Sessions/Playing/Stopped", "/UserItems/$itemId/UserData"), paths())
+        assertFalse(e.message.orEmpty().contains(token))
+        assertFalse(e.message.orEmpty().contains("jf.test"))
+    }
+
+    @Test
+    fun `a failed stop says the place was not saved`() = runTest {
+        val src = source { r -> if (r.url.encodedPath.endsWith("/Stopped")) Answer("", HttpStatusCode.ServiceUnavailable) else null }
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
+        assertFailsWith<PlaceNotSavedException> { src.closePlayback(server, s.sessionId, 2 * hour, 0L) }
+    }
+
+    @Test
+    fun `a report waiting for the lock while the session closes is queued, not reopened`() = runTest {
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var block = false
+        val src = source { r ->
+            if (block && r.url.encodedPath.endsWith("/Sessions/Playing/Progress")) {
+                block = false
+                entered.complete(Unit)
+                kotlinx.coroutines.runBlocking { release.await() }
+            }
+            null
+        }
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
+        requests.clear()
+        block = true
+        // Report 1 holds the session's lock inside its request.
+        val first = async { src.syncPlayback(server, s.sessionId, hour + 10_000L, 10_000L, book, isPlaying = true) }
+        entered.await()
+        // The close forgets the session and waits for the lock.
+        val close = async { src.closePlayback(server, s.sessionId, hour + 20_000L, 0L) }
+        runCurrent()
+        // A report that found the session gone throws at once (queued by the caller).
+        assertFailsWith<IllegalStateException> { src.syncPlayback(server, s.sessionId, hour + 15_000L, 5_000L, book, isPlaying = true) }
+        release.complete(Unit)
+        first.await()
+        close.await()
+        assertEquals(listOf("/Sessions/Playing/Progress", "/Sessions/Playing/Stopped"), paths())
+    }
+
+    @Test
+    fun `a report made while the close is in flight throws`() = runTest {
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var block = false
+        val src = source { r ->
+            if (block && r.url.encodedPath.endsWith("/Sessions/Playing/Stopped")) {
+                block = false
+                entered.complete(Unit)
+                kotlinx.coroutines.runBlocking { release.await() }
+            }
+            null
+        }
+        val s = src.open()
+        src.syncPlayback(server, s.sessionId, hour, 10_000L, book, isPlaying = true)
+        requests.clear()
+        block = true
+        val close = async { src.closePlayback(server, s.sessionId, hour + 20_000L, 0L) }
+        entered.await()
+        // The close holds the lock (its stop is in flight) and the session is already forgotten: a late report throws.
+        assertFailsWith<IllegalStateException> { src.syncPlayback(server, s.sessionId, hour + 25_000L, 5_000L, book, isPlaying = true) }
+        release.complete(Unit)
+        close.await()
+        assertEquals(listOf("/Sessions/Playing/Stopped"), paths())
     }
 }

@@ -123,6 +123,12 @@ interface LibrarySource {
 }
 
 /**
+ * Thrown by [LibrarySource.closePlayback] when the stop position did not surely reach the server (a call failed): the
+ * caller queues the position so the flusher delivers it exactly. The message names no token or address.
+ */
+class PlaceNotSavedException(cause: Throwable? = null) : Exception("The stop position did not reach the server", cause)
+
+/**
  * What one sync of a server fetched. [libraries] and [collections] are null when reading them failed.
  * [failedLibraries] names the libraries whose books could not be read (library id to a message that is safe to show,
  * naming the library but no token): the cache keeps their old books and the sync reports the messages.

@@ -48,12 +48,21 @@ sealed interface JellyfinCall {
     data object MarkUnplayed : JellyfinCall
 }
 
+/** How near the end a pause or close counts as the real end. */
+const val JELLYFIN_END_SLACK_MS = 1_000L
+
+/** True when [positionMs] is the real end of a book [durationMs] long (within [JELLYFIN_END_SLACK_MS]). */
+fun jellyfinAtEnd(positionMs: Long, durationMs: Long): Boolean =
+    durationMs > 0L && positionMs >= durationMs - JELLYFIN_END_SLACK_MS
+
 /**
  * The live session's calls for one [event] (spec section 7): the session report keeps the dashboard and other clients
  * current, and where that report would lose the place (a threshold band) the direct UserData write follows it, so the
- * phone's place stays the server's. A pause always writes (the pause place must survive). The real end stops at the end
- * and writes nothing (the server marks the book played). Once the book was set finished while loaded
- * ([markedFinished]), nothing is sent, so a later report cannot undo the mark.
+ * phone's place stays the server's. The start always writes (the start report adds a play and may reset the place), and
+ * so does a pause (the pause place must survive). The real end stops at the end and writes nothing (the server marks the
+ * book played); a pause or close at the end ([jellyfinAtEnd]) is the real end, so no `Played = false` write can undo
+ * the finish. Once the book was set finished while loaded ([markedFinished]), nothing is sent, so a later report cannot
+ * undo the mark.
  */
 fun jellyfinLivePlan(
     event: JellyfinEvent,
@@ -66,12 +75,14 @@ fun jellyfinLivePlan(
     if (markedFinished) return emptyList()
     val write = JellyfinCall.WriteUserData(positionMs, played = false, lastPlayedAtMs = nowMs)
     val inBand = inThresholdBand(positionMs, durationMs, t)
+    val stopAtEnd = listOf(JellyfinCall.SessionStopped(durationMs))
+    val atEnd = jellyfinAtEnd(positionMs, durationMs)
     return when (event) {
-        JellyfinEvent.START -> listOfNotNull(JellyfinCall.SessionStart(positionMs), write.takeIf { inBand })
+        JellyfinEvent.START -> listOf(JellyfinCall.SessionStart(positionMs), write)
         JellyfinEvent.PLAYING -> listOfNotNull(JellyfinCall.SessionProgress(positionMs, paused = false), write.takeIf { inBand })
-        JellyfinEvent.PAUSED -> listOf(JellyfinCall.SessionProgress(positionMs, paused = true), write)
-        JellyfinEvent.CLOSED -> listOfNotNull(JellyfinCall.SessionStopped(positionMs), write.takeIf { inBand })
-        JellyfinEvent.ENDED -> listOf(JellyfinCall.SessionStopped(durationMs))
+        JellyfinEvent.PAUSED -> if (atEnd) stopAtEnd else listOf(JellyfinCall.SessionProgress(positionMs, paused = true), write)
+        JellyfinEvent.CLOSED -> if (atEnd) stopAtEnd else listOfNotNull(JellyfinCall.SessionStopped(positionMs), write.takeIf { inBand })
+        JellyfinEvent.ENDED -> stopAtEnd
     }
 }
 

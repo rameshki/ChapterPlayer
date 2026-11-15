@@ -20,6 +20,7 @@ import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUpdateUserDataDto
 import com.chapterplayer.domain.jellyfin.AudiobookThresholds
 import com.chapterplayer.domain.jellyfin.JellyfinCall
 import com.chapterplayer.domain.jellyfin.JellyfinEvent
+import com.chapterplayer.domain.jellyfin.jellyfinAtEnd
 import com.chapterplayer.domain.jellyfin.jellyfinIsoTime
 import com.chapterplayer.domain.jellyfin.jellyfinLivePlan
 import com.chapterplayer.domain.jellyfin.jellyfinPushPlan
@@ -90,8 +91,10 @@ class JellyfinLibrarySource(
 
     /**
      * A load the app opened: the book, Jellyfin's play session and media source ids (sent in every report), its length,
-     * the last reported place (null until the start report reached the server) and the finished pin (set while the
-     * book is marked finished: the session then sends nothing). The fields are read and written under [lock].
+     * the last reported place (null until the start report reached the server), the finished pin (set while the book is
+     * marked finished: the session then sends nothing), [ended] (the stop at the end went out: later reports at the end
+     * send nothing) and [closed] (set by [closePlayback]: a report that was waiting for the lock throws, so its position
+     * is queued instead of reopening a session the server already stopped). The fields are read and written under [lock].
      */
     private class LiveSession(
         val bookId: String,
@@ -103,6 +106,8 @@ class JellyfinLibrarySource(
         val lock = Mutex()
         var lastPositionMs: Long? = null
         var markedFinished = false
+        var ended = false
+        var closed = false
     }
 
     private val sessions = HashMap<String, LiveSession>()
@@ -151,18 +156,26 @@ class JellyfinLibrarySource(
 
     /**
      * Ends the session: a stop report that always carries the position (a stop without one would mark the book played),
-     * at the end itself when the book really ended (within [END_SLACK_MS]: the server marks it played), followed by the
-     * UserData write when the place lies in a threshold band ([jellyfinLivePlan]). The session is forgotten first. A
-     * session that never reported (a start rolled back) or whose book was marked finished sends nothing.
+     * at the end itself when the book really ended ([jellyfinAtEnd]: the server marks it played), followed by the
+     * UserData write when the place lies in a threshold band ([jellyfinLivePlan]). The session is forgotten first and
+     * marked closed under its lock. A session that never reported (a start rolled back), that already stopped at the end
+     * or whose book was marked finished sends nothing. When a call fails the place did not surely reach the server, so
+     * this throws [PlaceNotSavedException] and the repository queues the position for an exact UserData write.
      */
     override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
         val live = sessionsLock.withLock { sessions.remove(sessionId) } ?: return
-        signedIn(server) {
-            live.lock.withLock {
-                if (live.lastPositionMs == null) return@withLock
-                val ended = positionMs >= live.durationMs - END_SLACK_MS
-                sendPlan(server, live, if (ended) JellyfinEvent.ENDED else JellyfinEvent.CLOSED, positionMs, live.durationMs)
+        try {
+            signedIn(server) {
+                live.lock.withLock {
+                    live.closed = true
+                    if (live.lastPositionMs == null || live.ended) return@withLock
+                    sendPlan(server, live, JellyfinEvent.CLOSED, positionMs, live.durationMs)
+                }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw PlaceNotSavedException(e)
         }
     }
 
@@ -170,9 +183,12 @@ class JellyfinLibrarySource(
      * Reports the session's place: the first report of a load is the start report (`/Sessions/Playing`), later ones
      * progress reports (`timeupdate`, or `pause` when [isPlaying] is false, the report made on a pause or stop); each is
      * followed by the exact UserData write where the server's thresholds would lose the place, and on a pause
-     * ([jellyfinLivePlan]). A first report made on a pause is a start followed by the pause report. A failed start is
-     * sent again with the next report. Nothing is sent once the book was marked finished while loaded. An unknown
-     * session (the app was restarted, or it was closed) throws, so the position is queued and sent through [pushProgress].
+     * ([jellyfinLivePlan]). A first report made on a pause is a start followed by the pause report. A report at the end
+     * ([jellyfinAtEnd], playing or paused) is the real end: the stop at the end, no `Played = false` write, and later
+     * reports at the end send nothing; playing again from before the end starts the session's reports over. A failed
+     * start is sent again with the next report. Nothing is sent once the book was marked finished while loaded. An
+     * unknown or closed session (the app was restarted, or [closePlayback] ran first) throws, so the position is queued
+     * and sent through [pushProgress].
      */
     override suspend fun syncPlayback(
         server: ServerConfig,
@@ -186,11 +202,20 @@ class JellyfinLibrarySource(
         val length = durationMs.takeIf { it > 0L } ?: live.durationMs
         signedIn(server) {
             live.lock.withLock {
+                if (live.closed) error("The playback session is over")
                 if (live.markedFinished) return@withLock
+                val atEnd = jellyfinAtEnd(positionMs, length)
+                if (live.ended) {
+                    if (atEnd || !isPlaying) return@withLock
+                    // Played again from before the end: a new run of reports.
+                    live.ended = false
+                    live.lastPositionMs = null
+                }
                 val first = live.lastPositionMs == null
-                // On a pause the pause report writes the place; the start need not write it too.
-                if (first) sendPlan(server, live, JellyfinEvent.START, positionMs, length, skipWrite = !isPlaying)
+                // On a pause (or at the end) the next plan writes the place, or must not; the start does not write it.
+                if (first) sendPlan(server, live, JellyfinEvent.START, positionMs, length, skipWrite = !isPlaying || atEnd)
                 when {
+                    atEnd -> sendPlan(server, live, JellyfinEvent.ENDED, positionMs, length)
                     !isPlaying -> sendPlan(server, live, JellyfinEvent.PAUSED, positionMs, length)
                     !first -> sendPlan(server, live, JellyfinEvent.PLAYING, positionMs, length)
                 }
@@ -226,10 +251,13 @@ class JellyfinLibrarySource(
                     api.sessionProgress(base, device, server.token, live.report(call.positionMs, call.paused, name))
                     live.lastPositionMs = call.positionMs
                 }
-                is JellyfinCall.SessionStopped -> api.sessionStopped(
-                    base, device, server.token,
-                    JellyfinPlaybackReportDto(live.itemId, live.mediaSourceId, live.playSessionId, jellyfinMsToTicks(call.positionMs)),
-                )
+                is JellyfinCall.SessionStopped -> {
+                    api.sessionStopped(
+                        base, device, server.token,
+                        JellyfinPlaybackReportDto(live.itemId, live.mediaSourceId, live.playSessionId, jellyfinMsToTicks(call.positionMs)),
+                    )
+                    if (call.positionMs >= durationMs) live.ended = true
+                }
                 is JellyfinCall.WriteUserData -> if (!skipWrite) writeUserData(server, live.itemId, call)
                 JellyfinCall.MarkPlayed -> api.markPlayed(base, device, server.token, live.itemId)
                 JellyfinCall.MarkUnplayed -> api.markUnplayed(base, device, server.token, live.itemId)
@@ -495,9 +523,6 @@ class JellyfinLibrarySource(
 
         /** How long a snapshot's user data stands in for a fresh read of every book's progress. */
         const val SNAPSHOT_REUSE_MS = 60_000L
-
-        /** A close this near the end is the real end: the stop is sent at the end itself. */
-        const val END_SLACK_MS = 1_000L
 
         const val PLAY_METHOD_DIRECT = "DirectPlay"
         const val EVENT_TIME_UPDATE = "timeupdate"

@@ -80,6 +80,7 @@ class BookRepositoryJellyfinTest {
         val requests = mutableListOf<HttpRequestData>()
         @Volatile var down = false
         @Volatile var status = HttpStatusCode.OK
+        @Volatile var failWrites = false
         var positionTicks = 0L
         var played = false
         var lastPlayed: String? = null
@@ -99,6 +100,8 @@ class BookRepositoryJellyfinTest {
             val json = headersOf(HttpHeaders.ContentType, "application/json")
             when {
                 path == "/UserItems/$itemId/UserData" && request.method == HttpMethod.Get -> respond(userData(), HttpStatusCode.OK, json)
+                path == "/UserItems/$itemId/UserData" && failWrites -> respond("", HttpStatusCode.ServiceUnavailable)
+                path.startsWith("/Sessions/Playing") -> respond("", HttpStatusCode.NoContent)
                 path == "/UserItems/$itemId/UserData" -> {
                     val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
                     positionTicks = body.getValue("PlaybackPositionTicks").jsonPrimitive.long
@@ -117,7 +120,9 @@ class BookRepositoryJellyfinTest {
                     respond(userData(), HttpStatusCode.OK, json)
                 }
                 path == "/Items/$itemId" -> respond(
-                    """{"Id":"$itemId","Name":"Quiet Rivers","Type":"AudioBook","RunTimeTicks":36000000000}""", HttpStatusCode.OK, json,
+                    """{"Id":"$itemId","Name":"Quiet Rivers","Type":"AudioBook","RunTimeTicks":36000000000,""" +
+                        """"MediaSources":[{"Id":"$itemId","Container":"mp3","RunTimeTicks":36000000000}]}""",
+                    HttpStatusCode.OK, json,
                 )
                 else -> respond("", HttpStatusCode.NotFound)
             }
@@ -146,6 +151,7 @@ class BookRepositoryJellyfinTest {
         val progressDao: InMemoryProgressDao,
         val pendingDao: InMemoryPendingProgressDao,
         val signedOut: MutableList<String>,
+        val source: JellyfinLibrarySource,
     )
 
     private fun fixture(local: List<ProgressEntity> = emptyList(), now: Long = 1_793_000_000_000L): Fixture {
@@ -166,7 +172,7 @@ class BookRepositoryJellyfinTest {
             pendingDao = pendingDao, bookmarkDao = InMemoryBookmarkDao(), historyDao = InMemoryHistoryDao(),
             clock = { now },
         )
-        return Fixture(repo, jf, progressDao, pendingDao, signedOut)
+        return Fixture(repo, jf, progressDao, pendingDao, signedOut, source)
     }
 
     // ---- Mark as finished / not finished ----
@@ -336,5 +342,40 @@ class BookRepositoryJellyfinTest {
 
         assertTrue(f.jf.requests.isEmpty())
         assertTrue(f.progressDao.rows.value.none { it.bookId == bookId })
+    }
+
+    // ---- the close (review fix): a place the server may not have is queued ----
+
+    @Test
+    fun `a failed write after the stop queues the place and the flusher writes it exactly`() {
+        val now = 1_793_000_900_000L
+        val f = fixture(now = now)
+        val place = hour - 3 * 60_000L // in the end band: the stop alone would lose it
+        runBlocking {
+            val session = f.source.startPlayback(server, bookId)
+            assertTrue(f.repo.syncPlayback(session, 30 * 60_000L, 10_000L, isPlaying = true).isSuccess)
+            f.jf.failWrites = true
+            val closed = f.repo.closePlayback(session, place, 5_000L)
+            assertIs<com.chapterplayer.data.source.PlaceNotSavedException>(closed.exceptionOrNull())
+            val row = f.pendingDao.rows.value.single()
+            assertEquals(bookId, row.bookId)
+            assertEquals(place, row.positionMs)
+            assertEquals(now, row.updatedAtMs)
+        }
+        f.jf.failWrites = false
+        val writesBefore = f.jf.writes().size
+        flushUntil(f, now) { f.pendingDao.rows.value.isEmpty() }
+        assertEquals(listOf("POST /UserItems/$itemId/UserData"), f.jf.writes().drop(writesBefore))
+        assertEquals(place * 10_000L, f.jf.positionTicks)
+        assertFalse(f.jf.played)
+    }
+
+    @Test
+    fun `a close that reached the server queues nothing`() = runTest {
+        val f = fixture()
+        val session = f.source.startPlayback(server, bookId)
+        f.repo.syncPlayback(session, 30 * 60_000L, 10_000L, isPlaying = true)
+        assertTrue(f.repo.closePlayback(session, hour - 3 * 60_000L, 5_000L).isSuccess)
+        assertTrue(f.pendingDao.rows.value.isEmpty())
     }
 }

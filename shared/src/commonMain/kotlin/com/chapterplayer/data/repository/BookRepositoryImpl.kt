@@ -27,6 +27,7 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.source.LibrarySource
+import com.chapterplayer.data.source.PlaceNotSavedException
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
@@ -248,6 +249,22 @@ class BookRepositoryImpl(
             Result.success(source.closePlayback(server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L)))
         } catch (e: CancellationException) {
             throw e
+        } catch (e: PlaceNotSavedException) {
+            // The stop place did not surely reach the server: queue it, the flusher writes it exactly.
+            try {
+                queueProgress(
+                    PendingProgress(
+                        session.bookId, session.serverId, positionMs.coerceAtLeast(0L), session.durationMs,
+                        listenedMs.coerceAtLeast(0L), updatedAtMs = clock(),
+                    )
+                )
+                onQueued()
+            } catch (q: CancellationException) {
+                throw q
+            } catch (_: Exception) {
+                // Nothing more to do: the local row still holds the place.
+            }
+            Result.failure(e)
         } catch (e: Exception) {
             Result.failure(e)
         }

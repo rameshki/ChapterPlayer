@@ -50,9 +50,10 @@ class JellyfinProgressTest {
     }
 
     @Test
-    fun `start outside a band is the start report only`() {
+    fun `start always adds the user data write - also outside a band`() {
+        // The start report adds a play and may clear the place; the exact write keeps it.
         assertEquals(
-            listOf(JellyfinCall.SessionStart(hour)),
+            listOf(JellyfinCall.SessionStart(hour), JellyfinCall.WriteUserData(hour, false, now)),
             jellyfinLivePlan(JellyfinEvent.START, hour, book, now, defaults, markedFinished = false),
         )
     }
@@ -175,5 +176,21 @@ class JellyfinProgressTest {
         assertEquals(AudiobookThresholds(5, 5), thresholdsOf(null))
         assertEquals(AudiobookThresholds(5, 5), thresholdsOf(JellyfinConfigurationDto(minAudiobookResume = 0, maxAudiobookResume = -3)))
         assertEquals(AudiobookThresholds(5, 7), thresholdsOf(JellyfinConfigurationDto(minAudiobookResume = null, maxAudiobookResume = 7)))
+    }
+
+    @Test
+    fun `a pause or close at the end stops at the end and never writes not played`() {
+        for (event in listOf(JellyfinEvent.PAUSED, JellyfinEvent.CLOSED)) {
+            for (p in listOf(book - 1_000L, book - 1L, book, book + 5_000L)) {
+                val plan = jellyfinLivePlan(event, p, book, now, defaults, markedFinished = false)
+                assertEquals(listOf(JellyfinCall.SessionStopped(book)), plan, "$event $p")
+            }
+            // Just before the slack it is an ordinary pause or close.
+            val before = jellyfinLivePlan(event, book - 1_001L, book, now, defaults, markedFinished = false)
+            assertTrue(before.any { it is JellyfinCall.WriteUserData }, "$event")
+        }
+        assertTrue(jellyfinAtEnd(book - 1_000L, book))
+        assertFalse(jellyfinAtEnd(book - 1_001L, book))
+        assertFalse(jellyfinAtEnd(0L, 0L))
     }
 }
