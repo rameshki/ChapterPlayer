@@ -466,7 +466,8 @@ class MergedSourcesTest {
 
     private val withJf = everyServer + "jf1"
 
-    private fun jf(id: String, durationMs: Long = 45 * hour) = item(id, "jf1", durationMs = durationMs, source = ServerSource.JELLYFIN)
+    private fun jf(id: String, durationMs: Long = 45 * hour, title: String = "The Way of Kings") =
+        item(id, "jf1", title = title, durationMs = durationMs, source = ServerSource.JELLYFIN)
 
     @Test
     fun `abs plex and jellyfin copies make one entry`() {
@@ -518,5 +519,63 @@ class MergedSourcesTest {
         assertNull(chosenDownloadSource(jf("solo"), SourceChoice.Ask, withJf))
         assertFalse(ServerSource.JELLYFIN.canDownload())
         assertTrue(ServerSource.ABS.canDownload() && ServerSource.PLEX.canDownload())
+    }
+
+    // ---- three copies (J2) ----
+
+    @Test
+    fun `a 10 hour Jellyfin copy with a 6 minute trimmed intro still merges - a 3 hour one does not`() {
+        val long = merge(listOf(item("a", "abs1", durationMs = 10 * hour), jf("j", durationMs = 10 * hour - 6 * 60_000L)), online = withJf)
+        assertEquals(1, long.size)
+        // 2% of 3 h is 3.6 min and the floor is 5 min: 6 min is too far.
+        val short = merge(listOf(item("a", "abs1", durationMs = 3 * hour), jf("j", durationMs = 3 * hour - 6 * 60_000L)), online = withJf)
+        assertEquals(2, short.size)
+    }
+
+    @Test
+    fun `a Plex copy of unknown length joins the Audiobookshelf and Jellyfin copies by its authors`() {
+        val result = merge(
+            listOf(item("a", "abs1", durationMs = 10 * hour), item("p", "plex1", durationMs = 0L), jf("j", durationMs = 10 * hour - 4_000L)),
+            online = withJf,
+        )
+        assertEquals(setOf(setOf("a", "p", "j")), groups(result))
+    }
+
+    @Test
+    fun `three copies chain - A matches B and B matches C`() {
+        // 2% of 10 h is 12 min: A~B and B~C are 10 min apart, A and C 20 min.
+        val result = merge(
+            listOf(
+                item("a", "abs1", durationMs = 10 * hour),
+                jf("j", durationMs = 10 * hour + 10 * 60_000L),
+                item("p", "plex1", durationMs = 10 * hour + 20 * 60_000L),
+            ),
+            online = withJf,
+        )
+        assertEquals(setOf(setOf("a", "j", "p")), groups(result))
+    }
+
+    @Test
+    fun `an A and C split leaves C alone`() {
+        val result = merge(
+            listOf(
+                item("a", "abs1", durationMs = 10 * hour),
+                jf("j", durationMs = 10 * hour + 60_000L),
+                item("p", "plex1", durationMs = 10 * hour + 5 * 60_000L),
+            ),
+            MergeOverrides(splits = setOf("a" to "p")),
+            online = withJf,
+        )
+        assertEquals(setOf(setOf("a", "j"), setOf("p")), groups(result))
+    }
+
+    @Test
+    fun `a Jellyfin title that differs by more than a suffix stays apart until a forced merge`() {
+        // An edition suffix such as "(Unabridged)" is ignored by the title rule, so that one joins by itself.
+        assertEquals(1, merge(listOf(item("a", "abs1"), jf("j", title = "The Way of Kings (Unabridged)")), online = withJf).size)
+        val renamed = jf("j", title = "The Way of Kings: Stormlight 1")
+        assertEquals(2, merge(listOf(item("a", "abs1"), renamed), online = withJf).size)
+        val forced = merge(listOf(item("a", "abs1"), renamed), MergeOverrides(merges = setOf("a" to "j")), online = withJf)
+        assertEquals(setOf(setOf("a", "j")), groups(forced))
     }
 }

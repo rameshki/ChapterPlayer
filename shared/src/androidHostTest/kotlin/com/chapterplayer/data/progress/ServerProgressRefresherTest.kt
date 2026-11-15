@@ -55,6 +55,14 @@ class ServerProgressRefresherTest {
     }
 
     @Test
+    fun `Jellyfin servers are refreshed like Audiobookshelf ones and Plex stays out`() = runTest {
+        val r = rig(true, server("a"), server("p", ServerSource.PLEX), server("j", ServerSource.JELLYFIN))
+        r.refresher.start()
+        runCurrent()
+        assertEquals(listOf("a", "j"), r.repo.mergedServers)
+    }
+
+    @Test
     fun `nothing is merged while offline and the merge happens when the network returns`() = runTest {
         val r = rig(false, server("a"))
         r.refresher.start()
