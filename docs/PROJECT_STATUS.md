@@ -22,7 +22,7 @@ Read this first in every session; it is short on purpose. History is in `CHANGEL
 1. R7: a release-safe "Report a problem" row (redacted text report, crash trace saved locally, share sheet).
 2. R5 and R31: targetSdk and the Google Play checklist (the app will go on Google Play).
 3. Jellyfin Task 15 on the real server, then J3 (Quick Connect, downloads).
-4. R14 static analysis and dependabot, R15 line endings, R17 README and roadmap, R20 migration tests, R22 repository setting.
+4. R14 detekt and Kover (deferred: detekt 2.x is still alpha, check its Kotlin 2.4 / AGP 9 support first; Dependabot and the dependency graph are in), R15 line endings, R17 README and roadmap, R20 migration tests, R22 repository setting.
 5. Run the open device checks in `DEVICE_CHECKS.md`; build a 0.5.4 release when the owner wants testers to get fonts and Jellyfin progress.
 6. iOS waits for an unmanaged iPhone.
 

@@ -1,0 +1,25 @@
+name: Dependency graph
+
+# Sends the Gradle dependency list to GitHub, so Dependabot alerts report known vulnerabilities in what the app uses.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  submit:
+    name: Submit dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/dependency-submission@v4
+        with:
+          dependency-graph: generate-and-submit
