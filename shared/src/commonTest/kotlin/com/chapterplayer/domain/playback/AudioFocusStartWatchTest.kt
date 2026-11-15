@@ -26,7 +26,7 @@ class AudioFocusStartWatchTest {
     }
 
     @Test
-    fun `with the app in front a refusal is not reported (the person sees the player)`() {
+    fun `with the app in front a refusal is not reported because the person sees the player`() {
         val watch = AudioFocusStartWatch()
         watch.onPlayWhenReadyChanged(true, byFocusLoss = false, appInFront = true, nowMs = T0)
 
