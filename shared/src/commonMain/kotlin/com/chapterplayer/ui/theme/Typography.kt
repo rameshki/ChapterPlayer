@@ -7,147 +7,113 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import com.chapterplayer.data.settings.AppFont
+import com.chapterplayer.domain.settings.fontSizeScale
 import com.chapterplayer.resources.Res
 import com.chapterplayer.resources.dm_sans_bold
 import com.chapterplayer.resources.dm_sans_medium
 import com.chapterplayer.resources.dm_sans_regular
+import com.chapterplayer.resources.inter_bold
+import com.chapterplayer.resources.inter_medium
+import com.chapterplayer.resources.inter_regular
+import com.chapterplayer.resources.lexend_bold
+import com.chapterplayer.resources.lexend_medium
+import com.chapterplayer.resources.lexend_regular
+import com.chapterplayer.resources.literata_bold
+import com.chapterplayer.resources.literata_medium
+import com.chapterplayer.resources.literata_regular
+import com.chapterplayer.resources.manrope_bold
+import com.chapterplayer.resources.manrope_medium
+import com.chapterplayer.resources.manrope_regular
 import com.chapterplayer.resources.playfair_display_bold
 import com.chapterplayer.resources.playfair_display_italic
 import com.chapterplayer.resources.playfair_display_regular
+import com.chapterplayer.resources.source_sans_3_bold
+import com.chapterplayer.resources.source_sans_3_medium
+import com.chapterplayer.resources.source_sans_3_regular
 import org.jetbrains.compose.resources.Font
+import org.jetbrains.compose.resources.FontResource
 
 /**
- * Typography for ChapterPlayer.
+ * Typography for ChapterPlayer. The user picks the font in Settings, Appearance ([AppFont]); every screen reads its
+ * text styles from here, so the choice reaches the whole app (not the widgets or notifications, which Android draws
+ * in the phone's own font).
  *
- * Design spec:
- * - Playfair Display (serif) — book titles, display text
- * - DM Sans (sans-serif) — body text, metadata, UI labels
+ * Each choice is two families: [AppFontFamilies.display] for the display and headline styles (titles), and
+ * [AppFontFamilies.body] for everything else. Classic (the default, the original look) is Playfair Display + DM Sans,
+ * Bookish is Literata + Source Sans 3, Inter, Manrope and Lexend use one family for both, and System uses the
+ * platform's default font. The sizes are the same for every choice, times [fontSizeScale] (Lexend is drawn smaller).
  *
- * The font files live in shared/src/commonMain/composeResources/font/ and are read through
- * Compose Resources, so the same fonts work on every platform:
- *   playfair_display_regular.ttf, playfair_display_bold.ttf, playfair_display_italic.ttf
- *   dm_sans_regular.ttf, dm_sans_medium.ttf, dm_sans_bold.ttf
- *
- * They come from Google Fonts (https://fonts.google.com).
+ * The font files (static weights 400, 500 and 700, from Google Fonts, all under the SIL Open Font License) live in
+ * shared/src/commonMain/composeResources/font/ and are read through Compose Resources, so they work on every platform.
  */
-/** The app typography. Needs a composable because the fonts are loaded through Compose Resources. */
+class AppFontFamilies(val display: FontFamily, val body: FontFamily)
+
 @Composable
-fun chapterPlayerTypography(): Typography {
-    val playfairDisplay = FontFamily(
-        Font(Res.font.playfair_display_regular, FontWeight.Normal),
-        Font(Res.font.playfair_display_bold, FontWeight.Bold),
-        Font(Res.font.playfair_display_italic, FontWeight.Normal, FontStyle.Italic)
-    )
-    val dmSans = FontFamily(
-        Font(Res.font.dm_sans_regular, FontWeight.Normal),
-        Font(Res.font.dm_sans_medium, FontWeight.Medium),
-        Font(Res.font.dm_sans_bold, FontWeight.Bold)
+private fun family(regular: FontResource, medium: FontResource, bold: FontResource): FontFamily =
+    FontFamily(
+        Font(regular, FontWeight.Normal),
+        Font(medium, FontWeight.Medium),
+        Font(bold, FontWeight.Bold)
     )
 
-    return remember(playfairDisplay, dmSans) {
-        Typography(
-            // Playfair Display for display/title text
-            displayLarge = TextStyle(
-                fontFamily = playfairDisplay,
-                fontWeight = FontWeight.Bold,
-                fontSize = 57.sp,
-                lineHeight = 64.sp,
-                letterSpacing = (-0.25).sp
-            ),
-            displayMedium = TextStyle(
-                fontFamily = playfairDisplay,
-                fontWeight = FontWeight.Bold,
-                fontSize = 45.sp,
-                lineHeight = 52.sp
-            ),
-            displaySmall = TextStyle(
-                fontFamily = playfairDisplay,
-                fontWeight = FontWeight.Normal,
-                fontSize = 36.sp,
-                lineHeight = 44.sp
-            ),
-            headlineLarge = TextStyle(
-                fontFamily = playfairDisplay,
-                fontWeight = FontWeight.Bold,
-                fontSize = 32.sp,
-                lineHeight = 40.sp
-            ),
-            headlineMedium = TextStyle(
-                fontFamily = playfairDisplay,
-                fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
-                lineHeight = 36.sp
-            ),
-            headlineSmall = TextStyle(
-                fontFamily = playfairDisplay,
-                fontWeight = FontWeight.Normal,
-                fontSize = 24.sp,
-                lineHeight = 32.sp
-            ),
-            // DM Sans for body and UI text
-            titleLarge = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Medium,
-                fontSize = 22.sp,
-                lineHeight = 28.sp
-            ),
-            titleMedium = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Medium,
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
-                letterSpacing = 0.15.sp
-            ),
-            titleSmall = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                letterSpacing = 0.1.sp
-            ),
-            bodyLarge = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Normal,
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
-                letterSpacing = 0.5.sp
-            ),
-            bodyMedium = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Normal,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                letterSpacing = 0.25.sp
-            ),
-            bodySmall = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Normal,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                letterSpacing = 0.4.sp
-            ),
-            labelLarge = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                letterSpacing = 0.1.sp
-            ),
-            labelMedium = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Medium,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                letterSpacing = 0.5.sp
-            ),
-            labelSmall = TextStyle(
-                fontFamily = dmSans,
-                fontWeight = FontWeight.Medium,
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-                letterSpacing = 0.5.sp
-            )
+/** The families [font] draws with. A composable because the fonts are loaded through Compose Resources. */
+@Composable
+fun appFontFamilies(font: AppFont): AppFontFamilies = when (font) {
+    AppFont.CLASSIC -> AppFontFamilies(
+        display = FontFamily(
+            Font(Res.font.playfair_display_regular, FontWeight.Normal),
+            Font(Res.font.playfair_display_bold, FontWeight.Bold),
+            Font(Res.font.playfair_display_italic, FontWeight.Normal, FontStyle.Italic)
+        ),
+        body = family(Res.font.dm_sans_regular, Res.font.dm_sans_medium, Res.font.dm_sans_bold)
+    )
+    AppFont.BOOKISH -> AppFontFamilies(
+        display = family(Res.font.literata_regular, Res.font.literata_medium, Res.font.literata_bold),
+        body = family(Res.font.source_sans_3_regular, Res.font.source_sans_3_medium, Res.font.source_sans_3_bold)
+    )
+    AppFont.INTER -> family(Res.font.inter_regular, Res.font.inter_medium, Res.font.inter_bold).let { AppFontFamilies(it, it) }
+    AppFont.MANROPE -> family(Res.font.manrope_regular, Res.font.manrope_medium, Res.font.manrope_bold).let { AppFontFamilies(it, it) }
+    AppFont.LEXEND -> family(Res.font.lexend_regular, Res.font.lexend_medium, Res.font.lexend_bold).let { AppFontFamilies(it, it) }
+    AppFont.SYSTEM -> AppFontFamilies(FontFamily.Default, FontFamily.Default)
+}
+
+/** The app typography for [font]. */
+@Composable
+fun chapterPlayerTypography(font: AppFont = AppFont.CLASSIC): Typography {
+    val families = appFontFamilies(font)
+    val scale = fontSizeScale(font)
+    return remember(families.display, families.body, scale) { buildTypography(families.display, families.body, scale) }
+}
+
+private fun buildTypography(display: FontFamily, body: FontFamily, scale: Float): Typography {
+    fun style(family: FontFamily, weight: FontWeight, size: Int, line: Int, spacing: TextUnit = TextUnit.Unspecified) =
+        TextStyle(
+            fontFamily = family,
+            fontWeight = weight,
+            fontSize = (size * scale).sp,
+            lineHeight = (line * scale).sp,
+            letterSpacing = spacing
         )
-    }
+    return Typography(
+        // The display family for display and headline text
+        displayLarge = style(display, FontWeight.Bold, 57, 64, (-0.25).sp),
+        displayMedium = style(display, FontWeight.Bold, 45, 52),
+        displaySmall = style(display, FontWeight.Normal, 36, 44),
+        headlineLarge = style(display, FontWeight.Bold, 32, 40),
+        headlineMedium = style(display, FontWeight.Bold, 28, 36),
+        headlineSmall = style(display, FontWeight.Normal, 24, 32),
+        // The body family for titles, body and UI text
+        titleLarge = style(body, FontWeight.Medium, 22, 28),
+        titleMedium = style(body, FontWeight.Medium, 16, 24, 0.15.sp),
+        titleSmall = style(body, FontWeight.Medium, 14, 20, 0.1.sp),
+        bodyLarge = style(body, FontWeight.Normal, 16, 24, 0.5.sp),
+        bodyMedium = style(body, FontWeight.Normal, 14, 20, 0.25.sp),
+        bodySmall = style(body, FontWeight.Normal, 12, 16, 0.4.sp),
+        labelLarge = style(body, FontWeight.Medium, 14, 20, 0.1.sp),
+        labelMedium = style(body, FontWeight.Medium, 12, 16, 0.5.sp),
+        labelSmall = style(body, FontWeight.Medium, 11, 16, 0.5.sp)
+    )
 }

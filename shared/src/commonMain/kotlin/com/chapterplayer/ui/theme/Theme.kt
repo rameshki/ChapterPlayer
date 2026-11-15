@@ -8,6 +8,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.ThemeMode
 
 // The theme follows the user's choice (dark, light or system). The palettes live in Palette.kt;
@@ -50,6 +51,7 @@ private fun colorSchemeFor(p: ChapterPlayerPalette, dark: Boolean): ColorScheme 
 @Composable
 fun ChapterPlayerTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    font: AppFont = AppFont.CLASSIC,
     content: @Composable () -> Unit
 ) {
     val dark = resolveDarkTheme(themeMode, isSystemInDarkTheme())
@@ -57,7 +59,7 @@ fun ChapterPlayerTheme(
     CompositionLocalProvider(LocalPalette provides palette) {
         MaterialTheme(
             colorScheme = colorSchemeFor(palette, dark),
-            typography = chapterPlayerTypography(),
+            typography = chapterPlayerTypography(font),
             content = content
         )
     }

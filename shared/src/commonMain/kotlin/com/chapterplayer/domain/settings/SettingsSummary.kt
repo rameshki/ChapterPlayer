@@ -2,6 +2,7 @@ package com.chapterplayer.domain.settings
 
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.domain.browse.serverKindName
+import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.domain.downloads.INTERNAL_VOLUME_ID
 import com.chapterplayer.domain.downloads.storageLimitLabel
@@ -20,11 +21,11 @@ fun serversSummary(servers: List<ServerConfig>): String {
     return "${servers.size} servers" + if (lostSignIn) "${SEPARATOR}sign in again" else ""
 }
 
-fun appearanceSummary(mode: ThemeMode): String = when (mode) {
+fun appearanceSummary(mode: ThemeMode, font: AppFont): String = when (mode) {
     ThemeMode.DARK -> "Dark"
     ThemeMode.LIGHT -> "Light"
     ThemeMode.SYSTEM -> "Follow system"
-}
+} + "$SEPARATOR${fontName(font)} font"
 
 /**
  * [locationLabel] is the chosen download location's name; null while the volumes are not read yet. [choices] is the

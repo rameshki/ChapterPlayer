@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.uikit.LocalUIViewController
 import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
+import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.di.initKoin
@@ -29,8 +30,9 @@ fun MainViewController() = run {
     ComposeUIViewController(configure = { onFocusBehavior = OnFocusBehavior.DoNothing }) {
         val settings = koinInject<AppSettings>()
         val mode by settings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+        val font by settings.appFont.collectAsState(initial = AppFont.CLASSIC)
         MatchSystemChrome(mode)
-        ChapterPlayerTheme(mode) {
+        ChapterPlayerTheme(mode, font) {
             AppNavigation()
         }
     }

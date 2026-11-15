@@ -24,6 +24,10 @@ interface AppSettings {
     val themeMode: Flow<ThemeMode>
     suspend fun setThemeMode(mode: ThemeMode)
 
+    /** The app's font; [AppFont.CLASSIC] until chosen (an unknown stored name reads as Classic too). */
+    val appFont: Flow<AppFont>
+    suspend fun setAppFont(font: AppFont)
+
     val libraryLayout: Flow<LibraryLayout>
     suspend fun setLibraryLayout(layout: LibraryLayout)
 
@@ -78,6 +82,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     private object Keys {
         val theme = stringPreferencesKey("theme_mode")
+        val font = stringPreferencesKey("app_font")
         val layout = stringPreferencesKey("library_layout")
         val carResume = booleanPreferencesKey("resume_on_car_connect")
         val downloadedOnly = booleanPreferencesKey("downloaded_only")
@@ -101,6 +106,10 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val themeMode: Flow<ThemeMode> = prefs.map { p ->
         p[Keys.theme]?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: ThemeMode.SYSTEM
+    }
+
+    override val appFont: Flow<AppFont> = prefs.map { p ->
+        p[Keys.font]?.let { name -> AppFont.entries.firstOrNull { it.name == name } } ?: AppFont.CLASSIC
     }
 
     override val libraryLayout: Flow<LibraryLayout> = prefs.map { p ->
@@ -134,6 +143,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override val libraryView: Flow<String?> = prefs.map { it[Keys.libraryView] }
 
     override suspend fun setThemeMode(mode: ThemeMode) { store.edit { it[Keys.theme] = mode.name } }
+    override suspend fun setAppFont(font: AppFont) { store.edit { it[Keys.font] = font.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
     override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }

@@ -44,6 +44,24 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `the font starts as Classic and a choice is kept between launches`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        assertEquals(AppFont.CLASSIC, DataStoreAppSettings(store).appFont.first())
+
+        DataStoreAppSettings(store).setAppFont(AppFont.LEXEND)
+
+        assertEquals(AppFont.LEXEND, DataStoreAppSettings(store).appFont.first())
+    }
+
+    @Test
+    fun `an unknown stored font reads as Classic`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        store.edit { it[stringPreferencesKey("app_font")] = "COMIC_SANS" }
+
+        assertEquals(AppFont.CLASSIC, DataStoreAppSettings(store).appFont.first())
+    }
+
+    @Test
     fun `the Library filters and view are kept between launches`() = runTest {
         val store = InMemoryPreferencesDataStore()
         val settings = DataStoreAppSettings(store)

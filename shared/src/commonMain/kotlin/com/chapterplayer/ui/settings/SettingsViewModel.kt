@@ -41,6 +41,7 @@ import com.chapterplayer.domain.plex.connectionNote
 import com.chapterplayer.domain.plex.pickConnection
 import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.ThemeMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -201,6 +202,24 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 appSettings.setThemeMode(mode)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
+    }
+
+    val appFont: StateFlow<AppFont> =
+        appSettings.appFont.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = AppFont.CLASSIC
+        )
+
+    fun setAppFont(font: AppFont) {
+        viewModelScope.launch {
+            try {
+                appSettings.setAppFont(font)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // The choice is not saved; the screen keeps showing the saved one.

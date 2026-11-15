@@ -1,5 +1,6 @@
 package com.chapterplayer.testing
 
+import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.settings.LibraryLayout
 import com.chapterplayer.data.settings.ThemeMode
@@ -17,6 +18,12 @@ class FakeAppSettings(
     override suspend fun setThemeMode(mode: ThemeMode) {
         if (failOnSet) error("storage unavailable")
         theme.value = mode
+    }
+    val font = MutableStateFlow(AppFont.CLASSIC)
+    override val appFont: Flow<AppFont> = font
+    override suspend fun setAppFont(font: AppFont) {
+        if (failOnSet) error("storage unavailable")
+        this.font.value = font
     }
     val layout = MutableStateFlow(LibraryLayout.LARGE_GRID)
     override val libraryLayout: Flow<LibraryLayout> = layout
