@@ -15,6 +15,12 @@ const val JELLYFIN_TICKS_PER_MS = 10_000L
 /** [ticks] (null or negative read as 0) in milliseconds. */
 fun jellyfinTicksToMs(ticks: Long?): Long = ((ticks ?: 0L) / JELLYFIN_TICKS_PER_MS).coerceAtLeast(0L)
 
+/** [ms] (negative read as 0) in ticks. */
+fun jellyfinMsToTicks(ms: Long): Long = ms.coerceAtLeast(0L) * JELLYFIN_TICKS_PER_MS
+
+/** [ms] since the epoch as an ISO-8601 UTC time for Jellyfin (such as `2026-11-02T19:15:00Z`). */
+fun jellyfinIsoTime(ms: Long): String = Instant.fromEpochMilliseconds(ms).toString()
+
 /** An ISO-8601 time Jellyfin sends (7 fractional digits, such as `2026-10-01T12:00:00.0000000Z`) in epoch ms; 0 when unreadable. */
 fun jellyfinTimeMs(iso: String?): Long {
     if (iso.isNullOrBlank()) return 0L

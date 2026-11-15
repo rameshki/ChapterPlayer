@@ -2,9 +2,12 @@ package com.chapterplayer.data.remote.jellyfin
 
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinAuthResultDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinAuthenticateByNameDto
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinConfigurationDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinItemDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinItemsPageDto
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinPlaybackReportDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinPublicInfoDto
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUpdateUserDataDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUserDataDto
 import com.chapterplayer.domain.jellyfin.JellyfinClient
 import com.chapterplayer.domain.jellyfin.jellyfinAuthHeader
@@ -14,6 +17,7 @@ import com.chapterplayer.data.remote.JELLYFIN_DEVICE_NAME
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -33,7 +37,7 @@ import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
 
 /**
- * The Jellyfin REST API (the calls of J1). Every call takes the server address as typed ([base], which may carry a
+ * The Jellyfin REST API (the calls of J1 and J2). Every call takes the server address as typed ([base], which may carry a
  * path such as `/jellyfin`; a trailing slash is dropped) and, after sign-in, the row's DeviceId and token. The token
  * travels only in the `Authorization: MediaBrowser ...` header, never in a URL. A non-2xx answer throws
  * `HttpStatusException` (the client's `installApiDefaults`).
@@ -114,6 +118,57 @@ class JellyfinApiService(
         client.get(endpoint(base, "UserItems/${itemId.encodeURLPathPart()}/UserData")) {
             authorize(deviceId, token)
         }.body()
+
+    /**
+     * `GET /System/Configuration`: the server's settings, of which the audiobook resume thresholds are read. Whether a
+     * user who is not an administrator may read it is unverified: callers treat any failure as "not known".
+     */
+    suspend fun getConfiguration(base: String, deviceId: String, token: String): JellyfinConfigurationDto =
+        client.get(endpoint(base, "System/Configuration")) {
+            authorize(deviceId, token)
+        }.body()
+
+    /** `POST /Sessions/Playing`: a play session starts (the dashboard shows it; the server adds a play). */
+    suspend fun sessionPlaying(base: String, deviceId: String, token: String, report: JellyfinPlaybackReportDto) {
+        postJson(base, "Sessions/Playing", deviceId, token, report)
+    }
+
+    /** `POST /Sessions/Playing/Progress`: where the session is (the server applies its audiobook thresholds). */
+    suspend fun sessionProgress(base: String, deviceId: String, token: String, report: JellyfinPlaybackReportDto) {
+        postJson(base, "Sessions/Playing/Progress", deviceId, token, report)
+    }
+
+    /** `POST /Sessions/Playing/Stopped`, always with the position (a stop without one marks the book played). */
+    suspend fun sessionStopped(base: String, deviceId: String, token: String, report: JellyfinPlaybackReportDto) {
+        postJson(base, "Sessions/Playing/Stopped", deviceId, token, report)
+    }
+
+    /** `POST /UserItems/{Id}/UserData`: sets the position, played flag and last played time as given (no thresholds). */
+    suspend fun writeUserData(base: String, deviceId: String, token: String, itemId: String, data: JellyfinUpdateUserDataDto) {
+        postJson(base, "UserItems/${itemId.encodeURLPathPart()}/UserData", deviceId, token, data)
+    }
+
+    /** `POST /UserPlayedItems/{Id}`: marks the item played (the server sets the position to 0). */
+    suspend fun markPlayed(base: String, deviceId: String, token: String, itemId: String) {
+        client.post(endpoint(base, "UserPlayedItems/${itemId.encodeURLPathPart()}")) {
+            authorize(deviceId, token)
+        }
+    }
+
+    /** `DELETE /UserPlayedItems/{Id}`: marks the item not played (kept for the J2 server check). */
+    suspend fun markUnplayed(base: String, deviceId: String, token: String, itemId: String) {
+        client.delete(endpoint(base, "UserPlayedItems/${itemId.encodeURLPathPart()}")) {
+            authorize(deviceId, token)
+        }
+    }
+
+    private suspend inline fun <reified T> postJson(base: String, path: String, deviceId: String, token: String, body: T) {
+        client.post(endpoint(base, path)) {
+            authorize(deviceId, token)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+    }
 
     private fun HttpRequestBuilder.authorize(deviceId: String, token: String?) {
         header(HttpHeaders.Authorization, jellyfinAuthHeader(clientInfo(deviceId), token))

@@ -25,6 +25,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinPlaybackReportDto
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUpdateUserDataDto
 
 class JellyfinApiServiceTest {
 
@@ -291,5 +293,104 @@ class JellyfinApiServiceTest {
         assertNull(bare.items.single().runTimeTicks)
         assertTrue(bare.items.single().mediaSources.isEmpty())
         assertNull(bare.totalRecordCount)
+    }
+
+    // ---- J2: reports, writes, marks, configuration ----
+
+    private val itemId = "0bdd952d73af33d8d4421dfdb2f25919"
+
+    private fun report(isPaused: Boolean? = false, eventName: String? = "timeupdate") = JellyfinPlaybackReportDto(
+        itemId = itemId,
+        mediaSourceId = itemId,
+        playSessionId = "5f0e4d3c2b1a09f8e7d6c5b4a3928170",
+        positionTicks = 1_200_000_000L,
+        canSeek = true,
+        playMethod = "DirectPlay",
+        isPaused = isPaused,
+        eventName = eventName,
+    )
+
+    @Test
+    fun `the session reports post their bodies to the session routes`() = runTest {
+        val api = service({ "" })
+        api.sessionPlaying("https://jf.test/jellyfin", deviceId, token, report(eventName = null))
+        api.sessionProgress("https://jf.test/jellyfin", deviceId, token, report(isPaused = true, eventName = "pause"))
+        api.sessionStopped("https://jf.test/jellyfin", deviceId, token, JellyfinPlaybackReportDto(itemId, itemId, "5f0e4d3c2b1a09f8e7d6c5b4a3928170", 1_200_000_000L))
+
+        assertEquals(
+            listOf("/jellyfin/Sessions/Playing", "/jellyfin/Sessions/Playing/Progress", "/jellyfin/Sessions/Playing/Stopped"),
+            requests.map { it.url.encodedPath },
+        )
+        assertTrue(requests.all { it.method == HttpMethod.Post })
+        assertEquals(
+            """{"ItemId":"$itemId","MediaSourceId":"$itemId","PlaySessionId":"5f0e4d3c2b1a09f8e7d6c5b4a3928170","PositionTicks":1200000000,"CanSeek":true,"PlayMethod":"DirectPlay","IsPaused":false}""",
+            bodyText(requests[0].body),
+        )
+        assertEquals(
+            """{"ItemId":"$itemId","MediaSourceId":"$itemId","PlaySessionId":"5f0e4d3c2b1a09f8e7d6c5b4a3928170","PositionTicks":1200000000,"CanSeek":true,"PlayMethod":"DirectPlay","IsPaused":true,"EventName":"pause"}""",
+            bodyText(requests[1].body),
+        )
+        // The stop always carries its position (a stop without one would mark the book played).
+        assertEquals(
+            """{"ItemId":"$itemId","MediaSourceId":"$itemId","PlaySessionId":"5f0e4d3c2b1a09f8e7d6c5b4a3928170","PositionTicks":1200000000}""",
+            bodyText(requests[2].body),
+        )
+        for (r in requests) assertTrue(r.headers[HttpHeaders.Authorization].orEmpty().endsWith("Token=\"$token\""))
+    }
+
+    @Test
+    fun `the user data write posts the position, played and time`() = runTest {
+        val api = service({ fixture("jellyfin/user-data-in-progress.json") })
+        api.writeUserData(
+            "https://jf.test", deviceId, token, itemId,
+            JellyfinUpdateUserDataDto(playbackPositionTicks = 1_200_000_000L, played = false, lastPlayedDate = "2026-11-02T19:15:00Z"),
+        )
+        val r = requests.single()
+        assertEquals(HttpMethod.Post, r.method)
+        assertEquals("/UserItems/$itemId/UserData", r.url.encodedPath)
+        assertEquals("""{"PlaybackPositionTicks":1200000000,"Played":false,"LastPlayedDate":"2026-11-02T19:15:00Z"}""", bodyText(r.body))
+    }
+
+    @Test
+    fun `mark played and unplayed use the played items route`() = runTest {
+        val api = service({ fixture("jellyfin/user-played-items.json") })
+        api.markPlayed("https://jf.test", deviceId, token, itemId)
+        api.markUnplayed("https://jf.test", deviceId, token, itemId)
+        assertEquals(listOf(HttpMethod.Post, HttpMethod.Delete), requests.map { it.method })
+        assertEquals(listOf("/UserPlayedItems/$itemId", "/UserPlayedItems/$itemId"), requests.map { it.url.encodedPath })
+        assertTrue(requests.all { it.url.parameters.isEmpty() })
+    }
+
+    @Test
+    fun `the configuration gives the audiobook thresholds`() = runTest {
+        val config = one("system-configuration.json").getConfiguration("https://jf.test", deviceId, token)
+        assertEquals("/System/Configuration", requests.single().url.encodedPath)
+        assertEquals(2, config.minAudiobookResume)
+        assertEquals(10, config.maxAudiobookResume)
+    }
+
+    @Test
+    fun `a refused report throws`() = runTest {
+        val api = service({ "" }, status = HttpStatusCode.Forbidden)
+        val e = assertFailsWith<Exception> { api.sessionProgress("https://jf.test", deviceId, token, report()) }
+        assertEquals("HttpStatusException", e::class.simpleName)
+    }
+
+    @Test
+    fun `no j2 request carries a token in its url`() = runTest {
+        val api = service({ r -> if (r.url.encodedPath.endsWith("/System/Configuration")) fixture("jellyfin/system-configuration.json") else "{}" })
+        api.getConfiguration("https://jf.test", deviceId, token)
+        api.sessionPlaying("https://jf.test", deviceId, token, report())
+        api.sessionProgress("https://jf.test", deviceId, token, report())
+        api.sessionStopped("https://jf.test", deviceId, token, report())
+        api.writeUserData("https://jf.test", deviceId, token, itemId, JellyfinUpdateUserDataDto(0L, false, "2026-11-02T19:15:00Z"))
+        api.markPlayed("https://jf.test", deviceId, token, itemId)
+        api.markUnplayed("https://jf.test", deviceId, token, itemId)
+        assertEquals(7, requests.size)
+        for (r in requests) {
+            assertFalse(r.url.toString().contains(token), r.url.toString())
+            val names = r.url.parameters.names().map { it.lowercase() }
+            assertFalse(names.any { it == "api_key" || it == "apikey" || it == "token" })
+        }
     }
 }
