@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.widget.Toast
+import com.chapterplayer.data.downloads.DownloadTimeLimitHold
 import com.chapterplayer.data.permissions.AndroidNotificationPermission
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.widgets.EXTRA_RESUME_BOOK_ID
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
     private val settings: AppSettings by inject()
     private val openPlayerRequest: OpenPlayerRequest by inject()
     private val widgetResumer: WidgetResumer by inject()
+    private val downloadTimeLimit: DownloadTimeLimitHold by inject()
 
     private val downloadNotifications: AndroidNotificationPermission by inject()
 
@@ -102,6 +104,12 @@ class MainActivity : ComponentActivity() {
             putExtra(android.content.Intent.EXTRA_TEXT, text)
         }
         startActivity(android.content.Intent.createChooser(send, title))
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Downloads held by Android 15's daily dataSync limit continue now: the app in front gives the time back.
+        downloadTimeLimit.onAppVisible()
     }
 
     override fun onDestroy() {

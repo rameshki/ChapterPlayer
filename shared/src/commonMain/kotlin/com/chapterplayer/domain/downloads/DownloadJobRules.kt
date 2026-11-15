@@ -24,10 +24,6 @@ fun formatTimeLeft(seconds: Long): String {
 fun statusAfterStop(current: DownloadStatus?): DownloadStatus? =
     if (current == DownloadStatus.DOWNLOADING) DownloadStatus.QUEUED else null
 
-/** A job stopped by the system's time limit schedules itself again, unless it was paused, failed, finished or removed. */
-fun reenqueueAfterStop(timedOut: Boolean, status: DownloadStatus?): Boolean =
-    timedOut && (status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING)
-
 /** After a reboot or process death, these downloads are scheduled again. */
 fun resumesOnStart(status: DownloadStatus): Boolean =
     status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING

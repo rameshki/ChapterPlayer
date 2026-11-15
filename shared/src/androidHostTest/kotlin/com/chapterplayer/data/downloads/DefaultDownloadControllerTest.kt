@@ -4,7 +4,9 @@ import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.local.entity.DownloadEntity
 import com.chapterplayer.data.local.entity.DownloadFileEntity
 import com.chapterplayer.data.repository.InMemoryDownloadDao
+import com.chapterplayer.domain.downloads.AfterJobStop
 import com.chapterplayer.domain.downloads.DownloadStatus
+import com.chapterplayer.domain.downloads.TIME_LIMIT_HOLD_MS
 import com.chapterplayer.testing.FakeAppSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
@@ -34,6 +36,9 @@ class DefaultDownloadControllerTest {
             log += "schedule $bookId wifiOnly=$wifiOnly replace=$replace"
         }
         override suspend fun cancel(bookId: String) { log += "cancel $bookId" }
+        override suspend fun scheduleLater(bookId: String, wifiOnly: Boolean, delayMs: Long) {
+            log += "later $bookId wifiOnly=$wifiOnly delayMs=$delayMs"
+        }
         /** Books scheduled because the user started or resumed them (iOS asks for its continued task only then). */
         val byUser = mutableListOf<String>()
         override suspend fun scheduleByUser(bookId: String, wifiOnly: Boolean) {
@@ -302,21 +307,46 @@ class DefaultDownloadControllerTest {
     }
 
     @Test
-    fun `after the time limit a download the job put back in the queue is scheduled again`() = runTest {
-        val rig = Rig(listOf(row(DownloadStatus.QUEUED)))
+    fun `after the time limit in the background every waiting download is held for a day`() = runTest {
+        val rig = Rig(
+            listOf(
+                row(DownloadStatus.QUEUED), row(DownloadStatus.DOWNLOADING, "b"), row(DownloadStatus.QUEUED, "c"),
+                row(DownloadStatus.PAUSED, "d"), row(DownloadStatus.FAILED, "e"), row(DownloadStatus.DONE, "f"),
+            )
+        )
 
-        rig.controller.afterStop(bookId, timedOut = true)
+        val followUp = rig.controller.afterStop(bookId, timedOut = true, appVisible = false)
 
+        assertEquals(StopFollowUp(AfterJobStop.HOLD_UNTIL_APP_OPENS, waitingBooks = 3), followUp)
+        // Statuses stay as the stopping job left them: the bytes are kept and the books wait in the queue.
         assertEquals("QUEUED", rig.status())
+        assertEquals(
+            listOf(
+                "later $bookId wifiOnly=true delayMs=$TIME_LIMIT_HOLD_MS",
+                "later b wifiOnly=true delayMs=$TIME_LIMIT_HOLD_MS",
+                "later c wifiOnly=true delayMs=$TIME_LIMIT_HOLD_MS",
+            ),
+            rig.scheduler.log,
+        )
+    }
+
+    @Test
+    fun `after the time limit with the app in front the stopped download continues at once`() = runTest {
+        val rig = Rig(listOf(row(DownloadStatus.QUEUED), row(DownloadStatus.QUEUED, "b")))
+
+        val followUp = rig.controller.afterStop(bookId, timedOut = true, appVisible = true)
+
+        assertEquals(StopFollowUp(AfterJobStop.CONTINUE_NOW, waitingBooks = 2), followUp)
         assertEquals(listOf("schedule $bookId wifiOnly=true replace=true"), rig.scheduler.log)
     }
 
     @Test
-    fun `a paused download is not scheduled again after a stop`() = runTest {
+    fun `a download paused as the time limit hit stays paused and holds nothing`() = runTest {
         val rig = Rig(listOf(row(DownloadStatus.PAUSED)))
 
-        rig.controller.afterStop(bookId, timedOut = true)
+        val followUp = rig.controller.afterStop(bookId, timedOut = true, appVisible = false)
 
+        assertEquals(AfterJobStop.NOTHING, followUp.action)
         assertEquals("PAUSED", rig.status())
         assertTrue(rig.scheduler.log.isEmpty())
     }
@@ -325,9 +355,26 @@ class DefaultDownloadControllerTest {
     fun `a stop that was not the time limit changes nothing, so a newer job is never touched`() = runTest {
         val rig = Rig(listOf(row(DownloadStatus.DOWNLOADING)))
 
-        rig.controller.afterStop(bookId, timedOut = false)
+        val followUp = rig.controller.afterStop(bookId, timedOut = false, appVisible = false)
 
+        assertEquals(AfterJobStop.NOTHING, followUp.action)
         assertEquals("DOWNLOADING", rig.status())
         assertTrue(rig.scheduler.log.isEmpty())
+    }
+
+    @Test
+    fun `opening the app after a hold starts every waiting download again at once`() = runTest {
+        val rig = Rig(
+            listOf(row(DownloadStatus.QUEUED), row(DownloadStatus.DOWNLOADING, "b"), row(DownloadStatus.PAUSED, "c"))
+        )
+        rig.settings.wifiOnly.value = false
+
+        rig.controller.releaseTimeLimitHold()
+
+        assertEquals(
+            listOf("schedule $bookId wifiOnly=false replace=true", "schedule b wifiOnly=false replace=true"),
+            rig.scheduler.log,
+        )
+        assertEquals("QUEUED", rig.status())
     }
 }

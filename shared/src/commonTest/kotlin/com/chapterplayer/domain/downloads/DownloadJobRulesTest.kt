@@ -45,14 +45,6 @@ class DownloadJobRulesTest {
     }
 
     @Test
-    fun `only a download stopped by the time limit that is still queued re-enqueues itself`() {
-        assertTrue(reenqueueAfterStop(timedOut = true, status = QUEUED))
-        assertTrue(reenqueueAfterStop(timedOut = true, status = DOWNLOADING))
-        assertFalse(reenqueueAfterStop(timedOut = false, status = QUEUED))
-        for (status in listOf(PAUSED, FAILED, DONE, null)) assertFalse(reenqueueAfterStop(timedOut = true, status = status))
-    }
-
-    @Test
     fun `app start resumes queued and running downloads only`() {
         assertTrue(resumesOnStart(QUEUED))
         assertTrue(resumesOnStart(DOWNLOADING))
