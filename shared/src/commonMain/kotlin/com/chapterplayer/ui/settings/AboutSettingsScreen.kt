@@ -28,7 +28,9 @@ import com.chapterplayer.ui.components.LocalTextClipboard
 import com.chapterplayer.ui.components.LocalTextSharer
 import com.chapterplayer.ui.theme.SurfaceElevated
 import com.chapterplayer.ui.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 
 private const val REPORT_TITLE = "ChapterPlayer problem report"
@@ -46,6 +48,7 @@ fun AboutSettingsScreen(
     val clipboard = LocalTextClipboard.current
     val scope = rememberCoroutineScope()
     var note by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
     SettingsPage(title = "About", onBack = onBack) {
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
@@ -64,7 +67,7 @@ fun AboutSettingsScreen(
                     color = TextSecondary,
                     modifier = Modifier
                         .padding(top = 4.dp)
-                        .combinedClickable(onClick = {}, onLongClick = onOpenDiagnostics)
+                        .combinedClickable(onClick = {}, onLongClickLabel = "Open diagnostics", onLongClick = onOpenDiagnostics)
                 )
                 Text(
                     text = "ChapterPlayer is open source. The code lives in the ChapterPlayer repository on GitHub.",
@@ -81,9 +84,10 @@ fun AboutSettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(role = Role.Button) {
+                    .clickable(role = Role.Button, enabled = !busy) {
+                        busy = true
                         scope.launch {
-                            val report = reporter.build()
+                            val report = try { withContext(Dispatchers.Default) { reporter.build() } } finally { busy = false }
                             if (sharer != null) {
                                 sharer.share(REPORT_TITLE, report)
                                 note = null

@@ -43,6 +43,28 @@ class ProblemReportTest {
     }
 
     @Test
+    fun `a real stack trace keeps its class names and frames but not its message secrets`() {
+        val trace = "java.lang.IllegalStateException: failed for https://books.example.org/x token=abc123SECRET\n" +
+            "\tat com.chapterplayer.data.Foo.bar(Foo.kt:12)\n\tat kotlin.coroutines.Continuation.resume(Native Method)\n" +
+            "Caused by: java.io.IOException: reset by 10.0.0.5:443\n\tat com.chapterplayer.data.Foo.baz(Foo.kt:30)"
+        val report = buildProblemReport(input(crash = trace))
+        assertTrue("java.lang.IllegalStateException" in report)
+        assertTrue("Caused by: java.io.IOException" in report)
+        assertTrue("at com.chapterplayer.data.Foo.bar(Foo.kt:12)" in report)
+        for (secret in listOf("books.example.org", "abc123SECRET", "10.0.0.5")) assertFalse(secret in report, secret)
+    }
+
+    @Test
+    fun `a line shaped like a frame cannot carry a host or a token through`() {
+        val report = buildProblemReport(input(log = listOf("at books.example.org/abc123SECRETvalue456789-xyz(a:1)")))
+        assertFalse("books.example.org" in report)
+        assertFalse("abc123SECRETvalue456789" in report)
+        val inCrash = buildProblemReport(input(crash = "boom\n  at books.example.org/abc123SECRETvalue456789-xyz(a.kt:1)"))
+        assertFalse("books.example.org" in inCrash)
+        assertFalse("abc123SECRETvalue456789" in inCrash)
+    }
+
+    @Test
     fun `only the newest log lines and a bounded trace are kept`() {
         val lines = (1..PROBLEM_LOG_LINES + 50).map { "event $it" }
         val report = buildProblemReport(input(crash = "x".repeat(PROBLEM_TRACE_CHARS * 2), log = lines))
