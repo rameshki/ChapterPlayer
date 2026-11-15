@@ -52,7 +52,7 @@ fun bookActionItems(
     if (selectable) items += BookActionItem(BookActionKind.SELECT, "Select", subtitle = "Choose several books for one action")
     items += BookActionItem(
         BookActionKind.PLAY,
-        if (state.playback == DetailsPlayback.STARTING) "Starting…" else playButtonLabel(state.playback, state.resumePositionMs > 0L),
+        if (state.playback == DetailsPlayback.STARTING) "Starting…" else playButtonLabel(state.playback, state.resumePositionMs > 0L, state.finished),
         subtitle = state.playingFrom ?: playCaption(state.playback, state.canPlay, state.cannotPlayReason),
         enabled = playButtonEnabled(state.playback, state.canPlay),
     )

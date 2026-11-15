@@ -40,6 +40,8 @@ data class BookDetailsUiState(
     val currentPositionMs: Long = 0L,
     /** Where Resume starts: the saved position, 0 for a finished book, -1 (the server decides) with no progress. */
     val resumePositionMs: Long = 0L,
+    /** The book counts as finished (marked, or played to its end): the play control offers Play again from the start. */
+    val finished: Boolean = false,
     /** The download control; hidden for books that cannot be downloaded. */
     val download: DetailsDownload = DetailsDownload(),
     /** The copy the download control is about (another server's copy of a merged book can be the one). */

@@ -303,6 +303,7 @@ class BookDetailsViewModel(
                     ?: env.player.error?.takeIf { loaded && it != env.local.dismissedPlayerError },
                 currentPositionMs = if (thisLoaded) env.player.positionMs else progress?.positionMs ?: 0L,
                 resumePositionMs = savedStart,
+                finished = progress?.isFinished == true,
                 // No copy on a server the app can download from (a Jellyfin book until J3) and no download: no control at
                 // all, rather than a Download that could only fail.
                 download = if (env.download == null && entry != null && downloadableMembers(entry).isEmpty()) DetailsDownload() else detailsDownload(
@@ -385,7 +386,7 @@ class BookDetailsViewModel(
                 local.value = Local()
                 // A book that played to its end starts again from the beginning of the whole book (only this
                 // page's copy: another copy's position is not measured against this book's length).
-                if (state.playingFrom == null && isFinishedAt(state.currentPositionMs, book.durationMs)) controller.seekTo(0L)
+                if (state.playingFrom == null && (state.finished || isFinishedAt(state.currentPositionMs, book.durationMs))) controller.seekTo(0L)
                 controller.play()
             }
             DetailsPlayback.NOT_PLAYING -> if (state.canPlay) playChosenCopy(state, book)
