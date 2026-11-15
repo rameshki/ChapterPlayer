@@ -64,6 +64,7 @@ fun SettingsHubScreen(
 ) {
     val uiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val appFont by viewModel.appFont.collectAsStateWithLifecycle()
     val resumeOnCarConnect by viewModel.resumeOnCarConnect.collectAsStateWithLifecycle()
     val downloadWifiOnly by viewModel.downloadWifiOnly.collectAsStateWithLifecycle()
     val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
@@ -81,7 +82,7 @@ fun SettingsHubScreen(
             HubRow(Icons.Default.Dns, "Servers", serversSummary(uiState.servers), onOpenServers)
         }
         HubGroup("Listening") {
-            HubRow(Icons.Default.Palette, "Appearance", appearanceSummary(themeMode), onOpenAppearance)
+            HubRow(Icons.Default.Palette, "Appearance", appearanceSummary(themeMode, appFont), onOpenAppearance)
             HubRow(Icons.Default.BarChart, "Statistics", STATS_SUMMARY, onOpenStats)
         }
         HubGroup("Offline") {

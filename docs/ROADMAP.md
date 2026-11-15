@@ -80,7 +80,7 @@ Borrow the structure and feel; write our own code and assets.
 From **Plex**: multi-server switching, the source badge on each book.
 From **Audible**: series grouping and ordering, "finished" state and library filters.
 
-Keep ChapterPlayer's identity: dark theme with the amber-gold accent, and the Playfair Display + DM Sans fonts. Since 2026-11 the dark theme puts navy cards on the warm black page, and the app icon is "Midnight and Gold" (gold headphones over an open book on navy).
+Keep ChapterPlayer's identity: dark theme with the amber-gold accent, and the Playfair Display + DM Sans fonts as the default ("Classic"; since 2026-11-15 the user can also pick Bookish, Inter, Manrope, Lexend or the system font in Settings, Appearance). Since 2026-11 the dark theme puts navy cards on the warm black page, and the app icon is "Midnight and Gold" (gold headphones over an open book on navy).
 
 ## Stages
 

@@ -64,8 +64,9 @@ class MainActivity : ComponentActivity() {
         askForNotificationsOnce()
         handleOpenPlayer(intent)
         handleWidgetResume(intent, restored = savedInstanceState != null)
-        // Read the saved choice before the first frame so a dark-theme user never sees a light flash.
-        val saved = runBlocking { settings.themeMode.first() }
+        // Read the saved choices before the first frame so a dark-theme user never sees a light flash and the
+        // first frame is already in the chosen font.
+        val (saved, savedFont) = runBlocking { settings.themeMode.first() to settings.appFont.first() }
         // Paint the window and set the bars for the first frame, before Compose draws anything.
         val systemIsDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
@@ -76,12 +77,13 @@ class MainActivity : ComponentActivity() {
         applyBarStyle(startDark)
         setContent {
             val mode by settings.themeMode.collectAsState(initial = saved)
+            val font by settings.appFont.collectAsState(initial = savedFont)
             val dark = resolveDarkTheme(mode, isSystemInDarkTheme())
             DisposableEffect(dark) {
                 applyBarStyle(dark)
                 onDispose { }
             }
-            ChapterPlayerTheme(mode) {
+            ChapterPlayerTheme(mode, font) {
                 AppNavigation()
             }
         }

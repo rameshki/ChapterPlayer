@@ -2,6 +2,7 @@ package com.chapterplayer.domain.settings
 
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
+import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.domain.downloads.GIGABYTE
 import kotlin.test.Test
@@ -40,10 +41,11 @@ class SettingsSummaryTest {
     }
 
     @Test
-    fun `appearance names the theme`() {
-        assertEquals("Dark", appearanceSummary(ThemeMode.DARK))
-        assertEquals("Light", appearanceSummary(ThemeMode.LIGHT))
-        assertEquals("Follow system", appearanceSummary(ThemeMode.SYSTEM))
+    fun `appearance names the theme and the font`() {
+        assertEquals("Dark · Classic font", appearanceSummary(ThemeMode.DARK, AppFont.CLASSIC))
+        assertEquals("Light · Inter font", appearanceSummary(ThemeMode.LIGHT, AppFont.INTER))
+        assertEquals("Follow system · System font", appearanceSummary(ThemeMode.SYSTEM, AppFont.SYSTEM))
+        assertEquals("Appearance, Dark, Bookish font", rowDescription("Appearance", appearanceSummary(ThemeMode.DARK, AppFont.BOOKISH)))
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.chapterplayer.ui.settings
 
 import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.repository.ServerRepository
+import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.testing.FakeAppSettings
 import com.chapterplayer.testing.FakeDownloadController
@@ -62,6 +63,28 @@ class SettingsViewModelTest {
 
         assertEquals(ThemeMode.LIGHT, settings.theme.value)
         assertEquals(ThemeMode.LIGHT, vm.themeMode.value)
+    }
+
+    @Test
+    fun `the font starts as Classic and a choice is saved`() = runTest {
+        val settings = FakeAppSettings()
+        val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+        assertEquals(AppFont.CLASSIC, vm.appFont.value)
+
+        vm.setAppFont(AppFont.BOOKISH)
+
+        assertEquals(AppFont.BOOKISH, settings.font.value)
+        assertEquals(AppFont.BOOKISH, vm.appFont.value)
+    }
+
+    @Test
+    fun `a font that cannot be saved leaves the saved one shown`() = runTest {
+        val settings = FakeAppSettings(failOnSet = true)
+        val vm = SettingsViewModel(FakeServers(), settings, FakeDownloadController(), FakeDownloadStorage(), appScope, FakeDownloadOverview())
+
+        vm.setAppFont(AppFont.INTER)
+
+        assertEquals(AppFont.CLASSIC, vm.appFont.value)
     }
 
     @Test
