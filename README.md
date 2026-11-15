@@ -2,27 +2,28 @@
 
 # ChapterPlayer
 
-An audiobook player for the places your books already live: **Audiobookshelf** and **Plex** today (Audible is being researched). Chapter-first playback, progress that follows you between devices and servers, downloads for offline listening, car and widget support.
+An audiobook player for the places your books already live: **Audiobookshelf**, **Jellyfin** and **Plex** (Audible is skipped for now). Chapter-first playback, progress that follows you between devices and servers, downloads for offline listening, car and widget support.
 
-> **Work in progress.** ChapterPlayer is under active development and is not released. The Android app is feature-rich and used day to day by its author; the iOS app compiles and runs its shared tests in CI but has never been run on a device. Expect rough edges and changes. There is no store listing and no stable install yet.
+> **Work in progress (version 0.5.3).** ChapterPlayer is under active development. The Android app is feature-rich and used day to day by its author and a small group of testers; the iOS app compiles and runs its shared tests in CI but has never been run on a device. A Google Play release is planned ([`docs/PLAY_RELEASE.md`](docs/PLAY_RELEASE.md)); there is no store listing yet. Expect rough edges and changes.
 
 ## What it does
 
-- **Sources:** sign in to one or more Audiobookshelf servers (username and password) and Plex servers (plex.tv). Plex servers are reached through the best connection (local, remote or relay) that actually answers.
+- **Sources:** sign in to one or more Audiobookshelf servers, Jellyfin servers (username and password) and Plex servers (plex.tv). Plex servers are reached through the best connection (local, remote or relay) that actually answers. Jellyfin progress is sent back to the server too.
 - **One library:** every book from every server in one place, with filters (progress, downloaded, server), sorting, Authors / Narrators / Series / Collections views, search, an A to Z scroller and a Stats page (listening time, streaks, series finished and series to finish).
 - **One entry per book:** a book that several servers have shows once; Play and Download ask which copy to use (or follow your default), and progress stays in step between the copies.
+- **Your own shelf:** favourites, an Up next queue with Play next, a long-press menu on every book, multi-select with bulk actions, and a choice of app font (Classic, Bookish, Inter, Manrope, Lexend, System).
 - **Playback:** chapters, speed, sleep timer, skip 15 / 30 seconds, bookmarks, position history, lock-screen controls, a full player and a mini player. Books that are many files play as one timeline.
 - **Progress sync:** saved locally first, then sent to the server in the background; offline listening is queued and delivered later. Plex progress uses the timeline and scrobble calls.
 - **Downloads:** resumable, one request per file, built for very slow links; Wi-Fi-only option, storage limit, offline playback.
-- **Android extras:** Android Auto browse tree and voice search, Glance home-screen widgets (Now Playing, Continue Listening).
-- **Privacy:** server tokens are encrypted on the device and never put in URLs or logs. No analytics.
+- **Android extras:** Android Auto browse tree and voice search, home-screen widgets (Now Playing, Continue Listening and Listen, which can start your book without opening the app), cover art on the lock screen.
+- **Privacy:** server tokens are encrypted on the device and never put in URLs or logs. No analytics. A "Report a problem" button shares a redacted text report only if you choose to send it.
 - **Never:** removing DRM. Audible support, if it happens, will be limited to what the service permits.
 
 ## Status by platform
 
 | Platform | State |
 |---|---|
-| Android | Working app; being verified on real devices. Debug builds only for now. |
+| Android | Working app, version 0.5.3; signed test builds go to a few testers, verified on real devices; Google Play planned. |
 | iOS | Shared code, sync, AVPlayer playback and downloads are written and compile; CI links the framework and builds an unsigned `.ipa`. Not yet run on a phone. |
 
 See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the live state of the project (what is merged, what is verified on devices, next steps) and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the stages and scope.
@@ -51,7 +52,7 @@ Requirements: JDK 17, the Android SDK (platform 37, build-tools 36), and Android
 ./gradlew :shared:compileKotlinIosSimulatorArm64   # compile the iOS Kotlin code (works on Windows too)
 ```
 
-The iOS app itself needs macOS and Xcode; continuous integration builds it on a macOS runner and publishes an unsigned `.ipa` (see [`docs/IOS_SIDELOAD.md`](docs/IOS_SIDELOAD.md) for installing it with a free Apple ID). `GETTING_STARTED.md` is an older, longer walk-through for a first Android setup and may be out of date.
+The iOS app itself needs macOS and Xcode; continuous integration builds it on a macOS runner and publishes an unsigned `.ipa` (see [`docs/IOS_SIDELOAD.md`](docs/IOS_SIDELOAD.md) for installing it with a free Apple ID). `CLAUDE.md` and `docs/architecture/` describe how the code is organised.
 
 ## Contributing and licence
 
