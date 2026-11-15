@@ -116,4 +116,16 @@ class RedactionTest {
     @Test fun `long snake case file names stay`() {
         assertEquals("01_the_beginning_of_everything.mp3", redact("01_the_beginning_of_everything.mp3"))
     }
+
+    @Test fun `a jellyfin MediaBrowser header value is removed`() {
+        val header = "MediaBrowser Client=\"ChapterPlayer\", Device=\"Android\", " +
+            "DeviceId=\"chapterplayer-3f2a9c1e-77d4-4b1a-9e0f-5a6b7c8d9e01-row-77\", Version=\"0.4.1\", Token=\"a6f98b2a08d92285b19af86a9503bf50\""
+        for (text in listOf("Authorization: $header", "sent $header to the server", "header=$header")) {
+            val out = redact(text)
+            for (s in listOf("a6f98b2a08d92285b19af86a9503bf50", "3f2a9c1e", "row-77", "Token=\"a6f")) {
+                assertFalse(out.contains(s), "'$s' survived in: $out")
+            }
+        }
+        assertTrue(redact("sent $header").contains("MediaBrowser [removed]"))
+    }
 }

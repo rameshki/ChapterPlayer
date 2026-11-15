@@ -13,8 +13,23 @@ data class PlexTrackProgress(
     val lastViewedAtSec: Long?,
 )
 
-/** What reading a copy's progress from its server gave: the progress as the app would use it, and for Plex the track list behind it. */
-data class ServerProgressReading(val progress: ServerProgress?, val tracks: List<PlexTrackProgress> = emptyList())
+/** A Jellyfin item's user data as the server holds it (`GET /UserItems/{Id}/UserData`); [lastPlayedAtMs] 0 when none. */
+data class JellyfinReading(
+    val positionMs: Long,
+    val played: Boolean,
+    val playCount: Int,
+    val lastPlayedAtMs: Long,
+)
+
+/**
+ * What reading a copy's progress from its server gave: the progress as the app would use it, and what lies behind it
+ * (for Plex the track list, for Jellyfin the user data).
+ */
+data class ServerProgressReading(
+    val progress: ServerProgress?,
+    val tracks: List<PlexTrackProgress> = emptyList(),
+    val jellyfin: JellyfinReading? = null,
+)
 
 /** The state of the "Read from server" step for one copy. */
 sealed interface ServerReadState {
@@ -39,7 +54,7 @@ data class DiagDownload(
 data class DiagCopy(
     val bookId: String,
     val serverName: String,
-    /** "Audiobookshelf" or "Plex". */
+    /** "Audiobookshelf", "Plex" or "Jellyfin". */
     val sourceLabel: String,
     val isPlex: Boolean,
     val local: ReadingProgress?,
@@ -118,6 +133,12 @@ private fun StringBuilder.appendServer(copy: DiagCopy) {
                 appendLine(
                     "  ${if (copy.isPlex) "Computed book position" else "Position"} ${formatClock(p.positionMs)} (${p.positionMs / 1000L} s) " +
                         "of ${formatClock(p.durationMs)}, finished ${yesNo(p.isFinished)}, updated ${formatUtc(p.updatedAtMs)}"
+                )
+            }
+            state.reading.jellyfin?.let { j ->
+                appendLine(
+                    "  User data: position ${formatClock(j.positionMs)} (${j.positionMs / 1000L} s), played ${yesNo(j.played)}, " +
+                        "plays ${j.playCount}, last played ${formatUtc(j.lastPlayedAtMs)}"
                 )
             }
             if (copy.isPlex) {

@@ -187,4 +187,42 @@ class DiagnosticsReportTest {
         val longLine = "x".repeat(250)
         assertEquals(listOf(100, 100, 50), chunkText(longLine, 100).map { it.length })
     }
+
+    // ---- Jellyfin (J2) ----
+
+    private val jfBook = "jf_0bdd952d73af33d8d4421dfdb2f25919"
+
+    private fun jfCopy(server: ServerReadState) = absCopy(server).copy(
+        bookId = jfBook, serverName = "Den Jellyfin", sourceLabel = "Jellyfin", pending = emptyList(), download = null,
+    )
+
+    @Test fun `a jellyfin copy shows its user data`() {
+        val data = JellyfinReading(positionMs = 4_500_000L, played = false, playCount = 3, lastPlayedAtMs = now - 120_000L)
+        val read = ServerReadState.Read(ServerProgressReading(ServerProgress(4_500_000L, 36_000_000L, false, now - 120_000L), jellyfin = data), now)
+        val text = buildReport(DiagnosticsInput("T", "A", listOf(jfCopy(read)), null, now))
+        assertTrue(text.contains("== Copy 1: Den Jellyfin (Jellyfin) =="), text)
+        assertTrue(text.contains("Book id: $jfBook"), text)
+        assertTrue(text.contains("Position 1:15:00 (4500 s) of 10:00:00, finished no"), text)
+        assertTrue(text.contains("User data: position 1:15:00 (4500 s), played no, plays 3, last played 2026-11-02 14:01:05 UTC"), text)
+        // Zero and not played reads as no progress, and the user data says why.
+        val none = ServerReadState.Read(ServerProgressReading(null, jellyfin = JellyfinReading(0L, false, 0, 0L)), now)
+        val empty = buildReport(DiagnosticsInput("T", "A", listOf(jfCopy(none)), null, now))
+        assertTrue(empty.contains("The server holds no progress for this book"), empty)
+        assertTrue(empty.contains("User data: position 0:00 (0 s), played no, plays 0, last played never"), empty)
+    }
+
+    @Test fun `a jellyfin report keeps only the book id and no header value or host`() {
+        val failed = ServerReadState.Failed(
+            "HTTP 500 from https://jf.home.example.org/jellyfin/UserItems/5c1e0a9b8d7f6e5d4c3b2a1908f7e6d5/UserData " +
+                "with MediaBrowser Client=\"ChapterPlayer\", DeviceId=\"chapterplayer-inst-row-1\", Token=\"a6f98b2a08d92285b19af86a9503bf50\""
+        )
+        val text = buildReport(DiagnosticsInput("T", "A", listOf(jfCopy(failed)), null, now))
+        for (secret in listOf("5c1e0a9b8d7f6e5d4c3b2a1908f7e6d5", "a6f98b2a08d92285b19af86a9503bf50", "Token=", "jf.home.example.org", "chapterplayer-inst")) {
+            assertFalse(text.contains(secret), "'$secret' survived in: $text")
+        }
+        assertTrue(text.contains("Book id: $jfBook"))
+        // No 32-hex id but the book's own.
+        val hex = Regex("[0-9a-f]{32}").findAll(text).map { it.value }.toSet()
+        assertEquals(setOf(jfBook.removePrefix("jf_")), hex)
+    }
 }

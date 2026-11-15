@@ -14,7 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 
 /**
- * Orchestrates periodic synchronization of listening progress from Audiobookshelf servers.
+ * Orchestrates periodic synchronization of listening progress from Audiobookshelf and Jellyfin servers.
  * It monitors network connectivity and ensures that synchronization occurs only for valid sources
  * within the specified minimum time interval.
  */
@@ -54,9 +54,10 @@ class ServerProgressRefresher(
     private suspend fun performRefreshPass() {
         mutex.withLock {
             val currentServers = servers.observeAll().first()
-            val absServers = currentServers.filter { it.source == ServerSource.ABS }
+            // Audiobookshelf and Jellyfin read every book's progress in one list read; Plex would need a call per book.
+            val refreshed = currentServers.filter { it.source in REFRESHED }
 
-            for (server in absServers) {
+            for (server in refreshed) {
                 val lastTime = lastMergeTimes[server.id]
                 val currentTime = nowMs()
 
@@ -74,5 +75,9 @@ class ServerProgressRefresher(
                 }
             }
         }
+    }
+
+    private companion object {
+        val REFRESHED = setOf(ServerSource.ABS, ServerSource.JELLYFIN)
     }
 }

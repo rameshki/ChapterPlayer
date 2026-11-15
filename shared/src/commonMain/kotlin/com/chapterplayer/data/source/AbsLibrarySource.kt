@@ -144,7 +144,7 @@ class AbsLibrarySource(
         return ServerProgressReading(dto?.toServerProgress())
     }
 
-    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {
+    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
         authorizer.authorized(server) { bearerToken ->
             api.patchProgress(server.baseUrl, bearerToken, bookId.toServerItemId(), positionMs / 1000.0, durationMs / 1000.0, isFinished)
         }

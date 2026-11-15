@@ -15,6 +15,17 @@ import com.chapterplayer.domain.jellyfin.jellyfinContainerSupported
 import com.chapterplayer.domain.jellyfin.jellyfinMimeType
 import com.chapterplayer.domain.jellyfin.jellyfinStreamUrl
 import com.chapterplayer.domain.jellyfin.newPlaySessionId
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinPlaybackReportDto
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUpdateUserDataDto
+import com.chapterplayer.domain.jellyfin.AudiobookThresholds
+import com.chapterplayer.domain.jellyfin.JellyfinCall
+import com.chapterplayer.domain.jellyfin.JellyfinEvent
+import com.chapterplayer.domain.jellyfin.jellyfinAtEnd
+import com.chapterplayer.domain.jellyfin.jellyfinIsoTime
+import com.chapterplayer.domain.jellyfin.jellyfinLivePlan
+import com.chapterplayer.domain.jellyfin.jellyfinPushPlan
+import com.chapterplayer.domain.jellyfin.jellyfinMsToTicks
+import com.chapterplayer.domain.jellyfin.thresholdsOf
 import com.chapterplayer.data.model.LibraryInfo
 import com.chapterplayer.data.model.SeriesRef
 import com.chapterplayer.data.model.ServerConfig
@@ -23,7 +34,10 @@ import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.InstallId
 import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
 import com.chapterplayer.data.remote.jellyfin.fetchAllAudiobooks
+import com.chapterplayer.domain.diagnostics.JellyfinReading
 import com.chapterplayer.domain.diagnostics.ServerProgressReading
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUserDataDto
+import com.chapterplayer.domain.jellyfin.jellyfinTimeMs
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NO_BOOKS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_THIS_SERVER_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_OTHER_SERVER_TEXT
@@ -48,13 +62,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 
-/** A Jellyfin server does not take progress from the app yet (stage J1; J2 adds it). Fixed text, no details. */
-class ProgressNotReportedYetException : Exception("This server does not take progress from the app yet")
-
 /**
  * Reads a Jellyfin server: its Books views, their `AudioBook` items (one file per book; a multi-file folder passes
- * through as the separate items Jellyfin lists, never grouped), one book's details, and the user's play state. J1
- * writes nothing to the server: the session and progress calls keep the interface's no-op defaults.
+ * through as the separate items Jellyfin lists, never grouped), one book's details, and the user's play state; and
+ * (J2) reports the live session with the UserData write where the server's audiobook thresholds would lose the place
+ * ([jellyfinLivePlan]; the thresholds are read with each sync).
  *
  * Every call sends the row's DeviceId ([jellyfinDeviceId] of [installId] and the server row id, the same as at sign-in)
  * and the token in the `Authorization` header. A 401 blanks the token ([markSignedOut]) and is a
@@ -78,13 +90,24 @@ class JellyfinLibrarySource(
     override val type: ServerSource = ServerSource.JELLYFIN
 
     /**
-     * A load the app opened: the item, Jellyfin's play session and media source ids (used by J2's reports), and the
-     * last reported place. Read and written under [sessionsLock].
+     * A load the app opened: the book, Jellyfin's play session and media source ids (sent in every report), its length,
+     * the last reported place (null until the start report reached the server), the finished pin (set while the book is
+     * marked finished: the session then sends nothing), [ended] (the stop at the end went out: later reports at the end
+     * send nothing) and [closed] (set by [closePlayback]: a report that was waiting for the lock throws, so its position
+     * is queued instead of reopening a session the server already stopped). The fields are read and written under [lock].
      */
-    private class LiveSession(val itemId: String, val playSessionId: String, val mediaSourceId: String) {
+    private class LiveSession(
+        val bookId: String,
+        val itemId: String,
+        val playSessionId: String,
+        val mediaSourceId: String,
+        val durationMs: Long,
+    ) {
         val lock = Mutex()
         var lastPositionMs: Long? = null
         var markedFinished = false
+        var ended = false
+        var closed = false
     }
 
     private val sessions = HashMap<String, LiveSession>()
@@ -118,7 +141,7 @@ class JellyfinLibrarySource(
         val start = if (reading == null || reading.isFinished) 0L else reading.positionMs
         val sessionId = sessionsLock.withLock {
             sessionCount++
-            "jf-$itemId-$sessionCount".also { sessions[it] = LiveSession(itemId, playSessionId, mediaSourceId) }
+            "jf-$itemId-$sessionCount".also { sessions[it] = LiveSession(bookId, itemId, playSessionId, mediaSourceId, durationMs) }
         }
         PlaybackSession(
             sessionId = sessionId,
@@ -131,15 +154,41 @@ class JellyfinLibrarySource(
         )
     }
 
-    /** J1 writes nothing to the server: closing only forgets the session (J2 sends the stop report). */
+    /**
+     * Ends the session: a stop report that always carries the position (a stop without one would mark the book played),
+     * at the end itself when the book really ended ([jellyfinAtEnd]: the server marks it played), followed by the
+     * UserData write when the place lies in a threshold band ([jellyfinLivePlan]). The session is forgotten first and
+     * marked closed under its lock. A session that never reported (a start rolled back), that already stopped at the end
+     * or whose book was marked finished sends nothing. When a call fails the place did not surely reach the server, so
+     * this throws [PlaceNotSavedException] and the repository queues the position for an exact UserData write.
+     */
     override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
-        sessionsLock.withLock { sessions.remove(sessionId) }
+        val live = sessionsLock.withLock { sessions.remove(sessionId) } ?: return
+        try {
+            signedIn(server) {
+                live.lock.withLock {
+                    live.closed = true
+                    if (live.lastPositionMs == null || live.ended) return@withLock
+                    sendPlan(server, live, JellyfinEvent.CLOSED, positionMs, live.durationMs)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw PlaceNotSavedException(e)
+        }
     }
 
     /**
-     * J1 cannot report yet, and says so instead of pretending it did: a live report that "succeeded" would let
-     * `ProgressSyncer` delete the book's queued rows (its own and mirrors) although nothing reached the server. Failing,
-     * it queues the position (one row per book) and keeps what was queued. J2 replaces this with the session reports.
+     * Reports the session's place: the first report of a load is the start report (`/Sessions/Playing`), later ones
+     * progress reports (`timeupdate`, or `pause` when [isPlaying] is false, the report made on a pause or stop); each is
+     * followed by the exact UserData write where the server's thresholds would lose the place, and on a pause
+     * ([jellyfinLivePlan]). A first report made on a pause is a start followed by the pause report. A report at the end
+     * ([jellyfinAtEnd], playing or paused) is the real end: the stop at the end, no `Played = false` write, and later
+     * reports at the end send nothing; playing again from before the end starts the session's reports over. A failed
+     * start is sent again with the next report. Nothing is sent once the book was marked finished while loaded. An
+     * unknown or closed session (the app was restarted, or [closePlayback] ran first) throws, so the position is queued
+     * and sent through [pushProgress].
      */
     override suspend fun syncPlayback(
         server: ServerConfig,
@@ -148,14 +197,149 @@ class JellyfinLibrarySource(
         listenedMs: Long,
         durationMs: Long,
         isPlaying: Boolean,
-    ): Unit = throw ProgressNotReportedYetException()
+    ) {
+        val live = sessionsLock.withLock { sessions[sessionId] } ?: error("The playback session is over")
+        val length = durationMs.takeIf { it > 0L } ?: live.durationMs
+        signedIn(server) {
+            live.lock.withLock {
+                if (live.closed) error("The playback session is over")
+                if (live.markedFinished) return@withLock
+                val atEnd = jellyfinAtEnd(positionMs, length)
+                if (live.ended) {
+                    if (atEnd || !isPlaying) return@withLock
+                    // Played again from before the end: a new run of reports.
+                    live.ended = false
+                    live.lastPositionMs = null
+                }
+                val first = live.lastPositionMs == null
+                // On a pause (or at the end) the next plan writes the place, or must not; the start does not write it.
+                if (first) sendPlan(server, live, JellyfinEvent.START, positionMs, length, skipWrite = !isPlaying || atEnd)
+                when {
+                    atEnd -> sendPlan(server, live, JellyfinEvent.ENDED, positionMs, length)
+                    !isPlaying -> sendPlan(server, live, JellyfinEvent.PAUSED, positionMs, length)
+                    !first -> sendPlan(server, live, JellyfinEvent.PLAYING, positionMs, length)
+                }
+            }
+        }
+    }
 
     /**
-     * J1 cannot deliver queued positions or marks yet: failing keeps the row queued (the flusher backs off and tries again;
-     * a server reading newer than the row still drops it), so J2 delivers it with the UserData write.
+     * Sends [event]'s calls in plan order (the caller holds [LiveSession.lock]); the place counts as reported once the
+     * session report went through, so a failed start is sent again.
      */
-    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean): Unit =
-        throw ProgressNotReportedYetException()
+    private suspend fun sendPlan(
+        server: ServerConfig,
+        live: LiveSession,
+        event: JellyfinEvent,
+        positionMs: Long,
+        durationMs: Long,
+        skipWrite: Boolean = false,
+    ) {
+        if (live.markedFinished) return
+        val thresholds = thresholdsLock.withLock { thresholds[server.id] } ?: AudiobookThresholds()
+        val plan = jellyfinLivePlan(event, positionMs, durationMs, nowMs(), thresholds, live.markedFinished)
+        val base = server.baseUrl
+        val device = deviceId(server)
+        for (call in plan) {
+            when (call) {
+                is JellyfinCall.SessionStart -> {
+                    api.sessionPlaying(base, device, server.token, live.report(call.positionMs, isPaused = false, eventName = null))
+                    live.lastPositionMs = call.positionMs
+                }
+                is JellyfinCall.SessionProgress -> {
+                    val name = if (call.paused) EVENT_PAUSE else EVENT_TIME_UPDATE
+                    api.sessionProgress(base, device, server.token, live.report(call.positionMs, call.paused, name))
+                    live.lastPositionMs = call.positionMs
+                }
+                is JellyfinCall.SessionStopped -> {
+                    api.sessionStopped(
+                        base, device, server.token,
+                        JellyfinPlaybackReportDto(live.itemId, live.mediaSourceId, live.playSessionId, jellyfinMsToTicks(call.positionMs)),
+                    )
+                    if (call.positionMs >= durationMs) live.ended = true
+                }
+                is JellyfinCall.WriteUserData -> if (!skipWrite) writeUserData(server, live.itemId, call)
+                JellyfinCall.MarkPlayed -> api.markPlayed(base, device, server.token, live.itemId)
+                JellyfinCall.MarkUnplayed -> api.markUnplayed(base, device, server.token, live.itemId)
+            }
+        }
+    }
+
+    private fun LiveSession.report(positionMs: Long, isPaused: Boolean, eventName: String?) = JellyfinPlaybackReportDto(
+        itemId = itemId,
+        mediaSourceId = mediaSourceId,
+        playSessionId = playSessionId,
+        positionTicks = jellyfinMsToTicks(positionMs),
+        canSeek = true,
+        playMethod = PLAY_METHOD_DIRECT,
+        isPaused = isPaused,
+        eventName = eventName,
+    )
+
+    private suspend fun writeUserData(server: ServerConfig, itemId: String, call: JellyfinCall.WriteUserData) {
+        api.writeUserData(
+            server.baseUrl, deviceId(server), server.token, itemId,
+            JellyfinUpdateUserDataDto(jellyfinMsToTicks(call.positionMs), call.played, jellyfinIsoTime(call.lastPlayedAtMs)),
+        )
+    }
+
+    /**
+     * Sets the book's place without a session (a queued position, a mirror from another copy, Mark as finished / not
+     * finished; [jellyfinPushPlan]): finished marks it played (`POST /UserPlayedItems/{Id}`); anything else is the exact
+     * UserData write with `Played = false` (no thresholds), dated [playedAtMs] (else now), so the server's next reading is
+     * no newer than the phone's row. Mark as not finished arrives as position 0 not finished, which clears the played
+     * flag. A loaded session of the book stops reporting when it is set finished (its reports cannot undo the mark) and
+     * reports again when it is set not finished. Throws when a call fails (the queue tries again later).
+     */
+    override suspend fun pushProgress(
+        server: ServerConfig,
+        bookId: String,
+        positionMs: Long,
+        durationMs: Long,
+        isFinished: Boolean,
+        playedAtMs: Long?,
+    ) {
+        val itemId = itemIdOf(bookId)
+        pinSessions(bookId, isFinished)
+        val playedAt = playedAtMs?.takeIf { it > 0L } ?: nowMs()
+        signedIn(server) {
+            for (call in jellyfinPushPlan(positionMs, isFinished, playedAt)) {
+                when (call) {
+                    is JellyfinCall.WriteUserData -> writeUserData(server, itemId, call)
+                    JellyfinCall.MarkPlayed -> api.markPlayed(server.baseUrl, deviceId(server), server.token, itemId)
+                    JellyfinCall.MarkUnplayed -> api.markUnplayed(server.baseUrl, deviceId(server), server.token, itemId)
+                    // The push plan has no session calls.
+                    is JellyfinCall.SessionStart, is JellyfinCall.SessionProgress, is JellyfinCall.SessionStopped -> Unit
+                }
+            }
+        }
+    }
+
+    /** Sets the finished pin of every loaded session of [bookId]. */
+    private suspend fun pinSessions(bookId: String, isFinished: Boolean) {
+        for (live in sessionsLock.withLock { sessions.values.toList() }) {
+            if (live.bookId == bookId) live.lock.withLock { live.markedFinished = isFinished }
+        }
+    }
+
+    /** Each server's audiobook thresholds, read with each sync; a server not read yet has the defaults (5 / 5). */
+    private val thresholds = HashMap<String, AudiobookThresholds>()
+    private val thresholdsLock = Mutex()
+
+    /**
+     * Reads the server's thresholds (`GET /System/Configuration`). Any failure keeps what was known (else the defaults)
+     * and never fails the sync: a plain user may not be let to read the configuration, which is not a refused sign-in.
+     */
+    private suspend fun readThresholds(server: ServerConfig) {
+        val read = try {
+            thresholdsOf(api.getConfiguration(server.baseUrl, deviceId(server), server.token))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return
+        }
+        thresholdsLock.withLock { thresholds[server.id] = read }
+    }
 
     /** What the last snapshot of a server read: when, every book's progress and every book's length. */
     private class SnapshotCache(val atMs: Long, val progress: Map<String, ServerProgress>, val lengths: Map<String, Long>)
@@ -226,6 +410,7 @@ class JellyfinLibrarySource(
             }
         }
         firstError?.let { if (failed.size == read.size) throw syncFailure(it) }
+        readThresholds(server)
         cacheLock.withLock {
             cache[server.id] = SnapshotCache(nowMs(), progress, books.associate { it.id to it.durationMs })
         }
@@ -248,14 +433,23 @@ class JellyfinLibrarySource(
 
     /** `GET /UserItems/{Id}/UserData`; null when the user has no progress (0 and not played). */
     override suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? = signedIn(server) {
-        readProgress(server, bookId)
+        readProgress(server, bookId).first
     }
 
     override suspend fun fetchProgressReading(server: ServerConfig, bookId: String): ServerProgressReading =
         // Not through signedIn: a refused token must not blank the server's sign-in from a read-only page.
         try {
             if (server.token.isBlank()) throw SignInRequiredException(server.name)
-            ServerProgressReading(readProgress(server, bookId))
+            val (progress, data) = readProgress(server, bookId)
+            ServerProgressReading(
+                progress,
+                jellyfin = JellyfinReading(
+                    positionMs = jellyfinTicksToMs(data.playbackPositionTicks),
+                    played = data.played == true,
+                    playCount = data.playCount ?: 0,
+                    lastPlayedAtMs = jellyfinTimeMs(data.lastPlayedDate),
+                ),
+            )
         } catch (e: HttpStatusException) {
             if (e.status.value == 401) throw ReadRefusedException()
             throw e
@@ -272,13 +466,14 @@ class JellyfinLibrarySource(
         return cacheLock.withLock { cache[server.id]?.progress.orEmpty() }
     }
 
-    private suspend fun readProgress(server: ServerConfig, bookId: String): ServerProgress? {
+    /** The book's progress as the app uses it, with the user data it was read from. */
+    private suspend fun readProgress(server: ServerConfig, bookId: String): Pair<ServerProgress?, JellyfinUserDataDto> {
         val itemId = itemIdOf(bookId)
         val data = api.getUserData(server.baseUrl, deviceId(server), server.token, itemId)
         // The length is needed to place "finished"; a book not synced yet reads it from the item.
         val known = cacheLock.withLock { cache[server.id]?.lengths?.get(bookId) }
         val durationMs = known ?: jellyfinTicksToMs(api.getItem(server.baseUrl, deviceId(server), server.token, itemId).runTimeTicks)
-        return jellyfinServerProgress(data, durationMs)
+        return jellyfinServerProgress(data, durationMs) to data
     }
 
     /**
@@ -328,5 +523,9 @@ class JellyfinLibrarySource(
 
         /** How long a snapshot's user data stands in for a fresh read of every book's progress. */
         const val SNAPSHOT_REUSE_MS = 60_000L
+
+        const val PLAY_METHOD_DIRECT = "DirectPlay"
+        const val EVENT_TIME_UPDATE = "timeupdate"
+        const val EVENT_PAUSE = "pause"
     }
 }

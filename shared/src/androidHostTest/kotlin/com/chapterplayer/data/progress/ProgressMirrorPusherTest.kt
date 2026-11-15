@@ -189,4 +189,35 @@ class ProgressMirrorPusherTest {
         assertTrue(r.repo.pushed.isEmpty())
         assertEquals(listOf("plex_a"), r.repo.savedServer.map { it.first })
     }
+
+    @Test
+    fun `listening on each of three copies in turn queues one row for each other server`() = runTest {
+        val r = rig()
+        r.repo.books.value = listOf(testBook("a"), testBook("plex_a"), testBook("jf_a"))
+        val copies = mapOf(
+            "a" to MirrorPeer("a", "s1", 100_000L),
+            "plex_a" to MirrorPeer("plex_a", "plex_srv", 120_000L),
+            "jf_a" to MirrorPeer("jf_a", "jf_srv", 99_000L),
+        )
+        r.peers.groups = copies.keys.associateWith { id -> copies.values.filter { it.bookId != id } }
+        for (loaded in listOf("a", "plex_a", "jf_a")) {
+            r.repo.queueCalls.clear()
+            r.controller.playback.value = PlaybackState(bookId = loaded, isPlaying = true, positionMs = 10_000L, durationMs = copies.getValue(loaded).durationMs)
+            advanceTimeBy(5_000)
+            r.controller.playback.value = r.controller.playback.value.copy(isPlaying = false, positionMs = 50_000L)
+            val rows = r.repo.queueCalls.toList()
+            assertEquals(copies.keys - loaded, rows.map { it.bookId }.toSet(), loaded)
+            assertEquals(2, rows.size, loaded)
+            assertTrue(rows.all { it.mirrorOf == loaded && it.serverId == copies.getValue(it.bookId).serverId })
+            r.controller.playback.value = PlaybackState()
+            advanceTimeBy(1_000)
+        }
+        // Nothing to a server whose last sync failed.
+        r.repo.queueCalls.clear()
+        r.status.records.value = mapOf("jf_srv" to ServerStatusRecord(lastSuccessAtMs = 1L, lastErrorAtMs = 2L))
+        r.controller.playback.value = PlaybackState(bookId = "a", isPlaying = true, positionMs = 20_000L, durationMs = 100_000L)
+        advanceTimeBy(5_000)
+        r.controller.playback.value = r.controller.playback.value.copy(isPlaying = false, positionMs = 60_000L)
+        assertEquals(listOf("plex_a"), r.repo.queueCalls.map { it.bookId })
+    }
 }

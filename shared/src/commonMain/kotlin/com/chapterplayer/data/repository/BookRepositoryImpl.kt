@@ -27,6 +27,7 @@ import com.chapterplayer.data.model.ServerConfig
 import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.data.source.LibrarySource
+import com.chapterplayer.data.source.PlaceNotSavedException
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
@@ -248,6 +249,22 @@ class BookRepositoryImpl(
             Result.success(source.closePlayback(server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L)))
         } catch (e: CancellationException) {
             throw e
+        } catch (e: PlaceNotSavedException) {
+            // The stop place did not surely reach the server: queue it, the flusher writes it exactly.
+            try {
+                queueProgress(
+                    PendingProgress(
+                        session.bookId, session.serverId, positionMs.coerceAtLeast(0L), session.durationMs,
+                        listenedMs.coerceAtLeast(0L), updatedAtMs = clock(),
+                    )
+                )
+                onQueued()
+            } catch (q: CancellationException) {
+                throw q
+            } catch (_: Exception) {
+                // Nothing more to do: the local row still holds the place.
+            }
+            Result.failure(e)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -294,7 +311,8 @@ class BookRepositoryImpl(
             Result.success(
                 source.pushProgress(
                     server, pending.bookId, pending.positionMs, pending.durationMs,
-                    isFinished = pending.markedFinished ?: isFinishedAt(pending.positionMs, pending.durationMs)
+                    isFinished = pending.markedFinished ?: isFinishedAt(pending.positionMs, pending.durationMs),
+                    playedAtMs = playedAtOf(pending),
                 )
             )
         } catch (e: CancellationException) {
@@ -302,6 +320,17 @@ class BookRepositoryImpl(
         } catch (e: Exception) {
             Result.failure(e)
         }
+
+    /**
+     * When the place of [pending] was listened to: the row's time, or for a mirror the source copy's last listening when
+     * that is older (the row is stamped when it was queued), so a server that stores the time (Jellyfin) reads back an
+     * echo no newer than the source and the mirrored row is kept.
+     */
+    private suspend fun playedAtOf(pending: PendingProgress): Long {
+        val source = pending.mirrorOf ?: return pending.updatedAtMs
+        val sourceAt = progressDao.get(source)?.lastPlayedAt?.takeIf { it > 0L } ?: return pending.updatedAtMs
+        return minOf(pending.updatedAtMs, sourceAt)
+    }
 
     /** The book's server and the source for its type; the messages name no token or address. */
     private suspend fun serverAndSource(serverId: String): Pair<ServerConfig, LibrarySource> {
@@ -709,8 +738,9 @@ class BookRepositoryImpl(
             val now = mark.atMs
             val finished = mark.finished
             val target = try {
-                // Audiobookshelf takes the mark as progress; Plex as a scrobble (or unscrobble) of every track.
-                serverAndSource(book.serverId).takeIf { (server, _) -> server.source == ServerSource.ABS || server.source == ServerSource.PLEX }
+                // Audiobookshelf takes the mark as progress; Plex as a scrobble (or unscrobble) of every track; Jellyfin as
+                // its played flag (not finished: the place 0 written with the flag cleared).
+                serverAndSource(book.serverId).takeIf { (server, _) -> server.source in MARK_TARGETS }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -772,6 +802,9 @@ class BookRepositoryImpl(
 
     private companion object {
         const val MARK_SERVER_WAIT_MS = 8_000L
+
+        /** The kinds of server a mark is sent to (every kind takes it today). */
+        val MARK_TARGETS = setOf(ServerSource.ABS, ServerSource.PLEX, ServerSource.JELLYFIN)
     }
 
     // -------------------------------------------------------------------------

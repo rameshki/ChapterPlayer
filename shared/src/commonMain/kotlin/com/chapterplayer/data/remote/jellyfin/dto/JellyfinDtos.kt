@@ -114,3 +114,39 @@ data class JellyfinItemDto(
     @SerialName("UserData") val userData: JellyfinUserDataDto? = null,
     @SerialName("ProviderIds") val providerIds: Map<String, String> = emptyMap(),
 )
+
+/**
+ * `GET /System/Configuration`: only the audiobook resume thresholds are read. A position under [minAudiobookResume]
+ * minutes is stored as 0 by a session report, and less than [maxAudiobookResume] minutes left marks the book played.
+ */
+@Serializable
+data class JellyfinConfigurationDto(
+    @SerialName("MinAudiobookResume") val minAudiobookResume: Int? = null,
+    @SerialName("MaxAudiobookResume") val maxAudiobookResume: Int? = null,
+)
+
+/**
+ * The body of the session reports (`/Sessions/Playing`, `/Progress`, `/Stopped`). [positionTicks] is always sent: a
+ * stop without a position marks the book played. The stop sends only the ids and the position.
+ */
+@Serializable
+data class JellyfinPlaybackReportDto(
+    @SerialName("ItemId") val itemId: String,
+    @SerialName("MediaSourceId") val mediaSourceId: String,
+    @SerialName("PlaySessionId") val playSessionId: String,
+    @SerialName("PositionTicks") val positionTicks: Long,
+    @SerialName("CanSeek") val canSeek: Boolean? = null,
+    @SerialName("PlayMethod") val playMethod: String? = null,
+    @SerialName("IsPaused") val isPaused: Boolean? = null,
+    /** `timeupdate` for a progress report, `pause` for the report made on a pause. */
+    @SerialName("EventName") val eventName: String? = null,
+)
+
+/** The body of `POST /UserItems/{Id}/UserData`: the server copies each field as given (no thresholds). */
+@Serializable
+data class JellyfinUpdateUserDataDto(
+    @SerialName("PlaybackPositionTicks") val playbackPositionTicks: Long,
+    @SerialName("Played") val played: Boolean,
+    /** ISO-8601 UTC. */
+    @SerialName("LastPlayedDate") val lastPlayedDate: String,
+)

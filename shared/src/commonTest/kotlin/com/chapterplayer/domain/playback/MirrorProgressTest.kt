@@ -329,4 +329,49 @@ class MirrorProgressTest {
         // ...and a local row as new as now is not overwritten by it.
         assertNull(mergeServerProgress("b", progress(id = "b", pos = 1L, at = 5_000L), ServerProgress(9L, 12 * hour, false, 99_000L), false, nowMs = 5_000L))
     }
+
+    // ---- three copies (J2: Audiobookshelf, Plex and Jellyfin) ----
+
+    @Test
+    fun `round trips between three copies stay inside the echo window`() {
+        val lengths = listOf(10 * hour, 10 * hour - 4_000L, 10 * hour + 3_000L)
+        for (from in lengths) for (to in lengths) {
+            if (from == to) continue
+            for (position in listOf(0L, 61_000L, 3 * hour + 17_500L, 5 * hour, 9 * hour + 59 * 60_000L, from)) {
+                val there = mirrorPosition(position, from, to)!!
+                val back = mirrorPosition(there, to, from)!!
+                assertTrue(kotlin.math.abs(back - position) <= MIRROR_ECHO_MS, "$position $from $to $back")
+            }
+        }
+    }
+
+    @Test
+    fun `a jellyfin copy's echo of a mirror dated with the source time keeps the mirrored row`() {
+        // The mirror was written with LastPlayedDate = the source row's time; the next sync reads it back.
+        val local = progress(id = "jf_b", pos = 5 * hour - 2_000L, dur = 10 * hour - 4_000L, at = 1_000L, mirrored = true)
+        assertNull(mergeServerProgress("jf_b", local, ServerProgress(5 * hour - 2_000L, 10 * hour - 4_000L, false, 1_000L), hasPendingLocal = false))
+    }
+
+    @Test
+    fun `the flusher's drop rules apply to a Jellyfin source and a Jellyfin target`() {
+        val toJellyfin = PendingProgress("jf_b", "jf1", 5 * hour, 10 * hour - 4_000L, 0L, 1_000L, mirrorOf = "a")
+        val fromJellyfin = PendingProgress("a", "abs1", 5 * hour, 10 * hour, 0L, 1_000L, mirrorOf = "jf_b")
+        for (row in listOf(toJellyfin, fromJellyfin)) {
+            val source = row.mirrorOf!!
+            val target = row.bookId
+            val sourceHere = progress(id = source, pos = 5 * hour, at = 1_000L)
+            assertEquals(MirrorFlush.SEND, mirrorFlushDecision(row, true, null, sourceHere, null), row.toString())
+            // Split, or the setting off.
+            assertEquals(MirrorFlush.DROP, mirrorFlushDecision(row, false, null, sourceHere, null))
+            // Newer listening of the copy itself.
+            assertEquals(MirrorFlush.DROP, mirrorFlushDecision(row, true, progress(id = target, pos = 1L, at = 2_000L), sourceHere, null))
+            // The source moved elsewhere.
+            assertEquals(MirrorFlush.DROP, mirrorFlushDecision(row, true, null, progress(id = source, pos = 1 * hour, at = 2_000L), null))
+            // The source's server holds news this phone does not have.
+            assertEquals(
+                MirrorFlush.DROP,
+                mirrorFlushDecision(row, true, null, sourceHere, ServerProgress(1 * hour, 10 * hour, false, 1_000L + 3 * 60_000L)),
+            )
+        }
+    }
 }

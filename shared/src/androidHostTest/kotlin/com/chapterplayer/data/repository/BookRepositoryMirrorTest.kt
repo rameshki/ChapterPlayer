@@ -15,6 +15,7 @@ import com.chapterplayer.data.model.ServerSource
 import com.chapterplayer.data.source.LibrarySource
 import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.domain.playback.MirrorPeer
+import com.chapterplayer.domain.playback.mirrorPosition
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.testing.FakeServerList
 import com.chapterplayer.data.local.entity.PendingProgressEntity
@@ -66,7 +67,7 @@ class BookRepositoryMirrorTest {
             failure?.let { throw it }
             return progress[bookId]
         }
-        override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {
+        override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
             if (hang) awaitCancellation()
             failure?.let { throw it }
             pushed += listOf(bookId, positionMs, isFinished)
@@ -88,6 +89,7 @@ class BookRepositoryMirrorTest {
         val repo: BookRepositoryImpl,
         val abs: Source,
         val plex: Source,
+        val jf: Source,
         val progress: InMemoryProgressDao,
         val pending: InMemoryPendingProgressDao,
         val peers: FakePeers,
@@ -100,6 +102,7 @@ class BookRepositoryMirrorTest {
     private val bookRows = listOf(
         BookEntity("abs_1", "The Book", "A", "N", ABS_LENGTH, "[]", "u", null, "ABS", "srv_abs", 0L),
         BookEntity("plex_1", "The Book", "A", "", PLEX_LENGTH, "[]", "u", null, "PLEX", "srv_plex", 0L),
+        BookEntity("jf_1", "The Book", "A", "", JF_LENGTH, "[]", "", null, "JELLYFIN", "srv_jf", 0L),
     )
 
     private fun fixture(
@@ -111,6 +114,7 @@ class BookRepositoryMirrorTest {
     ): Fixture {
         val abs = Source(ServerSource.ABS)
         val plex = Source(ServerSource.PLEX)
+        val jf = Source(ServerSource.JELLYFIN)
         val progressDao = InMemoryProgressDao(local)
         val pendingDao = InMemoryPendingProgressDao(queued)
         val fakePeers = FakePeers()
@@ -119,15 +123,16 @@ class BookRepositoryMirrorTest {
         val servers = listOf(
             ServerConfig("srv_abs", ServerSource.ABS, "A", "http://abs.test", "tok-secret"),
             ServerConfig("srv_plex", ServerSource.PLEX, "P", "http://plex.test", "tok-secret"),
+            ServerConfig("srv_jf", ServerSource.JELLYFIN, "J", "http://jf.test", "tok-secret"),
         )
         val repo = BookRepositoryImpl(
-            FakeBookDao(books), progressDao, InMemoryLibraryDao(), InMemoryCollectionDao(), FakeServerList(servers), listOf(abs, plex),
+            FakeBookDao(books), progressDao, InMemoryLibraryDao(), InMemoryCollectionDao(), FakeServerList(servers), listOf(abs, plex, jf),
             pendingDao = pendingDao, bookmarkDao = InMemoryBookmarkDao(), historyDao = InMemoryHistoryDao(), clock = { clock[0] },
             mirrorPeers = peers ?: fakePeers,
             loadedBookId = { loaded },
             markServerWaitMs = 300L,
         )
-        return Fixture(repo, abs, plex, progressDao, pendingDao, fakePeers, clock)
+        return Fixture(repo, abs, plex, jf, progressDao, pendingDao, fakePeers, clock)
     }
 
     @Test
@@ -340,9 +345,73 @@ class BookRepositoryMirrorTest {
         assertTrue(System.currentTimeMillis() - started < 5_000L, "the mark waited for the server")
     }
 
+    // ---- three copies (J2: Audiobookshelf, Plex and Jellyfin) ----
+
+    private fun Fixture.threeCopies() {
+        val all = listOf(MirrorPeer("abs_1", "srv_abs", ABS_LENGTH), MirrorPeer("plex_1", "srv_plex", PLEX_LENGTH), MirrorPeer("jf_1", "srv_jf", JF_LENGTH))
+        peers.groups = all.associate { me -> me.bookId to all.filter { it.bookId != me.bookId } }
+    }
+
+    @Test
+    fun `listening on each of three copies writes the other two rows in the same save`() = runTest {
+        val f = fixture()
+        f.threeCopies()
+        val lengths = mapOf("abs_1" to ABS_LENGTH, "plex_1" to PLEX_LENGTH, "jf_1" to JF_LENGTH)
+        var at = 1_000L
+        var quarter = 0L
+        for ((id, length) in lengths) {
+            at += 1_000L
+            quarter++ // a new place each time: a row within the echo window of its own place is kept
+            f.repo.savePlaybackProgress(ReadingProgress(id, length / 4 * quarter, length, at), loadedSinceMs = 0L)
+            assertEquals(ReadingProgress(id, length / 4 * quarter, length, at), f.row(id))
+            for ((other, otherLength) in lengths - id) {
+                val mapped = mirrorPosition(length / 4 * quarter, length, otherLength)!!
+                assertEquals(ReadingProgress(other, mapped, otherLength, at, isFinished = false, mirrored = true), f.row(other), "$id -> $other")
+            }
+        }
+        // A save sends nothing; the pusher queues the mirrors.
+        assertTrue(f.abs.pushed.isEmpty() && f.plex.pushed.isEmpty() && f.jf.pushed.isEmpty())
+    }
+
+    @Test
+    fun `the loaded copy is never rewritten by a save of another copy`() = runTest {
+        val f = fixture(loaded = "jf_1", local = listOf(ProgressEntity("jf_1", 2 * HOUR, JF_LENGTH, 500L, false)))
+        f.threeCopies()
+        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 5 * HOUR, ABS_LENGTH, 1_000L), loadedSinceMs = 0L)
+        assertEquals(ReadingProgress("jf_1", 2 * HOUR, JF_LENGTH, 500L), f.row("jf_1"))
+        assertEquals(true, f.row("plex_1")?.mirrored)
+    }
+
+    @Test
+    fun `a mark on three copies with the Plex server down is queued for Plex only`() = runTest {
+        val f = fixture(local = listOf(ProgressEntity("jf_1", 5 * HOUR, JF_LENGTH, 100L, false)))
+        f.threeCopies()
+        f.plex.failure = IOException("offline")
+
+        assertEquals(MarkOutcome.QUEUED, f.repo.markFinished("jf_1", finished = true).getOrNull())
+
+        assertEquals(listOf("jf_1", "abs_1", "plex_1").map { true }, listOf("jf_1", "abs_1", "plex_1").map { f.row(it)?.isFinished })
+        assertEquals("jf_1", f.jf.pushed.single()[0])
+        assertEquals("abs_1", f.abs.pushed.single()[0])
+        assertEquals(true, f.pending.get("plex_1")?.markedFinished)
+        assertNull(f.pending.get("jf_1"))
+        assertNull(f.pending.get("abs_1"))
+    }
+
+    @Test
+    fun `a mark on three copies that cannot change one copy and waits for another is partial and queued`() = runTest {
+        val f = fixture()
+        f.peers.groups = mapOf(
+            "jf_1" to listOf(MirrorPeer("abs_1", "srv_abs", ABS_LENGTH), MirrorPeer("plex_1", "srv_plex", PLEX_LENGTH), MirrorPeer("gone", "srv_abs", 1L)),
+        )
+        f.plex.failure = IOException("offline")
+        assertEquals(MarkOutcome.PARTIAL_QUEUED, f.repo.markFinished("jf_1", finished = true).getOrNull())
+    }
+
     private companion object {
         const val HOUR = 3_600_000L
         const val ABS_LENGTH = 10 * HOUR
         const val PLEX_LENGTH = 12 * HOUR
+        const val JF_LENGTH = 10 * HOUR - 4_000L
     }
 }

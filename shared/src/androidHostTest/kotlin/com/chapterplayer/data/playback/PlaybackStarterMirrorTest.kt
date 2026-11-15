@@ -113,4 +113,31 @@ class PlaybackStarterMirrorTest {
         assertEquals(listOf("a" to 40_000L), controller.loads)
         assertFalse("p" in repo.fetchedProgress)
     }
+
+    // ---- three copies (J2: Audiobookshelf, Plex and Jellyfin) ----
+
+    @Test
+    fun `with three copies the newest reading wins and is mapped to the opened copy`() = runTest {
+        peers.copies = listOf(MirrorPeer("p", "plex_srv", 120_000L), MirrorPeer("jf_a", "jf_srv", 80_000L))
+        repo.books.value = repo.books.value + testBook("jf_a").copy(durationMs = 80_000L)
+        repo.progress.value = listOf(ReadingProgress("a", 40_000L, 100_000L, 1L))
+        // Plex says 60 s at time 5, Jellyfin 60 s of 80 at time 9: the Jellyfin reading is the newest.
+        serverProgress(
+            "p" to ServerProgress(60_000L, 120_000L, false, 5L),
+            "jf_a" to ServerProgress(60_000L, 80_000L, false, 9L),
+        )
+        starter.start(book)
+        assertEquals(listOf("a" to 75_000L), controller.loads)
+        assertTrue("p" in repo.fetchedProgress && "jf_a" in repo.fetchedProgress)
+    }
+
+    @Test
+    fun `a Jellyfin copy with no progress on its server moves nothing`() = runTest {
+        peers.copies = listOf(MirrorPeer("p", "plex_srv", 120_000L), MirrorPeer("jf_a", "jf_srv", 80_000L))
+        repo.progress.value = listOf(ReadingProgress("a", 40_000L, 100_000L, 1L))
+        // Jellyfin's "0 and not played" reads as no progress (null), never a start over.
+        serverProgress("p" to ServerProgress(30_000L, 120_000L, false, 0L))
+        starter.start(book)
+        assertEquals(listOf("a" to 40_000L), controller.loads)
+    }
 }
