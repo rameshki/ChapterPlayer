@@ -331,11 +331,9 @@ fun AppNavigation() {
                         )
                     }
 
-                    // Not even reachable in a release build: the route exists only when the build is debuggable.
-                    if (Screen.SettingsDiagnostics.route in debugOnlyRoutes(debuggable)) {
-                        composable(Screen.SettingsDiagnostics.route) {
-                            DiagnosticsScreen(onBack = { navController.popBackStack() })
-                        }
+                    // Reached from the debug-only row, or from a long press on the version in About (any build).
+                    composable(Screen.SettingsDiagnostics.route) {
+                        DiagnosticsScreen(onBack = { navController.popBackStack() })
                     }
 
                     composable(Screen.ServerSetup.route) { backStackEntry ->

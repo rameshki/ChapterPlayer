@@ -1,5 +1,6 @@
 package com.chapterplayer.data.remote
 
+import com.chapterplayer.data.diagnostics.ProblemLog
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.HttpResponseValidator
@@ -57,6 +58,10 @@ internal fun HttpClientConfig<*>.installApiDefaults(
     HttpResponseValidator {
         validateResponse { response ->
             if (!response.status.isSuccess()) throw HttpStatusException(response.status)
+        }
+        // Method and status only, never an address: the line is kept for the Report a problem text.
+        handleResponseExceptionWithRequest { cause, request ->
+            ProblemLog.add("HTTP ${request.method.value} failed: " + ((cause as? HttpStatusException)?.status?.value?.toString() ?: cause::class.simpleName))
         }
     }
 }

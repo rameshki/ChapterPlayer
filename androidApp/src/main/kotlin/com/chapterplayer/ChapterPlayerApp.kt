@@ -22,6 +22,9 @@ import com.chapterplayer.data.sync.PlexConnectionManager
 import com.chapterplayer.di.AppScopeQualifier
 import com.chapterplayer.di.appModule
 import com.chapterplayer.di.sharedModules
+import com.chapterplayer.data.diagnostics.FileCrashStore
+import com.chapterplayer.data.diagnostics.crashFile
+import com.chapterplayer.data.diagnostics.installCrashRecorder
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.GlobalContext
@@ -33,6 +36,8 @@ class ChapterPlayerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The trace of a crash is saved (redacted) for Settings, About, Report a problem; the system still ends the app.
+        installCrashRecorder(FileCrashStore(crashFile(this)))
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.INFO else Level.NONE)
             androidContext(this@ChapterPlayerApp)

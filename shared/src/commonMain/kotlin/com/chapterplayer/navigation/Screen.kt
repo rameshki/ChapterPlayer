@@ -51,6 +51,3 @@ sealed class Screen(val route: String) {
     }
 }
 
-/** Routes that exist only in a debuggable build. */
-fun debugOnlyRoutes(debuggable: Boolean): List<String> =
-    if (debuggable) listOf(Screen.SettingsDiagnostics.route) else emptyList()

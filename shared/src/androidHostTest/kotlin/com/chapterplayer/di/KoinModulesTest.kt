@@ -3,6 +3,7 @@ package com.chapterplayer.di
 import android.content.Context
 import androidx.datastore.core.DataStore
 import com.chapterplayer.data.AppInfo
+import com.chapterplayer.data.diagnostics.CrashStore
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.connectivity.downloadAllowed
 import com.chapterplayer.data.local.ChapterPlayerDatabase
@@ -48,7 +49,7 @@ class KoinModulesTest {
 
     // What the Android app module provides: the Application context, and the debug flag
     // that the network module reads through a qualifier.
-    private val providedByApp = listOf(Context::class, Boolean::class) +
+    private val providedByApp = listOf(Context::class, Boolean::class, AppInfo::class) +
         // HttpClient is built by createHttpClient, not through its constructor, so the
         // engine and config its constructor mentions are not bindings of ours.
         listOf(HttpClientEngine::class, HttpClientConfig::class) +
@@ -119,7 +120,7 @@ class KoinModulesTest {
     private val providedByPlatform = listOf(
         ChapterPlayerDatabase::class, DataStore::class, CredentialStore::class, PlexClientIdentifier::class,
         ConnectivityMonitor::class, AppInfo::class, CoroutineDispatcher::class, Boolean::class,
-        DayZone::class, ListeningClock::class,
+        DayZone::class, ListeningClock::class, CrashStore::class,
         HttpClientEngine::class, HttpClientConfig::class,
         LibraryView::class, String::class, SavedStateHandle::class,
     )

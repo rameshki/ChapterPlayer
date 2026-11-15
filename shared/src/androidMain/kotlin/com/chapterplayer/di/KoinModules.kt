@@ -15,6 +15,9 @@ import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
 import com.chapterplayer.data.downloads.DownloadOverview
+import com.chapterplayer.data.diagnostics.CrashStore
+import com.chapterplayer.data.diagnostics.FileCrashStore
+import com.chapterplayer.data.diagnostics.crashFile
 import com.chapterplayer.data.downloads.AndroidLocalDisk
 import com.chapterplayer.data.downloads.DownloadLengthFiller
 import com.chapterplayer.data.downloads.DownloadRemovalListener
@@ -171,6 +174,8 @@ val deviceModule = module {
     single<ConnectivityMonitor> { AndroidConnectivityMonitor(androidContext()) }
     // The main activity lends it its permission launcher; the details screen asks before the first download.
     single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
+    // The last crash, kept as a small file in the cache folder for the Report a problem text.
+    single<CrashStore> { FileCrashStore(crashFile(androidContext())) }
     // Android has every feature (iOS: browsing only for now).
     single { PlatformFeatures.Full }
 }

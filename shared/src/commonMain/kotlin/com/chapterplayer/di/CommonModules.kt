@@ -50,6 +50,7 @@ import com.chapterplayer.ui.settings.DiagnosticsViewModel
 import com.chapterplayer.ui.stats.StatsViewModel
 import com.chapterplayer.data.diagnostics.DiagnosticsData
 import com.chapterplayer.data.diagnostics.DiagnosticsLogger
+import com.chapterplayer.data.diagnostics.ProblemReporter
 import com.chapterplayer.data.diagnostics.PlatformDiagnosticsLogger
 import com.chapterplayer.data.diagnostics.RoomDiagnosticsData
 import kotlinx.coroutines.CancellationException
@@ -405,6 +406,8 @@ val commonViewModelModule = module {
     // The Diagnostics page (debug builds only reach it): read only tables, and the log the report is written to.
     single<DiagnosticsData> { RoomDiagnosticsData(get(), get()) }
     single<DiagnosticsLogger> { PlatformDiagnosticsLogger() }
+    // Settings, About, Report a problem (every build): a redacted text report the person shares; nothing is sent.
+    single { ProblemReporter(get(), get(), get(), get(), get()) }
     viewModel { DiagnosticsViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
 }
 
