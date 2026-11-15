@@ -1,6 +1,6 @@
 # Jellyfin
 
-Jellyfin source. Status: J1 (add, sign in, sync, browse, stream) is merged (#86) and has been used against a real Jellyfin 12.4 server. J2 (progress reporting, queue, marks, three-copy mirroring) is on branch `stage-j/j2`; J3 (Quick Connect, downloads) follows. Plan: `docs/superpowers/plans/2026-11-08-jellyfin-j1-j2.md`. Spec: `docs/superpowers/specs/2026-11-07-jellyfin-source-design.md`.
+Jellyfin source. Status: J1 (add, sign in, sync, browse, stream) is merged (#86) and has been used against a real Jellyfin 12.4 server. J2 (progress reporting, queue, marks, three-copy mirroring) is built and host-tested (PR in review); its phone check on a real server (plan Task 15) is open; J3 (Quick Connect, downloads) follows. Plan: `docs/superpowers/plans/2026-11-08-jellyfin-j1-j2.md`. Spec: `docs/superpowers/specs/2026-11-07-jellyfin-source-design.md`.
 
 Detail moved out of `CLAUDE.md` (review R8); keep it current when this area changes.
 
