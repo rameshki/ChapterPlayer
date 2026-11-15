@@ -78,6 +78,8 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.test)
+            // Real SQLite on the host for the Room migration tests (the Android variant has only device natives)
+            implementation(libs.sqlite.bundled.jvm)
         }
 
         androidMain.dependencies {

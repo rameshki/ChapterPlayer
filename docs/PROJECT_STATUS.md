@@ -12,6 +12,7 @@ Read this first in every session; it is short on purpose. History is in `CHANGEL
   - Widgets: headless Play, midnight look, Listen widget, one look (#87 to #90); Jellyfin J1 (#86)
   - Converter tool (#84); Polish: kept filters, Collections A to Z (#81); Multi-select and Remove finished downloads (#76); Up next (#74); long-press menu and favourites (#73); new icon and navy theme (#71, #72); cover art (#70); Diagnostics (#67)
   - Separate Download / Play source choices (#62 to #64); iOS: browsing, playback, downloads (#55 to #59, compiled and CI-linked only); Plex downloads (#52); merged sources and mirroring; stats; Android Auto; widgets
+- Branch `stage-r/r20-migration-tests` (R20, not pushed yet): `DatabaseMigrationTest` opens databases made at every exported schema version (1 to 14) at version 15 through Room's real migration path on the bundled SQLite driver and checks the rows; 8 to 9 drops only Plex rows.
 - Platforms: Android is the product. iOS builds in CI but has never run on a device (the owner's iPhone is managed). Sources: Audiobookshelf, Jellyfin, Plex. Audible is skipped for now.
 
 ## Open work
