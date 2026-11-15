@@ -466,14 +466,83 @@ class JellyfinLibrarySourceTest {
         assertEquals(listOf("row-1"), signedOut.map { it.id })
     }
 
-    // ---- Queued positions wait for Task 12 ----
+    // ---- J2: queued positions, mirrors and marks (no session) ----
+
+    private val pushItem = "0bdd952d73af33d8d4421dfdb2f25919"
+
+    private fun pushBody(r: HttpRequestData): String = when (val c = r.body) {
+        is io.ktor.http.content.TextContent -> c.text
+        is io.ktor.http.content.OutgoingContent.ByteArrayContent -> c.bytes().decodeToString()
+        else -> ""
+    }
 
     @Test
-    fun `a queued position or mark is not delivered yet, so the row stays queued`() = runTest {
+    fun `queue delivers only UserData`() = runTest {
+        val src = source { Answer(fixture("jellyfin/user-data-in-progress.json")) }
+        src.pushProgress(server, "jf_$pushItem", 4_500_000L, 36_000_000L, isFinished = false, playedAtMs = 1_793_000_000_000L)
+
+        val r = requests.single()
+        assertEquals(io.ktor.http.HttpMethod.Post, r.method)
+        assertEquals("/jellyfin/UserItems/$pushItem/UserData", r.url.encodedPath)
+        assertEquals(
+            """{"PlaybackPositionTicks":45000000000,"Played":false,"LastPlayedDate":"${kotlin.time.Instant.fromEpochMilliseconds(1_793_000_000_000L)}"}""",
+            pushBody(r),
+        )
+        assertTrue(requests.none { it.url.encodedPath.contains("/Sessions") })
+    }
+
+    @Test
+    fun `the time sent is the row's time, not now`() = runTest {
+        now = 1_900_000_000_000L
         val src = source { Answer("{}") }
-        val e = assertFailsWith<Exception> { src.pushProgress(server, "jf_0bdd952d73af33d8d4421dfdb2f25919", 60_000L, 3_600_000L, isFinished = false) }
-        assertEquals("ProgressNotReportedYetException", e::class.simpleName)
-        assertTrue(requests.isEmpty())
+        src.pushProgress(server, "jf_$pushItem", 120_000L, 36_000_000L, isFinished = false, playedAtMs = 1_793_000_000_000L)
+        assertTrue(pushBody(requests.single()).contains(kotlin.time.Instant.fromEpochMilliseconds(1_793_000_000_000L).toString()))
+        requests.clear()
+        // A position in a threshold band is written as it is: no thresholds on this path.
+        src.pushProgress(server, "jf_$pushItem", 60_000L, 36_000_000L, isFinished = false, playedAtMs = null)
+        assertTrue(pushBody(requests.single()).contains("\"PlaybackPositionTicks\":600000000"))
+        assertTrue(pushBody(requests.single()).contains(kotlin.time.Instant.fromEpochMilliseconds(now).toString()))
+    }
+
+    @Test
+    fun `a queued finished mark marks the book played`() = runTest {
+        val src = source { Answer(fixture("jellyfin/user-played-items.json")) }
+        src.pushProgress(server, "jf_$pushItem", 36_000_000L, 36_000_000L, isFinished = true, playedAtMs = 5L)
+        val r = requests.single()
+        assertEquals(io.ktor.http.HttpMethod.Post, r.method)
+        assertEquals("/jellyfin/UserPlayedItems/$pushItem", r.url.encodedPath)
+        assertTrue(r.url.parameters.isEmpty())
+    }
+
+    @Test
+    fun `mark as not finished writes the place 0 with the played flag cleared`() = runTest {
+        val src = source { Answer("{}") }
+        src.pushProgress(server, "jf_$pushItem", 0L, 36_000_000L, isFinished = false, playedAtMs = 7_000L)
+        val body = pushBody(requests.single())
+        assertTrue(body.contains("\"PlaybackPositionTicks\":0") && body.contains("\"Played\":false"), body)
+    }
+
+    @Test
+    fun `a refused push blanks the sign-in and a forbidden one only fails`() = runTest {
+        val refused = source { Answer("", HttpStatusCode.Unauthorized) }
+        assertFailsWith<SignInRequiredException> { refused.pushProgress(server, "jf_$pushItem", 1L, 2L, isFinished = false) }
+        assertEquals(listOf("row-1"), signedOut.map { it.id })
+        signedOut.clear()
+        val forbidden = source { Answer("", HttpStatusCode.Forbidden) }
+        val e = assertFailsWith<Exception> { forbidden.pushProgress(server, "jf_$pushItem", 1L, 2L, isFinished = false) }
+        assertEquals("HttpStatusException", e::class.simpleName)
         assertTrue(signedOut.isEmpty())
+    }
+
+    @Test
+    fun `no push url carries the token`() = runTest {
+        val src = source { Answer("{}") }
+        src.pushProgress(server, "jf_$pushItem", 1L, 2L, isFinished = false)
+        src.pushProgress(server, "jf_$pushItem", 2L, 2L, isFinished = true)
+        assertEquals(2, requests.size)
+        for (r in requests) {
+            assertTrue(!r.url.toString().contains(token))
+            assertTrue(r.headers[HttpHeaders.Authorization].orEmpty().contains("Token=\"$token\""))
+        }
     }
 }

@@ -22,6 +22,7 @@ import com.chapterplayer.domain.jellyfin.JellyfinCall
 import com.chapterplayer.domain.jellyfin.JellyfinEvent
 import com.chapterplayer.domain.jellyfin.jellyfinIsoTime
 import com.chapterplayer.domain.jellyfin.jellyfinLivePlan
+import com.chapterplayer.domain.jellyfin.jellyfinPushPlan
 import com.chapterplayer.domain.jellyfin.jellyfinMsToTicks
 import com.chapterplayer.domain.jellyfin.thresholdsOf
 import com.chapterplayer.data.model.LibraryInfo
@@ -56,9 +57,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.Clock
-
-/** A Jellyfin server does not take progress from the app yet (stage J1; J2 adds it). Fixed text, no details. */
-class ProgressNotReportedYetException : Exception("This server does not take progress from the app yet")
 
 /**
  * Reads a Jellyfin server: its Books views, their `AudioBook` items (one file per book; a multi-file folder passes
@@ -255,12 +253,35 @@ class JellyfinLibrarySource(
     }
 
     /**
-     * J2 delivers queued positions in Task 12. Until then a push still pins a loaded session of the book: set finished,
-     * the session reports nothing more (a later report cannot undo the mark); set not finished, it reports again.
+     * Sets the book's place without a session (a queued position, a mirror from another copy, Mark as finished / not
+     * finished; [jellyfinPushPlan]): finished marks it played (`POST /UserPlayedItems/{Id}`); anything else is the exact
+     * UserData write with `Played = false` (no thresholds), dated [playedAtMs] (else now), so the server's next reading is
+     * no newer than the phone's row. Mark as not finished arrives as position 0 not finished, which clears the played
+     * flag. A loaded session of the book stops reporting when it is set finished (its reports cannot undo the mark) and
+     * reports again when it is set not finished. Throws when a call fails (the queue tries again later).
      */
-    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {
+    override suspend fun pushProgress(
+        server: ServerConfig,
+        bookId: String,
+        positionMs: Long,
+        durationMs: Long,
+        isFinished: Boolean,
+        playedAtMs: Long?,
+    ) {
+        val itemId = itemIdOf(bookId)
         pinSessions(bookId, isFinished)
-        throw ProgressNotReportedYetException()
+        val playedAt = playedAtMs?.takeIf { it > 0L } ?: nowMs()
+        signedIn(server) {
+            for (call in jellyfinPushPlan(positionMs, isFinished, playedAt)) {
+                when (call) {
+                    is JellyfinCall.WriteUserData -> writeUserData(server, itemId, call)
+                    JellyfinCall.MarkPlayed -> api.markPlayed(server.baseUrl, deviceId(server), server.token, itemId)
+                    JellyfinCall.MarkUnplayed -> api.markUnplayed(server.baseUrl, deviceId(server), server.token, itemId)
+                    // The push plan has no session calls.
+                    is JellyfinCall.SessionStart, is JellyfinCall.SessionProgress, is JellyfinCall.SessionStopped -> Unit
+                }
+            }
+        }
     }
 
     /** Sets the finished pin of every loaded session of [bookId]. */

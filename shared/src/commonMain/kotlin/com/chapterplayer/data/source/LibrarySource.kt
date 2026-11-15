@@ -79,8 +79,19 @@ interface LibrarySource {
     suspend fun fetchProgressReading(server: ServerConfig, bookId: String): ServerProgressReading =
         ServerProgressReading(fetchProgress(server, bookId))
 
-    /** Sets the server's progress for [bookId] without a session. A source without progress does nothing. Throws when the call fails. */
-    suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean) {}
+    /**
+     * Sets the server's progress for [bookId] without a session. [playedAtMs] is when that place was listened to (a queued
+     * row's time, a mirror's source time; null = now), for a server that stores it (Jellyfin's `LastPlayedDate`;
+     * Audiobookshelf and Plex ignore it). A source without progress does nothing. Throws when the call fails.
+     */
+    suspend fun pushProgress(
+        server: ServerConfig,
+        bookId: String,
+        positionMs: Long,
+        durationMs: Long,
+        isFinished: Boolean,
+        playedAtMs: Long? = null,
+    ) {}
 
     /** The server's progress for every book, keyed by the app's book id. Empty for a source without progress. Throws when the call fails. */
     suspend fun fetchAllProgress(server: ServerConfig): Map<String, ServerProgress> = emptyMap()
