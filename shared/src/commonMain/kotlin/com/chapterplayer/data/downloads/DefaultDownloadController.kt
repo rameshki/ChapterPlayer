@@ -4,10 +4,13 @@ import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.local.dao.DownloadDao
 import com.chapterplayer.data.local.entity.DownloadEntity
 import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.downloads.AfterJobStop
 import com.chapterplayer.domain.downloads.DownloadStatus
+import com.chapterplayer.domain.downloads.TIME_LIMIT_HOLD_MS
+import com.chapterplayer.domain.downloads.afterJobStop
 import com.chapterplayer.domain.downloads.canPause
 import com.chapterplayer.domain.downloads.downloadStatusOf
-import com.chapterplayer.domain.downloads.reenqueueAfterStop
+import com.chapterplayer.domain.downloads.heldByTimeLimit
 import com.chapterplayer.domain.downloads.resumesOnStart
 import com.chapterplayer.domain.downloads.safeFileName
 import com.chapterplayer.domain.downloads.statusOnEnqueue
@@ -30,6 +33,12 @@ interface DownloadScheduler {
      * continued processing task only then; the default (Android) is a plain [schedule].
      */
     suspend fun scheduleByUser(bookId: String, wifiOnly: Boolean) = schedule(bookId, wifiOnly, replace = false)
+
+    /**
+     * Replaces the job with one that may start only after [delayMs] (Android: the dataSync time limit holds the queue).
+     * iOS never holds a download this way; the default schedules it at once.
+     */
+    suspend fun scheduleLater(bookId: String, wifiOnly: Boolean, delayMs: Long) = schedule(bookId, wifiOnly, replace = true)
 
     /** Stops the job (it saves its progress as it stops; [DownloadJobs.whileIdle] waits for that). */
     suspend fun cancel(bookId: String)
@@ -112,14 +121,47 @@ class DefaultDownloadController(
             .forEach { scheduler.schedule(it.bookId, wifiOnly, replace = false) }
     }
 
-    /** The job stopped; [timedOut] when the system's foreground time limit stopped it, which schedules it again. */
-    suspend fun afterStop(bookId: String, timedOut: Boolean) {
-        // The status itself was already put back (DOWNLOADING to QUEUED) by the stopping job while it still owned
-        // the book; changing it here could hit a newer job that has started since.
-        val status = dao.get(bookId)?.let { downloadStatusOf(it.status) } ?: return
-        if (reenqueueAfterStop(timedOut, status)) {
-            scheduler.schedule(bookId, settings.downloadWifiOnly.first(), replace = true)
+    /**
+     * [bookId]'s job stopped; [timedOut] when Android's dataSync time limit (6 hours a day, Android 15) stopped it,
+     * [appVisible] whether the app is in front. The stopping job already saved its bytes and put its book back in the
+     * queue (DOWNLOADING to QUEUED) while it still owned the book; no status is changed here, since that could hit a
+     * newer job that has started since. Only the scheduling follows ([afterJobStop]): in front, the stopped book starts
+     * again at once; in the background every waiting download is held for [TIME_LIMIT_HOLD_MS] (a job started now could
+     * not run in the foreground) and the caller tells the person that opening the app continues them
+     * ([releaseTimeLimitHold]). [beforeHold] runs before the delayed jobs are scheduled, so the hold is on record before
+     * anything could release it.
+     */
+    suspend fun afterStop(
+        bookId: String,
+        timedOut: Boolean,
+        appVisible: Boolean,
+        beforeHold: suspend () -> Unit = {},
+    ): StopFollowUp {
+        if (!timedOut) return StopFollowUp(AfterJobStop.NOTHING, 0)
+        val waiting = dao.observeAll().first().filter { heldByTimeLimit(downloadStatusOf(it.status)) }
+        val action = afterJobStop(timedOut, waiting.size, appVisible)
+        val wifiOnly = settings.downloadWifiOnly.first()
+        when (action) {
+            AfterJobStop.NOTHING -> Unit
+            AfterJobStop.CONTINUE_NOW ->
+                if (waiting.any { it.bookId == bookId }) scheduler.schedule(bookId, wifiOnly, replace = true)
+            AfterJobStop.HOLD_UNTIL_APP_OPENS -> {
+                beforeHold()
+                waiting.forEach { scheduler.scheduleLater(it.bookId, wifiOnly, TIME_LIMIT_HOLD_MS) }
+            }
         }
+        return StopFollowUp(action, waiting.size)
+    }
+
+    /**
+     * The app came to the front after the time limit held the queue (Android gives the foreground time back then):
+     * every waiting download is scheduled again at once, replacing its held job.
+     */
+    suspend fun releaseTimeLimitHold() {
+        val wifiOnly = settings.downloadWifiOnly.first()
+        dao.observeAll().first()
+            .filter { row -> heldByTimeLimit(downloadStatusOf(row.status)) }
+            .forEach { scheduler.schedule(it.bookId, wifiOnly, replace = true) }
     }
 
     private suspend fun delete(bookId: String) {
@@ -149,3 +191,6 @@ class DefaultDownloadController(
     private suspend fun move(bookId: String, from: String, to: DownloadStatus): Boolean =
         dao.updateStatusIf(bookId, listOf(from), to.name, null, nowMs()) > 0
 }
+
+/** What [DefaultDownloadController.afterStop] did, and how many downloads wait (for the notice's wording). */
+data class StopFollowUp(val action: AfterJobStop, val waitingBooks: Int)

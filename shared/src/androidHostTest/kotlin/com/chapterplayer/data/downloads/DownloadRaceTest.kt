@@ -2,7 +2,9 @@ package com.chapterplayer.data.downloads
 
 import com.chapterplayer.data.local.entity.BookEntity
 import com.chapterplayer.data.repository.InMemoryDownloadDao
+import com.chapterplayer.domain.downloads.AfterJobStop
 import com.chapterplayer.domain.downloads.DownloadStatus
+import com.chapterplayer.domain.downloads.TIME_LIMIT_HOLD_MS
 import com.chapterplayer.testing.FakeAppSettings
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
@@ -52,6 +54,15 @@ class DownloadRaceTest {
     /** Like WorkManager: cancel does not wait, and a cancelled job does not block scheduling a new one. */
     private inner class RunningScheduler(val downloader: BookDownloader, val controller: () -> DefaultDownloadController) : DownloadScheduler {
         val jobs = ConcurrentHashMap<String, Job>()
+        /** Set to stop the next job as Android 15's dataSync time limit would (WorkManager's foreground timeout). */
+        @Volatile var timeLimitStop = false
+        val followUps = mutableListOf<StopFollowUp>()
+        /** Books held by the time limit: their job was replaced by one that waits (here: never starts by itself). */
+        val held = mutableListOf<Pair<String, Long>>()
+        override suspend fun scheduleLater(bookId: String, wifiOnly: Boolean, delayMs: Long) {
+            held += bookId to delayMs
+            jobs[bookId]?.cancel()
+        }
         override suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean) {
             val existing = jobs[bookId]
             if (!replace && existing?.isActive == true) return
@@ -60,7 +71,9 @@ class DownloadRaceTest {
                 try {
                     downloader.run(bookId)
                 } catch (e: CancellationException) {
-                    withContext(NonCancellable) { controller().afterStop(bookId, timedOut = false) }
+                    withContext(NonCancellable) {
+                        followUps += controller().afterStop(bookId, timedOut = timeLimitStop, appVisible = false)
+                    }
                     throw e
                 }
             }
@@ -159,5 +172,31 @@ class DownloadRaceTest {
         assertEquals("bytes=700-", requests[1].headers[HttpHeaders.Range])
         assertContentEquals(body, File(dir, "11.mp3").readBytes())
         assertEquals(body.size.toLong(), rig.dao.files.value.single().doneBytes)
+    }
+
+    @Test
+    fun `a download stopped by the time limit keeps its bytes, waits held, and continues at the saved byte when the app opens`() = runBlocking {
+        val rig = Rig()
+        rig.controller.enqueue(bookId)
+        rig.awaitFirstBytes()
+        val job = rig.scheduler.jobs.getValue(bookId)
+
+        rig.scheduler.timeLimitStop = true
+        job.cancel()
+        job.join()
+
+        assertEquals(DownloadStatus.QUEUED.name, rig.dao.get(bookId)?.status)
+        assertEquals(listOf(StopFollowUp(AfterJobStop.HOLD_UNTIL_APP_OPENS, waitingBooks = 1)), rig.scheduler.followUps)
+        assertEquals(listOf(bookId to TIME_LIMIT_HOLD_MS), rig.scheduler.held)
+        assertEquals(700L, File(dir, "11.mp3.part").length())
+
+        rig.scheduler.timeLimitStop = false
+        rig.controller.releaseTimeLimitHold()
+        withTimeout(10_000) { while (rig.dao.get(bookId)?.status != DownloadStatus.DONE.name) delay(20) }
+
+        val requests = rig.fake.fileRequests.filter { it.url.encodedPath.endsWith("/download") }
+        assertEquals(2, requests.size)
+        assertEquals("bytes=700-", requests[1].headers[HttpHeaders.Range])
+        assertContentEquals(body, File(dir, "11.mp3").readBytes())
     }
 }

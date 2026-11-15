@@ -26,6 +26,7 @@ import com.chapterplayer.data.downloads.RoomLocalBookFiles
 import com.chapterplayer.data.downloads.LiveDownloadProgress
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
+import com.chapterplayer.data.downloads.DownloadTimeLimitHold
 import com.chapterplayer.data.downloads.DownloadReconciler
 import com.chapterplayer.data.downloads.DownloadScheduler
 import com.chapterplayer.data.downloads.DownloadStorage
@@ -159,6 +160,8 @@ val downloadModule = module {
     single<DownloadRemovalListener> { DownloadRemovalListener { bookId -> get<PlaybackController>().releaseLocalFiles(bookId) } }
     single { DefaultDownloadController(get(), get(), get(), get(), get(), get(), get(), io = Dispatchers.IO) }
     single<DownloadController> { get<DefaultDownloadController>() }
+    // Android 15's dataSync time limit: holds the queue, says "Downloads paused", and opening the app continues them.
+    single { DownloadTimeLimitHold(androidContext(), get(), get(AppScopeQualifier)) }
     // The application starts it: whenever the phone comes online, fills in the file lengths older downloads lack.
     single {
         val bookDao = get<BookDao>()

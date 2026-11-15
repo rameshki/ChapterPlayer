@@ -5,6 +5,7 @@ Read this first in every session; it is short on purpose. History is in `CHANGEL
 ## Now
 - Version 0.5.3 (versionCode 9). Tags v0.1.0 to v0.4.1 and v0.5.3. Tester builds 0.3.3, 0.4.0, 0.4.1 and 0.5.3 were shared, signed with the key outside the repo.
 - `main` holds (newest first):
+  - targetSdk 36 with the Android 15 six hour download limit and refused-audio-focus handling (R5; device checks in `DEVICE_CHECKS.md`)
   - Jellyfin J2: progress reporting, queue, marks, three-copy mirroring (#96; mock-tested only, phone check open)
   - CLAUDE.md cut to 5 KB, detail in `docs/architecture` (#95); restored backups no longer claim downloads (#94); CI builds the release APK, lint, R8 seeds check (#93)
   - Font choice: Classic, Bookish, Inter, Manrope, Lexend, System (#92); project review (#91)

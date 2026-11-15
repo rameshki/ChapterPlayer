@@ -16,6 +16,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -53,18 +54,27 @@ class WorkManagerDownloadScheduler(private val context: Context) : DownloadSched
     private val workManager: WorkManager get() = WorkManager.getInstance(context)
 
     override suspend fun schedule(bookId: String, wifiOnly: Boolean, replace: Boolean) {
+        val policy = if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+        workManager.enqueueUniqueWork(uniqueWorkName(bookId), policy, request(bookId, wifiOnly, delayMs = 0)).await()
+    }
+
+    /** The dataSync time limit holds the book: its job is replaced by one that waits [delayMs] (or until the app opens). */
+    override suspend fun scheduleLater(bookId: String, wifiOnly: Boolean, delayMs: Long) {
+        workManager.enqueueUniqueWork(uniqueWorkName(bookId), ExistingWorkPolicy.REPLACE, request(bookId, wifiOnly, delayMs)).await()
+    }
+
+    private fun request(bookId: String, wifiOnly: Boolean, delayMs: Long): OneTimeWorkRequest {
         val network = when (networkPolicy(wifiOnly)) {
             NetworkPolicy.WIFI_ONLY -> NetworkType.UNMETERED
             NetworkPolicy.WIFI_AND_CELLULAR -> NetworkType.CONNECTED
         }
-        val request = OneTimeWorkRequestBuilder<DownloadWorker>()
+        return OneTimeWorkRequestBuilder<DownloadWorker>()
             .setInputData(workDataOf(KEY_BOOK_ID to bookId))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(network).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .setInitialDelay(delayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
             .addTag(DOWNLOAD_TAG)
             .build()
-        val policy = if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
-        workManager.enqueueUniqueWork(uniqueWorkName(bookId), policy, request).await()
     }
 
     override suspend fun cancel(bookId: String) {
@@ -77,16 +87,19 @@ class WorkManagerDownloadScheduler(private val context: Context) : DownloadSched
 }
 
 /**
- * Runs one book's [BookDownloader] as a dataSync foreground job with a progress notification. When the
- * system's foreground time limit (Android 15) stops it, the progress is saved and the job schedules
- * itself again ([DefaultDownloadController.afterStop]). If the system does not let it run in the
- * foreground right now, it runs as ordinary background work and WorkManager reschedules it when stopped.
+ * Runs one book's [BookDownloader] as a dataSync foreground job with a progress notification. When Android 15's
+ * dataSync time limit (6 hours a day) stops it, WorkManager's foreground service gets `onTimeout` and stops the job with
+ * `STOP_REASON_FOREGROUND_SERVICE_TIMEOUT`: the downloader saves the bytes and puts the book back in the queue, and
+ * [DownloadTimeLimitHold] holds the queue and posts "Downloads paused" (or continues at once with the app in front).
+ * If the system does not let the job run in the foreground right now (`ForegroundServiceStartNotAllowedException`:
+ * background start limits, or the daily time used up), it runs as ordinary background work and WorkManager
+ * reschedules it when the system stops it; the bytes are kept either way.
  */
 class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params), KoinComponent {
 
     private val downloader: BookDownloader by inject()
     private val bookDao: BookDao by inject()
-    private val controller: DefaultDownloadController by inject()
+    private val timeLimit: DownloadTimeLimitHold by inject()
 
     @OptIn(FlowPreview::class)
     override suspend fun doWork(): Result {
@@ -110,7 +123,14 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             }
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
-                controller.afterStop(bookId, timedOut = stopReason == WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT)
+                // getStopReason is API 31+; the time limit exists only from Android 15.
+                val timedOut = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    stopReason == WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT
+                try {
+                    timeLimit.afterStop(bookId, timedOut)
+                } catch (_: Exception) {
+                    // Best effort: the book is QUEUED with its bytes, and the next app start schedules it again.
+                }
             }
             throw e
         }
@@ -128,7 +148,10 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            // Not allowed now (background start limits, or the daily dataSync time is used up): carry on in the background.
+            // ForegroundServiceStartNotAllowedException (API 31+, so not named here: minSdk 26) or IllegalStateException:
+            // not allowed now (background start limits, or the daily dataSync time is used up). Carry on in the
+            // background; WorkManager's foreground service also catches a refused startForeground itself, so nothing
+            // crashes, and the bytes written so far stay in the .part file.
         }
     }
 

@@ -23,7 +23,7 @@ the `docs/architecture/<area>.md` files your task touches (map below); they hold
 ## Layout
 - `shared/` Kotlin Multiplatform (Android + iOS): all app code. `commonMain` has the UI (Compose Multiplatform), view models, navigation, domain rules, data, Koin modules; `androidMain` / `iosMain` hold only platform parts.
 - `androidApp/` activity, manifest, R8 rules, release signing (key outside the repo). `iosApp/` SwiftUI host, project generated from `iosApp/project.yml` with XcodeGen.
-- Stack: Compose, Koin, Room (KSP, schema in `shared/schemas`), Ktor + kotlinx.serialization, Coil 3, Media3, Glance, Kotlin 2.4, AGP 9.3, Gradle 9.5, compileSdk 37, minSdk 26.
+- Stack: Compose, Koin, Room (KSP, schema in `shared/schemas`), Ktor + kotlinx.serialization, Coil 3, Media3, Glance, Kotlin 2.4, AGP 9.3, Gradle 9.5, compileSdk 37, targetSdk 36 (Android 15 and 16 behaviour: `docs/architecture/downloads.md` time limit, `playback.md` audio focus), minSdk 26.
 - Pure rules live in `domain/*` and are host-tested; keep new logic there, not in view models or platform code.
 
 ## Where the detail is (`docs/architecture/`)

@@ -22,6 +22,8 @@ import com.chapterplayer.data.images.CoverArtworkBitmapLoader
 import com.chapterplayer.data.images.CoverBytesLoader
 import com.chapterplayer.data.remote.abs.AbsAuthorizer
 import com.chapterplayer.domain.covers.coverAuthority
+import com.chapterplayer.data.isAppInFront
+import com.chapterplayer.domain.playback.AudioFocusStartWatch
 import com.chapterplayer.domain.playback.EXTRA_OPEN_PLAYER
 import com.chapterplayer.domain.playback.ResumeRewind
 import com.chapterplayer.domain.playback.TrackSpan
@@ -89,8 +91,20 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         player = exo
+        // Android 15: audio focus only for the top app or a foreground service. A Play from a widget or the car can be
+        // refused focus before Media3 starts the foreground service; that reads as a focus loss before any sound and is
+        // treated like a refused foreground start (see the listener below and AudioFocusStartWatch).
+        val focusWatch = AudioFocusStartWatch()
         exo.addListener(object : Player.Listener {
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = updateStopTimer(exo)
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                updateStopTimer(exo)
+                val byFocusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+                if (focusWatch.onPlayWhenReadyChanged(playWhenReady, byFocusLoss, appInFront = isAppInFront(), nowMs = SystemClock.elapsedRealtime())) {
+                    onPlaybackRefused()
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) = focusWatch.onIsPlayingChanged(isPlaying)
 
             override fun onPlaybackStateChanged(playbackState: Int) = updateStopTimer(exo)
         })
@@ -130,12 +144,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         // paused and a notification "Tap to keep listening" opens the player (a legal way in; an activity started from
         // the background would be blocked). See WidgetPlayAction.
         setListener(object : MediaSessionService.Listener {
-            override fun onForegroundServiceStartNotAllowedException() {
-                if (foregroundRefusalAction(playbackController.state.value.bookId != null) == ForegroundRefusalAction.PAUSE_AND_NOTIFY) {
-                    playbackController.pause()
-                    get<PlaybackNotices>().keepListening()
-                }
-            }
+            override fun onForegroundServiceStartNotAllowedException() = onPlaybackRefused()
         })
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
@@ -151,6 +160,15 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
                         .build(),
                 )
             )
+        }
+    }
+
+    // Android refused the playback a person asked for from the background (the foreground start, or audio focus):
+    // the book is paused and "Tap to keep listening" opens the player, from where Play is allowed.
+    private fun onPlaybackRefused() {
+        if (foregroundRefusalAction(playbackController.state.value.bookId != null) == ForegroundRefusalAction.PAUSE_AND_NOTIFY) {
+            playbackController.pause()
+            get<PlaybackNotices>().keepListening()
         }
     }
 
