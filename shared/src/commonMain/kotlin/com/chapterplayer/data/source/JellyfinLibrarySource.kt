@@ -33,7 +33,10 @@ import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.InstallId
 import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
 import com.chapterplayer.data.remote.jellyfin.fetchAllAudiobooks
+import com.chapterplayer.domain.diagnostics.JellyfinReading
 import com.chapterplayer.domain.diagnostics.ServerProgressReading
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUserDataDto
+import com.chapterplayer.domain.jellyfin.jellyfinTimeMs
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NO_BOOKS_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_NOT_THIS_SERVER_TEXT
 import com.chapterplayer.domain.jellyfin.JELLYFIN_OTHER_SERVER_TEXT
@@ -402,14 +405,23 @@ class JellyfinLibrarySource(
 
     /** `GET /UserItems/{Id}/UserData`; null when the user has no progress (0 and not played). */
     override suspend fun fetchProgress(server: ServerConfig, bookId: String): ServerProgress? = signedIn(server) {
-        readProgress(server, bookId)
+        readProgress(server, bookId).first
     }
 
     override suspend fun fetchProgressReading(server: ServerConfig, bookId: String): ServerProgressReading =
         // Not through signedIn: a refused token must not blank the server's sign-in from a read-only page.
         try {
             if (server.token.isBlank()) throw SignInRequiredException(server.name)
-            ServerProgressReading(readProgress(server, bookId))
+            val (progress, data) = readProgress(server, bookId)
+            ServerProgressReading(
+                progress,
+                jellyfin = JellyfinReading(
+                    positionMs = jellyfinTicksToMs(data.playbackPositionTicks),
+                    played = data.played == true,
+                    playCount = data.playCount ?: 0,
+                    lastPlayedAtMs = jellyfinTimeMs(data.lastPlayedDate),
+                ),
+            )
         } catch (e: HttpStatusException) {
             if (e.status.value == 401) throw ReadRefusedException()
             throw e
@@ -426,13 +438,14 @@ class JellyfinLibrarySource(
         return cacheLock.withLock { cache[server.id]?.progress.orEmpty() }
     }
 
-    private suspend fun readProgress(server: ServerConfig, bookId: String): ServerProgress? {
+    /** The book's progress as the app uses it, with the user data it was read from. */
+    private suspend fun readProgress(server: ServerConfig, bookId: String): Pair<ServerProgress?, JellyfinUserDataDto> {
         val itemId = itemIdOf(bookId)
         val data = api.getUserData(server.baseUrl, deviceId(server), server.token, itemId)
         // The length is needed to place "finished"; a book not synced yet reads it from the item.
         val known = cacheLock.withLock { cache[server.id]?.lengths?.get(bookId) }
         val durationMs = known ?: jellyfinTicksToMs(api.getItem(server.baseUrl, deviceId(server), server.token, itemId).runTimeTicks)
-        return jellyfinServerProgress(data, durationMs)
+        return jellyfinServerProgress(data, durationMs) to data
     }
 
     /**

@@ -15,6 +15,9 @@ private const val PATH = "[path]"
 private val HEADER_LINE = Regex(
     """(?i)\b(authorization|proxy-authorization|cookie|set-cookie)\s*[:=][^\r\n]*"""
 )
+
+// Jellyfin's `MediaBrowser Client=..., DeviceId=..., Token=...` value, to the end of the line.
+private val MEDIA_BROWSER = Regex("""(?i)\bmediabrowser\s+[a-z]+\s*=[^\r\n]*""")
 private val BEARER = Regex("""(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+""")
 private val URL = Regex("""(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>)\]]+""")
 
@@ -60,6 +63,7 @@ fun redact(text: String, keep: Collection<String> = emptyList()): String {
     var out = text
     kept.forEachIndexed { i, value -> out = out.replace(value, "$KEEP_OPEN$i$KEEP_CLOSE") }
     out = HEADER_LINE.replace(out) { "${it.groupValues[1]}: $REMOVED" }
+    out = MEDIA_BROWSER.replace(out, "MediaBrowser $REMOVED")
     out = BEARER.replace(out, "Bearer $REMOVED")
     out = URL.replace(out, ADDRESS)
     out = SECRET_PAIR.replace(out) { "${it.groupValues[1]}=$REMOVED" }

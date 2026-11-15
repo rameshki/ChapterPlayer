@@ -545,4 +545,26 @@ class JellyfinLibrarySourceTest {
             assertTrue(r.headers[HttpHeaders.Authorization].orEmpty().contains("Token=\"$token\""))
         }
     }
+
+    // ---- Diagnostics (J2) ----
+
+    @Test
+    fun `the diagnostics reading carries the user data behind the progress`() = runTest {
+        val reading = library().fetchProgressReading(server, "jf_$pushItem")
+        assertEquals(1_350_000L, reading.progress?.positionMs)
+        val data = assertNotNull(reading.jellyfin)
+        assertEquals(1_350_000L, data.positionMs)
+        assertEquals(false, data.played)
+        assertEquals(1, data.playCount)
+        assertEquals(kotlin.time.Instant.parse("2026-10-20T08:30:00Z").toEpochMilliseconds(), data.lastPlayedAtMs)
+        assertTrue(reading.tracks.isEmpty())
+    }
+
+    @Test
+    fun `a refused diagnostics read never blanks the sign-in`() = runTest {
+        val src = source { Answer("", HttpStatusCode.Unauthorized) }
+        val e = assertFailsWith<Exception> { src.fetchProgressReading(server, "jf_$pushItem") }
+        assertEquals("ReadRefusedException", e::class.simpleName)
+        assertTrue(signedOut.isEmpty())
+    }
 }
