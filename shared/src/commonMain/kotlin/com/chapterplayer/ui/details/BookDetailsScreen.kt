@@ -318,7 +318,7 @@ private fun DetailsHeader(
                 Spacer(Modifier.width(8.dp))
             }
             Text(
-                playButtonLabel(state.playback, state.resumePositionMs > 0L),
+                playButtonLabel(state.playback, state.resumePositionMs > 0L, state.finished),
                 style = MaterialTheme.typography.titleMedium
             )
         }

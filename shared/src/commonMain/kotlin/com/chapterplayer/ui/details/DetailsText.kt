@@ -66,11 +66,15 @@ internal fun linksToggleLabel(total: Int, expanded: Boolean, limit: Int = MORE_L
 internal const val NEEDS_CONNECTION_TEXT = "Needs a connection to play"
 internal const val CHAPTERS_TAP_NOTE = "Tap a chapter to jump to it"
 
-/** The play button's label: Resume when there is somewhere to resume from, Play for a fresh book. */
-internal fun playButtonLabel(playback: DetailsPlayback, hasProgress: Boolean): String = when (playback) {
+/** The play button's label: Resume when there is somewhere to resume from, Play for a fresh book, Play again for a finished one. */
+internal fun playButtonLabel(playback: DetailsPlayback, hasProgress: Boolean, finished: Boolean = false): String = when (playback) {
     DetailsPlayback.PLAYING -> "Pause"
-    DetailsPlayback.PAUSED -> "Resume"
-    DetailsPlayback.NOT_PLAYING, DetailsPlayback.STARTING -> if (hasProgress) "Resume" else "Play"
+    DetailsPlayback.STARTING -> if (hasProgress) "Resume" else "Play"
+    DetailsPlayback.PAUSED, DetailsPlayback.NOT_PLAYING -> when {
+        finished -> "Play again"
+        playback == DetailsPlayback.PAUSED || hasProgress -> "Resume"
+        else -> "Play"
+    }
 }
 
 /** Pausing is always possible; starting needs [canPlay]; nothing happens while a start is under way. */

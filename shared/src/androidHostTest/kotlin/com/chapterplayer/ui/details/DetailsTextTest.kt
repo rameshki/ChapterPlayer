@@ -96,6 +96,9 @@ class DetailsTextTest {
         assertEquals("Resume", playButtonLabel(DetailsPlayback.PAUSED, hasProgress = true))
         assertEquals("Resume", playButtonLabel(DetailsPlayback.STARTING, hasProgress = true))
         assertEquals("Play", playButtonLabel(DetailsPlayback.STARTING, hasProgress = false))
+        assertEquals("Play again", playButtonLabel(DetailsPlayback.PAUSED, hasProgress = true, finished = true))
+        assertEquals("Play again", playButtonLabel(DetailsPlayback.NOT_PLAYING, hasProgress = false, finished = true))
+        assertEquals("Pause", playButtonLabel(DetailsPlayback.PLAYING, hasProgress = true, finished = true))
     }
 
     @Test
