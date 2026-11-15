@@ -50,7 +50,7 @@ the `docs/architecture/<area>.md` files your task touches (map below); they hold
 
 ## Traps
 - No JVM-only calls in `commonMain` (no `java.*`, no `String.format`); Kotlin/Native rejects commas in backtick test names.
-- Windows: the working tree is CRLF (`core.autocrlf=true`). Edit with Python (`encoding='utf-8'`, `newline=''`) or the Edit tool and check `git diff --stat` for whole-file churn.
+- Line endings: `.gitattributes` makes every text file LF in the repo and in the working tree (batch and PowerShell files keep CRLF); `.editorconfig` sets utf-8, 4 spaces and 120 columns for Kotlin. A normal editor edit gives a clean diff. If an older checkout still has CRLF files, run `git add --renormalize .` once.
 - Run one Gradle command at a time. Set `MSYS_NO_PATHCONV=1` for adb from Git Bash.
 - DataStore cannot rewrite its file on Windows: tests use `InMemoryPreferencesDataStore`.
 - Koin fails when a screen opens, not at build time: run `KoinModulesTest`.
