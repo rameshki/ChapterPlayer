@@ -9,6 +9,9 @@ import com.chapterplayer.domain.playback.localCopyOf
 import com.chapterplayer.domain.playback.shouldMarkFailed
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -38,12 +41,19 @@ interface LocalDisk {
 
     /** Whether the folder that holds [path] is there (false while its volume, such as an SD card, is not mounted). */
     fun folderExists(path: String): Boolean
+
+    /**
+     * Whether [path] is on storage that is always there (the app's own internal storage), so a missing folder means
+     * the files are gone (a restored backup, cleared data), never "the card is not mounted". Removable volumes are not.
+     */
+    fun alwaysMounted(path: String): Boolean = false
 }
 
 /**
  * [LocalBookFiles] over the download tables. A failure reading the disk, or a book folder that cannot be seen
- * (an unmounted SD card), means "not playable now" and changes nothing; only a folder that is there with a file
- * gone or of the wrong size marks the download failed. The disk is read on [io].
+ * (an unmounted SD card), means "not playable now" and changes nothing; a folder that is there with a file gone or
+ * of the wrong size, or a missing folder on internal storage (a phone restored from a backup: the database came back,
+ * the files did not), marks the download failed. The disk is read on [io].
  */
 class RoomLocalBookFiles(
     private val dao: DownloadDao,
@@ -60,7 +70,8 @@ class RoomLocalBookFiles(
         val (folderPresent, onDisk) = try {
             withContext(io) {
                 // All files of a book share one folder.
-                val folder = files.firstOrNull()?.let { disk.folderExists(it.path) } ?: true
+                val first = files.firstOrNull()
+                val folder = first == null || disk.folderExists(first.path) || disk.alwaysMounted(first.path)
                 folder to files.map { disk.fileLength(it.path) }
             }
         } catch (e: CancellationException) {
@@ -84,5 +95,33 @@ class RoomLocalBookFiles(
         // Only files of this download that have no length yet; the query checks again, in case one was filled meanwhile.
         val missing = dao.getFiles(bookId).filter { it.durationMs <= 0L }.map { it.ino }.toSet()
         for ((ino, ms) in durationsMs) if (ms > 0L && ino in missing) dao.fillFileDuration(bookId, ino, ms)
+    }
+}
+
+/**
+ * At start, looks at every finished download once: a book whose files are gone from the phone's own storage (a
+ * restore from a phone backup brings the database back without the downloads folder) is marked failed, so the
+ * screens offer "Try again" instead of claiming it is downloaded. Books on a card that is not mounted are left alone.
+ */
+class DownloadReconciler(
+    private val dao: DownloadDao,
+    private val localFiles: LocalBookFiles,
+    private val scope: CoroutineScope,
+) {
+    fun start() {
+        scope.launch {
+            try {
+                reconcile()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Best effort: the next start looks again, and playing a book checks it too.
+            }
+        }
+    }
+
+    suspend fun reconcile() {
+        val done = dao.observeAll().first().filter { downloadStatusOf(it.status) == DownloadStatus.DONE }
+        for (row in done) localFiles.complete(row.bookId)
     }
 }

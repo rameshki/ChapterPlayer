@@ -68,6 +68,9 @@ class DownloadFilesLocalDisk(private val files: DownloadFiles) : LocalDisk {
     override fun fileLength(path: String): Long? = files.length(path)
 
     override fun folderExists(path: String): Boolean = files.parent(path)?.let(files::isDirectory) == true
+
+    // iOS keeps every download under Application Support, which is always there.
+    override fun alwaysMounted(path: String): Boolean = true
 }
 
 /** The platform's [DownloadFiles] (the default of the common download classes). */

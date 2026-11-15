@@ -8,4 +8,7 @@ object AndroidLocalDisk : LocalDisk {
 
     // An SD card that is not mounted takes the whole folder with it.
     override fun folderExists(path: String): Boolean = File(path).absoluteFile.parentFile?.isDirectory == true
+
+    // The app's own storage (Context.filesDir) is under /data; SD cards and shared storage are under /storage.
+    override fun alwaysMounted(path: String): Boolean = File(path).absolutePath.startsWith("/data/")
 }

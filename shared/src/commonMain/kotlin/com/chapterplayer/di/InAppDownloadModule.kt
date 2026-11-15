@@ -12,6 +12,7 @@ import com.chapterplayer.data.downloads.DownloadLengthFiller
 import com.chapterplayer.data.downloads.DownloadLocation
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
+import com.chapterplayer.data.downloads.DownloadReconciler
 import com.chapterplayer.data.downloads.DownloadRemovalListener
 import com.chapterplayer.data.downloads.DownloadScheduler
 import com.chapterplayer.data.downloads.DownloadSource
@@ -113,6 +114,7 @@ fun inAppDownloadModule(
         DownloadLengthFiller(get(), get(), getAll<DownloadSource>(), get(), get(), get(AppScopeQualifier), cachedAt = { id -> bookDao.getById(id)?.cachedAt })
     }
     single { DownloadQueueRestorer(get(), get(AppScopeQualifier)) }
+    single { DownloadReconciler(get(), get(), get(AppScopeQualifier)) }
     // A downloaded book's files, for playing it from the phone.
     single<LocalBookFiles> {
         RoomLocalBookFiles(get(), DownloadFilesLocalDisk(get()), get(BlockingIoQualifier), nowMs = { Clock.System.now().toEpochMilliseconds() })
