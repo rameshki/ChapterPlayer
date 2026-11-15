@@ -35,6 +35,9 @@ CI now builds the minified release APK (uploaded as `app-release-unsigned`), run
 ### Restored backups no longer claim downloads (review R4)
 A missing book folder on the phone's own storage now means the files are gone (`LocalDisk.alwaysMounted`; Android: path under `/data/`, iOS: always), so the download is marked failed with Try again; a missing folder on an SD card still means "not mounted" and changes nothing. `DownloadReconciler` (`data/downloads/LocalBookFiles.kt`, started with the queue restorer on Android and iOS) checks every finished download once at start. Host-tested. Device check still open: back up, uninstall, restore, and see that no book says Downloaded without its files.
 
+### CLAUDE.md cut to 5 KB (review R8)
+`CLAUDE.md` now holds the rules, layout, build commands and traps, with a table pointing to `docs/architecture/<area>.md` (browse-and-merge, playback, progress, downloads, widgets, car, plex, jellyfin, ios, ui-theme-settings, platform-and-infra). The old per-area paragraphs moved there word for word (the Jellyfin status line was corrected); read only the files a task touches.
+
 ## Decisions (Robert)
 - 2026-10-29: Android first and clean, then iOS (Stage 5). No Apple Developer account yet and no paid publishing for now. TestFlight needs the paid Program, so the iOS test route is a free one: the macOS CI job builds an unsigned `.ipa`, Robert signs it from Windows with Sideloadly (free Apple ID, 7-day expiry, 3 apps, no push/CarPlay entitlements) and installs it on his iPhone over USB. Revisit TestFlight if he decides to pay. There is no Mac available for local Xcode work.
 - 2026-10-30: the free Apple ID + Sideloadly route is fine for the first iOS builds. Robert's iPhone is an iPhone 12 on the latest iOS (he reported 27.2), so the deployment target stays iOS 16 and the iPhone is the target device; his iPads (one on iOS 12) are not targets (Compose Multiplatform needs iOS 13 or newer).
