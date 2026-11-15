@@ -23,6 +23,7 @@ import com.chapterplayer.data.downloads.RoomLocalBookFiles
 import com.chapterplayer.data.downloads.LiveDownloadProgress
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
+import com.chapterplayer.data.downloads.DownloadReconciler
 import com.chapterplayer.data.downloads.DownloadScheduler
 import com.chapterplayer.data.downloads.DownloadStorage
 import com.chapterplayer.data.downloads.FileDownloader
@@ -162,6 +163,8 @@ val downloadModule = module {
     }
     // The application starts it: reschedules downloads after a reboot or process death.
     single { DownloadQueueRestorer(get(), get(AppScopeQualifier)) }
+    // The application starts it: a download whose files are gone from the phone (a restored backup) is marked failed.
+    single { DownloadReconciler(get(), get(), get(AppScopeQualifier)) }
 }
 
 val deviceModule = module {

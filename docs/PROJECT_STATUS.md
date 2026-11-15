@@ -32,6 +32,8 @@ ABS and Plex sources (both download), combined library with one entry per book a
 
 ### CI builds the release APK and runs lint (review R3)
 CI now builds the minified release APK (uploaded as `app-release-unsigned`), runs `lintRelease` against `androidApp/lint-baseline.xml` (new problems fail; the baseline holds 2 intended exported components, `OldTargetApi` (R5) and a few warnings) and runs `scripts/check-r8-seeds.sh`, which fails when R8 stops keeping a widget ActionCallback constructor or a manifest receiver.
+### Restored backups no longer claim downloads (review R4)
+A missing book folder on the phone's own storage now means the files are gone (`LocalDisk.alwaysMounted`; Android: path under `/data/`, iOS: always), so the download is marked failed with Try again; a missing folder on an SD card still means "not mounted" and changes nothing. `DownloadReconciler` (`data/downloads/LocalBookFiles.kt`, started with the queue restorer on Android and iOS) checks every finished download once at start. Host-tested. Device check still open: back up, uninstall, restore, and see that no book says Downloaded without its files.
 
 ## Decisions (Robert)
 - 2026-10-29: Android first and clean, then iOS (Stage 5). No Apple Developer account yet and no paid publishing for now. TestFlight needs the paid Program, so the iOS test route is a free one: the macOS CI job builds an unsigned `.ipa`, Robert signs it from Windows with Sideloadly (free Apple ID, 7-day expiry, 3 apps, no push/CarPlay entitlements) and installs it on his iPhone over USB. Revisit TestFlight if he decides to pay. There is no Mac available for local Xcode work.

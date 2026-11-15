@@ -12,6 +12,7 @@ import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.connectivity.IosConnectivityMonitor
 import com.chapterplayer.data.downloads.DownloadLengthFiller
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
+import com.chapterplayer.data.downloads.DownloadReconciler
 import com.chapterplayer.data.downloads.DownloadScheduler
 import com.chapterplayer.data.downloads.IosDownloadFiles
 import com.chapterplayer.data.downloads.IosDownloadPlace
@@ -122,6 +123,7 @@ private fun startAppWide(koin: Koin) {
     // Built here, on the main thread (UIKit state); it registers the continued processing task before launch ends.
     (koin.get<DownloadScheduler>() as? IosDownloadScheduler)?.start()
     koin.get<DownloadQueueRestorer>().start()
+    koin.get<DownloadReconciler>().start()
     koin.get<DownloadLengthFiller>().start()
     koin.get<PlaybackProgressSaver>().start()
     koin.get<ProgressSyncer>().start()

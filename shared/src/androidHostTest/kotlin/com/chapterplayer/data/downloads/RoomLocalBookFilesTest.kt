@@ -21,7 +21,13 @@ class RoomLocalBookFilesTest {
         DownloadFileEntity(book, ino, "$ino.mp3", "/d/$book/$ino.mp3", bytes, bytes, order, durationMs, mime)
 
     /** A disk holding [onDisk] (path to size); the book folder is there unless [folderMounted] is false. */
-    private class FakeDisk(val onDisk: Map<String, Long>, val folderMounted: Boolean = true, val fail: Boolean = false) : LocalDisk {
+    private class FakeDisk(
+        val onDisk: Map<String, Long>,
+        val folderMounted: Boolean = true,
+        val fail: Boolean = false,
+        val internal: Boolean = false,
+    ) : LocalDisk {
+        override fun alwaysMounted(path: String): Boolean = internal
         override fun fileLength(path: String): Long? = if (fail) error("storage gone") else onDisk[path]
         override fun folderExists(path: String): Boolean = if (fail) error("storage gone") else folderMounted
     }
@@ -108,6 +114,46 @@ class RoomLocalBookFilesTest {
         assertEquals(DownloadStatus.DONE.name, row.status)
         assertNull(row.error)
         assertEquals(listOf(100L, 100L), dao.getFiles(book).map { it.doneBytes })
+    }
+
+    @Test
+    fun `a missing folder on internal storage means the files are gone and the download is marked failed`() = runTest {
+        val files = listOf(file("11", 0), file("12", 1))
+        val dao = InMemoryDownloadDao(listOf(download(DownloadStatus.DONE)), files)
+        val local = RoomLocalBookFiles(dao, FakeDisk(emptyMap(), folderMounted = false, internal = true), Dispatchers.Unconfined, nowMs = { 42L })
+
+        assertNull(local.complete(book))
+
+        val row = dao.get(book)!!
+        assertEquals(DownloadStatus.FAILED.name, row.status)
+        assertEquals(MISSING_FILES_TEXT, row.error)
+        assertEquals(listOf(0L, 0L), dao.getFiles(book).map { it.doneBytes }, "Try again fetches every file")
+    }
+
+    @Test
+    fun `the start-up pass marks restored downloads failed and leaves the ones on the phone and on a missing card`() = runTest {
+        val kept = DownloadFileEntity("abs_kept", "1", "1.mp3", "/d/abs_kept/1.mp3", 100, 100, 0, 0, "")
+        val lost = DownloadFileEntity("abs_lost", "1", "1.mp3", "/d/abs_lost/1.mp3", 100, 100, 0, 0, "")
+        val dao = InMemoryDownloadDao(
+            listOf(
+                DownloadEntity("abs_kept", "s1", DownloadStatus.DONE.name, 100, null, 1L),
+                DownloadEntity("abs_lost", "s1", DownloadStatus.DONE.name, 100, null, 1L),
+                DownloadEntity("abs_busy", "s1", DownloadStatus.DOWNLOADING.name, 100, null, 1L),
+            ),
+            listOf(kept, lost),
+        )
+        val disk = object : LocalDisk {
+            override fun fileLength(path: String): Long? = if ("kept" in path) 100L else null
+            override fun folderExists(path: String): Boolean = "kept" in path
+            override fun alwaysMounted(path: String): Boolean = "lost" in path
+        }
+        val local = RoomLocalBookFiles(dao, disk, Dispatchers.Unconfined, nowMs = { 42L })
+
+        DownloadReconciler(dao, local, kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined)).reconcile()
+
+        assertEquals(DownloadStatus.DONE.name, dao.get("abs_kept")!!.status)
+        assertEquals(DownloadStatus.FAILED.name, dao.get("abs_lost")!!.status)
+        assertEquals(DownloadStatus.DOWNLOADING.name, dao.get("abs_busy")!!.status)
     }
 
     @Test

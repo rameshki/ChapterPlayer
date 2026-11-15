@@ -9,6 +9,7 @@ import com.chapterplayer.data.stats.ListeningImport
 import com.chapterplayer.data.stats.ListeningRecorder
 import com.chapterplayer.data.downloads.DownloadLengthFiller
 import com.chapterplayer.data.downloads.DownloadQueueRestorer
+import com.chapterplayer.data.downloads.DownloadReconciler
 import com.chapterplayer.data.images.PlexImageServers
 import com.chapterplayer.data.images.installCoverImageLoader
 import com.chapterplayer.data.progress.PendingProgressFlusher
@@ -57,6 +58,8 @@ class ChapterPlayerApp : Application() {
         GlobalContext.get().get<ListeningImport>().start()
         // Downloads that were waiting or running before a reboot or process death carry on.
         GlobalContext.get().get<DownloadQueueRestorer>().start()
+        // A download whose files are gone from the phone (a restored backup) stops claiming to be downloaded.
+        GlobalContext.get().get<DownloadReconciler>().start()
         // Older downloads learn their file lengths from the server, so they can play offline.
         GlobalContext.get().get<DownloadLengthFiller>().start()
         // The home screen widgets follow the player, progress and downloads.
