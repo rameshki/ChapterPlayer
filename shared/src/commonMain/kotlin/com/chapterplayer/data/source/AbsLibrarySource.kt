@@ -26,8 +26,6 @@ import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.absProgressPatches
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.stats.ServerListeningStats
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /** The app's book ids for Audiobookshelf items start with this; the server only knows the part after it. */
 internal const val ABS_ID_PREFIX = "abs_"
@@ -42,14 +40,6 @@ class AbsLibrarySource(
 ) : LibrarySource {
 
     override val type: ServerSource = ServerSource.ABS
-
-    /**
-     * The sessions this app opened, by session id, to the book and whether the book was set finished since it opened
-     * (true: the session reports nothing more, since Audiobookshelf un-finishes a finished book when a report moves its
-     * time away from the end). A closed session is forgotten. Read and written under [sessionsLock].
-     */
-    private val sessions = HashMap<String, Pair<String, Boolean>>()
-    private val sessionsLock = Mutex()
 
     override suspend fun fetchBooks(server: ServerConfig): List<AudioBook> =
         booksIn(server, libraryIdsFor(server))
@@ -111,17 +101,12 @@ class AbsLibrarySource(
             api.getItem(server.baseUrl, bearerToken, bookId.toServerItemId())
         }.toBookDetails()
 
-    override suspend fun startPlayback(server: ServerConfig, bookId: String): PlaybackSession {
-        val session = authorizer.authorized(server) { bearerToken ->
+    override suspend fun startPlayback(server: ServerConfig, bookId: String): PlaybackSession =
+        authorizer.authorized(server) { bearerToken ->
             api.startPlayback(server.baseUrl, bearerToken, bookId.toServerItemId())
         }.toPlaybackSession(server.id, bookId, server.baseUrl)
-        sessionsLock.withLock { sessions[session.sessionId] = bookId to false }
-        return session
-    }
 
-    /** The close still goes (the session must end); after a finished mark the player stands at 0, where the server's time is too. */
     override suspend fun closePlayback(server: ServerConfig, sessionId: String, positionMs: Long, listenedMs: Long) {
-        sessionsLock.withLock { sessions.remove(sessionId) }
         authorizer.authorized(server) { bearerToken ->
             api.closeSession(server.baseUrl, bearerToken, sessionId, positionMs / 1000.0, listenedMs / 1000.0)
         }
@@ -135,8 +120,6 @@ class AbsLibrarySource(
         durationMs: Long,
         isPlaying: Boolean,
     ) {
-        // Set finished since it opened: nothing more is reported (a report could un-finish the book on the server).
-        if (sessionsLock.withLock { sessions[sessionId]?.second } == true) return
         authorizer.authorized(server) { bearerToken ->
             api.syncSession(server.baseUrl, bearerToken, sessionId, positionMs / 1000.0, listenedMs / 1000.0, durationMs / 1000.0)
         }
@@ -164,13 +147,10 @@ class AbsLibrarySource(
 
     /**
      * Sets the book's progress without a session ([absProgressPatches]: a book finished at 0 takes two patches, so the
-     * server holds it finished at 0). A live session of the book stops reporting when it is set finished and reports again
-     * when it is set not finished. Throws when a call fails (the queue tries again later).
+     * server holds it finished at 0). Live reports after a finished mark are held back by the repository
+     * (`reportAfterMark`). Throws when a call fails (the queue tries again later).
      */
     override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
-        sessionsLock.withLock {
-            for ((id, entry) in sessions.entries.toList()) if (entry.first == bookId) sessions[id] = bookId to isFinished
-        }
         for (patch in absProgressPatches(positionMs, durationMs, isFinished)) {
             authorizer.authorized(server) { bearerToken ->
                 api.patchProgress(server.baseUrl, bearerToken, bookId.toServerItemId(), patch)

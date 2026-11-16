@@ -84,6 +84,8 @@ class BookRepositoryMarkFinishedTest {
         /** When set, the GET answers this instead of the record (a server that keeps a finished book's old place). */
         var answer: Triple<Double, Boolean, Long>? = null
         var serverClock = 5_000L
+        /** The times (seconds) of every session report the server received. */
+        val syncs = mutableListOf<Double>()
         val json = headersOf(HttpHeaders.ContentType, "application/json")
 
         val engine = MockEngine { request ->
@@ -110,6 +112,16 @@ class BookRepositoryMarkFinishedTest {
                         HttpStatusCode.OK, json
                     )
                 }
+                HttpMethod.Post -> {
+                    // a session report: sets the time; a finished item whose time moves away from the end is un-finished
+                    val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
+                    val sent = body["currentTime"]!!.jsonPrimitive.content.toDouble()
+                    syncs += sent
+                    val old = record ?: Triple(0.0, false, 0L)
+                    val stillDone = old.second && !(sent != old.first && 9_000.0 - sent >= 10.0)
+                    record = Triple(sent, stillDone, serverClock)
+                    respond("OK", HttpStatusCode.OK, json)
+                }
                 else -> respond("{}", HttpStatusCode.NotFound, json)
             }
         }
@@ -133,6 +145,7 @@ class BookRepositoryMarkFinishedTest {
         progressView: (InMemoryProgressDao) -> com.chapterplayer.data.local.dao.ProgressDao = { it },
         loaded: String? = null,
         rewound: MutableList<String> = mutableListOf(),
+        onRewind: suspend (String) -> Unit = {},
         books: List<BookEntity> = listOf(book()),
         peers: Map<String, List<MirrorPeer>> = emptyMap(),
     ): Fixture {
@@ -150,7 +163,10 @@ class BookRepositoryMarkFinishedTest {
                 override suspend fun peersOf(bookId: String): List<MirrorPeer> = peers[bookId].orEmpty()
             },
             loadedBookId = { loaded },
-            rewindLoaded = { rewound += it },
+            rewindLoaded = {
+                rewound += it
+                onRewind(it)
+            },
         )
         return Fixture(repo, abs, progressDao, pendingDao, now, kicks)
     }
@@ -371,6 +387,88 @@ class BookRepositoryMarkFinishedTest {
     }
 
     private fun live(pos: Long, at: Long) = com.chapterplayer.data.model.ReadingProgress("abs_li_1", pos, 9_000_000L, at, false)
+
+    private val session = com.chapterplayer.data.playback.PlaybackSession("sess1", "srv1", "abs_li_1", 9_000_000L, 0L, emptyList(), emptyList())
+
+    @Test
+    fun `the pause report at the old place sent between the mark and the patches never reaches the server`() = runTest {
+        lateinit var f: Fixture
+        f = fixture(
+            listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1",
+            // the player pauses: the syncer's report of the place before the seek goes out before the patches
+            onRewind = { f.repo.syncPlayback(session, 4_000_500L, 1_000L, isPlaying = false).getOrThrow() },
+        )
+        f.abs.record = Triple(4_000.0, false, 50L)
+
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+
+        assertTrue(f.abs.syncs.isEmpty())
+        assertEquals(Triple(0.0, true, 5_000L), f.abs.record)
+        // the same report arriving after the patches is held back too, and so is the pause at the start
+        f.now[0] = 1_300L
+        f.repo.syncPlayback(session, 4_000_500L, 1_000L, isPlaying = false).getOrThrow()
+        f.now[0] = 1_500L
+        f.repo.syncPlayback(session, 300L, 0L, isPlaying = false).getOrThrow()
+        assertTrue(f.abs.syncs.isEmpty())
+        assertEquals(true, f.abs.record!!.second)
+    }
+
+    @Test
+    fun `listening again after the mark reports again and may un-finish the book on the server`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1")
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+        f.now[0] = 1_200L
+        f.repo.syncPlayback(session, 500L, 0L, isPlaying = false).getOrThrow()
+        assertTrue(f.abs.syncs.isEmpty())
+
+        // Play: the first report while playing is listening again; it goes out and the silence ends
+        f.now[0] = 12_000L
+        f.repo.syncPlayback(session, 10_000L, 10_000L, isPlaying = true).getOrThrow()
+        f.now[0] = 13_000L
+        f.repo.syncPlayback(session, 11_000L, 1_000L, isPlaying = false).getOrThrow()
+
+        assertEquals(listOf(10.0, 11.0), f.abs.syncs)
+        assertEquals(false, f.abs.record!!.second) // the server un-finishes it as Audiobookshelf does
+    }
+
+    @Test
+    fun `a save no longer kept as finished ends the silence`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1")
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+
+        // the book was loaded again after the mark: the save is the player's own, not the mark's
+        f.now[0] = 9_000L
+        f.repo.savePlaybackProgress(live(1_000L, 9_000L), loadedSinceMs = 8_000L)
+        f.repo.syncPlayback(session, 1_000L, 1_000L, isPlaying = false).getOrThrow()
+
+        assertEquals(listOf(1.0), f.abs.syncs)
+    }
+
+    @Test
+    fun `a failed rewind keeps the mark and logs one line with the book id only`() = runTest {
+        com.chapterplayer.data.diagnostics.ProblemLog.clear()
+        val f = fixture(
+            listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1",
+            onRewind = { throw IllegalStateException("player gone http://abs.test/ tok-secret") },
+        )
+
+        assertEquals(MarkOutcome.SYNCED, f.repo.markFinished("abs_li_1", true).getOrThrow())
+
+        assertEquals(0L, f.progressDao.get("abs_li_1")!!.positionMs)
+        val lines = com.chapterplayer.data.diagnostics.ProblemLog.snapshot()
+        assertTrue("Rewind after Mark as finished failed for abs_li_1: IllegalStateException" in lines, lines.toString())
+        assertTrue(lines.none { "tok-secret" in it || "abs.test" in it }) // the error's message is never logged
+        com.chapterplayer.data.diagnostics.ProblemLog.clear()
+    }
+
+    @Test
+    fun `a book that was not loaded when marked reports as always`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)))
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+        f.now[0] = 1_100L
+        f.repo.syncPlayback(session, 300L, 0L, isPlaying = false).getOrThrow()
+        assertEquals(listOf(0.3), f.abs.syncs)
+    }
 
     @Test
     fun `the player's save keeps a mark made while the book was loaded, and a later not finished mark clears it`() = runTest {

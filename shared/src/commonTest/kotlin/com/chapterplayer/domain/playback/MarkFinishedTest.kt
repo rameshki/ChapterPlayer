@@ -58,6 +58,22 @@ class MarkFinishedTest {
     }
 
     @Test
+    fun `after a mark the old place and the pause at the start are held back`() {
+        assertEquals(MarkedReport.SKIP, reportAfterMark(positionMs = 40_000, nowMs = 1_200, markedAtMs = 1_000, isPlaying = false))
+        // a tick that read the player before its pause
+        assertEquals(MarkedReport.SKIP, reportAfterMark(positionMs = 40_000, nowMs = 1_200, markedAtMs = 1_000, isPlaying = true))
+        assertEquals(MarkedReport.SKIP, reportAfterMark(positionMs = 500, nowMs = 1_200, markedAtMs = 1_000, isPlaying = false))
+        assertEquals(MarkedReport.SKIP, reportAfterMark(positionMs = 500, nowMs = 60_000, markedAtMs = 1_000, isPlaying = false))
+    }
+
+    @Test
+    fun `after a mark listening again is sent`() {
+        assertEquals(MarkedReport.SEND_AND_RESUME, reportAfterMark(positionMs = 10_000, nowMs = 12_000, markedAtMs = 1_000, isPlaying = true))
+        assertEquals(MarkedReport.SEND_AND_RESUME, reportAfterMark(positionMs = 500, nowMs = 1_500, markedAtMs = 1_000, isPlaying = true))
+        assertEquals(MarkedReport.SEND_AND_RESUME, reportAfterMark(positionMs = 8_000, nowMs = 9_000, markedAtMs = 1_000, isPlaying = false))
+    }
+
+    @Test
     fun `a save near the start or later or without a rewind is the real place`() {
         assertFalse(isSaveBeforeRewind(positionMs = MARK_REWIND_SEEN_MS, nowMs = 1_000, rewoundAtMs = 1_000))
         assertFalse(isSaveBeforeRewind(positionMs = 40_000, nowMs = 1_001 + MARK_REWIND_GRACE_MS, rewoundAtMs = 1_000))

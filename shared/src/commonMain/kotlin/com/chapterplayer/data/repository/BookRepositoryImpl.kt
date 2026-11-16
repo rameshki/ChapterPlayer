@@ -47,6 +47,9 @@ import com.chapterplayer.domain.playback.isFinishedAt
 import com.chapterplayer.domain.playback.mergeBookmarks
 import com.chapterplayer.domain.playback.keepsFinishedMark
 import com.chapterplayer.domain.playback.isSaveBeforeRewind
+import com.chapterplayer.domain.playback.MarkedReport
+import com.chapterplayer.domain.playback.reportAfterMark
+import com.chapterplayer.data.diagnostics.ProblemLog
 import com.chapterplayer.domain.playback.progressAfterServerAnswer
 import com.chapterplayer.domain.playback.mergeServerProgress
 import com.chapterplayer.domain.playback.progressAfterMark
@@ -278,6 +281,8 @@ class BookRepositoryImpl(
 
     override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long, isPlaying: Boolean): Result<Unit> =
         try {
+            // Held back after a finished mark of the loaded book (the old place must not un-finish it on the server).
+            if (!reportAllowed(session.bookId, positionMs, isPlaying)) return Result.success(Unit)
             val (server, source) = serverAndSource(session.serverId)
             Result.success(
                 source.syncPlayback(
@@ -644,6 +649,26 @@ class BookRepositoryImpl(
      */
     private val rewinds = HashMap<String, Long>()
 
+    /**
+     * The loaded book a finished mark silenced, to the time of that mark: its live reports go through `reportAfterMark`
+     * until one is listening again, a save no longer keeps the mark, or the book is marked not finished. Set before the
+     * rewind and before any server call. Read and written with [progressLock] held.
+     */
+    private val silenced = HashMap<String, Long>()
+
+    /** Whether a live report of [bookId] may go to its server (see [silenced]). */
+    private suspend fun reportAllowed(bookId: String, positionMs: Long, isPlaying: Boolean): Boolean =
+        progressLock.withLock {
+            val markedAt = silenced[bookId] ?: return@withLock true
+            when (reportAfterMark(positionMs, clock(), markedAt, isPlaying)) {
+                MarkedReport.SKIP -> false
+                MarkedReport.SEND_AND_RESUME -> {
+                    silenced.remove(bookId)
+                    true
+                }
+            }
+        }
+
     override suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long) {
         val peers = peersOf(progress.bookId)
         val loaded = loadedOrNull()
@@ -651,7 +676,10 @@ class BookRepositoryImpl(
             inTransaction {
                 val existing = progressDao.get(progress.bookId)?.toDomain()
                 val keep = keepsFinishedMark(existing, userMarks[progress.bookId], loadedSinceMs)
-                if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else userMarks.remove(progress.bookId)
+                if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else {
+                    userMarks.remove(progress.bookId)
+                    silenced.remove(progress.bookId)
+                }
                 // The player's place from before the rewind a finished mark asked for: the mark's 0 stays.
                 val beforeRewind = keep && isSaveBeforeRewind(progress.positionMs, clock(), rewinds[progress.bookId])
                 if (!beforeRewind) rewinds.remove(progress.bookId)
@@ -751,7 +779,13 @@ class BookRepositoryImpl(
                 local = progressAfterMark(progressDao.get(bookId)?.toDomain(), bookId, finished, book.durationMs, now)
                 progressDao.upsert(ProgressEntity.fromDomain(local))
                 if (finished) userMarks[bookId] = now else userMarks.remove(bookId)
-                if (finished && bookId == loaded) rewinds[bookId] = now else rewinds.remove(bookId)
+                if (finished && bookId == loaded) {
+                    rewinds[bookId] = now
+                    silenced[bookId] = now
+                } else {
+                    rewinds.remove(bookId)
+                    silenced.remove(bookId)
+                }
             }
         }
         return LocalMark(book, local, now, finished)
@@ -763,8 +797,9 @@ class BookRepositoryImpl(
             rewindLoaded(bookId)
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
-            // Nothing more to do: the row holds the mark.
+        } catch (e: Exception) {
+            // Nothing more to do: the row holds the mark. Only the book id and the error type are logged.
+            ProblemLog.add("Rewind after Mark as finished failed for $bookId: ${e::class.simpleName}")
         }
     }
 

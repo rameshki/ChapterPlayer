@@ -12,6 +12,33 @@ enum class MarkAction { MarkFinished, MarkNotFinished }
  */
 enum class MarkOutcome { SYNCED, QUEUED, LOCAL_ONLY, PARTIAL, PARTIAL_QUEUED }
 
+/**
+ * Whether a live report of a book whose finished mark silenced its session (made at [markedAtMs], see
+ * [reportAfterMark]) may go to the server.
+ */
+enum class MarkedReport {
+    /** Held back; the book stays silenced. */
+    SKIP,
+    /** Sent, and the book reports normally from now on (the person listens again). */
+    SEND_AND_RESUME,
+}
+
+/**
+ * What happens to a live report at [positionMs] made at [nowMs] ([isPlaying] false for the report on pause) of the loaded
+ * book after the user marked it finished at [markedAtMs]. Audiobookshelf un-finishes a finished book when a report moves
+ * its time away from the end, so the old place must never reach it:
+ * - the old place (more than [MARK_REWIND_SEEN_MS] from the start within [MARK_REWIND_GRACE_MS] of the mark, the player's
+ *   place from before the rewind, paused or a tick that came first) is skipped;
+ * - the pause at the start after the rewind is skipped (nothing was heard);
+ * - anything else (playing again, or a later report past the start) is listening again: sent, and the silence ends, so
+ *   that listening reaches the server (where it may genuinely un-finish the book).
+ */
+fun reportAfterMark(positionMs: Long, nowMs: Long, markedAtMs: Long, isPlaying: Boolean): MarkedReport = when {
+    isSaveBeforeRewind(positionMs, nowMs, markedAtMs) -> MarkedReport.SKIP
+    !isPlaying && positionMs <= MARK_REWIND_SEEN_MS -> MarkedReport.SKIP
+    else -> MarkedReport.SEND_AND_RESUME
+}
+
 /** "Mark as not finished" for a book that counts as finished, "Mark as finished" for everything else (no progress included). */
 fun markActionFor(progress: ReadingProgress?): MarkAction =
     if (progress != null && progress.isFinished) MarkAction.MarkNotFinished else MarkAction.MarkFinished
