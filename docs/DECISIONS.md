@@ -24,3 +24,33 @@ The owner's decisions, what was learnt on real servers and phones, and the stand
 - Public repo: no real server addresses, ids, titles, library names, tokens or passwords in commits, tests, docs or PR text (fixtures keep real structure with synthetic text). Scan every diff before pushing.
 - Tokens never in URLs, logs, exceptions, notifications or media metadata; auth headers are redacted in the HTTP logger; the Plex token goes only to the server's own verified origins; no redirects to another host with a token.
 - Never remove DRM. ComfyUI is irrelevant, never raise it. Pronouns: they/them unless stated.
+
+## Dated decision log (one line each; newest last)
+Format: date, decision, why, who. Earlier entries are in full above; this list is the quick index. Check it before re-opening a settled question.
+- 2026-10-29, Android first and clean, then iOS; no paid Apple account yet, free Sideloadly route for iOS builds (Robert).
+- 2026-11-01, a book on several servers ASKS which copy to play or download from; later split into "Download from" and "Play from"; a downloaded copy always plays first (Robert, found on his phone).
+- 2026-11-01, iPhone testing waits for an unmanaged device; his iPhone is MDM-managed and is never worked around (Robert).
+- 2026-11-07, licence Apache-2.0 (Robert).
+- 2026-11-07/08, dark theme "Navy cards" with the old warm tab bar kept (Robert preferred it); amber accent; widgets share the app's midnight look (Robert).
+- 2026-11-08, Jellyfin as a third source: design approved, one `.m4b` per book, Quick Connect and downloads in J3, three-copy merging and mirroring (Robert; spec `docs/superpowers/specs/2026-11-07-jellyfin-source-design.md`).
+- 2026-11-14, the app WILL go on Google Play (Robert; see `PLAY_RELEASE.md`).
+- 2026-11-14, English only; no string-resource migration (Robert).
+- 2026-11-14, Audible is skipped for now (Robert; `AUDIBLE.md` keeps the notes).
+- 2026-11-14, release builds get a "Report a problem" row that shares a redacted text report; no analytics, no network call (Robert).
+- 2026-11-14, iOS waits for an unmanaged phone; no simulator launch check in CI for now (Robert).
+- 2026-11-14, housekeeping approved: PR #61 closed, merged branches and worktrees deleted (Robert).
+- 2026-11-14, standing authorisation: merge PRs when CI is green and the review is clean (Robert: "Merge as you see fit then proceed").
+- 2026-11-14, hand over device testing to Claude over wireless debugging on his own phone and servers, debug app only (Robert).
+- 2026-11-15, the app font is the user's choice: Classic (default), Bookish, Inter, Manrope, Lexend, System (Robert).
+- 2026-11-16, Mark as finished sets the flag AND returns the book to 0:00; playing a finished book again makes it not finished, locally and on the servers (Robert; found on his phone).
+- 2026-11-16, Dependabot PRs are not merged unasked, because a green build does not show a behaviour change (Claude, to confirm with Robert).
+
+## Open decisions (what each one blocks)
+- Google Play account type and fee (a personal account needs a 12 tester, 14 day closed test; an organisation account does not): blocks the closed test and any Play release. Robert's call, "not just yet".
+- Whether Android Auto ships at launch: Play reviews Auto apps separately; blocks the Play listing. Open.
+- Whether the app asks for the battery-optimisation exemption in-app (Play restricts the permission) or only documents it: his phone killed playback overnight twice (system kills at 03:49 on 16 Nov and 02:49 on 13 Nov). Open.
+- Dependabot: which PRs to take (open PRs #104 and #105): blocks dependency freshness. Open.
+- detekt and Kover (review R14): detekt 2.x is still alpha against Kotlin 2.4 and AGP 9.3; blocks static analysis. Open.
+- The six unanswered questions at the end of `AUDIBLE.md`: block any Audible work; parked while Audible is skipped.
+- Whether Audiobookshelf's "finished at" time may become the time of the mark (finished-at-zero is sent as two requests): accepted for now, to confirm after he sees it on his server.
+- Whether to keep sideload APKs for outside testers once Play testing starts. Open.

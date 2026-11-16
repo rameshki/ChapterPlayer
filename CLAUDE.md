@@ -6,6 +6,7 @@ runs on iOS. The repo is public (Apache-2.0). Scope, stages and design direction
 **Start here in every session:** read `docs/PROJECT_STATUS.md` (what is merged and open, what is verified on devices,
 next steps, traps). Update it, this file and the area file you touched whenever a block of work finishes. Then read ONLY
 the `docs/architecture/<area>.md` files your task touches (map below); they hold the detail that used to live here.
+Before re-opening a settled question, or asking Robert something already decided, check `docs/DECISIONS.md` (dated decisions and the open ones).
 
 ## Priorities
 - Sources: Audiobookshelf > Jellyfin > Plex (Audible skipped for now; never remove DRM)

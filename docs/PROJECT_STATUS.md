@@ -18,7 +18,7 @@ Read this first in every session; it is short on purpose. History is in `CHANGEL
 
 ## Open work
 - No unmerged feature branches. Remote branches left to delete: `stage-4/font-choice`, `stage-j/j2`, `stage-r/*` (merged; turn on "Automatically delete head branches" in the repository settings, review R22).
-- Review findings still to do: see `docs/reviews/2026-11-14-project-review.md`. Done: R3, R4, R6 (built; phone check open), R8, R9 (this file). In progress or next: R7 (Report a problem), R14, R15, R17, R20, R5 (targetSdk) and R31 (Google Play readiness).
+- Review findings still to do: see `docs/reviews/2026-11-14-project-review.md`. Done: R3, R4, R5, R6 (J2 checked on the phone: progress, Mark as finished and not finished), R7, R8, R9, R15, R17, R18, R20, R31 checklist. In progress or next: R7 (Report a problem), R14, R15, R17, R20, R5 (targetSdk) and R31 (Google Play readiness).
 
 ## Next steps
 1. R7: a release-safe "Report a problem" row (redacted text report, crash trace saved locally, share sheet).
