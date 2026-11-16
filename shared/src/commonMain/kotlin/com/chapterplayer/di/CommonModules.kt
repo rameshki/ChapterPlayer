@@ -114,6 +114,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withContext
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -284,7 +285,17 @@ val commonRepositoryModule = module {
             // A save of one copy of a merged book moves the other copies' local rows (Settings switch, on by default).
             mirrorPeers = get(),
             // Looked up when a mirror is written, not when this is built (the player is in the platform's module).
-            loadedBookId = { get<PlaybackController>().state.value.bookId }
+            loadedBookId = { get<PlaybackController>().state.value.bookId },
+            // Mark as finished starts the book over: the player holding it pauses at 0 (on the main thread, as the player wants).
+            rewindLoaded = { bookId ->
+                withContext(Dispatchers.Main) {
+                    val player = get<PlaybackController>()
+                    if (player.state.value.bookId == bookId) {
+                        player.pause()
+                        player.seekTo(0L)
+                    }
+                }
+            },
         ) }
     // The other copies of a merged book, grouped like the lists (the user's corrections included).
     single<ProgressMirrorPeers> {

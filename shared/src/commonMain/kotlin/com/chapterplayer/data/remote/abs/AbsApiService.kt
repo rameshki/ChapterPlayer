@@ -14,6 +14,7 @@ import com.chapterplayer.data.remote.abs.dto.AbsListeningStatsDto
 import com.chapterplayer.data.remote.abs.dto.AbsLoginRequest
 import com.chapterplayer.data.remote.abs.dto.AbsMeDto
 import com.chapterplayer.data.remote.abs.dto.AbsPatchProgressRequest
+import com.chapterplayer.domain.playback.AbsProgressPatch
 import com.chapterplayer.data.remote.abs.dto.AbsProgressDto
 import com.chapterplayer.data.remote.abs.dto.AbsSyncSessionRequest
 import com.chapterplayer.data.remote.abs.dto.AbsLoginResponseDto
@@ -135,16 +136,19 @@ class AbsApiService(
             if (e.status == HttpStatusCode.NotFound) null else throw e
         }
 
-    /** Sets the user's progress on one item (PATCH /api/me/progress/{id}), without a session. Times in seconds. */
-    suspend fun patchProgress(
-        baseUrl: String, bearerToken: String, itemId: String,
-        positionSec: Double, durationSec: Double, isFinished: Boolean,
-    ) {
-        val fraction = if (durationSec > 0.0) (positionSec / durationSec).coerceIn(0.0, 1.0) else 0.0
+    /**
+     * Sets the user's progress on one item (PATCH /api/me/progress/{id}), without a session. Times in seconds; a null
+     * [AbsProgressPatch.currentTimeSec] is not sent, so the server keeps its time (see `absProgressPatches`).
+     */
+    suspend fun patchProgress(baseUrl: String, bearerToken: String, itemId: String, patch: AbsProgressPatch) {
         client.patch(endpoint(baseUrl, "api/me/progress/${itemId.encodeURLPathPart()}")) {
             header(HttpHeaders.Authorization, bearerToken)
             contentType(ContentType.Application.Json)
-            setBody(AbsPatchProgressRequest(currentTime = positionSec, duration = durationSec, progress = fraction, isFinished = isFinished))
+            setBody(
+                AbsPatchProgressRequest(
+                    currentTime = patch.currentTimeSec, duration = patch.durationSec, progress = patch.progress, isFinished = patch.isFinished
+                )
+            )
         }
     }
 

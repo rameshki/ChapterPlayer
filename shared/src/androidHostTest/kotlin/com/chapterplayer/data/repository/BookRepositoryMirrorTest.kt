@@ -194,7 +194,10 @@ class BookRepositoryMirrorTest {
         assertEquals(MarkOutcome.SYNCED, outcome.getOrNull())
         assertEquals(true, f.row("abs_1")?.isFinished)
         assertEquals(true, f.row("plex_1")?.isFinished)
-        assertEquals(listOf<List<Any>>(listOf("abs_1", 5 * HOUR, true)), f.abs.pushed)
+        // Every copy starts over at 0 and its server is sent finished at 0.
+        assertEquals(0L, f.row("abs_1")?.positionMs)
+        assertEquals(0L, f.row("plex_1")?.positionMs)
+        assertEquals(listOf<List<Any>>(listOf("abs_1", 0L, true)), f.abs.pushed)
         assertEquals("plex_1", f.plex.pushed.single()[0])
         assertEquals(true, f.plex.pushed.single()[2])
     }

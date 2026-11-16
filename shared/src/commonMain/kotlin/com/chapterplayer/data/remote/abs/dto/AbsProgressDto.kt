@@ -36,6 +36,9 @@ data class AbsMeDto(
 @Serializable
 data class AbsSyncSessionRequest(val currentTime: Double, val timeListened: Double, val duration: Double)
 
-/** The body of the progress patch; [progress] is the fraction from 0 to 1. */
+/**
+ * The body of the progress patch; [progress] is the fraction from 0 to 1. A null [currentTime] is left out of the body
+ * (defaults are not encoded), so the server keeps its time.
+ */
 @Serializable
-data class AbsPatchProgressRequest(val currentTime: Double, val duration: Double, val progress: Double, val isFinished: Boolean)
+data class AbsPatchProgressRequest(val duration: Double, val progress: Double, val isFinished: Boolean, val currentTime: Double? = null)

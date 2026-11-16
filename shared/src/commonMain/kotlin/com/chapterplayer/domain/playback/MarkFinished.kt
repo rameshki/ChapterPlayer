@@ -17,19 +17,43 @@ fun markActionFor(progress: ReadingProgress?): MarkAction =
     if (progress != null && progress.isFinished) MarkAction.MarkNotFinished else MarkAction.MarkFinished
 
 /**
- * What the local progress of a book becomes after the user marks it. Finished keeps the position (like the server does), not
- * finished starts over at 0 (the server resets the book too). Both carry [nowMs], so the newest-wins rules of the sync
+ * What the local progress of a book becomes after the user marks it. Both start over at 0: finished sets the flag and
+ * rewinds the book to the start (the owner's rule: a finished book is ready to be heard again from 00:00), not finished
+ * resets it too (the server resets the book as well). Both carry [nowMs], so the newest-wins rules of the sync
  * ([flushDecision], [mergeServerProgress], [coalescePending]) see the mark as the latest word.
  * [durationMs] is the book's length, used when there is no progress row yet.
  */
 fun progressAfterMark(current: ReadingProgress?, bookId: String, finished: Boolean, durationMs: Long, nowMs: Long): ReadingProgress {
     val duration = current?.durationMs?.takeIf { it > 0L } ?: durationMs
-    return if (finished) {
-        ReadingProgress(bookId, current?.positionMs ?: 0L, duration, nowMs, isFinished = true)
-    } else {
-        ReadingProgress(bookId, 0L, duration, nowMs, isFinished = false)
-    }
+    return ReadingProgress(bookId, 0L, duration, nowMs, isFinished = finished)
 }
+
+/**
+ * What the phone keeps after the server took a mark and answered with [answer]. A finished answer to a finished mark keeps
+ * the mark's place (0): servers keep a finished book's old place (Audiobookshelf) or its end (Plex), and that must not
+ * bring the old time back. Anything else is the server's word (an un-finished book is reset to 0 there). The time stays
+ * the mark's, so newer listening still wins.
+ */
+fun progressAfterServerAnswer(mark: ReadingProgress, answer: ServerProgress): ReadingProgress {
+    val duration = answer.durationMs.takeIf { it > 0L } ?: mark.durationMs
+    val position = if (mark.isFinished && answer.isFinished) mark.positionMs else answer.positionMs
+    return ReadingProgress(mark.bookId, position, duration, mark.lastPlayedAt, answer.isFinished)
+}
+
+/** How long after a finished mark that rewound the loaded book a save away from the start is read as the place before the rewind. */
+const val MARK_REWIND_GRACE_MS = 5_000L
+
+/** A save this close to the start counts as the player after the rewind. */
+const val MARK_REWIND_SEEN_MS = 2_000L
+
+/**
+ * Whether a save of the loaded book at [positionMs] made at [nowMs] still carries the place from before the rewind that a
+ * finished mark at [rewoundAtMs] asked for (the player pauses and seeks asynchronously, so the saver can still report
+ * the old place once). Such a save is stored at 0 instead. A save near the start, or one after [MARK_REWIND_GRACE_MS],
+ * is the player's real place (the person may be listening again).
+ */
+fun isSaveBeforeRewind(positionMs: Long, nowMs: Long, rewoundAtMs: Long?): Boolean =
+    rewoundAtMs != null && positionMs > MARK_REWIND_SEEN_MS && nowMs - rewoundAtMs in 0L..MARK_REWIND_GRACE_MS
 
 /**
  * Whether the periodic save of the loaded book must keep the finished flag. Only a mark the user made in this session counts:

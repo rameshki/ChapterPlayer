@@ -96,8 +96,12 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
     }
     // Only two mirrors make a mirror (queued mirrors may be dropped): the copy's own listening or the user's mark never does.
     val stillMirror = existing.mirrorOf != null && incoming.mirrorOf != null && !existingUserMark && !incomingUserMark
+    // A finished mark starts the book over at 0 (see [progressAfterMark]); a later ordinary position (the player's place
+    // before its rewind, or listening again while the mark holds) does not move the place the mark sends.
+    val keepMarkPlace = newer && existingUserMark && existing.markedFinished == true && incoming.markedFinished == null && mark == true
     return if (newer) {
-        incoming.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark, mirrorOf = if (stillMirror) incoming.mirrorOf else null)
+        val place = if (keepMarkPlace) incoming.copy(positionMs = existing.positionMs) else incoming
+        place.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark, mirrorOf = if (stillMirror) incoming.mirrorOf else null)
     } else {
         // Keep existing metadata but update the cumulative listened time
         existing.copy(listenedMs = totalListened, markedFinished = mark, mirrorOf = if (stillMirror) existing.mirrorOf else null)
@@ -120,11 +124,14 @@ fun flushDecision(pending: PendingProgress, server: ServerProgress?): FlushDecis
  * A server time later than [nowMs] (a server clock ahead) counts as [nowMs], so it cannot block every later save.
  * A mirrored local row (merged sources) is kept when the server only echoes it: the same finished state and a position
  * within [MIRROR_ECHO_MS] (the app pushed it there), so the lists keep showing the copy really played.
+ * A finished server row is no news for a finished local row: the phone's row stays, so a server that keeps a finished
+ * book's old place (Audiobookshelf) or its end (Plex) never moves a book marked finished at 0 (see [progressAfterMark]).
  */
 fun mergeServerProgress(bookId: String, local: ReadingProgress?, server: ServerProgress, hasPendingLocal: Boolean, nowMs: Long = Long.MAX_VALUE): ReadingProgress? {
     if (hasPendingLocal) return null
     val stamp = minOf(server.updatedAtMs, nowMs)
     if (local != null && local.lastPlayedAt >= stamp) return null
+    if (local != null && local.isFinished && server.isFinished) return null
     if (local != null && local.mirrored && local.isFinished == server.isFinished &&
         kotlin.math.abs(local.positionMs - server.positionMs) <= MIRROR_ECHO_MS
     ) return null

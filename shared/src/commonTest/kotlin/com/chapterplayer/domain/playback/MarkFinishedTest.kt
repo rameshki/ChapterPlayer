@@ -26,9 +26,43 @@ class MarkFinishedTest {
     // ---- local result ----
 
     @Test
-    fun `finished keeps the position - sets the flag and the time`() {
+    fun `finished starts over at zero - sets the flag and the time`() {
         val after = progressAfterMark(progress(40_000, 5), "a", finished = true, durationMs = 1L, nowMs = 900)
-        assertEquals(ReadingProgress("a", 40_000, 100_000, 900, isFinished = true), after)
+        assertEquals(ReadingProgress("a", 0, 100_000, 900, isFinished = true), after)
+    }
+
+    // ---- what the phone keeps from the server's answer ----
+
+    @Test
+    fun `a finished answer keeps the mark at zero whatever place the server kept`() {
+        val mark = ReadingProgress("a", 0, 100_000, 900, isFinished = true)
+        // Audiobookshelf keeps the old place and Plex answers with the end: neither brings it back
+        assertEquals(mark, progressAfterServerAnswer(mark, ServerProgress(40_000, 100_000, true, 950)))
+        assertEquals(mark, progressAfterServerAnswer(mark, ServerProgress(100_000, 100_000, true, 950)))
+    }
+
+    @Test
+    fun `an answer that is not finished is what the server says with the time of the mark`() {
+        val mark = ReadingProgress("a", 0, 100_000, 900, isFinished = true)
+        assertEquals(ReadingProgress("a", 7_000, 100_000, 900, false), progressAfterServerAnswer(mark, ServerProgress(7_000, 0, false, 950)))
+        val unmark = ReadingProgress("a", 0, 100_000, 900, isFinished = false)
+        assertEquals(ReadingProgress("a", 0, 120_000, 900, false), progressAfterServerAnswer(unmark, ServerProgress(0, 120_000, false, 950)))
+    }
+
+    // ---- the player's place from before the rewind ----
+
+    @Test
+    fun `a save away from the start soon after the rewind is the old place`() {
+        assertTrue(isSaveBeforeRewind(positionMs = 40_000, nowMs = 1_000, rewoundAtMs = 1_000))
+        assertTrue(isSaveBeforeRewind(positionMs = 40_000, nowMs = 1_000 + MARK_REWIND_GRACE_MS, rewoundAtMs = 1_000))
+    }
+
+    @Test
+    fun `a save near the start or later or without a rewind is the real place`() {
+        assertFalse(isSaveBeforeRewind(positionMs = MARK_REWIND_SEEN_MS, nowMs = 1_000, rewoundAtMs = 1_000))
+        assertFalse(isSaveBeforeRewind(positionMs = 40_000, nowMs = 1_001 + MARK_REWIND_GRACE_MS, rewoundAtMs = 1_000))
+        assertFalse(isSaveBeforeRewind(positionMs = 40_000, nowMs = 900, rewoundAtMs = 1_000))
+        assertFalse(isSaveBeforeRewind(positionMs = 40_000, nowMs = 1_000, rewoundAtMs = null))
     }
 
     @Test
@@ -67,7 +101,9 @@ class MarkFinishedTest {
     @Test
     fun `an explicit mark survives a newer ordinary position`() {
         val merged = coalescePending(pending(5_000, 10, marked = true), pending(7_000, 20, listened = 3_000))
-        assertEquals(7_000, merged.positionMs)
+        // a finished mark keeps its place: the later position is the player's place before the rewind or listening again
+        assertEquals(5_000, merged.positionMs)
+        assertEquals(20, merged.updatedAtMs)
         assertEquals(true, merged.markedFinished)
         assertEquals(3_000, merged.listenedMs)
     }
@@ -77,6 +113,20 @@ class MarkFinishedTest {
         val merged = coalescePending(pending(7_000, 10), pending(5_000, 20, marked = false))
         assertEquals(false, merged.markedFinished)
         assertEquals(5_000, merged.positionMs)
+    }
+
+    @Test
+    fun `a not finished mark takes a newer ordinary position as always`() {
+        val merged = coalescePending(pending(0, 10, marked = false), pending(7_000, 20))
+        assertEquals(7_000, merged.positionMs)
+        assertEquals(false, merged.markedFinished)
+    }
+
+    @Test
+    fun `a finished mark at zero queued before the old player place still sends zero`() {
+        val merged = coalescePending(pending(0, 10, marked = true), pending(40_000, 11))
+        assertEquals(0, merged.positionMs)
+        assertEquals(true, merged.markedFinished)
     }
 
     @Test
