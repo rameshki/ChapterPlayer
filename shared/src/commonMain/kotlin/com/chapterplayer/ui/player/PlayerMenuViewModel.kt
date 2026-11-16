@@ -13,7 +13,7 @@ import com.chapterplayer.data.NoDownloadStates
 import com.chapterplayer.data.merge.BookMergeRepository
 import com.chapterplayer.data.merge.SourceMerging
 import com.chapterplayer.domain.browse.entryContaining
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import com.chapterplayer.domain.browse.BrowseItem
 import com.chapterplayer.domain.browse.PersonLink
 import com.chapterplayer.domain.browse.SeriesLink
@@ -86,6 +86,8 @@ class PlayerMenuViewModel(
     dispatcher: CoroutineDispatcher,
     merging: SourceMerging = SourceMerging.None,
     private val merges: BookMergeRepository? = null,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, NoDownloadStates(), merging),
 ) : ViewModel() {
 
     private val confirmingRemove = MutableStateFlow(false)
@@ -105,12 +107,12 @@ class PlayerMenuViewModel(
         }
     }
 
-    // The loaded book's other copies; download states do not change who is in a group, so none are read here.
+    // The loaded book's other copies (download states do not change who is in a group).
     private val otherCopies = controller.state.map { it.bookId }.distinctUntilChanged().flatMapLatest { id ->
         if (id == null || merges == null) flowOf(emptyList())
-        else observeBrowseItems(books, NoDownloadStates(), merging).map { all ->
+        else library.items.map { all ->
             entryContaining(all, id)?.takeIf { it.isMerged }?.allSources?.map { it.book.id }?.minus(id).orEmpty()
-        }
+        }.distinctUntilChanged()
     }
 
     val state: StateFlow<PlayerMenuState> = combine(facts, confirmingRemove, message, otherCopies) { facts, confirming, text, others ->

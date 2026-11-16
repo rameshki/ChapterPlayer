@@ -21,7 +21,7 @@ import com.chapterplayer.domain.downloads.finishedDownloadsToRemove
 import com.chapterplayer.domain.downloads.removeFinishedQuestion
 import com.chapterplayer.domain.downloads.removeFinishedResult
 import com.chapterplayer.domain.downloads.removeFinishedSummary
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +60,8 @@ class FinishedDownloadsViewModel(
     settings: AppSettings,
     merging: SourceMerging = SourceMerging.None,
     upNext: UpNextRepository = NoUpNext,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     /** What qualifies now, with the sizes of the finished downloads (by book id) for the freed figure. */
@@ -80,7 +82,7 @@ class FinishedDownloadsViewModel(
     private val latest = MutableStateFlow(Pick(FinishedDownloads(emptyList(), 0L), emptyMap()))
 
     private val candidates = combine(
-        observeBrowseItems(books, downloads, merging), doneBytes, loadedBookId, upNext.queue, playRule,
+        library.items, doneBytes, loadedBookId, upNext.queue, playRule,
     ) { items, bytes, loaded, queue, canPlay ->
         Pick(finishedDownloadsToRemove(items, bytes, loaded, queue, canPlay), bytes)
     }.flowOn(dispatcher).onEach { latest.value = it }

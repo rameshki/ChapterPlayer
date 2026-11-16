@@ -18,7 +18,7 @@ import com.chapterplayer.domain.stats.TopKind
 import com.chapterplayer.domain.stats.buildStats
 import com.chapterplayer.domain.stats.epochDayOf
 import com.chapterplayer.domain.stats.importOutcomeText
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +58,8 @@ class StatsViewModel(
     merging: SourceMerging = SourceMerging.None,
     /** How often the page checks whether the day changed (an open page follows midnight). */
     tickMs: Long = 60_000L,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     private val period = MutableStateFlow(StatsPeriod.MONTH)
@@ -81,7 +83,7 @@ class StatsViewModel(
     }.distinctUntilChanged()
 
     private val input = combine(
-        observeBrowseItems(books, downloads, merging), log.observeLog(), imported, overview.storageUsedBytes(), today
+        library.items, log.observeLog(), imported, overview.storageUsedBytes(), today
     ) { items, entries, (days, importedItems), bytes, day ->
         StatsInput(entries, days, importedItems, items, bytes, day, zone)
     }

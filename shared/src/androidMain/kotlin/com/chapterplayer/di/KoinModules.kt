@@ -190,8 +190,9 @@ val viewModelModule = module {
 
 val widgetModule = module {
     // What the home screen widgets show, and the Now Playing buttons (they act on the loaded book only).
-    // The app scope lets the three widgets share one merged-library computation while any of them is collected.
-    single { WidgetStates(get(), get(), get(), get(), get(), merging = get(), scope = get(AppScopeQualifier)) }
+    // The merged list comes from the app's MergedLibrary; the app scope lets the three widgets share one combination of
+    // it with the network and Downloaded only while any of them is collected.
+    single { WidgetStates(get(), get(), get(), get(), get(), merging = get(), scope = get(AppScopeQualifier), merged = get()) }
     single { WidgetActions(get()) }
     // The application starts it: redraws the widgets when what they show changes (not on every position tick).
     single<WidgetHost> { GlanceWidgetHost(androidContext(), get(AppScopeQualifier)) }

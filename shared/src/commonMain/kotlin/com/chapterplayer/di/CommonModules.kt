@@ -9,6 +9,7 @@ import com.chapterplayer.data.bookmarks.BookmarkSyncer
 import com.chapterplayer.data.bookmarks.HistoryRecorder
 import com.chapterplayer.data.local.dao.BookDao
 import com.chapterplayer.data.merge.AppSourceMerging
+import com.chapterplayer.data.merge.MergedLibrary
 import com.chapterplayer.data.merge.MergedProgressPeers
 import com.chapterplayer.data.merge.ProgressMirrorPeers
 import com.chapterplayer.data.merge.SourceMerging
@@ -324,6 +325,8 @@ val commonBrowseModule = module {
     }
     // Joins a book several servers have into one entry, for every list (Library, Home, Search, details, car, widgets).
     single<SourceMerging> { AppSourceMerging(get(), get(), get(), get(), get()) }
+    // The merged library itself: worked out once per change and shared by every list, the car, the widgets and Up next.
+    single { MergedLibrary(get(), get(), get(), get(AppScopeQualifier)) }
 }
 
 /**
@@ -363,7 +366,7 @@ val commonPlaybackModule = module {
     single { UpNextNotices() }
     single {
         UpNextAdvancer(
-            get(), get(), get(), get(), get(), get(), get(), get(AppScopeQualifier), get(), merging = get(),
+            get(), get(), get(), get(), get(), get(), get(), get(AppScopeQualifier), get(), merging = get(), library = get(),
             // iOS keeps the app awake for the advance (nothing plays while it fetches); Android needs nothing.
             background = getOrNull<BackgroundWork>() ?: BackgroundWork.None,
         )
@@ -383,12 +386,12 @@ val commonViewModelModule = module {
         )
     }
     viewModelOf(::OfflineStateViewModel)
-    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get(), favourites = get()) }
+    viewModel { LibraryViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), merging = get(), favourites = get(), library = get()) }
     viewModelOf(::LibrariesViewModel)
     // Built with parametersOf(kind, groupKey) by the group detail screen.
     viewModel { params ->
         GroupDetailViewModel(
-            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()
+            params.get<LibraryView>(), params.get<String>(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), library = get(),
         )
     }
     // Built with parametersOf(bookId) by the book details screen, and parametersOf(bookId, true) by the book long-press menu.
@@ -397,29 +400,30 @@ val commonViewModelModule = module {
             merging = get(), merges = get(), servers = get(), features = get(), favourites = get(), upNext = get(),
             quickActions = params.getOrNull<Boolean>() ?: false,
             copyDescriptions = get(),
+            library = get(),
         ) }
     // The other copies' descriptions a book details page asked for, kept for the app session.
     single { CopyDescriptions() }
     viewModel { PlayerViewModel(get(), get(), get(), get(IoDispatcherQualifier), get<PlaybackStarter>()) }
     // The player's Up next sheet.
-    viewModel { UpNextViewModel(get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
-    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get()) }
+    viewModel { UpNextViewModel(get(), get(), get(), get(IoDispatcherQualifier), merging = get(), library = get()) }
+    viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get(), library = get()) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
     // The statistics page; its figures are worked out off the main thread.
-    viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get()) }
+    viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), library = get()) }
     viewModel { DownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
     // "Remove finished downloads" on the Downloads tab and Settings, Downloads and offline.
-    viewModel { FinishedDownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), merging = get(), upNext = get()) }
+    viewModel { FinishedDownloadsViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), get(), get(), merging = get(), upNext = get(), library = get()) }
     // Selection mode of a book list (Library, the group pages): one per screen.
     viewModel { BookSelectionViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), overview = get(), merging = get(), favourites = get(), upNext = get()) }
-    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), upNext = get()) }
-    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get()) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), upNext = get(), library = get()) }
+    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), favourites = get(), library = get()) }
     // The Diagnostics page (debug builds only reach it): read only tables, and the log the report is written to.
     single<DiagnosticsData> { RoomDiagnosticsData(get(), get()) }
     single<DiagnosticsLogger> { PlatformDiagnosticsLogger() }
     // Settings, About, Report a problem (every build): a redacted text report the person shares; nothing is sent.
     single { ProblemReporter(get(), get(), get(), get(), get()) }
-    viewModel { DiagnosticsViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier)) }
+    viewModel { DiagnosticsViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), library = get()) }
 }
 
 /** Every common module; a platform adds its own (Android: `sharedModules` includes these; iOS: `initKoin`). */

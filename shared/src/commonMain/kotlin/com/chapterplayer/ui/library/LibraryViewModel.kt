@@ -30,7 +30,7 @@ import com.chapterplayer.domain.browse.serverChipLabel
 import com.chapterplayer.domain.browse.serverFilterOptions
 import com.chapterplayer.domain.browse.toggleServer
 import com.chapterplayer.domain.browse.ServerFilterOption
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +57,8 @@ class LibraryViewModel(
     private val savedState: SavedStateHandle = SavedStateHandle(),
     merging: SourceMerging = SourceMerging.None,
     favourites: FavouritesRepository = NoFavourites,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     // Kept in the saved state so the chosen view comes back after the process was killed, and in the settings so it
@@ -100,7 +102,7 @@ class LibraryViewModel(
     )
 
     private val content = combine(
-        observeBrowseItems(books, downloads, merging),
+        library.items,
         books.observeCollections(),
         combine(queryStore.settledQuery, favourites.favouriteIds, ::Pair),
         _view.filterNotNull(),

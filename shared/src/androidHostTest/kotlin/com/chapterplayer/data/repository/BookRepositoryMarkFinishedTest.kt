@@ -550,16 +550,16 @@ class BookRepositoryMarkFinishedTest {
 
         f.repo.markFinished("abs_li_1", true).getOrThrow()
 
-        assertEquals(listOf("abs_li_2"), rewound)
+        assertEquals(listOf("abs_li_2"), rewound, "rewound=$rewound")
         for (id in listOf("abs_li_1", "abs_li_2")) {
             val row = f.progressDao.get(id)!!
-            assertTrue(row.isFinished, id)
-            assertEquals(0L, row.positionMs, id)
+            assertTrue(row.isFinished, "$id row=$row")
+            assertEquals(0L, row.positionMs, "$id row=$row")
         }
         // the loaded copy's old place reported once more stays at 0
         f.now[0] = 1_200L
         f.repo.savePlaybackProgress(live(4_100_500L, 1_200L).copy(bookId = "abs_li_2"), loadedSinceMs = 900L)
-        assertEquals(0L, f.progressDao.get("abs_li_2")!!.positionMs)
+        assertEquals(0L, f.progressDao.get("abs_li_2")!!.positionMs, "after the stale save row=${f.progressDao.get("abs_li_2")}")
     }
 
     @Test

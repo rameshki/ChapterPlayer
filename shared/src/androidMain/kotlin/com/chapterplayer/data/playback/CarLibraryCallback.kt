@@ -43,7 +43,7 @@ import com.chapterplayer.domain.car.resolveCarRequest
 import com.chapterplayer.domain.car.resumeLast
 import com.chapterplayer.domain.playback.isOwnTrackRequest
 import com.chapterplayer.domain.playback.locate
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -89,6 +89,8 @@ class CarLibraryCallback(
     private val merging: SourceMerging = SourceMerging.None,
     /** Up next: the car's "Up next" folder lists it while it has a book. */
     private val upNext: UpNextRepository = NoUpNext,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : MediaLibrarySession.Callback {
 
     // Book rows point at the app's cover provider; the car reads covers there.
@@ -344,7 +346,8 @@ class CarLibraryCallback(
 
     // One consistent view of the visible books (the same set Home and Library show) per call.
     private suspend fun snapshot(): Snapshot = withContext(Dispatchers.Default) {
-        val items = observeBrowseItems(books, downloads, merging).first()
+        // The shared merged list (it can lag a write just committed by a few ms; the car's next request sees it).
+        val items = library.items.first()
         val collections = books.observeCollections().first()
         val online = connectivity.isOnline.first()
         val queued = resolveUpNext(upNext.queue.first(), items).entries.map { it.entry }

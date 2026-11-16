@@ -12,7 +12,7 @@ import com.chapterplayer.domain.browse.formatLength
 import com.chapterplayer.domain.playback.moveInUpNext
 import com.chapterplayer.domain.playback.removeFromUpNext
 import com.chapterplayer.domain.playback.resolveUpNext
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.SharingStarted
@@ -62,9 +62,11 @@ class UpNextViewModel(
     private val upNext: UpNextRepository,
     dispatcher: CoroutineDispatcher,
     merging: SourceMerging = SourceMerging.None,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
-    val uiState: StateFlow<UpNextUiState> = combine(observeBrowseItems(books, downloads, merging), upNext.queue) { items, queue ->
+    val uiState: StateFlow<UpNextUiState> = combine(library.items, upNext.queue) { items, queue ->
         UpNextUiState(upNextRows(queue, items), loading = false)
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UpNextUiState())
 

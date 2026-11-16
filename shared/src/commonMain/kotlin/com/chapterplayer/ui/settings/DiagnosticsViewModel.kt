@@ -22,7 +22,7 @@ import com.chapterplayer.domain.diagnostics.ServerReadState
 import com.chapterplayer.domain.diagnostics.buildReport
 import com.chapterplayer.domain.diagnostics.describeMerge
 import com.chapterplayer.domain.playback.PendingProgress
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,6 +71,8 @@ class DiagnosticsViewModel(
     private val connectivity: ConnectivityMonitor,
     private val dispatcher: CoroutineDispatcher,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     private class Base(
@@ -101,7 +103,7 @@ class DiagnosticsViewModel(
     private val session = MutableStateFlow(Session())
 
     private val base: StateFlow<Base> = combine(
-        observeBrowseItems(books, downloads, merging), merging.context, servers.observeAll()
+        library.items, merging.context, servers.observeAll()
     ) { items, context, serverList ->
         Base(items, context, serverList.associate { it.id to it.name })
     }.flowOn(dispatcher).stateIn(viewModelScope, SharingStarted.Eagerly, Base())

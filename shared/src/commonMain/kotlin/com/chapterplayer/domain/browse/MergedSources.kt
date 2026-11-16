@@ -115,6 +115,9 @@ private fun pairKey(a: String, b: String): Pair<String, String> = if (a <= b) a 
 /**
  * One entry per group of [items] that are the same book, at the place of the group's first member in [items];
  * a book with no match passes through unchanged. See the file comment for the rules.
+ * The work is in two steps: [duplicateGroups] (which books are one entry: the books and [overrides] only, the costly
+ * part) and [MergeGroups.entries] (the primary, member order and progress of each entry: cheap). `MergedLibrary` keeps
+ * the groups while only progress, downloads or the choices change.
  */
 fun mergeDuplicates(
     items: List<BrowseItem>,
@@ -123,9 +126,44 @@ fun mergeDuplicates(
     onlineServerIds: Set<String>,
 ): List<BrowseItem> {
     if (items.size < 2) return items
-    // One item per id (a repeated id cannot be two sources).
-    val byId = LinkedHashMap<String, BrowseItem>()
-    for (item in items) if (item.book.id !in byId) byId[item.book.id] = item
+    return duplicateGroups(items.map { it.book }, overrides).entries(items, playChoice, onlineServerIds)
+}
+
+/**
+ * Which books are one entry, as the ids of each entry's members, one slot per entry in the order the merged list
+ * shows them (the place of each group's first book). It depends only on the books (ids, titles, authors, lengths and
+ * servers) and the user's corrections, never on progress, downloads or the source choices.
+ */
+class MergeGroups internal constructor(internal val slots: List<List<String>>) {
+    /** How many entries the merged list has. */
+    val size: Int get() = slots.size
+
+    /**
+     * The merged list for [items] (the books these groups were made from, each with its progress and download state):
+     * a book alone passes through unchanged, a group becomes one entry (see the file comment).
+     */
+    fun entries(items: List<BrowseItem>, playChoice: SourceChoice, onlineServerIds: Set<String>): List<BrowseItem> {
+        val byId = HashMap<String, BrowseItem>(items.size * 2)
+        for (item in items) if (item.book.id !in byId) byId[item.book.id] = item
+        val result = ArrayList<BrowseItem>(slots.size)
+        for (slot in slots) {
+            if (slot.size == 1) { byId[slot[0]]?.let { result += it }; continue }
+            val members = slot.mapNotNull { byId[it] }
+            when (members.size) {
+                0 -> Unit
+                1 -> result += members[0]
+                else -> result += entryOf(members, playChoice, onlineServerIds)
+            }
+        }
+        return result
+    }
+}
+
+/** The groups of [books] that are the same book, with [overrides] applied (see the file comment for the rules). */
+fun duplicateGroups(books: List<com.chapterplayer.data.model.AudioBook>, overrides: MergeOverrides): MergeGroups {
+    // One book per id (a repeated id cannot be two sources).
+    val byId = LinkedHashMap<String, com.chapterplayer.data.model.AudioBook>()
+    for (book in books) if (book.id !in byId) byId[book.id] = book
     val ids = byId.keys.sorted()
     val index = HashMap<String, Int>()
     ids.forEachIndexed { i, id -> index[id] = i }
@@ -138,7 +176,7 @@ fun mergeDuplicates(
     // Automatic candidates: same title and first author, then the length check.
     val buckets = HashMap<String, MutableList<String>>()
     for (id in ids) {
-        val book = byId.getValue(id).book
+        val book = byId.getValue(id)
         val title = normalisedTitle(book.title)
         val author = normalisedFirstAuthor(book.author)
         if (title.isEmpty() || author.isEmpty()) continue
@@ -148,8 +186,8 @@ fun mergeDuplicates(
     val automatic = mutableListOf<Candidate>()
     for (bucket in buckets.values) {
         for (i in bucket.indices) for (j in i + 1 until bucket.size) {
-            val a = byId.getValue(bucket[i]).book
-            val b = byId.getValue(bucket[j]).book
+            val a = byId.getValue(bucket[i])
+            val b = byId.getValue(bucket[j])
             if (a.serverId == b.serverId || !sameBook(a, b)) continue
             val key = pairKey(a.id, b.id)
             if (key in splits) continue
@@ -172,8 +210,8 @@ fun mergeDuplicates(
         if (ra == rb) return
         val left = members[ra]
         val right = members[rb]
-        val leftServers = left.mapTo(HashSet()) { byId.getValue(it).book.serverId }
-        if (right.any { byId.getValue(it).book.serverId in leftServers }) return
+        val leftServers = left.mapTo(HashSet()) { byId.getValue(it).serverId }
+        if (right.any { byId.getValue(it).serverId in leftServers }) return
         if (left.any { l -> right.any { r -> pairKey(l, r) in splits } }) return
         val (root, child) = if (ra < rb) ra to rb else rb to ra
         parent[child] = root
@@ -184,15 +222,15 @@ fun mergeDuplicates(
     for (c in automatic) tryJoin(c.a, c.b)
 
     val emitted = HashSet<Int>()
-    val result = ArrayList<BrowseItem>(byId.size)
-    for (item in byId.values) {
-        val root = find(index.getValue(item.book.id))
+    val slots = ArrayList<List<String>>(byId.size)
+    for (id in byId.keys) {
+        val root = find(index.getValue(id))
         val group = members[root]
-        if (group.size < 2) { result += item; continue }
+        if (group.size < 2) { slots += listOf(id); continue }
         if (!emitted.add(root)) continue
-        result += entryOf(group.map { byId.getValue(it) }, playChoice, onlineServerIds)
+        slots += group.toList()
     }
-    return result
+    return MergeGroups(slots)
 }
 
 private fun memberOrder(playChoice: SourceChoice, onlineServerIds: Set<String>): Comparator<BrowseItem> =
@@ -210,7 +248,7 @@ private fun memberOrder(playChoice: SourceChoice, onlineServerIds: Set<String>):
  * The primary is the copy [chosenPlaySource] picks when it decides (a downloaded copy, or the play choice's copy that
  * can play), so the lists and the details page agree; when it asks, it is the first in member order.
  */
-private fun entryOf(members: List<BrowseItem>, playChoice: SourceChoice, onlineServerIds: Set<String>): BrowseItem {
+internal fun entryOf(members: List<BrowseItem>, playChoice: SourceChoice, onlineServerIds: Set<String>): BrowseItem {
     val ordered = members.map { it.copy(sources = emptyList()) }.sortedWith(memberOrder(playChoice, onlineServerIds))
     val ranked = withPrimary(ordered.first(), ordered)
     val chosen = chosenPlaySource(ranked, playChoice, onlineServerIds) ?: return ranked
