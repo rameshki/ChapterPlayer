@@ -20,7 +20,7 @@ import com.chapterplayer.domain.browse.ProgressFilter
 import com.chapterplayer.domain.browse.applyQuery
 import com.chapterplayer.domain.browse.isDimmed
 import com.chapterplayer.domain.browse.isFiltering
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -65,6 +65,8 @@ class GroupDetailViewModel(
     dispatcher: CoroutineDispatcher,
     merging: SourceMerging = SourceMerging.None,
     favourites: FavouritesRepository = NoFavourites,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     /** The Downloaded chip is on and none of the group's books is on the phone (the Library list shows the same text). */
@@ -81,7 +83,7 @@ class GroupDetailViewModel(
 
     // The title and existence come from the unfiltered groups, so a filter never makes the group "vanish".
     // They do not depend on the filters, so they are built when the books change, not on every filter change.
-    private val whole = combine(observeBrowseItems(books, downloads, merging), books.observeCollections()) { all, collections ->
+    private val whole = combine(library.items, books.observeCollections()) { all, collections ->
         Whole(all, collections, groupsFor(kind, applyQuery(all, BrowseQuery()), collections).firstOrNull { it.key == key })
     }
 

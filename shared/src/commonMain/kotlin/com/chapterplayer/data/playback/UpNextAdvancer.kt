@@ -18,7 +18,7 @@ import com.chapterplayer.domain.playback.upNextCanPlay
 import com.chapterplayer.domain.playback.upNextRowsOf
 import com.chapterplayer.domain.playback.upNextSkipText
 import com.chapterplayer.domain.playback.upNextStartFailedText
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +74,8 @@ class UpNextAdvancer(
     private val main: CoroutineContext = Dispatchers.Main,
     private val background: BackgroundWork = BackgroundWork.None,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) {
     private var started = false
     private var previous: PlaybackState? = null
@@ -144,7 +146,7 @@ class UpNextAdvancer(
     private suspend fun advanceAfter(endedBookId: String, timer: SleepTimer, sleepLeftAtEnd: Long?, endedAt: Long) {
         val queue = upNext.queue.first()
         if (queue.isEmpty()) return
-        val items = observeBrowseItems(books, downloads, merging).first()
+        val items = library.items.first()
         val reachable = merging.context.first()?.onlineServerIds
         val online = connectivity.isOnline.first()
         val downloadedOnly = settings.downloadedOnly.first()
@@ -168,7 +170,7 @@ class UpNextAdvancer(
 
     private suspend fun removeEntryOf(bookId: String) {
         if (upNext.queue.first().isEmpty()) return
-        removeEntry(observeBrowseItems(books, downloads, merging).first(), bookId)
+        removeEntry(library.items.first(), bookId)
     }
 
     private suspend fun removeEntry(items: List<BrowseItem>, bookId: String) {

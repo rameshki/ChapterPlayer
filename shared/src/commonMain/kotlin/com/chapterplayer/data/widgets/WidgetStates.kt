@@ -13,7 +13,7 @@ import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.continueWidgetState
 import com.chapterplayer.domain.widgets.nowPlayingWidgetState
 import com.chapterplayer.domain.widgets.widgetMayResume
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -44,9 +44,11 @@ class WidgetStates(
     private val settings: AppSettings,
     private val merging: SourceMerging = SourceMerging.None,
     scope: CoroutineScope? = null,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val merged: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) {
     private val freshLibrary: Flow<Library>
-        get() = combine(observeBrowseItems(books, downloads, merging), connectivity.isOnline, settings.downloadedOnly, ::Library)
+        get() = combine(merged.items, connectivity.isOnline, settings.downloadedOnly, ::Library)
 
     private val library: Flow<Library> = scope?.let {
         freshLibrary.shareIn(it, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), replay = 1)
@@ -78,7 +80,11 @@ class WidgetStates(
     val online: Flow<Boolean>
         get() = connectivity.isOnline.distinctUntilChanged()
 
-    /** Whether a Resume tap may start [bookId] now (see [widgetMayResume]); read fresh, never from a shared cache. */
+    /**
+     * Whether a Resume tap may start [bookId] now (see [widgetMayResume]); never from the widgets' own cache. The merged
+     * list comes from [MergedLibrary], whose replayed value is the live one while anybody collects it and is worked out
+     * afresh otherwise.
+     */
     suspend fun mayResume(bookId: String): Boolean {
         val lib = freshLibrary.first()
         return widgetMayResume(lib.items, lib.online, lib.downloadedOnly, bookId)
@@ -87,6 +93,6 @@ class WidgetStates(
     /** What a widget's Play on [bookId] does now, against the book the player holds (see [widgetPlayDecision]). */
     suspend fun playDecision(bookId: String): WidgetPlayDecision {
         val loaded = controller.state.value.bookId ?: return WidgetPlayDecision.Start
-        return widgetPlayDecision(loaded, bookId, observeBrowseItems(books, downloads, merging).first())
+        return widgetPlayDecision(loaded, bookId, merged.items.first())
     }
 }

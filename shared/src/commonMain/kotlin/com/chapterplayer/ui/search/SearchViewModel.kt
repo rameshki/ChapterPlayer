@@ -18,7 +18,7 @@ import com.chapterplayer.domain.browse.FilterChip
 import com.chapterplayer.domain.browse.chipFor
 import com.chapterplayer.domain.browse.applyQuery
 import com.chapterplayer.domain.browse.searchItems
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +56,8 @@ class SearchViewModel(
     dispatcher: CoroutineDispatcher,
     merging: SourceMerging = SourceMerging.None,
     favourites: FavouritesRepository = NoFavourites,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     private val _queryText = MutableStateFlow("")
@@ -72,7 +74,7 @@ class SearchViewModel(
 
     val uiState: StateFlow<SearchUiState> = combine(
         settledQuery,
-        observeBrowseItems(books, downloads, merging),
+        library.items,
         combine(queryStore.settledQuery, favourites.favouriteIds, ::Pair),
         connectivity.isOnline,
         settings.downloadedOnly

@@ -62,7 +62,7 @@ import com.chapterplayer.domain.playback.editUpNext
 import com.chapterplayer.domain.playback.removeFromUpNext
 import com.chapterplayer.domain.playback.upNextOutcomeText
 import com.chapterplayer.domain.playback.startPositionFor
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -114,6 +114,8 @@ class BookDetailsViewModel(
     private val quickActions: Boolean = false,
     /** The other copies' descriptions, kept for the app session (one per app through Koin). */
     private val copyDescriptions: CopyDescriptions = CopyDescriptions(),
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     private class Live(val details: BookDetails? = null, val loading: Boolean = false, val error: String? = null)
@@ -169,7 +171,7 @@ class BookDetailsViewModel(
     private var descriptionJob: Job? = null
 
     // Series and links come from every book of the library, never from the filtered lists.
-    private val whole = observeBrowseItems(books, downloads, merging).map { all ->
+    private val whole = library.items.map { all ->
         // This page shows its own copy, also when the list shows a merged book as another server's copy.
         val entry = entryContaining(all, bookId)
         val item = entry?.allSources?.firstOrNull { it.book.id == bookId }

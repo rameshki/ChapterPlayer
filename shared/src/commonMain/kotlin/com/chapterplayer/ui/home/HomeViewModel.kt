@@ -42,7 +42,7 @@ import com.chapterplayer.ui.details.SourceAction
 import com.chapterplayer.ui.details.SourceSheetUi
 import com.chapterplayer.ui.details.noCopyText
 import com.chapterplayer.ui.details.sourceRow
-import com.chapterplayer.ui.browse.observeBrowseItems
+import com.chapterplayer.data.merge.MergedLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,6 +108,8 @@ class HomeViewModel(
     merging: SourceMerging = SourceMerging.None,
     favourites: FavouritesRepository = NoFavourites,
     upNext: UpNextRepository = NoUpNext,
+    /** The app's one merged library (one merge shared by every reader); without Koin (tests) a private one. */
+    private val library: MergedLibrary = MergedLibrary(books, downloads, merging),
 ) : ViewModel() {
 
     private class Local(val starting: Boolean = false, val error: String? = null)
@@ -120,7 +122,7 @@ class HomeViewModel(
     private class Extras(val local: Local, val context: MergeContext?, val sheetOpen: Boolean)
 
     val uiState: StateFlow<HomeUiState> = combine(
-        observeBrowseItems(books, downloads, merging),
+        library.items,
         servers.observeAll(),
         combine(queryStore.settledQuery, favourites.favouriteIds, upNext.queue, ::Triple),
         combine(connectivity.isOnline, settings.downloadedOnly, syncCoordinator.state) { online, downloadedOnly, sync ->
