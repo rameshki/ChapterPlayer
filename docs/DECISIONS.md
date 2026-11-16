@@ -43,14 +43,20 @@ Format: date, decision, why, who. Earlier entries are in full above; this list i
 - 2026-11-14, hand over device testing to Claude over wireless debugging on his own phone and servers, debug app only (Robert).
 - 2026-11-15, the app font is the user's choice: Classic (default), Bookish, Inter, Manrope, Lexend, System (Robert).
 - 2026-11-16, Mark as finished sets the flag AND returns the book to 0:00; playing a finished book again makes it not finished, locally and on the servers (Robert; found on his phone).
-- 2026-11-16, Dependabot PRs are not merged unasked, because a green build does not show a behaviour change (Claude, to confirm with Robert).
+- 2026-11-16, Dependabot PRs are not merged unasked, because a green build does not show a behaviour change (Claude, to confirm with Robert). The GitHub Actions group (#104) was merged on green CI.
+- 2026-11-17, push and merge the shared merged library (R10) after both CI jobs pass (Robert: "Yes push it").
+- 2026-11-17, a new project review replaces the 14 November one as the list of work (`reviews/2026-11-17-project-review.md`); findings keep their ids (Robert asked for it).
 
-## Open decisions (what each one blocks)
-- Google Play account type and fee (a personal account needs a 12 tester, 14 day closed test; an organisation account does not): blocks the closed test and any Play release. Robert's call, "not just yet".
-- Whether Android Auto ships at launch: Play reviews Auto apps separately; blocks the Play listing. Open.
-- Whether the app asks for the battery-optimisation exemption in-app (Play restricts the permission) or only documents it: his phone killed playback overnight twice (system kills at 03:49 on 16 Nov and 02:49 on 13 Nov). Open.
-- Dependabot: which PRs to take (open PRs #104 and #105): blocks dependency freshness. Open.
-- detekt and Kover (review R14): detekt 2.x is still alpha against Kotlin 2.4 and AGP 9.3; blocks static analysis. Open.
-- The six unanswered questions at the end of `AUDIBLE.md`: block any Audible work; parked while Audible is skipped.
-- Whether Audiobookshelf's "finished at" time may become the time of the mark (finished-at-zero is sent as two requests): accepted for now, to confirm after he sees it on his server.
-- Whether to keep sideload APKs for outside testers once Play testing starts. Open.
+## Open decisions (what each one blocks; as of the review of 17 November 2026)
+- Google Play account type and fee (a personal account needs a 12 tester, 14 day closed test; an organisation account does not): blocks the Play release (R31). Robert: "not just yet".
+- Build 0.5.4 for the testers now, or after the device checks: blocks the next tester build (R12, R1).
+- Whether the app asks for the battery-optimisation exemption in-app (Play restricts the permission) or only explains the phone setting: playback was killed overnight on his phone on 16 Nov and 13 Nov (R36).
+- May both CI jobs be required checks, with auto-merge on and no bypass (repository settings): blocks removing the hand-written merge gates (R33).
+- Turn on Dependency graph and Dependabot alerts in the repository settings: without it no vulnerability alert can arrive (R14).
+- Dependency updates: merge patch and minor groups after green CI and one install on the phone, majors separately? Dependabot #114 (18 updates) is waiting (R14).
+- Whether Android Auto ships at launch: Play reviews Auto apps separately (R31, R19).
+- Whether Audiobookshelf's "finished at" time may become the time of the mark (finished-at-zero is sent as two requests): accepted for now (R35).
+- After a book ends, a play report from earlier in the book starts reporting again (so listening after a seek back is not lost); asked on 15 Nov, unanswered, kept as it is.
+- detekt: try the 2.x alpha now or wait for a stable release (R14).
+- Whether to keep sideload APKs for outside testers once Play testing starts (R12).
+- The six unanswered questions at the end of `AUDIBLE.md`: parked while Audible is skipped.
