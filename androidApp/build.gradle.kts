@@ -3,6 +3,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Debug builds carry a number that goes up on every install to a phone (scripts/install-debug.sh), so the About page shows
+// which build is on the phone. It lives in the home folder, so every worktree shares one counter; 0 when there is none.
+val debugBuildNumber: String = File(System.getProperty("user.home"), ".chapterplayer-debug-build")
+    .takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() } ?: "0"
+
 android {
     namespace = "com.chapterplayer"
     compileSdk = 37
@@ -31,7 +36,7 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            versionNameSuffix = "-debug.$debugBuildNumber"
         }
     }
 
