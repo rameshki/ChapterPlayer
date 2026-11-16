@@ -192,8 +192,8 @@ Design: `docs/superpowers/specs/2026-10-30-stage-5-ios-design.md` (seven steps; 
 
 ### Stage R: review follow-ups (project review 2026-11-14, `docs/reviews/2026-11-14-project-review.md`)
 - [x] R3 CI builds the release APK, lint, R8 seeds check; R4 restored backups; R8 CLAUDE.md split; R9 status docs; R6 Jellyfin J2 built
-- [ ] R7 Report a problem (PR in review); R5 targetSdk 36 and the 6 hour download limit (in progress); R31 Google Play (`docs/PLAY_RELEASE.md`)
-- [ ] R14 detekt, Kover, Dependabot; R15 line endings; R20 migration tests; R22 repository setting
+- [x] R5 targetSdk 36 and the 6 hour download limit; R7 Report a problem; R10 one shared merged library; R15 line endings; R17 README; R18 decisions file; R20 migration tests; R22 housekeeping
+- [ ] Outstanding work is listed in the review of 17 November 2026 (`docs/reviews/2026-11-17-project-review.md`): 27 findings, R32 to R36 and R1 first; then R12 release pipeline, R31 Google Play (`docs/PLAY_RELEASE.md`), R2 screenshot tests, R39 Jellyfin downloads
 
 ### Stage 6: Audible (priority 3, scope to be decided)
 - [x] Research spike: unofficial Audible API state, terms-of-service risk, account-flag risk (`docs/AUDIBLE.md`, 2026-11-07)

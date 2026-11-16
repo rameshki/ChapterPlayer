@@ -8,8 +8,17 @@ How to test on devices, and the checks still open. Phone testing happens only in
 - Handing him an APK: build `:androidApp:assembleRelease`, `zipalign`, sign with the release key in `C:\Users\Robert\ChapterPlayerSigning` (`release.jks`, alias `chapterplayer`, password in `signing-info.txt` next to it; outside the repo, git-ignored, Robert must keep a backup: every update has to be signed with the same key) using `zipalign -p 4` and `apksigner sign`, send the 7 MB file with the SendUserFile tool (limit 30 MiB; the debug APK is 31 MiB and cannot be sent). Uninstalling the app wipes downloads and tokens but Android's Google backup restores the Room data (server list, library); tokens and `downloads/` are excluded from backup.
 - Real Audiobookshelf checks use a throwaway user created through the admin API (with the download permission when testing downloads) and deleted afterwards; never write with the owner's token; never put tokens or passwords in prompts to subagents, OpenClaw or the repo.
 
-## Still open (as of 2026-11-15)
-- Jellyfin J2 on the real Jellyfin 12.4 server (plan Task 15): listen 10 min and see the place in Jellyfin web; 2 min in the resume band keeps the real place; stopping in the last 5 min is not finished unless it ended; Mark as finished and not finished (and whether the UserData write clears Played); one tile "3 sources" with three copies; listening on one copy moves the others within seconds; offline listening delivered later.
+## Checked on the phone
+- 2026-11-16, Samsung S24+, debug builds 0.5.3-debug (before numbering) and 0.5.3-debug.2, the owner's Jellyfin 12.4, Audiobookshelf and Plex servers:
+  - Jellyfin: add the server and sync; listening shows the same place in Jellyfin web; Mark as finished shows played and Mark as not finished shows unplayed (the UserData write does clear the played flag).
+  - Mark as finished returns the book to 0:00 and shows Play again; playing it again makes it not finished in the app and in Jellyfin web.
+  - A book on all three servers is one entry with three copies (Diagnostics), and listening on the Jellyfin copy moved the Audiobookshelf copy: after playing again the Audiobookshelf server held the new place, not finished (read by Diagnostics; the Audiobookshelf mobile app showed an older place until refreshed).
+  - Found: after Mark as finished the details page offered Resume at the old place (fixed, #108); playback was killed by the system overnight (review R36).
+
+## Still open (as of 2026-11-17; to become a table with results, review R1)
+- Jellyfin, the rest of plan Task 15: 2 min in the resume band keeps the real place; stopping in the last 5 min is not finished unless it ended; offline listening delivered later; record the real answer shapes into the fixtures (review R39).
+- Mark as finished (review R35): Audiobookshelf right after the mark (finished at 0:00?), Plex's played state, a mark made offline, two devices.
+- Report a problem and the long press on the version line (Settings, About); the Listen widget following the loaded book.
 - Backup restore (R4): back up, uninstall, restore; no book may say Downloaded without its files.
 - Fonts: Home, Library, Book details and the player in each font, long titles, largest system text size (Lexend scale 0.94 is an estimate).
 - Headless Play from the widgets; lock-screen cover; sleep timer carrying into the next book; Forward 30 near the end of a book; Wi-Fi to mobile data during a download; Android Auto covers; keyboard fix; saved filters; multi-select; TalkBack.
