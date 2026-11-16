@@ -75,6 +75,8 @@ Every screenshot is drawn in dark and light at font scale 1.0 and 1.3 (four gold
    `shared/build/outputs/roborazzi` and `shared/build/reports/roborazzi` with `actions/upload-artifact` when the
    step fails, so a reviewer sees the diff. First run the job once with `compareRoborazziAndroidHostTest` to see
    whether Linux draws the Windows-recorded goldens identically. About 1 to 2 hours.
+   Already in the workflow (R34): a failed run uploads `shared/build/reports/tests`, `shared/build/test-results` and the
+   Roborazzi folders as the `test-reports` artifact (iOS: `ios-test-reports`); the verify step itself is still open.
 5. **Instrumented smoke test on a CI emulator:** one `androidApp` `androidTest` that starts `MainActivity` with an
    in-memory fake server module (or a MockWebServer serving the fixtures), opens Library, a book's details and the
    player, and checks no crash; run with `reactivecircus/android-emulator-runner` (API 34, x86_64, KVM on

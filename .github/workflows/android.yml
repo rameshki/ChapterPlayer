@@ -8,11 +8,41 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push cancels the older run of a pull request only. A run on main always finishes, so every commit there has a result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide which jobs the change needs
+        id: filter
+        # Pushes to main and manual runs build everything. A pull request skips the jobs its files cannot affect; a skipped
+        # job counts as passed for a required check. Docs only (docs/, Markdown, LICENSE, NOTICE): no build at all.
+        # iOS runs when shared/, iosApp/, a Gradle file or this workflow changed.
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; echo "ios=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+          echo "$files"
+          if echo "$files" | grep -Evq '^(docs/|LICENSE$|NOTICE$)|\.md$'; then build=true; else build=false; fi
+          if echo "$files" | grep -Eq '^(shared/|iosApp/|gradle/|\.github/workflows/android\.yml$)|(^|/)(build|settings)\.gradle\.kts$|(^|/)gradle\.properties$'; then ios=true; else ios=false; fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"; echo "ios=$ios" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build & unit test
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -40,6 +70,20 @@ jobs:
         run: git diff --exit-code -- shared/schemas
 
       - uses: actions/upload-artifact@v7
+        # The full test reports (and screenshot differences) of a failed run, so a failure can be read, not guessed.
+        if: failure()
+        with:
+          name: test-reports
+          path: |
+            shared/build/reports/tests
+            shared/build/test-results
+            androidApp/build/reports/tests
+            shared/build/outputs/roborazzi
+            shared/build/reports/roborazzi
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
         with:
           name: app-debug
           path: androidApp/build/outputs/apk/debug/*.apk
@@ -53,6 +97,8 @@ jobs:
 
   ios:
     name: iOS framework & app shell
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
     runs-on: macos-15
     timeout-minutes: 70
     steps:
@@ -94,6 +140,16 @@ jobs:
           cp -R build/ios/Build/Products/Release-iphoneos/ChapterPlayer.app build/ipa/Payload/
           (cd build/ipa && zip -qry ../ChapterPlayer-unsigned.ipa Payload)
           ls -la build/ChapterPlayer-unsigned.ipa
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: ios-test-reports
+          path: |
+            shared/build/reports/tests
+            shared/build/test-results
+          if-no-files-found: ignore
+          retention-days: 14
 
       - uses: actions/upload-artifact@v7
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
