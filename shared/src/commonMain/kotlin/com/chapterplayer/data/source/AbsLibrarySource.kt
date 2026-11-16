@@ -150,8 +150,10 @@ class AbsLibrarySource(
      * server holds it finished at 0). Live reports after a finished mark are held back by the repository
      * (`reportAfterMark`). Throws when a call fails (the queue tries again later).
      */
-    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
-        for (patch in absProgressPatches(positionMs, durationMs, isFinished)) {
+    override suspend fun pushProgress(
+        server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?, setNotFinished: Boolean,
+    ) {
+        for (patch in absProgressPatches(positionMs, durationMs, isFinished, setNotFinished)) {
             authorizer.authorized(server) { bearerToken ->
                 api.patchProgress(server.baseUrl, bearerToken, bookId.toServerItemId(), patch)
             }

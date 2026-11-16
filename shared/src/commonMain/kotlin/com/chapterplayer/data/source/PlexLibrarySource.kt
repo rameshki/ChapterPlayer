@@ -302,7 +302,9 @@ class PlexLibrarySource(
      * finished (so its timelines cannot undo that) and reports again when it is set not finished. Throws when a call
      * fails (the queue tries again later).
      */
-    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
+    override suspend fun pushProgress(
+        server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?, setNotFinished: Boolean,
+    ) {
         for (live in sessionsLock.withLock { sessions.values.toList() }) {
             if (live.bookId == bookId) live.lock.withLock { live.markedFinished = isFinished }
         }

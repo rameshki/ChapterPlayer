@@ -13,19 +13,19 @@ data class AbsProgressPatch(val currentTimeSec: Double?, val durationSec: Double
  *
  * - Not finished at 0 (Mark as not finished), or finished at a place past the start (a book heard to its end): one
  *   patch with the place, as always.
- * - Not finished past the start (a queued place, or a finished book played again): first set it not finished without a
- *   time (a finished item is reset to 0 by that, and its time from the payload would be dropped), then the place, which
- *   is then a plain time change of an item that is not finished.
+ * - An explicit not finished past the start ([setNotFinished]: a finished book played again): first set it not finished
+ *   without a time (a finished item is reset to 0 by that, and its time from the payload would be dropped), then the
+ *   place, which is then a plain time change of an item that is not finished. Ordinary places stay one atomic patch.
  * - Finished at 0 (Mark as finished, which starts the book over, and its mirrors): first set it not finished at 0, which
  *   moves the time to 0 whatever it was, then set it finished WITHOUT a time, so the time does not change and the
  *   finished flag holds. The server then holds the book finished at 0, so a later session report or close at 0 changes
  *   nothing there.
  */
-fun absProgressPatches(positionMs: Long, durationMs: Long, isFinished: Boolean): List<AbsProgressPatch> {
+fun absProgressPatches(positionMs: Long, durationMs: Long, isFinished: Boolean, setNotFinished: Boolean = false): List<AbsProgressPatch> {
     val positionSec = positionMs.coerceAtLeast(0L) / 1000.0
     val durationSec = durationMs.coerceAtLeast(0L) / 1000.0
     val fraction = if (durationSec > 0.0) (positionSec / durationSec).coerceIn(0.0, 1.0) else 0.0
-    if (!isFinished && positionMs > 0L) {
+    if (!isFinished && setNotFinished && positionMs > 0L) {
         return listOf(
             AbsProgressPatch(null, durationSec, fraction, isFinished = false),
             AbsProgressPatch(positionSec, durationSec, fraction, isFinished = false),

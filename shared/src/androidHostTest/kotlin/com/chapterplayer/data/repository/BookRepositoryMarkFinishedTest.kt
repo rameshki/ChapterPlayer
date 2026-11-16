@@ -85,6 +85,9 @@ class BookRepositoryMarkFinishedTest {
         /** When set, the GET answers this instead of the record (a server that keeps a finished book's old place). */
         var answer: Triple<Double, Boolean, Long>? = null
         var serverClock = 5_000L
+        /** When set, PATCHes after this many fail with a dropped connection (none of them reaches the record). */
+        var failAfterPatches: Int? = null
+        private var patchCount = 0
         /** The times (seconds) of every session report the server received. */
         val syncs = mutableListOf<Double>()
         val json = headersOf(HttpHeaders.ContentType, "application/json")
@@ -94,6 +97,7 @@ class BookRepositoryMarkFinishedTest {
             if (down) throw IOException("offline")
             when (request.method) {
                 HttpMethod.Patch -> {
+                    failAfterPatches?.let { limit -> if (patchCount++ >= limit) throw IOException("dropped") }
                     val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
                     val finished = body["isFinished"]!!.jsonPrimitive.content.toBoolean()
                     val sent = body["currentTime"]?.jsonPrimitive?.content?.toDouble()
@@ -329,6 +333,78 @@ class BookRepositoryMarkFinishedTest {
     }
 
     @Test
+    fun `a failed rewind is tried once more and holds the mark only for a while`() = runTest {
+        var calls = 0
+        val f = fixture(
+            listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1",
+            onRewind = { calls++; throw IllegalStateException("no player") },
+        )
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+        assertEquals(2, calls)
+
+        // the player was left at the old place and the person listens on there: past the limit that is listening
+        f.now[0] = 1_000L + com.chapterplayer.domain.playback.MARK_REWIND_FAILED_LIMIT_MS + 1
+        f.repo.savePlaybackProgress(live(4_100_000L, f.now[0]), loadedSinceMs = 900L)
+        val row = f.progressDao.get("abs_li_1")!!
+        assertFalse(row.isFinished)
+        assertEquals(4_100_000L, row.positionMs)
+    }
+
+    @Test
+    fun `a rewind that works on the second try leaves the normal rules`() = runTest {
+        var calls = 0
+        val f = fixture(
+            listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1",
+            onRewind = { if (calls++ == 0) throw IllegalStateException("busy") },
+        )
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+        assertEquals(2, calls)
+        f.now[0] = 8_000L
+        f.repo.savePlaybackProgress(live(20_000L, 8_000L), loadedSinceMs = 900L)
+        assertFalse(f.progressDao.get("abs_li_1")!!.isFinished)
+    }
+
+    @Test
+    fun `a reopen interrupted between its two patches loses nothing and the retry completes`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 0L, 9_000_000L, 100L, true)), loaded = "abs_li_1")
+        f.abs.record = Triple(0.0, true, 50L)
+        f.repo.savePlaybackProgress(live(30_000L, 2_000L), loadedSinceMs = 1_500L)
+        val queued = f.repo.pendingProgress().single()
+
+        // the first patch reaches the server, the second does not
+        f.abs.failAfterPatches = 1
+        assertTrue(f.repo.pushProgress(queued).isFailure)
+        assertEquals(Triple(0.0, false, 5_000L), f.abs.record)
+
+        // the flusher tries again: the server's newer row at 0 and not finished does not drop the queued place
+        f.abs.failAfterPatches = null
+        f.abs.serverClock = 6_000L
+        val server = f.repo.fetchServerProgress("abs_li_1").getOrThrow()
+        assertEquals(com.chapterplayer.domain.playback.FlushDecision.SEND, com.chapterplayer.domain.playback.flushDecision(queued, server))
+        f.repo.pushProgress(queued).getOrThrow()
+        assertEquals(Triple(30.0, false, 6_000L), f.abs.record)
+    }
+
+    @Test
+    fun `an ordinary queued place is one patch`() = runTest {
+        val f = fixture()
+        f.repo.pushProgress(com.chapterplayer.domain.playback.PendingProgress("abs_li_1", "srv1", 30_000L, 9_000_000L, 1_000L, 2_000L)).getOrThrow()
+        assertEquals(1, patches(f).size)
+    }
+
+    @Test
+    fun `a finished book played for a second then paused tells no server`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 9_000_000L, 9_000_000L, 100L, true)), loaded = "abs_li_1")
+        f.repo.savePlaybackProgress(live(1_000L, 2_000L), loadedSinceMs = 1_500L)
+        f.repo.syncPlayback(session, 1_000L, 1_000L, isPlaying = false).getOrThrow()
+        f.repo.closePlayback(session, 1_000L, 1_000L).getOrThrow()
+        assertTrue(f.abs.requests.isEmpty())
+        // real listening is reported as always
+        f.repo.syncPlayback(session, 30_000L, 30_000L, isPlaying = true).getOrThrow()
+        assertEquals(listOf(30.0), f.abs.syncs)
+    }
+
+    @Test
     fun `a book played again offline then heard to the end is sent finished`() = runTest {
         val f = fixture(listOf(ProgressEntity("abs_li_1", 0L, 9_000_000L, 100L, true)), loaded = "abs_li_1")
         f.abs.down = true
@@ -351,9 +427,9 @@ class BookRepositoryMarkFinishedTest {
         )
         f.repo.markFinished("abs_li_1", true).getOrThrow()
 
-        // long after the grace the player still reports the old place: the mark holds, nothing is reported or queued
-        f.now[0] = 60_000L
-        f.repo.savePlaybackProgress(live(4_050_000L, 60_000L), loadedSinceMs = 900L)
+        // after the grace the player still reports the old place: the mark holds, nothing is reported or queued
+        f.now[0] = 20_000L
+        f.repo.savePlaybackProgress(live(4_050_000L, 20_000L), loadedSinceMs = 900L)
         f.repo.syncPlayback(session, 4_050_000L, 10_000L, isPlaying = true).getOrThrow()
         var row = f.progressDao.get("abs_li_1")!!
         assertTrue(row.isFinished)
@@ -362,11 +438,11 @@ class BookRepositoryMarkFinishedTest {
         assertTrue(f.pendingDao.rows.value.isEmpty())
 
         // the person moves to the start: from then on listening again ends the mark
-        f.now[0] = 61_000L
-        f.repo.savePlaybackProgress(live(500L, 61_000L), loadedSinceMs = 900L)
+        f.now[0] = 21_000L
+        f.repo.savePlaybackProgress(live(500L, 21_000L), loadedSinceMs = 900L)
         assertTrue(f.progressDao.get("abs_li_1")!!.isFinished)
-        f.now[0] = 80_000L
-        f.repo.savePlaybackProgress(live(20_000L, 80_000L), loadedSinceMs = 900L)
+        f.now[0] = 25_000L
+        f.repo.savePlaybackProgress(live(20_000L, 25_000L), loadedSinceMs = 900L)
         row = f.progressDao.get("abs_li_1")!!
         assertFalse(row.isFinished)
         assertEquals(20_000L, row.positionMs)
@@ -587,10 +663,10 @@ class BookRepositoryMarkFinishedTest {
 
         // the book was loaded again after the mark: the save is the player's own, not the mark's
         f.now[0] = 9_000L
-        f.repo.savePlaybackProgress(live(1_000L, 9_000L), loadedSinceMs = 8_000L)
-        f.repo.syncPlayback(session, 1_000L, 1_000L, isPlaying = false).getOrThrow()
+        f.repo.savePlaybackProgress(live(10_000L, 9_000L), loadedSinceMs = 8_000L)
+        f.repo.syncPlayback(session, 10_000L, 1_000L, isPlaying = false).getOrThrow()
 
-        assertEquals(listOf(1.0), f.abs.syncs)
+        assertEquals(listOf(10.0), f.abs.syncs)
     }
 
     @Test
@@ -615,8 +691,8 @@ class BookRepositoryMarkFinishedTest {
         val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)))
         f.repo.markFinished("abs_li_1", true).getOrThrow()
         f.now[0] = 1_100L
-        f.repo.syncPlayback(session, 300L, 0L, isPlaying = false).getOrThrow()
-        assertEquals(listOf(0.3), f.abs.syncs)
+        f.repo.syncPlayback(session, 30_000L, 0L, isPlaying = false).getOrThrow()
+        assertEquals(listOf(30.0), f.abs.syncs)
     }
 
     @Test

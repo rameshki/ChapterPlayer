@@ -67,7 +67,9 @@ class BookRepositoryMirrorTest {
             failure?.let { throw it }
             return progress[bookId]
         }
-        override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
+        override suspend fun pushProgress(
+            server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?, setNotFinished: Boolean,
+        ) {
             if (hang) awaitCancellation()
             failure?.let { throw it }
             pushed += listOf(bookId, positionMs, isFinished)

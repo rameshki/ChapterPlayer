@@ -44,6 +44,23 @@ fun pinnedSave(positionMs: Long, nowMs: Long, rewoundAtMs: Long?, rewindFailed: 
 fun playedAgain(existing: ReadingProgress?, saved: ReadingProgress): Boolean =
     existing != null && existing.isFinished && !saved.isFinished && saved.positionMs > MARK_REWIND_SEEN_MS
 
+/** How long a failed rewind after Mark as finished holds the mark against places past the start (see [pinnedSave]). */
+const val MARK_REWIND_FAILED_LIMIT_MS = 30_000L
+
+/**
+ * Whether the rewind that failed at [failedAtMs] still holds the mark at [nowMs]: only for [MARK_REWIND_FAILED_LIMIT_MS],
+ * so a player left at the old place is never stored as finished at 0 for long (after that, listening there is listening).
+ */
+fun rewindStillFailed(failedAtMs: Long?, nowMs: Long): Boolean =
+    failedAtMs != null && nowMs - failedAtMs in 0L..MARK_REWIND_FAILED_LIMIT_MS
+
+/**
+ * Whether a live report or a session close at [positionMs] says nothing to the server: a finished book only touched at the
+ * very start (Play then Pause within [MARK_REWIND_SEEN_MS]) is no listening, so its server hears nothing.
+ */
+fun silentAtStart(row: ReadingProgress?, positionMs: Long): Boolean =
+    row != null && row.isFinished && positionMs <= MARK_REWIND_SEEN_MS
+
 /** Whether the player's save of a finished book at the very start keeps it finished (no real listening yet, see [playedAgain]). */
 fun staysFinishedAtStart(existing: ReadingProgress?, save: ReadingProgress): Boolean =
     existing != null && existing.isFinished && !save.isFinished && save.positionMs <= MARK_REWIND_SEEN_MS

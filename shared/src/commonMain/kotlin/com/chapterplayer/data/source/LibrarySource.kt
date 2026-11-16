@@ -82,7 +82,9 @@ interface LibrarySource {
     /**
      * Sets the server's progress for [bookId] without a session. [playedAtMs] is when that place was listened to (a queued
      * row's time, a mirror's source time; null = now), for a server that stores it (Jellyfin's `LastPlayedDate`;
-     * Audiobookshelf and Plex ignore it). A source without progress does nothing. Throws when the call fails.
+     * Audiobookshelf and Plex ignore it). [setNotFinished]: an explicit "not finished" (Mark as not finished, or a finished
+     * book played again) that must also move an item the server holds finished (Audiobookshelf: `absProgressPatches`).
+     * A source without progress does nothing. Throws when the call fails.
      */
     suspend fun pushProgress(
         server: ServerConfig,
@@ -91,6 +93,7 @@ interface LibrarySource {
         durationMs: Long,
         isFinished: Boolean,
         playedAtMs: Long? = null,
+        setNotFinished: Boolean = false,
     ) {}
 
     /** The server's progress for every book, keyed by the app's book id. Empty for a source without progress. Throws when the call fails. */

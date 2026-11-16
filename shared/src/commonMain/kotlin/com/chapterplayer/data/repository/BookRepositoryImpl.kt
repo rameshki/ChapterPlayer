@@ -50,6 +50,8 @@ import com.chapterplayer.domain.playback.PinnedSave
 import com.chapterplayer.domain.playback.pinnedSave
 import com.chapterplayer.domain.playback.playedAgain
 import com.chapterplayer.domain.playback.staysFinishedAtStart
+import com.chapterplayer.domain.playback.rewindStillFailed
+import com.chapterplayer.domain.playback.silentAtStart
 import com.chapterplayer.domain.playback.MarkedReport
 import com.chapterplayer.domain.playback.reportAfterMark
 import com.chapterplayer.data.diagnostics.ProblemLog
@@ -256,6 +258,8 @@ class BookRepositoryImpl(
 
     override suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> =
         try {
+            // A finished book only touched at the start: its server hears nothing (no listening happened).
+            if (silentAtStart(progressDao.get(session.bookId)?.toDomain(), positionMs)) return Result.success(Unit)
             val server = servers.getById(session.serverId) ?: error("The book's server is no longer configured")
             val source = sources.firstOrNull { it.type == server.source }
                 ?: error("No library source for ${server.source}")
@@ -284,8 +288,10 @@ class BookRepositoryImpl(
 
     override suspend fun syncPlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long, isPlaying: Boolean): Result<Unit> =
         try {
-            // Held back after a finished mark of the loaded book (the old place must not un-finish it on the server).
+            // Held back after a finished mark of the loaded book (the old place must not un-finish it on the server), and
+            // for a finished book only touched at the start.
             if (!reportAllowed(session.bookId, positionMs, isPlaying)) return Result.success(Unit)
+            if (silentAtStart(progressDao.get(session.bookId)?.toDomain(), positionMs)) return Result.success(Unit)
             val (server, source) = serverAndSource(session.serverId)
             Result.success(
                 source.syncPlayback(
@@ -328,6 +334,7 @@ class BookRepositoryImpl(
                     server, pending.bookId, pending.positionMs, pending.durationMs,
                     isFinished = pending.markedFinished ?: isFinishedAt(pending.positionMs, pending.durationMs),
                     playedAtMs = playedAtOf(pending),
+                    setNotFinished = pending.markedFinished == false,
                 )
             )
         } catch (e: CancellationException) {
@@ -656,10 +663,11 @@ class BookRepositoryImpl(
     private val rewinds = HashMap<String, Long>()
 
     /**
-     * The loaded books whose rewind after a finished mark failed: the player may still stand at the old place, so nothing
-     * past the start ends the mark until a save at the start shows the player there. Read and written with [progressLock] held.
+     * The loaded books whose rewind after a finished mark failed (twice), to the time it did: the player may still stand at
+     * the old place, so for `MARK_REWIND_FAILED_LIMIT_MS` nothing past the start ends the mark unless a save at the start
+     * shows the player there. Read and written with [progressLock] held.
      */
-    private val rewindFailed = HashSet<String>()
+    private val rewindFailed = HashMap<String, Long>()
 
     /**
      * The loaded book a finished mark silenced, to the time of that mark: its live reports go through `reportAfterMark`
@@ -672,7 +680,7 @@ class BookRepositoryImpl(
     private suspend fun reportAllowed(bookId: String, positionMs: Long, isPlaying: Boolean): Boolean =
         progressLock.withLock {
             val markedAt = silenced[bookId] ?: return@withLock true
-            when (reportAfterMark(positionMs, clock(), markedAt, isPlaying, rewindFailed = bookId in rewindFailed)) {
+            when (reportAfterMark(positionMs, clock(), markedAt, isPlaying, rewindFailed = rewindStillFailed(rewindFailed[bookId], clock()))) {
                 MarkedReport.SKIP -> false
                 MarkedReport.SEND_AND_RESUME -> {
                     // Listening again: the finished state ends here; the next save stores it and tells the server.
@@ -703,7 +711,7 @@ class BookRepositoryImpl(
                 // mark, and anything past the start is listening again, which ends it (not while a failed rewind may
                 // have left the player at the old place).
                 val outcome = if (pinned) {
-                    pinnedSave(progress.positionMs, clock(), rewinds[progress.bookId], rewindFailed = progress.bookId in rewindFailed)
+                    pinnedSave(progress.positionMs, clock(), rewinds[progress.bookId], rewindFailed = rewindStillFailed(rewindFailed[progress.bookId], clock()))
                 } else null
                 if (outcome != PinnedSave.OLD_PLACE) {
                     rewinds.remove(progress.bookId)
@@ -846,15 +854,20 @@ class BookRepositoryImpl(
 
     /** [rewindLoaded]; a failure only leaves the player where it is (the saves still keep the mark's 0 for a while). */
     private suspend fun rewindQuietly(bookId: String) {
-        try {
-            rewindLoaded(bookId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // The player may still stand at the old place: nothing past the start ends the mark until it is seen at the
-            // start. Only the book id and the error type are logged.
-            progressLock.withLock { rewindFailed += bookId }
-            ProblemLog.add("Rewind after Mark as finished failed for $bookId: ${e::class.simpleName}")
+        // Tried twice; then the player may still stand at the old place, which holds the mark for a while (see
+        // [rewindFailed]). Only the book id and the error type are logged.
+        repeat(2) { attempt ->
+            try {
+                rewindLoaded(bookId)
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (attempt == 1) {
+                    progressLock.withLock { rewindFailed[bookId] = clock() }
+                    ProblemLog.add("Rewind after Mark as finished failed for $bookId: ${e::class.simpleName}")
+                }
+            }
         }
     }
 

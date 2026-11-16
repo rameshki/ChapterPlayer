@@ -1,6 +1,7 @@
 package com.chapterplayer.domain.playback
 
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.domain.plex.PLEX_ID_PREFIX
 
 /**
  * Represents progress state retrieved from a remote server.
@@ -116,9 +117,13 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
  * Decides whether to push pending progress to the server or drop it based on server freshness.
  */
 fun flushDecision(pending: PendingProgress, server: ServerProgress?): FlushDecision {
-    // A queued "not finished" is never dropped for a finished server row: the book is being heard again here (a Plex
-    // album keeps every track scrobbled while its live timelines move its time on, so the server reads as newer).
-    if (pending.markedFinished == false && server != null && server.isFinished) return FlushDecision.SEND
+    // A queued "not finished" otherwise follows newer-server-wins (a newer finish from another device stays), except:
+    // - Plex: an album that stays all scrobbled while its live timelines move its time on reads as newer and finished;
+    // - a server at 0 and not finished, which is the first half of an Audiobookshelf reopen pair whose place is still due.
+    if (pending.markedFinished == false && server != null) {
+        if (server.isFinished && pending.bookId.startsWith(PLEX_ID_PREFIX)) return FlushDecision.SEND
+        if (!server.isFinished && server.positionMs == 0L && pending.positionMs > 0L) return FlushDecision.SEND
+    }
     return if (server != null && server.updatedAtMs > pending.updatedAtMs) {
         FlushDecision.DROP_SERVER_NEWER
     } else {

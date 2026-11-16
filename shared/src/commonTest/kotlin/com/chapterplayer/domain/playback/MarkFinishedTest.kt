@@ -101,10 +101,39 @@ class MarkFinishedTest {
     }
 
     @Test
-    fun `a queued not finished is sent even when a finished server row reads newer`() {
+    fun `a queued not finished follows newer server wins except for Plex`() {
         val reopen = pending(10_000, 500, marked = false)
-        assertEquals(FlushDecision.SEND, flushDecision(reopen, ServerProgress(100_000, 100_000, true, 900)))
+        // Audiobookshelf or Jellyfin: a newer finish from another device stays
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(reopen, ServerProgress(100_000, 100_000, true, 900)))
         assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(reopen, ServerProgress(20_000, 100_000, false, 900)))
+        assertEquals(FlushDecision.SEND, flushDecision(reopen, ServerProgress(100_000, 100_000, true, 400)))
+        // Plex: an album kept all scrobbled reads as newer while it is heard again
+        val plex = reopen.copy(bookId = "plex_10")
+        assertEquals(FlushDecision.SEND, flushDecision(plex, ServerProgress(100_000, 100_000, true, 900)))
+    }
+
+    @Test
+    fun `a half applied reopen at zero on the server is sent again`() {
+        val reopen = pending(10_000, 500, marked = false)
+        assertEquals(FlushDecision.SEND, flushDecision(reopen, ServerProgress(0, 100_000, false, 900)))
+        // an ordinary position or a not finished at zero follow newer server wins
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(pending(10_000, 500), ServerProgress(0, 100_000, false, 900)))
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(pending(0, 500, marked = false), ServerProgress(0, 100_000, false, 900)))
+    }
+
+    @Test
+    fun `a failed rewind holds the mark only for a while`() {
+        assertTrue(rewindStillFailed(failedAtMs = 1_000, nowMs = 1_000 + MARK_REWIND_FAILED_LIMIT_MS))
+        assertFalse(rewindStillFailed(failedAtMs = 1_000, nowMs = 1_001 + MARK_REWIND_FAILED_LIMIT_MS))
+        assertFalse(rewindStillFailed(failedAtMs = null, nowMs = 1_000))
+    }
+
+    @Test
+    fun `a finished book touched only at the start tells no server`() {
+        assertTrue(silentAtStart(progress(100_000, at = 5, finished = true), MARK_REWIND_SEEN_MS))
+        assertFalse(silentAtStart(progress(100_000, at = 5, finished = true), MARK_REWIND_SEEN_MS + 1))
+        assertFalse(silentAtStart(progress(40_000, at = 5), 1_000))
+        assertFalse(silentAtStart(null, 1_000))
     }
 
     @Test
