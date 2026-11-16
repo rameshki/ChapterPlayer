@@ -67,7 +67,9 @@ class BookRepositoryMirrorTest {
             failure?.let { throw it }
             return progress[bookId]
         }
-        override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
+        override suspend fun pushProgress(
+            server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?, setNotFinished: Boolean,
+        ) {
             if (hang) awaitCancellation()
             failure?.let { throw it }
             pushed += listOf(bookId, positionMs, isFinished)
@@ -194,7 +196,10 @@ class BookRepositoryMirrorTest {
         assertEquals(MarkOutcome.SYNCED, outcome.getOrNull())
         assertEquals(true, f.row("abs_1")?.isFinished)
         assertEquals(true, f.row("plex_1")?.isFinished)
-        assertEquals(listOf<List<Any>>(listOf("abs_1", 5 * HOUR, true)), f.abs.pushed)
+        // Every copy starts over at 0 and its server is sent finished at 0.
+        assertEquals(0L, f.row("abs_1")?.positionMs)
+        assertEquals(0L, f.row("plex_1")?.positionMs)
+        assertEquals(listOf<List<Any>>(listOf("abs_1", 0L, true)), f.abs.pushed)
         assertEquals("plex_1", f.plex.pushed.single()[0])
         assertEquals(true, f.plex.pushed.single()[2])
     }
@@ -262,8 +267,8 @@ class BookRepositoryMirrorTest {
         f.repo.saveServerProgress("plex_1", ServerProgress(1 * HOUR, PLEX_LENGTH, false, 60_000L))
         assertEquals(1 * HOUR, f.row("plex_1")?.positionMs)
         assertEquals(true, f.row("abs_1")?.isFinished)
-        // The player's next save of the loaded book keeps the user's mark.
-        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 5 * HOUR + 10_000L, ABS_LENGTH, 70_000L), loadedSinceMs = 0L)
+        // The player's next save of the loaded book (at the start, where the mark rewound it) keeps the user's mark.
+        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 1_000L, ABS_LENGTH, 70_000L), loadedSinceMs = 0L)
         assertEquals(true, f.row("abs_1")?.isFinished)
     }
 

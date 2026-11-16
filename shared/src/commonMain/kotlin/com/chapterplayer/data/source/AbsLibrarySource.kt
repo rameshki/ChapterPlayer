@@ -23,6 +23,7 @@ import com.chapterplayer.data.remote.abs.fetchAllAbsCollections
 import com.chapterplayer.data.remote.abs.fetchAllAbsItems
 import com.chapterplayer.domain.browse.parseSeriesName
 import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.absProgressPatches
 import com.chapterplayer.domain.playback.ServerProgress
 import com.chapterplayer.domain.stats.ServerListeningStats
 
@@ -144,9 +145,18 @@ class AbsLibrarySource(
         return ServerProgressReading(dto?.toServerProgress())
     }
 
-    override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
-        authorizer.authorized(server) { bearerToken ->
-            api.patchProgress(server.baseUrl, bearerToken, bookId.toServerItemId(), positionMs / 1000.0, durationMs / 1000.0, isFinished)
+    /**
+     * Sets the book's progress without a session ([absProgressPatches]: a book finished at 0 takes two patches, so the
+     * server holds it finished at 0). Live reports after a finished mark are held back by the repository
+     * (`reportAfterMark`). Throws when a call fails (the queue tries again later).
+     */
+    override suspend fun pushProgress(
+        server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?, setNotFinished: Boolean,
+    ) {
+        for (patch in absProgressPatches(positionMs, durationMs, isFinished, setNotFinished)) {
+            authorizer.authorized(server) { bearerToken ->
+                api.patchProgress(server.baseUrl, bearerToken, bookId.toServerItemId(), patch)
+            }
         }
     }
 

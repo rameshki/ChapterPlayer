@@ -298,6 +298,7 @@ class JellyfinLibrarySource(
         durationMs: Long,
         isFinished: Boolean,
         playedAtMs: Long?,
+        setNotFinished: Boolean,
     ) {
         val itemId = itemIdOf(bookId)
         pinSessions(bookId, isFinished)

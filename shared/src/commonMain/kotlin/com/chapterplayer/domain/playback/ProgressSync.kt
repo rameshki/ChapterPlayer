@@ -1,6 +1,7 @@
 package com.chapterplayer.domain.playback
 
 import com.chapterplayer.data.model.ReadingProgress
+import com.chapterplayer.domain.plex.PLEX_ID_PREFIX
 
 /**
  * Represents progress state retrieved from a remote server.
@@ -90,14 +91,22 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
     val incomingUserMark = incoming.markedFinished != null && incoming.mirrorOf == null
     val mark = when {
         existing.markedFinished == null -> incoming.markedFinished
-        incoming.markedFinished == null -> if (newer && !existingUserMark) null else existing.markedFinished
+        // A queued "not finished" (Mark as not finished, or a finished book played again) yields to a newer place at the
+        // end: the book was heard to the end since, so the position's own finished state goes.
+        incoming.markedFinished == null ->
+            if (newer && (!existingUserMark || (existing.markedFinished == false && isFinishedAt(incoming.positionMs, incoming.durationMs)))) null
+            else existing.markedFinished
         newer -> incoming.markedFinished
         else -> existing.markedFinished
     }
     // Only two mirrors make a mirror (queued mirrors may be dropped): the copy's own listening or the user's mark never does.
     val stillMirror = existing.mirrorOf != null && incoming.mirrorOf != null && !existingUserMark && !incomingUserMark
+    // A finished mark starts the book over at 0 (see [progressAfterMark]); a later ordinary position (the player's place
+    // before its rewind, or listening again while the mark holds) does not move the place the mark sends.
+    val keepMarkPlace = newer && existingUserMark && existing.markedFinished == true && incoming.markedFinished == null && mark == true
     return if (newer) {
-        incoming.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark, mirrorOf = if (stillMirror) incoming.mirrorOf else null)
+        val place = if (keepMarkPlace) incoming.copy(positionMs = existing.positionMs) else incoming
+        place.copy(listenedMs = totalListened, attempts = 0, markedFinished = mark, mirrorOf = if (stillMirror) incoming.mirrorOf else null)
     } else {
         // Keep existing metadata but update the cumulative listened time
         existing.copy(listenedMs = totalListened, markedFinished = mark, mirrorOf = if (stillMirror) existing.mirrorOf else null)
@@ -108,6 +117,13 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
  * Decides whether to push pending progress to the server or drop it based on server freshness.
  */
 fun flushDecision(pending: PendingProgress, server: ServerProgress?): FlushDecision {
+    // A queued "not finished" otherwise follows newer-server-wins (a newer finish from another device stays), except:
+    // - Plex: an album that stays all scrobbled while its live timelines move its time on reads as newer and finished;
+    // - a server at 0 and not finished, which is the first half of an Audiobookshelf reopen pair whose place is still due.
+    if (pending.markedFinished == false && server != null) {
+        if (server.isFinished && pending.bookId.startsWith(PLEX_ID_PREFIX)) return FlushDecision.SEND
+        if (!server.isFinished && server.positionMs == 0L && pending.positionMs > 0L) return FlushDecision.SEND
+    }
     return if (server != null && server.updatedAtMs > pending.updatedAtMs) {
         FlushDecision.DROP_SERVER_NEWER
     } else {
@@ -120,11 +136,14 @@ fun flushDecision(pending: PendingProgress, server: ServerProgress?): FlushDecis
  * A server time later than [nowMs] (a server clock ahead) counts as [nowMs], so it cannot block every later save.
  * A mirrored local row (merged sources) is kept when the server only echoes it: the same finished state and a position
  * within [MIRROR_ECHO_MS] (the app pushed it there), so the lists keep showing the copy really played.
+ * A finished server row is no news for a finished local row: the phone's row stays, so a server that keeps a finished
+ * book's old place (Audiobookshelf) or its end (Plex) never moves a book marked finished at 0 (see [progressAfterMark]).
  */
 fun mergeServerProgress(bookId: String, local: ReadingProgress?, server: ServerProgress, hasPendingLocal: Boolean, nowMs: Long = Long.MAX_VALUE): ReadingProgress? {
     if (hasPendingLocal) return null
     val stamp = minOf(server.updatedAtMs, nowMs)
     if (local != null && local.lastPlayedAt >= stamp) return null
+    if (local != null && local.isFinished && server.isFinished) return null
     if (local != null && local.mirrored && local.isFinished == server.isFinished &&
         kotlin.math.abs(local.positionMs - server.positionMs) <= MIRROR_ECHO_MS
     ) return null

@@ -70,7 +70,9 @@ class BookRepositoryProgressTest {
             failure?.let { throw it }
             return fetched
         }
-        override suspend fun pushProgress(server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?) {
+        override suspend fun pushProgress(
+            server: ServerConfig, bookId: String, positionMs: Long, durationMs: Long, isFinished: Boolean, playedAtMs: Long?, setNotFinished: Boolean,
+        ) {
             pushed += listOf(server.id, bookId, positionMs, durationMs, isFinished)
             failure?.let { throw it }
         }

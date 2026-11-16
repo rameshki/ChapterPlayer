@@ -129,6 +129,21 @@ class AbsLibraryProgressTest {
     }
 
     @Test
+    fun `finished at zero sends not finished at zero first then finished without a time`() = runTest {
+        source().pushProgress(server, "abs_li_fixture01", 0, 5_400_000, isFinished = true)
+
+        val (reset, finish) = requests.also { assertEquals(2, it.size) }
+        assertTrue(requests.all { it.method == HttpMethod.Patch && it.url.encodedPath == "/api/me/progress/li_fixture01" })
+        val first = bodyOf(reset)
+        assertEquals(0.0, first["currentTime"]!!.jsonPrimitive.content.toDouble())
+        assertEquals(false, first["isFinished"]!!.jsonPrimitive.boolean)
+        val second = bodyOf(finish)
+        assertNull(second["currentTime"]) // the server's time (now 0) does not change, so the finished flag holds
+        assertEquals(1.0, second["progress"]!!.jsonPrimitive.content.toDouble())
+        assertEquals(true, second["isFinished"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
     fun `a failed patch throws`() = runTest {
         assertFailsWith<HttpStatusException> { source(HttpStatusCode.InternalServerError).pushProgress(server, "abs_a", 1, 2, false) }
     }

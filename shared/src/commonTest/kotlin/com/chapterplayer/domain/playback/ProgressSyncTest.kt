@@ -143,6 +143,22 @@ class ProgressSyncTest {
     }
 
     @Test
+    fun `a newer finished server row leaves a finished local row and its place alone`() {
+        val markedAtZero = ReadingProgress("a", 0, 1_000_000, 100, isFinished = true)
+        assertNull(mergeServerProgress("a", markedAtZero, server(400_000, 200, finished = true), hasPendingLocal = false))
+        assertNull(mergeServerProgress("a", markedAtZero, server(1_000_000, 200, finished = true), hasPendingLocal = false))
+    }
+
+    @Test
+    fun `a newer server row that is not finished still replaces a finished local row`() {
+        val markedAtZero = ReadingProgress("a", 0, 1_000_000, 100, isFinished = true)
+        assertEquals(
+            ReadingProgress("a", 50_000, 1_000_000, 200, false),
+            mergeServerProgress("a", markedAtZero, server(50_000, 200, finished = false), hasPendingLocal = false)
+        )
+    }
+
+    @Test
     fun `nothing changes when local is as new or newer - or a local update is waiting to be sent`() {
         assertNull(mergeServerProgress("a", local(100_000, 300), server(999_999, 200), hasPendingLocal = false))
         assertNull(mergeServerProgress("a", local(100_000, 200), server(999_999, 200), hasPendingLocal = false))
