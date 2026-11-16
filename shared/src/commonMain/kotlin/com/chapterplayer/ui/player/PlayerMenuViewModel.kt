@@ -112,7 +112,7 @@ class PlayerMenuViewModel(
         if (id == null || merges == null) flowOf(emptyList())
         else library.items.map { all ->
             entryContaining(all, id)?.takeIf { it.isMerged }?.allSources?.map { it.book.id }?.minus(id).orEmpty()
-        }
+        }.distinctUntilChanged()
     }
 
     val state: StateFlow<PlayerMenuState> = combine(facts, confirmingRemove, message, otherCopies) { facts, confirming, text, others ->

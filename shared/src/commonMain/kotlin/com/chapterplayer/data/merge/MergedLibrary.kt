@@ -1,6 +1,7 @@
 package com.chapterplayer.data.merge
 
 import com.chapterplayer.data.DownloadStates
+import com.chapterplayer.data.diagnostics.ProblemLog
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
 import com.chapterplayer.data.stateOf
@@ -12,12 +13,16 @@ import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.shareIn
 
 /** How often the merged list was worked out, for tests: [groupings] = the costly grouping, [lists] = every list built. */
@@ -79,8 +84,13 @@ fun mergedBrowseItems(
  * nothing is shared: each collector works it out itself, in its own context.
  *
  * The share stops [STOP_TIMEOUT_MS] after the last reader leaves and then forgets its value, so a reader that comes
- * later (a `first()` from the car or a widget) never starts from an old list; while someone collects, the value it
- * replays is the live one.
+ * later (a `first()` from the car or a widget) never starts from an old list. While someone collects, the replayed
+ * list is the last one worked out: it can lag a write that was just committed by a few milliseconds (the merge of
+ * that change is still running). A decision that must see such a write reads [mergedBrowseItems] itself.
+ *
+ * A failure upstream (Room, the merging context) never ends the share: it is logged ([ProblemLog], the error type
+ * only) and the merge starts again after [retryDelayMs] (1 s doubling to 1 min, back to 1 s after a list came
+ * through), so the app scope never sees the exception and readers get the list once the source works again.
  */
 class MergedLibrary(
     books: BookRepository,
@@ -99,12 +109,29 @@ class MergedLibrary(
      * in the collector's context (as the cold flow always did), so a view model's own dispatcher applies.
      */
     val items: Flow<List<BrowseItem>> = scope?.let {
-        cold.flowOn(dispatcher)
+        resilient(cold).flowOn(dispatcher)
             .shareIn(it, SharingStarted.WhileSubscribed(stopTimeoutMillis = STOP_TIMEOUT_MS, replayExpirationMillis = 0), replay = 1)
     } ?: cold
 
     companion object {
         /** How long the share keeps running after the last reader left (a screen change, a rotation). */
         const val STOP_TIMEOUT_MS = 5_000L
+
+        /** The wait before the [failures]th retry (1 based): 1 s doubling, at most 1 min. */
+        fun retryDelayMs(failures: Int): Long = (1_000L shl (failures - 1).coerceIn(0, 6)).coerceAtMost(60_000L)
+
+        // Retries [upstream] after a failure (never a cancellation); the count starts again once a list came through.
+        private fun resilient(upstream: Flow<List<BrowseItem>>): Flow<List<BrowseItem>> = flow {
+            var failures = 0
+            emitAll(
+                upstream.onEach { failures = 0 }.retryWhen { cause, _ ->
+                    if (cause is CancellationException) return@retryWhen false
+                    failures++
+                    ProblemLog.add("Merged library failed: ${cause::class.simpleName}; retrying")
+                    delay(retryDelayMs(failures))
+                    true
+                }
+            )
+        }
     }
 }

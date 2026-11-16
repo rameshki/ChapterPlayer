@@ -346,6 +346,7 @@ class CarLibraryCallback(
 
     // One consistent view of the visible books (the same set Home and Library show) per call.
     private suspend fun snapshot(): Snapshot = withContext(Dispatchers.Default) {
+        // The shared merged list (it can lag a write just committed by a few ms; the car's next request sees it).
         val items = library.items.first()
         val collections = books.observeCollections().first()
         val online = connectivity.isOnline.first()

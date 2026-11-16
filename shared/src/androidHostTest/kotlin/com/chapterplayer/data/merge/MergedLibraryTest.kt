@@ -358,6 +358,47 @@ class MergedLibraryTest {
         assertEquals(2, library.runs.lists)
     }
 
+    // ---- failures upstream ----
+
+    // Download states whose source fails [failures] times before it works (Room throwing, for instance).
+    private class FlakyDownloads(private val failures: Int) : DownloadStates {
+        var opened = 0
+        override fun observe(): Flow<Map<String, DownloadState>> = kotlinx.coroutines.flow.flow {
+            opened++
+            if (opened <= failures) throw IllegalStateException("made-up failure")
+            emit(emptyMap())
+        }
+    }
+
+    @Test
+    fun `a failure upstream is retried and the list still comes`() = runTest {
+        val all = syntheticBooks(30, 5)
+        val downloads = FlakyDownloads(failures = 1)
+        val library = MergedLibrary(FakeBookRepository(all), downloads, MutableMerging(contexts[0]), backgroundScope, UnconfinedTestDispatcher(testScheduler))
+        val list = library.items.first()
+        assertEquals(legacyMerge(all.map { BrowseItem(it, null, DownloadState.NOT_DOWNLOADED) }, MergeOverrides(), SourceChoice.Ask, contexts[0].onlineServerIds), list)
+        assertEquals(2, downloads.opened)
+    }
+
+    @Test
+    fun `an upstream that keeps failing does not crash the scope`() = runTest {
+        val downloads = FlakyDownloads(failures = Int.MAX_VALUE)
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val library = MergedLibrary(FakeBookRepository(syntheticBooks(10, 1)), downloads, MutableMerging(contexts[0]), scope, UnconfinedTestDispatcher(testScheduler))
+        val reader = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { library.items.collect { } }
+        advanceTimeBy(10 * 60_000L)
+        runCurrent()
+        assertTrue(scope.coroutineContext[kotlinx.coroutines.Job]!!.isActive, "the scope lives on")
+        assertTrue(downloads.opened > 5, "it kept retrying")
+        reader.cancel()
+        scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+    }
+
+    @Test
+    fun `the retry wait doubles up to a minute`() {
+        assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 32_000L, 60_000L, 60_000L), (1..8).map { MergedLibrary.retryDelayMs(it) })
+    }
+
     // ---- benchmark ----
 
     /*

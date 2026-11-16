@@ -146,6 +146,7 @@ class UpNextAdvancer(
     private suspend fun advanceAfter(endedBookId: String, timer: SleepTimer, sleepLeftAtEnd: Long?, endedAt: Long) {
         val queue = upNext.queue.first()
         if (queue.isEmpty()) return
+        // The shared list can lag a write just committed by a few ms; the start re-checks the player right before it.
         val items = library.items.first()
         val reachable = merging.context.first()?.onlineServerIds
         val online = connectivity.isOnline.first()

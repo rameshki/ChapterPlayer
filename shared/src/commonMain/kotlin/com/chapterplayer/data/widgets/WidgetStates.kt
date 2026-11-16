@@ -14,6 +14,7 @@ import com.chapterplayer.domain.widgets.continueWidgetState
 import com.chapterplayer.domain.widgets.nowPlayingWidgetState
 import com.chapterplayer.domain.widgets.widgetMayResume
 import com.chapterplayer.data.merge.MergedLibrary
+import com.chapterplayer.data.merge.mergedBrowseItems
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -81,18 +82,20 @@ class WidgetStates(
         get() = connectivity.isOnline.distinctUntilChanged()
 
     /**
-     * Whether a Resume tap may start [bookId] now (see [widgetMayResume]); never from the widgets' own cache. The merged
-     * list comes from [MergedLibrary], whose replayed value is the live one while anybody collects it and is worked out
-     * afresh otherwise.
+     * Whether a Resume tap may start [bookId] now (see [widgetMayResume]). Read fresh, not from [MergedLibrary]: its
+     * replayed list can lag a write just committed by a few milliseconds, and this decides a start.
      */
     suspend fun mayResume(bookId: String): Boolean {
-        val lib = freshLibrary.first()
+        val lib = combine(mergedBrowseItems(books, downloads, merging), connectivity.isOnline, settings.downloadedOnly, ::Library).first()
         return widgetMayResume(lib.items, lib.online, lib.downloadedOnly, bookId)
     }
 
-    /** What a widget's Play on [bookId] does now, against the book the player holds (see [widgetPlayDecision]). */
+    /**
+     * What a widget's Play on [bookId] does now, against the book the player holds (see [widgetPlayDecision]); read
+     * fresh like [mayResume].
+     */
     suspend fun playDecision(bookId: String): WidgetPlayDecision {
         val loaded = controller.state.value.bookId ?: return WidgetPlayDecision.Start
-        return widgetPlayDecision(loaded, bookId, merged.items.first())
+        return widgetPlayDecision(loaded, bookId, mergedBrowseItems(books, downloads, merging).first())
     }
 }
