@@ -273,6 +273,20 @@ class BookRepositoryJellyfinTest {
         PendingProgress(bookId, "jf1", positionMs, hour, 10_000L, at, attempts = 9, nextAttemptAtMs = at + 300_000L, markedFinished = markedFinished)
 
     @Test
+    fun `a played Jellyfin book played again is written as not played at the place heard`() = runTest {
+        val f = fixture(local = listOf(ProgressEntity(bookId, 0L, hour, 100L, true)))
+        f.jf.played = true
+
+        f.repo.savePlaybackProgress(com.chapterplayer.data.model.ReadingProgress(bookId, 20_000L, hour, 2_000L, false), loadedSinceMs = 1_500L)
+
+        assertEquals(listOf("POST /UserItems/$itemId/UserData"), f.jf.writes())
+        assertTrue(f.jf.lastBody().contains("\"Played\":false"))
+        assertFalse(f.jf.played)
+        assertEquals(20_000L * 10_000L, f.jf.positionTicks)
+        assertFalse(f.progressDao.rows.value.single { it.bookId == bookId }.isFinished)
+    }
+
+    @Test
     fun `queue delivers only UserData`() {
         val now = 1_793_000_900_000L
         val f = fixture(now = now)
@@ -295,7 +309,9 @@ class BookRepositoryJellyfinTest {
         f.jf.lastPlayed = jellyfinIsoTime(1_793_000_500_000L)
         runBlocking { f.pendingDao.queue(j1Row(1_793_000_000_000L)) }
 
-        flushUntil(f, now) { f.pendingDao.rows.value.isEmpty() }
+        // The flusher deletes the row first and stores the server's place after it (on another thread): wait for both,
+        // or the check can run in between (it did on CI).
+        flushUntil(f, now) { f.pendingDao.rows.value.isEmpty() && f.progressDao.rows.value.any { it.bookId == bookId } }
 
         assertTrue(f.jf.writes().isEmpty())
         // The server's place is stored here instead.

@@ -58,6 +58,24 @@ class MarkFinishedTest {
     }
 
     @Test
+    fun `a pinned save is the old place then the start then listening again`() {
+        assertEquals(PinnedSave.OLD_PLACE, pinnedSave(positionMs = 40_000, nowMs = 1_200, rewoundAtMs = 1_000))
+        assertEquals(PinnedSave.KEEP, pinnedSave(positionMs = 500, nowMs = 1_200, rewoundAtMs = 1_000))
+        assertEquals(PinnedSave.KEEP, pinnedSave(positionMs = MARK_REWIND_SEEN_MS, nowMs = 60_000, rewoundAtMs = null))
+        assertEquals(PinnedSave.LISTENING_AGAIN, pinnedSave(positionMs = 10_000, nowMs = 1_200, rewoundAtMs = null))
+        assertEquals(PinnedSave.LISTENING_AGAIN, pinnedSave(positionMs = 40_000, nowMs = 7_000, rewoundAtMs = 1_000))
+    }
+
+    @Test
+    fun `a finished book saved as not finished was played again`() {
+        assertTrue(playedAgain(progress(0, at = 5, finished = true), progress(10_000, at = 9)))
+        assertTrue(playedAgain(progress(100_000, at = 5, finished = true), progress(10_000, at = 9)))
+        assertFalse(playedAgain(progress(0, at = 5, finished = true), progress(0, at = 9, finished = true)))
+        assertFalse(playedAgain(progress(5_000, at = 5), progress(10_000, at = 9)))
+        assertFalse(playedAgain(null, progress(10_000, at = 9)))
+    }
+
+    @Test
     fun `after a mark the old place and the pause at the start are held back`() {
         assertEquals(MarkedReport.SKIP, reportAfterMark(positionMs = 40_000, nowMs = 1_200, markedAtMs = 1_000, isPlaying = false))
         // a tick that read the player before its pause

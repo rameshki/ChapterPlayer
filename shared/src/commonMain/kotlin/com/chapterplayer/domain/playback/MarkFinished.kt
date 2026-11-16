@@ -12,6 +12,34 @@ enum class MarkAction { MarkFinished, MarkNotFinished }
  */
 enum class MarkOutcome { SYNCED, QUEUED, LOCAL_ONLY, PARTIAL, PARTIAL_QUEUED }
 
+/** What the player's save of a book pinned by the user's finished mark ([keepsFinishedMark]) does, see [pinnedSave]. */
+enum class PinnedSave {
+    /** The place from before the rewind: stored as the mark's 0, still finished. */
+    OLD_PLACE,
+    /** At the start (the pause after the rewind): stored as it is, still finished. */
+    KEEP,
+    /** Listening again: the pin ends and the book is no longer finished (the owner's rule). */
+    LISTENING_AGAIN,
+}
+
+/**
+ * The player's save at [positionMs] made at [nowMs] of a book the user marked finished while it was loaded ([rewoundAtMs]:
+ * the mark that rewound it, null once the rewind was seen). The old place is the mark's 0; a place at the start keeps the
+ * mark; anything past the start is listening again, which ends the finished state.
+ */
+fun pinnedSave(positionMs: Long, nowMs: Long, rewoundAtMs: Long?): PinnedSave = when {
+    isSaveBeforeRewind(positionMs, nowMs, rewoundAtMs) -> PinnedSave.OLD_PLACE
+    positionMs > MARK_REWIND_SEEN_MS -> PinnedSave.LISTENING_AGAIN
+    else -> PinnedSave.KEEP
+}
+
+/**
+ * Whether a save from the player turns a finished book into one that is not finished: playing a finished book again
+ * (after Mark as finished, Play again, or after hearing it to the end) makes it not finished, here and on its server.
+ */
+fun playedAgain(existing: ReadingProgress?, saved: ReadingProgress): Boolean =
+    existing != null && existing.isFinished && !saved.isFinished
+
 /**
  * Whether a live report of a book whose finished mark silenced its session (made at [markedAtMs], see
  * [reportAfterMark]) may go to the server.

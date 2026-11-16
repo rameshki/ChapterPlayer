@@ -265,8 +265,8 @@ class BookRepositoryMirrorTest {
         f.repo.saveServerProgress("plex_1", ServerProgress(1 * HOUR, PLEX_LENGTH, false, 60_000L))
         assertEquals(1 * HOUR, f.row("plex_1")?.positionMs)
         assertEquals(true, f.row("abs_1")?.isFinished)
-        // The player's next save of the loaded book keeps the user's mark.
-        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 5 * HOUR + 10_000L, ABS_LENGTH, 70_000L), loadedSinceMs = 0L)
+        // The player's next save of the loaded book (at the start, where the mark rewound it) keeps the user's mark.
+        f.repo.savePlaybackProgress(ReadingProgress("abs_1", 1_000L, ABS_LENGTH, 70_000L), loadedSinceMs = 0L)
         assertEquals(true, f.row("abs_1")?.isFinished)
     }
 

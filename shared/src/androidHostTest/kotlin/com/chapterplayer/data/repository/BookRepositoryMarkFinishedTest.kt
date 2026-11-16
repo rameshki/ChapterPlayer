@@ -42,6 +42,7 @@ import kotlinx.coroutines.withTimeout
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -236,25 +237,83 @@ class BookRepositoryMarkFinishedTest {
         assertEquals(0L, row.positionMs)
         assertTrue(row.isFinished)
 
-        // then the player's place after the rewind; listening again later keeps the mark (as before) at the real place
+        // then the player's place after the rewind keeps the mark
         f.now[0] = 1_500L
         f.repo.savePlaybackProgress(live(0L, 1_500L), loadedSinceMs = 900L)
+        row = f.progressDao.get("abs_li_1")!!
+        assertTrue(row.isFinished)
+
+        // listening again ends the finished state, here and on the server
         f.now[0] = 2_000L
         f.repo.savePlaybackProgress(live(30_000L, 2_000L), loadedSinceMs = 900L)
         row = f.progressDao.get("abs_li_1")!!
         assertEquals(30_000L, row.positionMs)
-        assertTrue(row.isFinished)
+        assertFalse(row.isFinished)
+        assertEquals("false", patchBody(patches(f).last())["isFinished"]!!.jsonPrimitive.content)
+        assertEquals(false, f.abs.record!!.second)
     }
 
     @Test
-    fun `a place saved after the grace is the real place`() = runTest {
+    fun `a place saved after the grace is listening again`() = runTest {
         val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1")
         f.repo.markFinished("abs_li_1", true).getOrThrow()
 
         f.now[0] = 1_000L + com.chapterplayer.domain.playback.MARK_REWIND_GRACE_MS + 1
         f.repo.savePlaybackProgress(live(60_000L, f.now[0]), loadedSinceMs = 900L)
 
-        assertEquals(60_000L, f.progressDao.get("abs_li_1")!!.positionMs)
+        val row = f.progressDao.get("abs_li_1")!!
+        assertEquals(60_000L, row.positionMs)
+        assertFalse(row.isFinished)
+    }
+
+    @Test
+    fun `a finished book played again without a mark of this session is no longer finished here and on the server`() = runTest {
+        // heard to the end earlier (or finished elsewhere): Play again from the start, then the first save while playing
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 9_000_000L, 9_000_000L, 100L, true)), loaded = "abs_li_1")
+        f.abs.record = Triple(9_000.0, true, 50L)
+
+        f.now[0] = 2_000L
+        f.repo.savePlaybackProgress(live(10_000L, 2_000L), loadedSinceMs = 1_500L)
+
+        val row = f.progressDao.get("abs_li_1")!!
+        assertFalse(row.isFinished)
+        assertEquals(10_000L, row.positionMs)
+        assertEquals("false", patchBody(patches(f).single())["isFinished"]!!.jsonPrimitive.content)
+        assertEquals(false, f.abs.record!!.second)
+        // a save of a book that was not finished sends nothing
+        f.repo.savePlaybackProgress(live(20_000L, 3_000L), loadedSinceMs = 1_500L)
+        assertEquals(1, patches(f).size)
+    }
+
+    @Test
+    fun `an unreachable server gets the book reopened through the queue`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 0L, 9_000_000L, 100L, true)), loaded = "abs_li_1")
+        f.abs.down = true
+
+        f.repo.savePlaybackProgress(live(10_000L, 2_000L), loadedSinceMs = 1_500L)
+
+        val queued = f.pendingDao.rows.value.single()
+        assertEquals(false, queued.markedFinished)
+        assertEquals(10_000L, queued.positionMs)
+    }
+
+    @Test
+    fun `listening again on one copy reopens the other copies too`() = runTest {
+        val f = fixture(
+            listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false), ProgressEntity("abs_li_2", 4_100_000L, 9_000_000L, 120L, false)),
+            loaded = "abs_li_1", books = listOf(book(), book("abs_li_2")),
+            peers = mapOf("abs_li_1" to listOf(MirrorPeer("abs_li_2", "srv1", 9_000_000L)), "abs_li_2" to listOf(MirrorPeer("abs_li_1", "srv1", 9_000_000L))),
+        )
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+        assertTrue(f.progressDao.get("abs_li_2")!!.isFinished)
+
+        f.now[0] = 20_000L
+        f.repo.savePlaybackProgress(live(30_000L, 20_000L), loadedSinceMs = 900L)
+
+        val other = f.progressDao.get("abs_li_2")!!
+        assertFalse(other.isFinished)
+        assertEquals(30_000L, other.positionMs)
+        assertTrue(other.mirrored)
     }
 
     @Test
@@ -429,6 +488,9 @@ class BookRepositoryMarkFinishedTest {
 
         assertEquals(listOf(10.0, 11.0), f.abs.syncs)
         assertEquals(false, f.abs.record!!.second) // the server un-finishes it as Audiobookshelf does
+        // the report ended the mark: the next save stores the book as not finished
+        f.repo.savePlaybackProgress(live(11_000L, 13_000L), loadedSinceMs = 900L)
+        assertFalse(f.progressDao.get("abs_li_1")!!.isFinished)
     }
 
     @Test
@@ -471,14 +533,15 @@ class BookRepositoryMarkFinishedTest {
     }
 
     @Test
-    fun `the player's save keeps a mark made while the book was loaded, and a later not finished mark clears it`() = runTest {
+    fun `the player's save keeps a mark made while the book was loaded at the start, and a later not finished mark clears it`() = runTest {
         val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)))
         f.now[0] = 1_000L
         f.repo.markFinished("abs_li_1", true).getOrThrow()
 
-        f.repo.savePlaybackProgress(live(4_100_000L, 1_500L), loadedSinceMs = 900L)
+        // at the start (paused after the rewind) the mark holds
+        f.repo.savePlaybackProgress(live(500L, 1_500L), loadedSinceMs = 900L)
         assertEquals(true, f.progressDao.get("abs_li_1")!!.isFinished)
-        f.repo.savePlaybackProgress(live(4_200_000L, 1_600L), loadedSinceMs = 900L)
+        f.repo.savePlaybackProgress(live(1_000L, 1_600L), loadedSinceMs = 900L)
         assertEquals(true, f.progressDao.get("abs_li_1")!!.isFinished)
 
         f.now[0] = 2_000L

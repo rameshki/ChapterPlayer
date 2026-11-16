@@ -150,6 +150,24 @@ class BookRepositoryPlexMarkTest {
     }
 
     @Test
+    fun `a finished Plex book played again is no longer finished on the server`() = runTest {
+        // every track scrobbled (Mark as finished, or heard to the end): Play again, and the first save while playing
+        val f = fixture(listOf(ProgressEntity("plex_10", 0L, 3_000_000L, 100L, true)))
+        f.plex.keys.forEach { f.plex.viewCount[it] = 1 }
+
+        f.repo.savePlaybackProgress(
+            com.chapterplayer.data.model.ReadingProgress("plex_10", 20_000L, 3_000_000L, 2_000L, false), loadedSinceMs = 1_500L
+        )
+
+        // the "set not finished" plan at the place heard: unscrobble from its track on, the offset in its own track
+        assertEquals(listOf("unscrobble 11", "unscrobble 12", "unscrobble 13", "timeline 11"), f.plex.reports())
+        assertEquals(false, f.repo.fetchServerProgress("plex_10").getOrThrow()?.isFinished)
+        val row = f.progressDao.get("plex_10")!!
+        assertEquals(false, row.isFinished)
+        assertEquals(20_000L, row.positionMs)
+    }
+
+    @Test
     fun `an unreachable Plex server queues the mark`() = runTest {
         val f = fixture()
         f.plex.down = true

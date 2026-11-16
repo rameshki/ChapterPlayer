@@ -46,7 +46,9 @@ import com.chapterplayer.domain.playback.defaultBookmarkTitle
 import com.chapterplayer.domain.playback.isFinishedAt
 import com.chapterplayer.domain.playback.mergeBookmarks
 import com.chapterplayer.domain.playback.keepsFinishedMark
-import com.chapterplayer.domain.playback.isSaveBeforeRewind
+import com.chapterplayer.domain.playback.PinnedSave
+import com.chapterplayer.domain.playback.pinnedSave
+import com.chapterplayer.domain.playback.playedAgain
 import com.chapterplayer.domain.playback.MarkedReport
 import com.chapterplayer.domain.playback.reportAfterMark
 import com.chapterplayer.data.diagnostics.ProblemLog
@@ -663,7 +665,10 @@ class BookRepositoryImpl(
             when (reportAfterMark(positionMs, clock(), markedAt, isPlaying)) {
                 MarkedReport.SKIP -> false
                 MarkedReport.SEND_AND_RESUME -> {
+                    // Listening again: the finished state ends here; the next save stores it and tells the server.
                     silenced.remove(bookId)
+                    userMarks.remove(bookId)
+                    rewinds.remove(bookId)
                     true
                 }
             }
@@ -672,26 +677,62 @@ class BookRepositoryImpl(
     override suspend fun savePlaybackProgress(progress: ReadingProgress, loadedSinceMs: Long) {
         val peers = peersOf(progress.bookId)
         val loaded = loadedOrNull()
+        var reopened: ReadingProgress? = null
         progressLock.withLock {
             inTransaction {
                 val existing = progressDao.get(progress.bookId)?.toDomain()
-                val keep = keepsFinishedMark(existing, userMarks[progress.bookId], loadedSinceMs)
-                if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else {
-                    userMarks.remove(progress.bookId)
-                    silenced.remove(progress.bookId)
-                }
-                // The player's place from before the rewind a finished mark asked for: the mark's 0 stays.
-                val beforeRewind = keep && isSaveBeforeRewind(progress.positionMs, clock(), rewinds[progress.bookId])
-                if (!beforeRewind) rewinds.remove(progress.bookId)
+                val pinned = keepsFinishedMark(existing, userMarks[progress.bookId], loadedSinceMs)
+                // The user's finished mark of the loaded book: the old place stays the mark's 0, the start keeps the
+                // mark, and anything past the start is listening again, which ends it.
+                val outcome = if (pinned) pinnedSave(progress.positionMs, clock(), rewinds[progress.bookId]) else null
+                if (outcome != PinnedSave.OLD_PLACE) rewinds.remove(progress.bookId)
+                val keep = outcome == PinnedSave.OLD_PLACE || outcome == PinnedSave.KEEP
+                if (keep) userMarks[progress.bookId] = progress.lastPlayedAt else endFinishedPin(progress.bookId, peers)
                 // The player's save is listening on this copy: never a mirrored row.
-                val saved = when {
-                    beforeRewind -> progress.copy(positionMs = 0L, isFinished = true)
-                    keep -> progress.copy(isFinished = true)
-                    else -> progress
+                val saved = when (outcome) {
+                    PinnedSave.OLD_PLACE -> progress.copy(positionMs = 0L, isFinished = true)
+                    PinnedSave.KEEP -> progress.copy(isFinished = true)
+                    PinnedSave.LISTENING_AGAIN, null -> progress
                 }.copy(mirrored = false)
                 progressDao.upsert(ProgressEntity.fromDomain(saved))
                 mirrorLocked(saved, peers, loaded)
+                if (playedAgain(existing, saved)) reopened = saved
             }
+        }
+        // A finished book played again is no longer finished on its server either (the other copies follow through the
+        // mirror pusher).
+        reopened?.let { reopenOnServer(it) }
+    }
+
+    /** Ends the finished pin of [bookId] and of its other copies, and the hold on its live reports. With [progressLock] held. */
+    private fun endFinishedPin(bookId: String, peers: List<MirrorPeer>) {
+        userMarks.remove(bookId)
+        silenced.remove(bookId)
+        rewinds.remove(bookId)
+        for (peer in peers) userMarks.remove(peer.bookId)
+    }
+
+    /**
+     * Tells [saved]'s server that the book is not finished any more, at the place heard, as "Mark as not finished" would
+     * (Audiobookshelf: not finished; Plex: unscrobbles from that track on; Jellyfin: Played = false). It waits for the
+     * server at most [markServerWaitMs], then the queue delivers it. The local row is not touched again. Never throws
+     * (cancellation aside).
+     */
+    private suspend fun reopenOnServer(saved: ReadingProgress) {
+        try {
+            val book = bookDao.getById(saved.bookId) ?: return
+            val pending = PendingProgress(
+                saved.bookId, book.serverId, saved.positionMs, saved.durationMs, listenedMs = 0L, updatedAtMs = saved.lastPlayedAt,
+                markedFinished = false,
+            )
+            if (withServerWait { pushProgress(pending) }?.isSuccess != true) {
+                queueProgress(pending)
+                onQueued()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The next save of the book, or the library sync, settles it.
         }
     }
 
