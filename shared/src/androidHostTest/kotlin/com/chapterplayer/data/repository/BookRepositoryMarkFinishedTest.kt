@@ -386,6 +386,54 @@ class BookRepositoryMarkFinishedTest {
     }
 
     @Test
+    fun `live reports keep a queued reopen newest so it is still delivered`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 0L, 9_000_000L, 100L, true)), loaded = "abs_li_1")
+        f.abs.record = Triple(0.0, true, 50L)
+        f.now[0] = 2_000L
+        f.repo.savePlaybackProgress(live(30_000L, 2_000L), loadedSinceMs = 1_500L)
+        // the first flush fails and backs off
+        f.abs.down = true
+        assertTrue(f.repo.pushProgress(f.repo.pendingProgress().single()).isFailure)
+        f.abs.down = false
+
+        // live reports go on; the server's time moves on while it still reads the book as finished
+        f.now[0] = 12_000L
+        f.repo.syncPlayback(session, 40_000L, 10_000L, isPlaying = true).getOrThrow()
+        f.abs.record = Triple(0.0, true, 11_000L)
+
+        val queued = f.repo.pendingProgress().single()
+        assertEquals(12_000L, queued.updatedAtMs)
+        val server = f.repo.fetchServerProgress("abs_li_1").getOrThrow()
+        assertEquals(com.chapterplayer.domain.playback.FlushDecision.SEND, com.chapterplayer.domain.playback.flushDecision(queued, server))
+        f.repo.pushProgress(queued).getOrThrow()
+        assertEquals(false, f.abs.record!!.second)
+        assertEquals(30.0, f.abs.record!!.first)
+    }
+
+    @Test
+    fun `a copy played again reopens a finished other copy at the place heard`() = runTest {
+        val f = fixture(
+            listOf(ProgressEntity("abs_li_1", 0L, 9_000_000L, 100L, true), ProgressEntity("abs_li_2", 0L, 9_000_000L, 100L, true)),
+            loaded = "abs_li_1", books = listOf(book(), book("abs_li_2")),
+            peers = mapOf("abs_li_1" to listOf(MirrorPeer("abs_li_2", "srv1", 9_000_000L))),
+        )
+        f.abs.record = Triple(0.0, true, 50L) // copy B's record: finished
+
+        f.now[0] = 2_000L
+        f.repo.savePlaybackProgress(live(30_000L, 2_000L), loadedSinceMs = 1_500L)
+
+        val rows = f.repo.pendingProgress().associateBy { it.bookId }
+        assertEquals(false, rows.getValue("abs_li_1").markedFinished)
+        val copy = rows.getValue("abs_li_2")
+        assertEquals(false, copy.markedFinished)
+        assertEquals(30_000L, copy.positionMs)
+        // delivered as an explicit not finished: two patches, so the finished item keeps the place instead of 0
+        f.repo.pushProgress(copy).getOrThrow()
+        assertEquals(2, patches(f).size)
+        assertEquals(Triple(30.0, false, 5_000L), f.abs.record)
+    }
+
+    @Test
     fun `an ordinary queued place is one patch`() = runTest {
         val f = fixture()
         f.repo.pushProgress(com.chapterplayer.domain.playback.PendingProgress("abs_li_1", "srv1", 30_000L, 9_000_000L, 1_000L, 2_000L)).getOrThrow()

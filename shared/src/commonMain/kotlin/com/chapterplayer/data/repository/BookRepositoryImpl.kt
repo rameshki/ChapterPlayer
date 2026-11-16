@@ -293,16 +293,36 @@ class BookRepositoryImpl(
             if (!reportAllowed(session.bookId, positionMs, isPlaying)) return Result.success(Unit)
             if (silentAtStart(progressDao.get(session.bookId)?.toDomain(), positionMs)) return Result.success(Unit)
             val (server, source) = serverAndSource(session.serverId)
-            Result.success(
-                source.syncPlayback(
-                    server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L), session.durationMs, isPlaying
-                )
+            source.syncPlayback(
+                server, session.sessionId, positionMs.coerceAtLeast(0L), listenedMs.coerceAtLeast(0L), session.durationMs, isPlaying
             )
+            keepReopenNewest(session.bookId)
+            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
+
+    /**
+     * After a live report the server took: a queued "played again" row of the book ([PendingProgress.markedFinished] false,
+     * not a mirror) is dated now, so the server's time, which the reports move on while it may still hold the book
+     * finished, never reads as newer and drops it (see `flushDecision`). Best effort.
+     */
+    private suspend fun keepReopenNewest(bookId: String) {
+        try {
+            inTransaction {
+                val queued = pendingDao.get(bookId)
+                if (queued != null && queued.markedFinished == false && queued.mirrorOf == null) {
+                    pendingDao.upsert(queued.copy(updatedAtMs = maxOf(queued.updatedAtMs, clock())))
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The report went out; the row keeps its time.
+        }
+    }
 
     override suspend fun fetchServerProgress(bookId: String): Result<ServerProgress?> =
         try {
@@ -728,7 +748,7 @@ class BookRepositoryImpl(
                     null -> if (staysFinishedAtStart(existing, progress)) progress.copy(isFinished = true) else progress
                 }.copy(mirrored = false)
                 progressDao.upsert(ProgressEntity.fromDomain(saved))
-                mirrorLocked(saved, peers, loaded)
+                if (mirrorLocked(saved, peers, loaded, reopenPeers = true)) reopened = true
                 // A finished book played again is no longer finished on its server either: queued in this same write,
                 // so it cannot be lost to a cancelled save, and delivered by the flusher (the saver never waits for a
                 // server). The other copies follow through the mirror pusher.
@@ -776,9 +796,10 @@ class BookRepositoryImpl(
      * Moves the other copies' local rows to where [source] is (see `mirroredProgress`: by fraction, newest wins, flagged
      * mirrored). Never the copy [loaded] in the player (its own saves own its row), and never a copy whose row is the
      * user's finished mark of this session (the player's pin, `keepsFinishedMark`, would be lost). Call with
-     * [progressLock] held, inside the transaction that wrote [source].
+     * [progressLock] held, inside the transaction that wrote [source]. True when it queued a reopen of a copy ([reopenPeers]).
      */
-    private suspend fun mirrorLocked(source: ReadingProgress, peers: List<MirrorPeer>, loaded: String?) {
+    private suspend fun mirrorLocked(source: ReadingProgress, peers: List<MirrorPeer>, loaded: String?, reopenPeers: Boolean = false): Boolean {
+        var queued = false
         for (peer in peers) {
             if (peer.bookId == loaded) continue
             val existing = progressDao.get(peer.bookId)?.toDomain()
@@ -786,7 +807,20 @@ class BookRepositoryImpl(
             if (pinned) continue
             val mirror = mirroredProgress(source, peer.bookId, peer.durationMs, existing) ?: continue
             progressDao.upsert(ProgressEntity.fromDomain(mirror))
+            // A finished copy that playing another copy un-finishes is reopened on its own server like a book played
+            // again (an explicit not finished: Audiobookshelf keeps the place instead of resetting a finished item to 0).
+            // Only from the player's saves: a server merge mirrors locally only.
+            if (reopenPeers && playedAgain(existing, mirror)) {
+                queueLocked(
+                    PendingProgress(
+                        peer.bookId, peer.serverId, mirror.positionMs, mirror.durationMs, listenedMs = 0L,
+                        updatedAtMs = mirror.lastPlayedAt, markedFinished = false,
+                    )
+                )
+                queued = true
+            }
         }
+        return queued
     }
 
     /**
