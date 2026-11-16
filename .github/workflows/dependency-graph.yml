@@ -20,6 +20,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      # Needs "Dependency graph" turned on in the repository settings (Settings, Advanced Security). Until then the
+      # submission is refused, so this step must not turn every push red.
       - uses: gradle/actions/dependency-submission@v6
+        continue-on-error: true
         with:
           dependency-graph: generate-and-submit
