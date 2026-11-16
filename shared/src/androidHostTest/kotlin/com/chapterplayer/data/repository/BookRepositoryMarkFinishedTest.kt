@@ -78,39 +78,51 @@ class BookRepositoryMarkFinishedTest {
      * time to 0 whatever was sent; a finished item whose time moves away from the end (10 s) is un-finished.
      */
     private class MockAbs {
-        val requests = mutableListOf<HttpRequestData>()
+        private val FIRST_ITEM = "li_1"
+        /** Every request received. Copies of a book are marked in parallel, so the list is thread-safe. */
+        val requests: MutableList<HttpRequestData> = java.util.Collections.synchronizedList(mutableListOf())
         var down = false
-        /** The server's record: current time in seconds, finished, last update in ms; null = never started (404). */
-        var record: Triple<Double, Boolean, Long>? = null
+        /** One record per item id, as on a real server: current time in seconds, finished, last update in ms. */
+        private val records = java.util.concurrent.ConcurrentHashMap<String, Triple<Double, Boolean, Long>>()
+        /** The record of the first item ("li_1"): current time in seconds, finished, last update in ms; null = never started (404). */
+        fun recordOf(item: String): Triple<Double, Boolean, Long>? = records[item]
+        fun setRecord(item: String, value: Triple<Double, Boolean, Long>) { records[item] = value }
+        var record: Triple<Double, Boolean, Long>?
+            get() = records[FIRST_ITEM]
+            set(value) { if (value == null) records.remove(FIRST_ITEM) else records[FIRST_ITEM] = value }
         /** When set, the GET answers this instead of the record (a server that keeps a finished book's old place). */
         var answer: Triple<Double, Boolean, Long>? = null
         var serverClock = 5_000L
         /** When set, PATCHes after this many fail with a dropped connection (none of them reaches the record). */
         var failAfterPatches: Int? = null
-        private var patchCount = 0
+        private val patchCount = java.util.concurrent.atomic.AtomicInteger()
         /** The times (seconds) of every session report the server received. */
         val syncs = mutableListOf<Double>()
         val json = headersOf(HttpHeaders.ContentType, "application/json")
 
+        /** The item a progress URL names (`api/me/progress/{id}`). */
+        private fun itemOf(request: HttpRequestData) = request.url.encodedPath.substringAfterLast('/')
+
         val engine = MockEngine { request ->
             requests += request
             if (down) throw IOException("offline")
+            val item = itemOf(request)
             when (request.method) {
-                HttpMethod.Patch -> {
-                    failAfterPatches?.let { limit -> if (patchCount++ >= limit) throw IOException("dropped") }
+                HttpMethod.Patch -> synchronized(this@MockAbs) {
+                    failAfterPatches?.let { limit -> if (patchCount.getAndIncrement() >= limit) throw IOException("dropped") }
                     val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
                     val finished = body["isFinished"]!!.jsonPrimitive.content.toBoolean()
                     val sent = body["currentTime"]?.jsonPrimitive?.content?.toDouble()
-                    val old = record
+                    val old = records[item]
                     val time = old?.first ?: 0.0
                     val unmarking = !finished && old?.second == true
                     val newTime = if (unmarking) 0.0 else sent ?: time
                     val stillDone = finished && !(newTime != time && 9_000.0 - newTime >= 10.0)
-                    record = Triple(newTime, stillDone, serverClock)
+                    records[item] = Triple(newTime, stillDone, serverClock)
                     respond("OK", HttpStatusCode.OK, json)
                 }
                 HttpMethod.Get -> {
-                    val r = answer ?: record
+                    val r = answer ?: records[item]
                     if (r == null) respond("{}", HttpStatusCode.NotFound, json)
                     else respond(
                         """{"libraryItemId":"li_1","duration":9000.0,"progress":${if (r.second) 1.0 else r.first / 9000.0},"currentTime":${r.first},"isFinished":${r.second},"lastUpdate":${r.third}}""",
@@ -122,9 +134,9 @@ class BookRepositoryMarkFinishedTest {
                     val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
                     val sent = body["currentTime"]!!.jsonPrimitive.content.toDouble()
                     syncs += sent
-                    val old = record ?: Triple(0.0, false, 0L)
+                    val old = records[FIRST_ITEM] ?: Triple(0.0, false, 0L)
                     val stillDone = old.second && !(sent != old.first && 9_000.0 - sent >= 10.0)
-                    record = Triple(sent, stillDone, serverClock)
+                    records[FIRST_ITEM] = Triple(sent, stillDone, serverClock)
                     respond("OK", HttpStatusCode.OK, json)
                 }
                 else -> respond("{}", HttpStatusCode.NotFound, json)
@@ -417,7 +429,7 @@ class BookRepositoryMarkFinishedTest {
             loaded = "abs_li_1", books = listOf(book(), book("abs_li_2")),
             peers = mapOf("abs_li_1" to listOf(MirrorPeer("abs_li_2", "srv1", 9_000_000L))),
         )
-        f.abs.record = Triple(0.0, true, 50L) // copy B's record: finished
+        f.abs.setRecord("li_2", Triple(0.0, true, 50L)) // copy B's record: finished
 
         f.now[0] = 2_000L
         f.repo.savePlaybackProgress(live(30_000L, 2_000L), loadedSinceMs = 1_500L)
@@ -430,7 +442,7 @@ class BookRepositoryMarkFinishedTest {
         // delivered as an explicit not finished: two patches, so the finished item keeps the place instead of 0
         f.repo.pushProgress(copy).getOrThrow()
         assertEquals(2, patches(f).size)
-        assertEquals(Triple(30.0, false, 5_000L), f.abs.record)
+        assertEquals(Triple(30.0, false, 5_000L), f.abs.recordOf("li_2"))
     }
 
     @Test
