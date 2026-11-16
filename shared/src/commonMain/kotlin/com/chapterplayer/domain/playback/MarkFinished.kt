@@ -25,9 +25,12 @@ enum class PinnedSave {
 /**
  * The player's save at [positionMs] made at [nowMs] of a book the user marked finished while it was loaded ([rewoundAtMs]:
  * the mark that rewound it, null once the rewind was seen). The old place is the mark's 0; a place at the start keeps the
- * mark; anything past the start is listening again, which ends the finished state.
+ * mark; anything past the start is listening again, which ends the finished state. When the rewind failed
+ * ([rewindFailed]: the player may still stand at the old place) nothing past the start ends the mark: it is the old place
+ * until a save at the start shows the player there.
  */
-fun pinnedSave(positionMs: Long, nowMs: Long, rewoundAtMs: Long?): PinnedSave = when {
+fun pinnedSave(positionMs: Long, nowMs: Long, rewoundAtMs: Long?, rewindFailed: Boolean = false): PinnedSave = when {
+    rewindFailed && positionMs > MARK_REWIND_SEEN_MS -> PinnedSave.OLD_PLACE
     isSaveBeforeRewind(positionMs, nowMs, rewoundAtMs) -> PinnedSave.OLD_PLACE
     positionMs > MARK_REWIND_SEEN_MS -> PinnedSave.LISTENING_AGAIN
     else -> PinnedSave.KEEP
@@ -36,9 +39,14 @@ fun pinnedSave(positionMs: Long, nowMs: Long, rewoundAtMs: Long?): PinnedSave = 
 /**
  * Whether a save from the player turns a finished book into one that is not finished: playing a finished book again
  * (after Mark as finished, Play again, or after hearing it to the end) makes it not finished, here and on its server.
+ * Only real listening counts: a save at the very start (Play then Pause within [MARK_REWIND_SEEN_MS]) changes nothing.
  */
 fun playedAgain(existing: ReadingProgress?, saved: ReadingProgress): Boolean =
-    existing != null && existing.isFinished && !saved.isFinished
+    existing != null && existing.isFinished && !saved.isFinished && saved.positionMs > MARK_REWIND_SEEN_MS
+
+/** Whether the player's save of a finished book at the very start keeps it finished (no real listening yet, see [playedAgain]). */
+fun staysFinishedAtStart(existing: ReadingProgress?, save: ReadingProgress): Boolean =
+    existing != null && existing.isFinished && !save.isFinished && save.positionMs <= MARK_REWIND_SEEN_MS
 
 /**
  * Whether a live report of a book whose finished mark silenced its session (made at [markedAtMs], see
@@ -61,7 +69,8 @@ enum class MarkedReport {
  * - anything else (playing again, or a later report past the start) is listening again: sent, and the silence ends, so
  *   that listening reaches the server (where it may genuinely un-finish the book).
  */
-fun reportAfterMark(positionMs: Long, nowMs: Long, markedAtMs: Long, isPlaying: Boolean): MarkedReport = when {
+fun reportAfterMark(positionMs: Long, nowMs: Long, markedAtMs: Long, isPlaying: Boolean, rewindFailed: Boolean = false): MarkedReport = when {
+    rewindFailed && positionMs > MARK_REWIND_SEEN_MS -> MarkedReport.SKIP
     isSaveBeforeRewind(positionMs, nowMs, markedAtMs) -> MarkedReport.SKIP
     !isPlaying && positionMs <= MARK_REWIND_SEEN_MS -> MarkedReport.SKIP
     else -> MarkedReport.SEND_AND_RESUME

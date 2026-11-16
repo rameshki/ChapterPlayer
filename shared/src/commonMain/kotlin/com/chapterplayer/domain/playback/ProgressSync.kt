@@ -90,7 +90,11 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
     val incomingUserMark = incoming.markedFinished != null && incoming.mirrorOf == null
     val mark = when {
         existing.markedFinished == null -> incoming.markedFinished
-        incoming.markedFinished == null -> if (newer && !existingUserMark) null else existing.markedFinished
+        // A queued "not finished" (Mark as not finished, or a finished book played again) yields to a newer place at the
+        // end: the book was heard to the end since, so the position's own finished state goes.
+        incoming.markedFinished == null ->
+            if (newer && (!existingUserMark || (existing.markedFinished == false && isFinishedAt(incoming.positionMs, incoming.durationMs)))) null
+            else existing.markedFinished
         newer -> incoming.markedFinished
         else -> existing.markedFinished
     }
@@ -112,6 +116,9 @@ fun coalescePending(existing: PendingProgress?, incoming: PendingProgress): Pend
  * Decides whether to push pending progress to the server or drop it based on server freshness.
  */
 fun flushDecision(pending: PendingProgress, server: ServerProgress?): FlushDecision {
+    // A queued "not finished" is never dropped for a finished server row: the book is being heard again here (a Plex
+    // album keeps every track scrobbled while its live timelines move its time on, so the server reads as newer).
+    if (pending.markedFinished == false && server != null && server.isFinished) return FlushDecision.SEND
     return if (server != null && server.updatedAtMs > pending.updatedAtMs) {
         FlushDecision.DROP_SERVER_NEWER
     } else {

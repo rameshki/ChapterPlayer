@@ -278,6 +278,9 @@ class BookRepositoryJellyfinTest {
         f.jf.played = true
 
         f.repo.savePlaybackProgress(com.chapterplayer.data.model.ReadingProgress(bookId, 20_000L, hour, 2_000L, false), loadedSinceMs = 1_500L)
+        // queued with the save; the flusher sends it
+        assertTrue(f.jf.writes().isEmpty())
+        f.repo.pushProgress(f.repo.pendingProgress().single()).getOrThrow()
 
         assertEquals(listOf("POST /UserItems/$itemId/UserData"), f.jf.writes())
         assertTrue(f.jf.lastBody().contains("\"Played\":false"))

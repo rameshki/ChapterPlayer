@@ -6,8 +6,12 @@ import kotlin.test.assertEquals
 class AbsProgressPatchesTest {
 
     @Test
-    fun `a place not finished is one patch with the time and the fraction`() {
-        assertEquals(listOf(AbsProgressPatch(1_350.0, 5_400.0, 0.25, false)), absProgressPatches(1_350_000, 5_400_000, false))
+    fun `a place not finished first sets not finished without a time then the place`() {
+        // a finished item set not finished is reset to 0 and the time sent with it is dropped: the place goes second
+        assertEquals(
+            listOf(AbsProgressPatch(null, 5_400.0, 0.25, false), AbsProgressPatch(1_350.0, 5_400.0, 0.25, false)),
+            absProgressPatches(1_350_000, 5_400_000, false),
+        )
     }
 
     @Test

@@ -76,6 +76,38 @@ class MarkFinishedTest {
     }
 
     @Test
+    fun `a save at the very start is no listening again and keeps the book finished`() {
+        val finished = progress(100_000, at = 5, finished = true)
+        assertFalse(playedAgain(finished, progress(MARK_REWIND_SEEN_MS, at = 9)))
+        assertTrue(staysFinishedAtStart(finished, progress(1_000, at = 9)))
+        assertFalse(staysFinishedAtStart(finished, progress(MARK_REWIND_SEEN_MS + 1, at = 9)))
+        assertFalse(staysFinishedAtStart(progress(5_000, at = 5), progress(1_000, at = 9)))
+    }
+
+    @Test
+    fun `after a failed rewind nothing past the start ends the mark`() {
+        assertEquals(PinnedSave.OLD_PLACE, pinnedSave(positionMs = 40_000, nowMs = 60_000, rewoundAtMs = null, rewindFailed = true))
+        assertEquals(PinnedSave.KEEP, pinnedSave(positionMs = 1_000, nowMs = 60_000, rewoundAtMs = null, rewindFailed = true))
+        assertEquals(MarkedReport.SKIP, reportAfterMark(positionMs = 40_000, nowMs = 60_000, markedAtMs = 1_000, isPlaying = true, rewindFailed = true))
+    }
+
+    @Test
+    fun `a queued not finished yields to a newer place at the end`() {
+        val end = coalescePending(pending(10_000, 10, marked = false), pending(99_000, 20))
+        assertEquals(null, end.markedFinished)
+        assertEquals(99_000, end.positionMs)
+        // a newer place before the end keeps the not finished
+        assertEquals(false, coalescePending(pending(10_000, 10, marked = false), pending(40_000, 20)).markedFinished)
+    }
+
+    @Test
+    fun `a queued not finished is sent even when a finished server row reads newer`() {
+        val reopen = pending(10_000, 500, marked = false)
+        assertEquals(FlushDecision.SEND, flushDecision(reopen, ServerProgress(100_000, 100_000, true, 900)))
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(reopen, ServerProgress(20_000, 100_000, false, 900)))
+    }
+
+    @Test
     fun `after a mark the old place and the pause at the start are held back`() {
         assertEquals(MarkedReport.SKIP, reportAfterMark(positionMs = 40_000, nowMs = 1_200, markedAtMs = 1_000, isPlaying = false))
         // a tick that read the player before its pause

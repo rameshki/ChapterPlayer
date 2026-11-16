@@ -108,7 +108,10 @@ class AbsLibraryProgressTest {
     fun `pushing progress patches the item with the position the duration and the fraction`() = runTest {
         source().pushProgress(server, "abs_li_fixture01", 1_350_000, 5_400_000, isFinished = false)
 
-        val request = requests.single()
+        // first not finished without a time (a finished item would drop a time sent with it), then the place
+        val (unfinish, request) = requests.also { assertEquals(2, it.size) }
+        assertNull(bodyOf(unfinish)["currentTime"])
+        assertEquals(false, bodyOf(unfinish)["isFinished"]!!.jsonPrimitive.boolean)
         assertEquals(HttpMethod.Patch, request.method)
         assertEquals("/api/me/progress/li_fixture01", request.url.encodedPath)
         assertEquals("Bearer tok", request.headers[HttpHeaders.Authorization])
@@ -237,7 +240,7 @@ class AbsLibraryProgressTest {
     fun `patch refreshes once on a 401 and then succeeds`() = runTest {
         val r = refreshing { "{}" }
 
-        r.source.pushProgress(r.server, "abs_li_fixture01", 1_000, 9_000, false)
+        r.source.pushProgress(r.server, "abs_li_fixture01", 0, 9_000, false) // one patch (not finished at 0)
 
         assertEquals(1, r.refreshes())
         assertEquals(listOf("Bearer ${r.oldToken}", "Bearer ${r.newToken}"), r.seen.map { it.headers[HttpHeaders.Authorization] })
