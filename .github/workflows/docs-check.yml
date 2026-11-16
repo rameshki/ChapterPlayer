@@ -1,0 +1,22 @@
+name: Docs check
+
+# Cheap and always run, also for docs-only pull requests (the build jobs skip those). See scripts/check-docs.sh (review R37).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status-file:
+    name: Status file check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check docs/PROJECT_STATUS.md
+        run: bash scripts/check-docs.sh
