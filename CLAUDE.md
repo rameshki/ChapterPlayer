@@ -41,11 +41,12 @@ Before re-opening a settled question, or asking Robert something already decided
 | iOS | `ios.md` |
 | Theme, fonts, Settings, Diagnostics | `ui-theme-settings.md` |
 | Credentials, Koin, test layout | `platform-and-infra.md` |
+| Screenshot and UI tests (Roborazzi, goldens) | `testing.md` |
 
 ## Building and testing
 - JDK 17 (CI uses Temurin 17). `./gradlew :androidApp:assembleDebug`; release: `:androidApp:assembleRelease` and `:androidApp:lintRelease` (baseline `androidApp/lint-baseline.xml`); `scripts/check-r8-seeds.sh` checks R8 keeps the widget callbacks.
 - Phone installs: `scripts/install-debug.sh [adb serial]` builds the debug app with the next debug build number (About shows e.g. `0.5.3-debug.12`; the counter is `~/.chapterplayer-debug-build`) and installs it. Use it for every install so the build on the phone is identifiable.
-- Host tests: `./gradlew :shared:testAndroidHostTest` (also runs `commonTest`). iOS type check on Windows: `:shared:compileKotlinIosSimulatorArm64`; linking and Xcode build run only in the macOS CI job.
+- Host tests: `./gradlew :shared:testAndroidHostTest` (also runs `commonTest`). Screenshot goldens: `:shared:recordRoborazziAndroidHostTest` / `:shared:verifyRoborazziAndroidHostTest` (`docs/architecture/testing.md`). iOS type check on Windows: `:shared:compileKotlinIosSimulatorArm64`; linking and Xcode build run only in the macOS CI job.
 - `KoinModulesTest` runs `verify()` over every module: a new class in a module shows what it still needs.
 - SDK: platform `android-37.0`, build-tools `36.0.0`. With `sdkmanager` on Windows use slash paths.
 - CI: two jobs (Build & unit test about 5 min, iOS about 19 min). `main` is strict: rebase after other merges.
