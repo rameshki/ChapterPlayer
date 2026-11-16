@@ -21,6 +21,10 @@ kotlinx-serialization = "1.11.0"
 media3 = "1.11.1"
 work = "2.12.0"
 glance = "1.2.0"
+# Screenshot tests (host, Robolectric native graphics): see docs/architecture/testing.md
+roborazzi = "1.77.0"
+robolectric = "4.17"
+junit4 = "4.13.2"
 
 [libraries]
 # AndroidX Core
@@ -103,6 +107,13 @@ work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version
 # Glance (home screen widgets)
 glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 
+# Screenshot and UI tests on the host (androidHostTest, Robolectric)
+roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 androidx-room = { id = "androidx.room", version.ref = "room" }
@@ -112,3 +123,4 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }

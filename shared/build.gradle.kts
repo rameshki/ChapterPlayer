@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidx.room)
+    alias(libs.plugins.roborazzi)
 }
 
 kotlin {
@@ -19,8 +20,11 @@ kotlin {
         // Fonts live in src/androidMain/res until Compose Multiplatform resources arrive.
         androidResources { enable = true }
 
-        // JVM unit tests for code in androidMain (src/androidHostTest).
-        withHostTest { }
+        // JVM unit tests for code in androidMain (src/androidHostTest). Android resources (and the Compose resources
+        // packed as assets) are on the test classpath so Robolectric can draw the app's screens for screenshot tests.
+        withHostTest {
+            isIncludeAndroidResources = true
+        }
 
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
@@ -80,6 +84,14 @@ kotlin {
             implementation(libs.koin.test)
             // Real SQLite on the host for the Room migration tests (the Android variant has only device natives)
             implementation(libs.sqlite.bundled.jvm)
+            // Screenshot and UI tests: Robolectric (native graphics) draws Compose; Roborazzi records and verifies goldens
+            implementation(libs.junit4)
+            implementation(libs.robolectric)
+            implementation(libs.roborazzi)
+            implementation(libs.roborazzi.compose)
+            implementation(project.dependencies.platform(libs.compose.bom))
+            implementation(libs.compose.ui.test.junit4)
+            implementation(libs.compose.ui.test.manifest)
         }
 
         androidMain.dependencies {
@@ -134,6 +146,12 @@ kotlin {
 
 compose.resources {
     packageOfResClass = "com.chapterplayer.resources"
+}
+
+// Screenshot goldens are committed next to the tests. Record: recordRoborazziAndroidHostTest; verify:
+// verifyRoborazziAndroidHostTest (fails when an image changed). See docs/architecture/testing.md.
+roborazzi {
+    outputDir.set(file("src/androidHostTest/screenshots"))
 }
 
 // The exported schema records what installed apps already hold; RoomSchemaTest pins it.
