@@ -16,6 +16,8 @@ import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.diagnostics.CrashStore
+import com.chapterplayer.data.permissions.AndroidBatterySetting
+import com.chapterplayer.data.permissions.BatterySetting
 import com.chapterplayer.data.diagnostics.AndroidExitReasons
 import com.chapterplayer.data.diagnostics.ExitReasons
 import com.chapterplayer.data.diagnostics.FileCrashStore
@@ -184,6 +186,8 @@ val deviceModule = module {
     single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
     // The last crash, kept as a small file in the cache folder for the Report a problem text.
     single<CrashStore> { FileCrashStore(crashFile(androidContext())) }
+    // Opens the system's battery screen so the person can let playback run overnight (R36).
+    single<BatterySetting> { AndroidBatterySetting(androidContext()) }
     // What playback did, kept on disk across restarts, and Android's own reasons for ending the app (R36).
     single<PlaybackJournal> { FilePlaybackJournal(journalFile(androidContext())) }
     single<ExitReasons> { AndroidExitReasons(androidContext()) }

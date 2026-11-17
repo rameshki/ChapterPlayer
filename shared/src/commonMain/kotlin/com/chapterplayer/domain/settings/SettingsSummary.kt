@@ -65,6 +65,12 @@ const val DOWNLOADS_UNAVAILABLE_SUMMARY = "Not available on iOS yet"
 
 fun carSummary(resumeOnConnect: Boolean): String = "Resume on connect: ${if (resumeOnConnect) "on" else "off"}"
 
+/** The "keep playing overnight" row: says what the setting is now and, when it is limited, what a tap does. */
+fun batterySummary(unrestricted: Boolean): String =
+    if (unrestricted) "Allowed to run in the background" else "Android may stop playback at night. Tap to allow it."
+
+const val BATTERY_TITLE = "Keep playing overnight"
+
 fun aboutSummary(versionName: String): String = "Version $versionName"
 
 /** What a screen reader says for a hub row: the title, then the summary parts separated by commas. */
