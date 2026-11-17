@@ -7,6 +7,8 @@ import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.domain.downloads.GIGABYTE
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SettingsSummaryTest {
 
@@ -76,6 +78,15 @@ class SettingsSummaryTest {
         assertEquals("Allowed to run in the background", batterySummary(true))
         assertEquals("Android may stop playback at night. Tap to allow it.", batterySummary(false))
         assertEquals("Keep playing overnight", BATTERY_TITLE)
+    }
+
+    @Test
+    fun `the first play question is asked once and only where the setting limits the app`() {
+        assertTrue(shouldAskAboutBattery(available = true, unrestricted = false, alreadyShown = false, playing = true))
+        assertFalse(shouldAskAboutBattery(available = false, unrestricted = false, alreadyShown = false, playing = true))
+        assertFalse(shouldAskAboutBattery(available = true, unrestricted = true, alreadyShown = false, playing = true))
+        assertFalse(shouldAskAboutBattery(available = true, unrestricted = false, alreadyShown = true, playing = true))
+        assertFalse(shouldAskAboutBattery(available = true, unrestricted = false, alreadyShown = false, playing = false))
     }
 
     @Test

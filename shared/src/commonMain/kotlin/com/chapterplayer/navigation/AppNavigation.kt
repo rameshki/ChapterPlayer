@@ -72,6 +72,7 @@ import com.chapterplayer.ui.library.decodeGroupKey
 import com.chapterplayer.ui.player.PlayerScreen
 import com.chapterplayer.ui.search.SearchScreen
 import com.chapterplayer.ui.settings.AboutSettingsScreen
+import com.chapterplayer.ui.settings.BatteryPrompt
 import com.chapterplayer.ui.settings.AppearanceSettingsScreen
 import com.chapterplayer.ui.settings.CarSettingsScreen
 import com.chapterplayer.ui.settings.DownloadsSettingsScreen
@@ -165,6 +166,7 @@ fun AppNavigation() {
         LocalTextClipboard provides rememberComposeTextClipboard(),
         LocalPlatformFeatures provides features,
     ) {
+        BatteryPrompt(isPlaying = playerState.isPlaying)
         Scaffold(
             bottomBar = {
                 Column {

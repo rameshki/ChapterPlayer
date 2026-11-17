@@ -31,6 +31,9 @@ class FakeAppSettings(
     val carResume = MutableStateFlow(true)
     override val resumeOnCarConnect: Flow<Boolean> = carResume
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { carResume.value = enabled }
+    val batteryShown = MutableStateFlow(false)
+    override val batteryPromptShown: Flow<Boolean> = batteryShown
+    override suspend fun setBatteryPromptShown() { batteryShown.value = true }
     val downloadedOnlyFlow = MutableStateFlow(false)
     override val downloadedOnly: Flow<Boolean> = downloadedOnlyFlow
     override suspend fun setDownloadedOnly(enabled: Boolean) { downloadedOnlyFlow.value = enabled }
