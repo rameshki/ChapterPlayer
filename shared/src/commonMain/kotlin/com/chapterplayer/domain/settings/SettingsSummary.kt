@@ -71,6 +71,13 @@ fun batterySummary(unrestricted: Boolean): String =
 
 const val BATTERY_TITLE = "Keep playing overnight"
 
+/**
+ * Whether to ask, once, about running in the background: the first time sound is playing, on a phone where the setting
+ * exists and still limits the app, and the question has not been answered or dismissed before.
+ */
+fun shouldAskAboutBattery(available: Boolean, unrestricted: Boolean, alreadyShown: Boolean, playing: Boolean): Boolean =
+    available && !unrestricted && !alreadyShown && playing
+
 fun aboutSummary(versionName: String): String = "Version $versionName"
 
 /** What a screen reader says for a hub row: the title, then the summary parts separated by commas. */

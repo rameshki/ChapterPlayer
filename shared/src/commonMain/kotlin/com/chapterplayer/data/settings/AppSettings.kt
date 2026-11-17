@@ -35,6 +35,10 @@ interface AppSettings {
     val resumeOnCarConnect: Flow<Boolean>
     suspend fun setResumeOnCarConnect(enabled: Boolean)
 
+    /** The one-time question about running in the background overnight (R36) has been answered or dismissed. */
+    val batteryPromptShown: Flow<Boolean>
+    suspend fun setBatteryPromptShown()
+
     /** Offline-style browsing: only downloaded books play, even with a network. */
     val downloadedOnly: Flow<Boolean>
     suspend fun setDownloadedOnly(enabled: Boolean)
@@ -85,6 +89,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val font = stringPreferencesKey("app_font")
         val layout = stringPreferencesKey("library_layout")
         val carResume = booleanPreferencesKey("resume_on_car_connect")
+        val batteryPromptShown = booleanPreferencesKey("battery_prompt_shown")
         val downloadedOnly = booleanPreferencesKey("downloaded_only")
         val playbackSpeed = floatPreferencesKey("playback_speed")
         val downloadWifiOnly = booleanPreferencesKey("download_wifi_only")
@@ -117,6 +122,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     }
 
     override val resumeOnCarConnect: Flow<Boolean> = prefs.map { it[Keys.carResume] ?: true }
+    override val batteryPromptShown: Flow<Boolean> = prefs.map { it[Keys.batteryPromptShown] ?: false }
 
     override val downloadedOnly: Flow<Boolean> = prefs.map { it[Keys.downloadedOnly] ?: false }
 
@@ -146,6 +152,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override suspend fun setAppFont(font: AppFont) { store.edit { it[Keys.font] = font.name } }
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
+    override suspend fun setBatteryPromptShown() { store.edit { it[Keys.batteryPromptShown] = true } }
     override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }
     override suspend fun setDownloadWifiOnly(enabled: Boolean) { store.edit { it[Keys.downloadWifiOnly] = enabled } }
     override suspend fun setDownloadStorageLimitBytes(limitBytes: Long?) {
