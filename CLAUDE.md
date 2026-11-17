@@ -4,7 +4,7 @@ Audiobook player for Audiobookshelf (ABS), Plex and Jellyfin. Android first, bui
 runs on iOS. The repo is public (Apache-2.0). Scope, stages and design direction: `docs/ROADMAP.md`.
 
 **Start here in every session:** read `docs/PROJECT_STATUS.md` (what is merged and open, what is verified on devices,
-next steps, traps). Update it, this file and the area file you touched whenever a block of work finishes. Then read ONLY
+next steps, traps). A feature PR does not edit it: the session that merges a batch updates it once. Update this file and the area file you touched when a block of work finishes. Then read ONLY
 the `docs/architecture/<area>.md` files your task touches (map below); they hold the detail that used to live here.
 Before re-opening a settled question, or asking Robert something already decided, check `docs/DECISIONS.md` (dated decisions and the open ones).
 
@@ -19,7 +19,14 @@ Before re-opening a settled question, or asking Robert something already decided
 - Never read the user's screen or other apps. Phone testing only in the debug app (`com.chapterplayer.debug`); capture only ChapterPlayer screens.
 - Never circumvent device management (the owner's iPhone is MDM-managed). Never remove DRM.
 - English only. Release builds may offer a redacted "Report a problem" text report; no analytics, no network call for it.
-- Merges: PRs into protected `main`, squash, only with green CI and a clean review.
+- Merges: PRs into protected `main`, squash, only with green CI and a clean review. Both CI jobs are required checks and admins cannot bypass; merge with `gh pr merge N --auto --squash` (docs-only PRs skip the build jobs).
+
+## Behavior
+For any task with a deliverable, a review, or figures I will act on, use the fable-playbook skill as part of the work.
+Lead with the answer. If I set a length limit, stay inside it.
+Say in one or two lines what you checked and what you did not.
+Stay inside the request: offer extra work in one line, do not do it unasked.
+Only put a choice to me when a decision is actually required. Then give 2 to 4 options, your recommendation first, with the consequence of each.
 
 ## Layout
 - `shared/` Kotlin Multiplatform (Android + iOS): all app code. `commonMain` has the UI (Compose Multiplatform), view models, navigation, domain rules, data, Koin modules; `androidMain` / `iosMain` hold only platform parts.
