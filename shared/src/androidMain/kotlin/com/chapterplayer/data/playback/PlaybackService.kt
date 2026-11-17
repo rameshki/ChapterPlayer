@@ -7,9 +7,11 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
+import com.chapterplayer.data.diagnostics.PlaybackJournal
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -61,9 +63,14 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var pausedStopJob: Job? = null
     private val playbackController: PlaybackController by inject()
+    private val journal: PlaybackJournal by inject()
+
+    // The book position for a journal line; null when nothing is loaded.
+    private fun journalPosition(): Long? = playbackController.state.value.takeIf { it.bookId != null }?.positionMs
 
     override fun onCreate() {
         super.onCreate()
+        journal.add("service created")
         val exo = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
                 // Downloaded books are file addresses (read straight from disk); everything else goes over HTTP with the token.
@@ -98,15 +105,38 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         exo.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 updateStopTimer(exo)
+                journal.add(
+                    if (playWhenReady) "play asked (${playWhenReadyReasonName(reason)})" else "paused (${playWhenReadyReasonName(reason)})",
+                    journalPosition(),
+                )
                 val byFocusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
                 if (focusWatch.onPlayWhenReadyChanged(playWhenReady, byFocusLoss, appInFront = isAppInFront(), nowMs = SystemClock.elapsedRealtime())) {
                     onPlaybackRefused()
                 }
             }
 
-            override fun onIsPlayingChanged(isPlaying: Boolean) = focusWatch.onIsPlayingChanged(isPlaying)
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                journal.add(if (isPlaying) "sound started" else "sound stopped", journalPosition())
+                focusWatch.onIsPlayingChanged(isPlaying)
+            }
 
-            override fun onPlaybackStateChanged(playbackState: Int) = updateStopTimer(exo)
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                journal.add(
+                    if (playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE) "playback no longer held back"
+                    else "playback held back (transient audio focus loss)",
+                    journalPosition(),
+                )
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                // The error's code name only: its message can quote a stream address.
+                journal.add("player error ${error.errorCodeName}", journalPosition())
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) journal.add("ended", journalPosition())
+                updateStopTimer(exo)
+            }
         })
         updateStopTimer(exo)
 
@@ -183,6 +213,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         } else if (pausedStopJob?.isActive != true) {
             pausedStopJob = scope.launch {
                 delay(PAUSED_STOP_AFTER_MS)
+                journal.add("service stopped itself after ${PAUSED_STOP_AFTER_MS / 60_000} minutes of not playing", journalPosition())
                 stopAndEndSession()
             }
         }
@@ -203,10 +234,12 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Keep playing when the app is swiped away; with nothing playing there is no reason to stay.
         val p = player
+        journal.add("app swiped away", journalPosition())
         if (p == null || !p.playWhenReady) stopAndEndSession()
     }
 
     override fun onDestroy() {
+        journal.add("service destroyed", journalPosition())
         clearListener()
         endSession()
         scope.cancel()
@@ -337,6 +370,17 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
 }
 
 /** The files' places on the book timeline, from the items' extras; null for items we did not build. */
+/** Why Media3 changed play-when-ready, in plain words for the playback journal. */
+internal fun playWhenReadyReasonName(reason: Int): String = when (reason) {
+    Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "the person or a media button"
+    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audio focus lost"
+    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "headphones or speaker gone"
+    Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "a remote controller, the car or the system"
+    Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "end of the audio"
+    Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG -> "held back too long"
+    else -> "reason $reason"
+}
+
 internal fun Player.bookSpans(): List<TrackSpan>? {
     if (mediaItemCount == 0) return null
     return (0 until mediaItemCount).map { i ->

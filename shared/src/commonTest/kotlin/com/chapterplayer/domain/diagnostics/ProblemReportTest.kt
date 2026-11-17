@@ -24,6 +24,22 @@ class ProblemReportTest {
     }
 
     @Test
+    fun `the report carries the exit reasons and the playback journal and says so when there are none`() {
+        val empty = buildProblemReport(input())
+        assertTrue("Why Android ended the app (newest first):\n  none recorded" in empty)
+        assertTrue("Playback journal (newest last):\n  none" in empty)
+        val full = buildProblemReport(
+            input().copy(
+                exitReasons = listOf("2026-11-16 03h49m killed by a signal (status 9), was a foreground service (playing)"),
+                journalLines = listOf("2026-11-16 03h49m12s played at 1h02m03s", "2026-11-16 03h49m40s paused (audio focus lost) at 1h02m31s"),
+            )
+        )
+        assertTrue("  2026-11-16 03h49m killed by a signal (status 9), was a foreground service (playing)" in full)
+        assertTrue("  2026-11-16 03h49m40s paused (audio focus lost) at 1h02m31s" in full)
+        assertTrue(full.indexOf("played at 1h02m03s") < full.indexOf("paused (audio focus lost)"))
+    }
+
+    @Test
     fun `a signed out server and no servers are written plainly`() {
         assertTrue("Plex, signed out: last sync failed: timeout" in
             buildProblemReport(input(servers = listOf(ProblemServerLine("Plex", false, "last sync failed: timeout")))))

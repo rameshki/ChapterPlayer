@@ -422,7 +422,7 @@ val commonViewModelModule = module {
     single<DiagnosticsData> { RoomDiagnosticsData(get(), get()) }
     single<DiagnosticsLogger> { PlatformDiagnosticsLogger() }
     // Settings, About, Report a problem (every build): a redacted text report the person shares; nothing is sent.
-    single { ProblemReporter(get(), get(), get(), get(), get()) }
+    single { ProblemReporter(get(), get(), get(), get(), get(), get(), get()) }
     viewModel { DiagnosticsViewModel(get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), library = get()) }
 }
 

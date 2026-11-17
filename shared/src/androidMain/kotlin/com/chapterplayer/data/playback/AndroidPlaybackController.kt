@@ -13,6 +13,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.chapterplayer.data.diagnostics.NoPlaybackJournal
+import com.chapterplayer.data.diagnostics.PlaybackJournal
 import com.chapterplayer.data.downloads.LocalBookFiles
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.repository.BookRepository
@@ -62,6 +64,7 @@ class AndroidPlaybackController(
     private val repository: BookRepository,
     private val appScope: CoroutineScope,
     private val localFiles: LocalBookFiles,
+    private val journal: PlaybackJournal = NoPlaybackJournal,
 ) : PlaybackController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -308,6 +311,7 @@ class AndroidPlaybackController(
                 publish()
                 val now = _state.value
                 if (sleep.tick(now.positionMs, now.chapters, now.speed)) {
+                    journal.add("paused (sleep timer ended)", now.positionMs)
                     controller?.pause()
                     _sleepTimer.value = SleepTimer.Off
                     publish()

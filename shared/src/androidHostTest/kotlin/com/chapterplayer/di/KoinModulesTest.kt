@@ -121,6 +121,7 @@ class KoinModulesTest {
         ChapterPlayerDatabase::class, DataStore::class, CredentialStore::class, PlexClientIdentifier::class,
         ConnectivityMonitor::class, AppInfo::class, CoroutineDispatcher::class, Boolean::class,
         DayZone::class, ListeningClock::class, CrashStore::class,
+        com.chapterplayer.data.diagnostics.PlaybackJournal::class, com.chapterplayer.data.diagnostics.ExitReasons::class,
         HttpClientEngine::class, HttpClientConfig::class,
         LibraryView::class, String::class, SavedStateHandle::class,
     )

@@ -5,7 +5,11 @@ import com.chapterplayer.data.PathProvider
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.diagnostics.CrashStore
+import com.chapterplayer.data.diagnostics.ExitReasons
 import com.chapterplayer.data.diagnostics.NoCrashStore
+import com.chapterplayer.data.diagnostics.NoExitReasons
+import com.chapterplayer.data.diagnostics.NoPlaybackJournal
+import com.chapterplayer.data.diagnostics.PlaybackJournal
 import com.chapterplayer.data.local.ChapterPlayerDatabase
 import com.chapterplayer.data.remote.plex.PlexClientIdentifier
 import com.chapterplayer.data.security.CredentialStore
@@ -60,4 +64,7 @@ fun platformModule(parts: PlatformParts): Module = module {
     single<ListeningClock> { parts.listeningClock() }
     // No crash capture on iOS yet.
     single<CrashStore> { NoCrashStore }
+    // No playback journal or process exit records on iOS yet.
+    single<PlaybackJournal> { NoPlaybackJournal }
+    single<ExitReasons> { NoExitReasons }
 }
