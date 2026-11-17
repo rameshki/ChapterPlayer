@@ -369,7 +369,6 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     }
 }
 
-/** The files' places on the book timeline, from the items' extras; null for items we did not build. */
 /** Why Media3 changed play-when-ready, in plain words for the playback journal. */
 internal fun playWhenReadyReasonName(reason: Int): String = when (reason) {
     Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "the person or a media button"
@@ -381,6 +380,7 @@ internal fun playWhenReadyReasonName(reason: Int): String = when (reason) {
     else -> "reason $reason"
 }
 
+/** The files' places on the book timeline, from the items' extras; null for items we did not build. */
 internal fun Player.bookSpans(): List<TrackSpan>? {
     if (mediaItemCount == 0) return null
     return (0 until mediaItemCount).map { i ->

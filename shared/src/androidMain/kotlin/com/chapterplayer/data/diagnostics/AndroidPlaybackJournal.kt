@@ -20,34 +20,52 @@ private val STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH'h'mm'm'ss's'")
 private val EXIT_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH'h'mm'm'")
 
 /**
- * The journal as a text file, one line per event. It grows to twice [JOURNAL_LINES], then is rewritten with the newest
- * [JOURNAL_LINES]. Writing is best effort: a failed write never reaches playback.
+ * The journal as a text file, one line per event. It grows to twice [JOURNAL_LINES], then is rewritten (to a temporary
+ * file and renamed, so a kill in the middle cannot lose it) with the newest [JOURNAL_LINES]. Events are queued to one
+ * background thread, so the player's listener never waits for the disk; [load] waits for what was queued before it.
+ * Best effort: a failed write never reaches playback, and a kill can lose the last queued line.
  */
 class FilePlaybackJournal(
     private val file: File,
     private val stamp: () -> String = { LocalDateTime.now().format(STAMP) },
 ) : PlaybackJournal {
-    private val lock = Any()
     private var written = -1
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "playback-journal").apply { isDaemon = true }
+    }
 
     override fun add(event: String, positionMs: Long?) {
-        val line = redact(journalEvent(event, positionMs)).replace('\n', ' ').take(200)
-        synchronized(lock) {
-            try {
-                if (written < 0) written = readLines().size
-                file.appendText("${stamp()} $line\n")
-                written++
-                if (written > JOURNAL_LINES * 2) {
-                    file.writeText(trimJournal(readLines()).joinToString("") { it + "\n" })
-                    written = JOURNAL_LINES
-                }
-            } catch (_: Exception) {
-                // Nothing more can be done; the journal is a help, not a duty.
-            }
+        try {
+            // The time is taken now; the line is written a moment later.
+            val at = stamp()
+            writer.execute { append(at, event, positionMs) }
+        } catch (_: Throwable) {
+            // Never let the journal reach playback.
         }
     }
 
-    override fun load(): List<String> = synchronized(lock) { trimJournal(readLines()) }
+    private fun append(at: String, event: String, positionMs: Long?) {
+        try {
+            val line = redact(journalEvent(event, positionMs)).replace('\n', ' ').take(200)
+            if (written < 0) written = readLines().size
+            file.appendText("$at $line\n")
+            written++
+            if (written > JOURNAL_LINES * 2) {
+                val temp = File(file.path + ".tmp")
+                temp.writeText(trimJournal(readLines()).joinToString("") { it + "\n" })
+                if (!temp.renameTo(file)) { file.delete(); temp.renameTo(file) }
+                written = JOURNAL_LINES
+            }
+        } catch (_: Exception) {
+            // Nothing more can be done; the journal is a help, not a duty.
+        }
+    }
+
+    override fun load(): List<String> = try {
+        writer.submit<List<String>> { trimJournal(readLines()) }.get(3, java.util.concurrent.TimeUnit.SECONDS)
+    } catch (_: Exception) {
+        emptyList()
+    }
 
     private fun readLines(): List<String> =
         try { if (file.isFile) file.readLines().filter { it.isNotBlank() } else emptyList() } catch (_: Exception) { emptyList() }

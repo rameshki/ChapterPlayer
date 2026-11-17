@@ -13,7 +13,9 @@ class FilePlaybackJournalTest {
     @Test
     fun `a line has a time, the event and the place, and survives a restart`() {
         val file = tempFile()
-        FilePlaybackJournal(file, stamp = { "2026-11-16 03h49m12s" }).add("paused (audio focus lost)", 3_723_000L)
+        val first = FilePlaybackJournal(file, stamp = { "2026-11-16 03h49m12s" })
+        first.add("paused (audio focus lost)", 3_723_000L)
+        first.load() // waits until the queued line is on disk, as a later restart would find it
         val back = FilePlaybackJournal(file).load()
         assertEquals(listOf("2026-11-16 03h49m12s paused (audio focus lost) at 1h02m03s"), back)
         file.delete()
@@ -33,6 +35,7 @@ class FilePlaybackJournalTest {
         assertTrue(kept.size <= JOURNAL_LINES)
         assertEquals("t event ${JOURNAL_LINES * 2 + 4}", kept.last())
         assertTrue(file.readLines().size <= JOURNAL_LINES * 2)
+        assertFalse(File(file.path + ".tmp").exists(), "the temporary file is renamed away")
         file.delete()
     }
 

@@ -27,7 +27,7 @@ fun journalEvent(event: String, positionMs: Long?): String =
 fun trimJournal(lines: List<String>, max: Int = JOURNAL_LINES): List<String> = lines.takeLast(max)
 
 private val PROCESS_EXIT_REASONS = mapOf(
-    1 to "app closed itself", 2 to "killed by a signal", 3 to "killed for low memory", 4 to "crash", 5 to "native crash",
+    0 to "unknown", 1 to "app closed itself", 2 to "killed by a signal", 3 to "killed for low memory", 4 to "crash", 5 to "native crash",
     6 to "not responding (ANR)", 7 to "failed to start", 8 to "permission changed", 9 to "too many resources used",
     10 to "closed by the user", 11 to "stopped by the user", 12 to "a service it needed died", 13 to "other",
     14 to "frozen by the system", 15 to "package state changed", 16 to "app updated",

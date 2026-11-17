@@ -5,9 +5,11 @@
         <exclude domain="file" path="datastore/credentials.preferences_pb"/>
         <!-- Downloaded books are large and can be fetched again; they must never count against the backup quota. -->
         <exclude domain="file" path="downloads"/>
+        <exclude domain="file" path="playback_journal.txt"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/credentials.preferences_pb"/>
         <exclude domain="file" path="downloads"/>
+        <exclude domain="file" path="playback_journal.txt"/>
     </device-transfer>
 </data-extraction-rules>
