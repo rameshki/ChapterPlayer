@@ -19,6 +19,8 @@ class ProblemReporter(
     private val sync: LibrarySyncCoordinator,
     private val pending: PendingProgressDao,
     private val crashes: CrashStore,
+    private val journal: PlaybackJournal = NoPlaybackJournal,
+    private val exitReasons: ExitReasons = NoExitReasons,
     private val platform: () -> String = ::platformDescription,
 ) {
     suspend fun build(): String {
@@ -29,10 +31,17 @@ class ProblemReporter(
         }
         val queued = try { pending.getAll().size } catch (e: CancellationException) { throw e } catch (_: Exception) { -1 }
         return buildProblemReport(
-            ProblemReportInput(appInfo.versionName, platform(), lines, queued, crashes.load(), ProblemLog.snapshot())
+            ProblemReportInput(
+                appInfo.versionName, platform(), lines, queued, crashes.load(), ProblemLog.snapshot(),
+                exitReasons = safe { exitReasons.recent() }, journalLines = safe { journal.load() },
+            )
         )
     }
 }
+
+/** A read that fails gives an empty list: the report is built while something is already wrong. */
+private inline fun safe(read: () -> List<String>): List<String> =
+    try { read() } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
 
 /**
  * How a server's sync stands, in fixed words. A failed sync's own message can quote a library name or a piece of the

@@ -11,6 +11,10 @@ data class ProblemReportInput(
     val queuedProgressRows: Int,
     val crashTrace: String?,
     val logLines: List<String>,
+    /** Android's own records of why the app's process ended, newest first (Android 11 and later; empty elsewhere). */
+    val exitReasons: List<String> = emptyList(),
+    /** The playback journal kept on the phone across restarts, newest last. */
+    val journalLines: List<String> = emptyList(),
 )
 
 /** How many log lines and how many characters of a crash trace a report carries. */
@@ -38,6 +42,15 @@ fun buildProblemReport(input: ProblemReportInput): String {
     }
     val crash = input.crashTrace?.take(PROBLEM_TRACE_CHARS)?.trimEnd()?.let(::redactTrace) ?: "  none saved"
     val bottom = buildString {
+        appendLine()
+        appendLine("Why Android ended the app (newest first):")
+        if (input.exitReasons.isEmpty()) appendLine("  none recorded")
+        input.exitReasons.forEach { appendLine("  $it") }
+        appendLine()
+        appendLine("Playback journal (newest last):")
+        val journal = trimJournal(input.journalLines)
+        if (journal.isEmpty()) appendLine("  none")
+        journal.forEach { appendLine("  $it") }
         appendLine()
         appendLine("Recent events (newest last):")
         val lines = input.logLines.takeLast(PROBLEM_LOG_LINES)

@@ -43,3 +43,31 @@ object NoCrashStore : CrashStore {
 
 /** The system line of the report: operating system and version, device model. */
 internal expect fun platformDescription(): String
+
+/**
+ * A small journal of what playback did (started, paused and why, ended, errored, service created or destroyed), kept
+ * on the phone across restarts so a night with a stop can be explained afterwards. Lines hold a time, an event and a
+ * place in the book; never a book, server, file or address.
+ */
+interface PlaybackJournal {
+    fun add(event: String, positionMs: Long? = null)
+    /** The kept lines, oldest first. */
+    fun load(): List<String>
+}
+
+/** No journal (iOS for now, and tests). */
+object NoPlaybackJournal : PlaybackJournal {
+    override fun add(event: String, positionMs: Long?) = Unit
+    override fun load(): List<String> = emptyList()
+}
+
+/** The system's own record of why the app's process ended (Android 11 and later). */
+interface ExitReasons {
+    /** One line per recorded end, newest first. Empty when the system keeps none. */
+    fun recent(): List<String>
+}
+
+/** No exit records (iOS, and Android before 11). */
+object NoExitReasons : ExitReasons {
+    override fun recent(): List<String> = emptyList()
+}

@@ -16,7 +16,12 @@ import com.chapterplayer.data.downloads.DownloadJobs
 import com.chapterplayer.data.downloads.DownloadLocation
 import com.chapterplayer.data.downloads.DownloadOverview
 import com.chapterplayer.data.diagnostics.CrashStore
+import com.chapterplayer.data.diagnostics.AndroidExitReasons
+import com.chapterplayer.data.diagnostics.ExitReasons
 import com.chapterplayer.data.diagnostics.FileCrashStore
+import com.chapterplayer.data.diagnostics.FilePlaybackJournal
+import com.chapterplayer.data.diagnostics.PlaybackJournal
+import com.chapterplayer.data.diagnostics.journalFile
 import com.chapterplayer.data.diagnostics.crashFile
 import com.chapterplayer.data.downloads.AndroidLocalDisk
 import com.chapterplayer.data.downloads.DownloadLengthFiller
@@ -126,7 +131,7 @@ val browseModule = module {
 val playbackModule = module {
     includes(commonPlaybackModule)
     // One controller for the app; the service itself finds its parts through Koin too.
-    single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier), get()) }
+    single<PlaybackController> { AndroidPlaybackController(androidContext(), get(), get(AppScopeQualifier), get(), get()) }
     single<DayZone> { SystemDayZone }
     single<ListeningClock> { AndroidListeningClock }
     // Covers for the notification, the lock screen and the car: the downloaded cover, else the book's own server.
@@ -179,6 +184,9 @@ val deviceModule = module {
     single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
     // The last crash, kept as a small file in the cache folder for the Report a problem text.
     single<CrashStore> { FileCrashStore(crashFile(androidContext())) }
+    // What playback did, kept on disk across restarts, and Android's own reasons for ending the app (R36).
+    single<PlaybackJournal> { FilePlaybackJournal(journalFile(androidContext())) }
+    single<ExitReasons> { AndroidExitReasons(androidContext()) }
     // Android has every feature (iOS: browsing only for now).
     single { PlatformFeatures.Full }
 }

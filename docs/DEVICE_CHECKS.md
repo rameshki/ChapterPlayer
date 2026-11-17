@@ -31,5 +31,6 @@ How to test on devices, and the checks still open. Phone testing happens only in
   - Large screen (Android 16 ignores orientation and resizability opt-outs on sw600dp): a tablet or foldable emulator in landscape and in split screen; Home, Library, the player and Settings usable.
   - 16 KB pages: install the release APK on the Android 15+ "16 KB page size" emulator image; the app starts, a book plays, a download runs.
   - Notifications: first launch asks once (Android 13+); downloads and playback work when it is refused.
+- A night of playback with the app on Unrestricted battery use (R36): note the time it stopped, then Settings, About, Report a problem; the exit reasons and the playback journal should say what ended it.
 - iOS: nothing has run on a device; waits for an unmanaged iPhone.
 - The audiobook converter's first real trial needs ffmpeg on the machine that holds the library.
