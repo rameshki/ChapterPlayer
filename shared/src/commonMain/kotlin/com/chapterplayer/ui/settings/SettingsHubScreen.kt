@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Dns
@@ -25,6 +26,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -32,9 +36,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chapterplayer.data.AppInfo
+import com.chapterplayer.data.permissions.BatterySetting
+import com.chapterplayer.domain.settings.BATTERY_TITLE
 import com.chapterplayer.domain.settings.aboutSummary
+import com.chapterplayer.domain.settings.batterySummary
 import com.chapterplayer.domain.settings.appearanceSummary
 import com.chapterplayer.domain.settings.carSummary
 import com.chapterplayer.domain.settings.downloadLocationLabel
@@ -60,7 +69,8 @@ fun SettingsHubScreen(
     onOpenAbout: () -> Unit,
     onBack: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel(),
-    appInfo: AppInfo = koinInject()
+    appInfo: AppInfo = koinInject(),
+    battery: BatterySetting = koinInject()
 ) {
     val uiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
@@ -73,6 +83,9 @@ fun SettingsHubScreen(
 
     // A card may have been put in or taken out since the hub was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
+    // Read again whenever the app comes back to the front, because the person changes it in the system's own screen.
+    var batteryUnrestricted by remember { mutableStateOf(battery.isUnrestricted()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { batteryUnrestricted = battery.isUnrestricted() }
     // iOS has no downloader and no car yet: the Downloads row says so, and there is no Android Auto row.
     val features = LocalPlatformFeatures.current
     val locationLabel = downloadLocationLabel(downloadLocations.chosenId, downloadLocations.options.associate { it.id to it.label })
@@ -84,6 +97,9 @@ fun SettingsHubScreen(
         HubGroup("Listening") {
             HubRow(Icons.Default.Palette, "Appearance", appearanceSummary(themeMode, appFont), onOpenAppearance)
             HubRow(Icons.Default.BarChart, "Statistics", STATS_SUMMARY, onOpenStats)
+            if (battery.available) {
+                HubRow(Icons.Default.BatteryChargingFull, BATTERY_TITLE, batterySummary(batteryUnrestricted), battery::openSettings)
+            }
         }
         HubGroup("Offline") {
             HubRow(

@@ -5,6 +5,8 @@ import com.chapterplayer.data.PathProvider
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.createPreferencesDataStore
 import com.chapterplayer.data.diagnostics.CrashStore
+import com.chapterplayer.data.permissions.BatterySetting
+import com.chapterplayer.data.permissions.NoBatterySetting
 import com.chapterplayer.data.diagnostics.ExitReasons
 import com.chapterplayer.data.diagnostics.NoCrashStore
 import com.chapterplayer.data.diagnostics.NoExitReasons
@@ -64,6 +66,8 @@ fun platformModule(parts: PlatformParts): Module = module {
     single<ListeningClock> { parts.listeningClock() }
     // No crash capture on iOS yet.
     single<CrashStore> { NoCrashStore }
+    // No battery setting on iOS.
+    single<BatterySetting> { NoBatterySetting }
     // No playback journal or process exit records on iOS yet.
     single<PlaybackJournal> { NoPlaybackJournal }
     single<ExitReasons> { NoExitReasons }

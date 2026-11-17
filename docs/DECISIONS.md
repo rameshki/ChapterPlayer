@@ -46,12 +46,12 @@ Format: date, decision, why, who. Earlier entries are in full above; this list i
 - 2026-11-16, Dependabot PRs are not merged unasked, because a green build does not show a behaviour change (Claude, to confirm with Robert). The GitHub Actions group (#104) was merged on green CI.
 - 2026-11-17, push and merge the shared merged library (R10) after both CI jobs pass (Robert: "Yes push it").
 - 2026-11-17, both CI jobs are required checks, auto-merge is on and admins cannot bypass (Robert, repository settings; R33).
+- 2026-11-18, the app asks in-app for the battery setting that lets playback run overnight (Robert: "App asks in app"). Built as a Settings row "Keep playing overnight" that opens Android's own battery screen, with no permission: the direct dialog needs REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, which Google Play restricts (R36).
 - 2026-11-17, a new project review replaces the 14 November one as the list of work (`reviews/2026-11-17-project-review.md`); findings keep their ids (Robert asked for it).
 
 ## Open decisions (what each one blocks; as of the review of 17 November 2026)
 - Google Play account type and fee (a personal account needs a 12 tester, 14 day closed test; an organisation account does not): blocks the Play release (R31). Robert: "not just yet".
 - Build 0.5.4 for the testers now, or after the device checks: blocks the next tester build (R12, R1).
-- Whether the app asks for the battery-optimisation exemption in-app (Play restricts the permission) or only explains the phone setting: playback was killed overnight on his phone on 16 Nov and 13 Nov (R36).
 - Turn on Dependency graph and Dependabot alerts in the repository settings: without it no vulnerability alert can arrive (R14).
 - Dependency updates: merge patch and minor groups after green CI and one install on the phone, majors separately? Dependabot #114 (18 updates) is waiting (R14).
 - Whether Android Auto ships at launch: Play reviews Auto apps separately (R31, R19).
