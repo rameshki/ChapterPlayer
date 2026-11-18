@@ -57,8 +57,11 @@ class JellyfinSignIn(
         val base = normalizeServerAddress(address) ?: fail(JellyfinSignInError.InvalidAddress)
         probe(base, expectedServerId)
         val deviceId = jellyfinDeviceId(installId.value, serverRowId)
-        // Off, or a server that refuses to say: the person is told to use the password. A network failure is a network failure.
-        val enabled = call({ JellyfinSignInError.QuickConnectOff }) { api.quickConnectEnabled(base, deviceId) }
+        // Off, or a server that refuses to say (401, 403, 404): the person is told to use the password. A 5xx is a server error
+        // and a network failure is a network failure.
+        val enabled = call({ if (it == 401 || it == 403 || it == 404) JellyfinSignInError.QuickConnectOff else JellyfinSignInError.ServerError(it) }) {
+            api.quickConnectEnabled(base, deviceId)
+        }
         if (!enabled) fail(JellyfinSignInError.QuickConnectOff)
         // Turned off since the check: Initiate answers 401.
         val started = call({ if (it == 401 || it == 403 || it == 404) JellyfinSignInError.QuickConnectOff else JellyfinSignInError.ServerError(it) }) {

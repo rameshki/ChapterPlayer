@@ -6,6 +6,9 @@ import com.chapterplayer.data.auth.JellyfinSignInPort
 import com.chapterplayer.data.auth.JellyfinSignInResult
 import com.chapterplayer.data.auth.QuickConnectRequest
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_EXPIRED_TEXT
+import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_FINISH_TIMEOUT_MS
+import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_READ_TIMEOUT_MS
+import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_START_TIMEOUT_MS
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_NOT_APPROVED_TEXT
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_OFF_TEXT
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_POLL_MS
@@ -35,6 +38,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,19 +86,25 @@ class JellyfinSetupHandlerTest {
         val qcPolls = ArrayDeque<QuickConnectPoll>()
         var qcFinish: (String) -> JellyfinSignInResult = { row -> result(row) }
         var qcExpected: String? = null
+
+        /** The step ("start", "poll" or "finish") that never answers, like a host that went dark. */
+        var qcHang: String? = null
         override suspend fun startQuickConnect(address: String, serverRowId: String, expectedServerId: String?): QuickConnectRequest {
             qc += "start"
             qcExpected = expectedServerId
+            if (qcHang == "start") awaitCancellation()
             return qcStart()
         }
         override suspend fun pollQuickConnect(address: String, serverRowId: String, request: QuickConnectRequest): QuickConnectPoll {
             qc += "poll"
+            if (qcHang == "poll") awaitCancellation()
             return qcPolls.removeFirstOrNull() ?: QuickConnectPoll.WAITING
         }
         override suspend fun finishQuickConnect(
             address: String, serverRowId: String, request: QuickConnectRequest, expectedServerId: String?,
         ): JellyfinSignInResult {
             qc += "finish"
+            if (qcHang == "finish") awaitCancellation()
             return qcFinish(serverRowId)
         }
     }
@@ -749,5 +759,129 @@ class JellyfinSetupHandlerTest {
 
         assertTrue(port.qc.isEmpty())
         assertEquals(JELLYFIN_ID_MISSING_TEXT, vm.uiState.value.jellyfin.signInError)
+    }
+
+    // ---- found by the independent review of Quick Connect ----
+
+    @Test
+    fun `the token is saved under the address it was signed in to, not the one the field holds by then`() {
+        val port = FakePort().apply { qcPolls += QuickConnectPoll.APPROVED }
+        val vm = viewModel(port)
+        vm.startQuickConnectAdd()
+        vm.onJellyfinAddressChanged("https://other.test") // edited during the wait
+        tick(QUICK_CONNECT_POLL_MS)
+
+        vm.onJellyfinSave()
+
+        assertEquals("https://jf.test/jellyfin", repo.saved.single().baseUrl)
+    }
+
+    @Test
+    fun `a password sign in saves under its own address too`() {
+        val vm = viewModel(FakePort())
+        vm.startAdd()
+        vm.onJellyfinSignIn()
+        vm.onJellyfinAddressChanged("https://other.test")
+
+        vm.onJellyfinSave()
+
+        assertEquals("https://jf.test/jellyfin", repo.saved.single().baseUrl)
+    }
+
+    @Test
+    fun `a host that goes dark cannot stretch the five minutes`() {
+        val port = FakePort().apply { qcHang = "poll" }
+        val vm = viewModel(port)
+        vm.startQuickConnectAdd()
+
+        // each read gives up after its limit and counts as time waited: one round is the 5 s delay plus the 5 s limit
+        tick(QUICK_CONNECT_POLL_MS + QUICK_CONNECT_READ_TIMEOUT_MS)
+        assertEquals(true, vm.uiState.value.jellyfin.quickConnect?.serverTrouble)
+        tick(QUICK_CONNECT_TIMEOUT_MS - (QUICK_CONNECT_POLL_MS + QUICK_CONNECT_READ_TIMEOUT_MS))
+
+        val s = vm.uiState.value.jellyfin
+        assertEquals(QUICK_CONNECT_EXPIRED_TEXT, s.signInError)
+        assertNull(s.quickConnect)
+        assertFalse(s.isSigningIn)
+        assertEquals((QUICK_CONNECT_TIMEOUT_MS / (QUICK_CONNECT_POLL_MS + QUICK_CONNECT_READ_TIMEOUT_MS)).toInt(), port.qc.count { it == "poll" })
+    }
+
+    @Test
+    fun `a start that never answers is a network failure after its limit`() {
+        val port = FakePort().apply { qcHang = "start" }
+        val vm = viewModel(port)
+        vm.startQuickConnectAdd()
+        assertEquals(QuickConnectUi(), vm.uiState.value.jellyfin.quickConnect) // no code yet
+
+        tick(QUICK_CONNECT_START_TIMEOUT_MS)
+
+        assertEquals("Couldn't reach the server. Check the address and your network.", vm.uiState.value.jellyfin.signInError)
+        assertNull(vm.uiState.value.jellyfin.quickConnect)
+        assertFalse(vm.uiState.value.jellyfin.isSigningIn)
+    }
+
+    @Test
+    fun `a final sign in that never answers is a network failure after its limit and saves nothing`() {
+        val port = FakePort().apply {
+            qcPolls += QuickConnectPoll.APPROVED
+            qcHang = "finish"
+        }
+        val vm = viewModel(port)
+        vm.startQuickConnectAdd()
+        tick(QUICK_CONNECT_POLL_MS)
+        assertNull(vm.uiState.value.jellyfin.signInError)
+
+        tick(QUICK_CONNECT_FINISH_TIMEOUT_MS)
+
+        assertEquals("Couldn't reach the server. Check the address and your network.", vm.uiState.value.jellyfin.signInError)
+        assertNull(vm.uiState.value.jellyfin.quickConnect)
+        assertEquals(JellyfinStep.SIGN_IN, vm.uiState.value.jellyfin.step)
+        assertTrue(repo.saved.isEmpty())
+    }
+
+    @Test
+    fun `Cancel while the approved sign in is being finished ends it`() {
+        val port = FakePort().apply {
+            qcPolls += QuickConnectPoll.APPROVED
+            qcHang = "finish"
+        }
+        val vm = viewModel(port)
+        vm.startQuickConnectAdd()
+        tick(QUICK_CONNECT_POLL_MS)
+        assertTrue("finish" in port.qc)
+
+        vm.onJellyfinQuickConnectCancel()
+
+        val s = vm.uiState.value.jellyfin
+        assertNull(s.quickConnect)
+        assertFalse(s.isSigningIn)
+        assertNull(s.signInError)
+        tick(QUICK_CONNECT_FINISH_TIMEOUT_MS * 2)
+        assertNull(vm.uiState.value.jellyfin.signInError, "the cancelled sign in says nothing afterwards")
+        assertEquals(JellyfinStep.SIGN_IN, vm.uiState.value.jellyfin.step)
+    }
+
+    @Test
+    fun `Cancel before the first code arrives ends the wait`() {
+        val port = FakePort().apply { qcHang = "start" }
+        val vm = viewModel(port)
+        vm.startQuickConnectAdd()
+        assertEquals(QuickConnectUi(), vm.uiState.value.jellyfin.quickConnect)
+
+        vm.onJellyfinQuickConnectCancel()
+
+        assertNull(vm.uiState.value.jellyfin.quickConnect)
+        assertFalse(vm.uiState.value.jellyfin.isSigningIn)
+        tick(QUICK_CONNECT_START_TIMEOUT_MS * 2)
+        assertNull(vm.uiState.value.jellyfin.signInError)
+    }
+
+    @Test
+    fun `Cancel does not touch a password sign in`() {
+        val vm = viewModel(FakePort())
+        vm.startAdd()
+        vm.onJellyfinSignIn()
+        vm.onJellyfinQuickConnectCancel()
+        assertEquals(JellyfinStep.LIBRARIES, vm.uiState.value.jellyfin.step)
     }
 }

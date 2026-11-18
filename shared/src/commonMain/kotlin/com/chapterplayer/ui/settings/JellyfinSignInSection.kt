@@ -118,7 +118,9 @@ private fun JellyfinSignInForm(
             label = "Server address",
             placeholder = "http://192.168.1.10:8096",
             keyboardType = KeyboardType.Uri,
-            imeAction = ImeAction.Next
+            imeAction = ImeAction.Next,
+            // The token that comes back belongs to the server asked at the start; the field stays put until it is done.
+            enabled = !state.isSigningIn
         )
         // A Quick Connect wait replaces the password fields: the code is what the person needs now.
         val waiting = state.quickConnect

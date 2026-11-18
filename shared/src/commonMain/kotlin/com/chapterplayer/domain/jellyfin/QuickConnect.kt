@@ -13,6 +13,14 @@ const val QUICK_CONNECT_POLL_MS = 5_000L
 /** The phone gives up after this long (the server forgets an unapproved request after about 10 minutes, so the app goes first). */
 const val QUICK_CONNECT_TIMEOUT_MS = 5 * 60_000L
 
+/**
+ * Each call of the wait has its own limit, so a host that goes dark cannot stretch five minutes into half an hour: a read that
+ * hangs counts as a failed read (and its limit as elapsed time), a start or a final sign-in that hangs is a network failure.
+ */
+const val QUICK_CONNECT_READ_TIMEOUT_MS = 5_000L
+const val QUICK_CONNECT_START_TIMEOUT_MS = 45_000L
+const val QUICK_CONNECT_FINISH_TIMEOUT_MS = 30_000L
+
 const val QUICK_CONNECT_OFF_TEXT =
     "Quick Connect is off on this server. Sign in with your password, or ask the server's administrator to turn it on."
 const val QUICK_CONNECT_EXPIRED_TEXT = "The code expired. Try again."

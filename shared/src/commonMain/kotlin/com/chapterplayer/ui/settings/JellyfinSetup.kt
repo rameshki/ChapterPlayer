@@ -24,7 +24,11 @@ import com.chapterplayer.domain.jellyfin.JELLYFIN_WRONG_PASSWORD_TEXT
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_EXPIRED_TEXT
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_NOT_APPROVED_TEXT
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_OFF_TEXT
+import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_FINISH_TIMEOUT_MS
 import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_POLL_MS
+import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_READ_TIMEOUT_MS
+import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_START_TIMEOUT_MS
+import com.chapterplayer.domain.jellyfin.QuickConnectPoll
 import com.chapterplayer.domain.jellyfin.QuickConnectStep
 import com.chapterplayer.domain.jellyfin.quickConnectNext
 import kotlinx.coroutines.CancellationException
@@ -33,6 +37,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -124,8 +129,20 @@ internal class JellyfinSetupHandler(
 ) {
     private var result: JellyfinSignInResult? = null
 
-    /** The running sign-in (password or Quick Connect wait), so a Quick Connect wait can be cancelled. */
+    /**
+     * The address [result] was signed in to. Save stores the token under THIS address, never under whatever the field holds by
+     * then: the field can be edited while a Quick Connect wait runs, and a token for one server must not be saved for another.
+     */
+    private var resultAddress: String? = null
+
+    /** The running sign-in (password or Quick Connect wait). */
     private var signInJob: Job? = null
+
+    /** The running Quick Connect wait, so Cancel, Back and leaving the screen can end it. */
+    private var quickJob: Job? = null
+
+    /** Counts Quick Connect runs, so a run that was cancelled cannot clear the state of the next one. */
+    private var quickRun = 0
 
     private fun edit(change: JellyfinSetupState.() -> JellyfinSetupState) {
         state.update { it.copy(jellyfin = it.jellyfin.change()) }
@@ -149,9 +166,13 @@ internal class JellyfinSetupHandler(
 
     /** Cancel, Back or leaving the screen: the polling stops and the secret is forgotten. There is nothing to tell the server. */
     fun cancelQuickConnect() {
-        if (state.value.jellyfin.quickConnect == null) return
-        signInJob?.cancel()
-        signInJob = null
+        val job = quickJob
+        val running = job?.isActive == true
+        // Also between the start of the wait and its first code, and while the approved sign-in is being finished.
+        if (!running && state.value.jellyfin.quickConnect == null) return
+        quickRun++
+        job?.cancel()
+        quickJob = null
         edit { copy(quickConnect = null, isSigningIn = false, signInError = null) }
     }
 
@@ -161,6 +182,7 @@ internal class JellyfinSetupHandler(
 
     fun onBack() {
         result = null
+        resultAddress = null
         edit { copy(step = JellyfinStep.SIGN_IN, password = "", libraries = emptyList(), saveError = null) }
     }
 
@@ -174,7 +196,9 @@ internal class JellyfinSetupHandler(
             edit { copy(signInError = JELLYFIN_INVALID_ADDRESS_TEXT) }
             return
         }
+        val idle = !state.value.jellyfin.isSigningIn
         signInWith { current -> quickConnectSignIn(current.address.trim(), current.pendingRowId, expectedServerId = null) }
+        if (idle) quickJob = signInJob
     }
 
     private fun signInWith(authenticate: suspend (JellyfinSetupState) -> JellyfinSignInResult) {
@@ -186,6 +210,7 @@ internal class JellyfinSetupHandler(
             try {
                 val signedIn = authenticate(current)
                 result = signedIn
+                resultAddress = current.address
                 edit {
                     copy(
                         step = JellyfinStep.LIBRARIES,
@@ -206,7 +231,7 @@ internal class JellyfinSetupHandler(
         val signedIn = result ?: return
         val current = state.value.jellyfin
         if (!current.canSave) return
-        val address = normalizeServerAddress(current.address) ?: return
+        val address = normalizeServerAddress(resultAddress ?: return) ?: return
         edit { copy(isSaving = true, saveError = null) }
         val typedName = state.value.name.trim()
         val config = ServerConfig(
@@ -230,6 +255,7 @@ internal class JellyfinSetupHandler(
                 return@launch
             }
             result = null
+            resultAddress = null
             edit { copy(isSaving = false) }
             state.update { it.copy(savedSuccessfully = true) }
         }
@@ -246,8 +272,11 @@ internal class JellyfinSetupHandler(
     }
 
     /** Edit mode with Quick Connect: the same checks as [signInAgain] (same server, same row id and DeviceId), without the password. */
-    fun signInAgainWithQuickConnect(serverId: String) =
+    fun signInAgainWithQuickConnect(serverId: String) {
+        val idle = !state.value.jellyfin.isSigningIn
         signInAgainWith(serverId) { address, expected -> quickConnectSignIn(address, serverId, expected) }
+        if (idle) quickJob = signInJob
+    }
 
     private fun signInAgainWith(serverId: String, authenticate: suspend (address: String, expectedServerId: String) -> JellyfinSignInResult) {
         val current = state.value.jellyfin
@@ -315,22 +344,31 @@ internal class JellyfinSetupHandler(
      */
     private suspend fun quickConnectSignIn(address: String, rowId: String, expectedServerId: String?): JellyfinSignInResult {
         val port = signInPort()
+        val run = ++quickRun
         edit { copy(quickConnect = QuickConnectUi()) }
         try {
-            val request = port.startQuickConnect(address, rowId, expectedServerId)
+            // Every call has its own limit (a host that goes dark must not stretch the wait): a hung start is a network failure.
+            val request = withTimeoutOrNull(QUICK_CONNECT_START_TIMEOUT_MS) { port.startQuickConnect(address, rowId, expectedServerId) }
+                ?: throw JellyfinSignInException(JellyfinSignInError.Unreachable)
             edit { copy(quickConnect = QuickConnectUi(code = request.code)) }
             var elapsedMs = 0L
             while (true) {
                 delay(QUICK_CONNECT_POLL_MS)
                 elapsedMs += QUICK_CONNECT_POLL_MS
-                when (val step = quickConnectNext(elapsedMs, port.pollQuickConnect(address, rowId, request))) {
+                // A read that hangs is a failed read, and its limit counts as time spent waiting.
+                val poll = withTimeoutOrNull(QUICK_CONNECT_READ_TIMEOUT_MS) { port.pollQuickConnect(address, rowId, request) }
+                    ?: QuickConnectPoll.UNREACHABLE.also { elapsedMs += QUICK_CONNECT_READ_TIMEOUT_MS }
+                when (val step = quickConnectNext(elapsedMs, poll)) {
                     is QuickConnectStep.Wait -> edit { copy(quickConnect = quickConnect?.copy(serverTrouble = step.serverTrouble)) }
                     QuickConnectStep.Expired -> throw QuickConnectExpiredException()
-                    QuickConnectStep.SignIn -> return port.finishQuickConnect(address, rowId, request, expectedServerId)
+                    QuickConnectStep.SignIn ->
+                        return withTimeoutOrNull(QUICK_CONNECT_FINISH_TIMEOUT_MS) { port.finishQuickConnect(address, rowId, request, expectedServerId) }
+                            ?: throw JellyfinSignInException(JellyfinSignInError.Unreachable)
                 }
             }
         } finally {
-            edit { copy(quickConnect = null) }
+            // Only this run's own state: a cancelled run must not wipe the wait that was started after it.
+            if (quickRun == run) edit { copy(quickConnect = null) }
         }
     }
 

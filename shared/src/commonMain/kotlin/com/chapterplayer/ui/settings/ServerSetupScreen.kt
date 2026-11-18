@@ -572,11 +572,13 @@ internal fun ChapterTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     isPassword: Boolean = false,
     imeAction: ImeAction = ImeAction.Default,
-    onImeAction: (() -> Unit)? = null
+    onImeAction: (() -> Unit)? = null,
+    enabled: Boolean = true
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
+        enabled = enabled,
         label = { Text(label) },
         placeholder = { Text(placeholder, color = TextSecondary) },
         modifier = Modifier.fillMaxWidth(),

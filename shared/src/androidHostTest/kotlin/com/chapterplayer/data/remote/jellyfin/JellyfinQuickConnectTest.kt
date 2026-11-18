@@ -124,6 +124,14 @@ class JellyfinQuickConnectTest {
     }
 
     @Test
+    fun `a server error on the Enabled question is a server error, not off`() = runTest {
+        val broken = signIn { r ->
+            if (r.url.encodedPath.endsWith("/System/Info/Public")) ok(fixture("jellyfin/system-info-public.json")) else status(HttpStatusCode.InternalServerError)
+        }
+        assertEquals(JellyfinSignInError.ServerError(500), error { broken.startQuickConnect("https://jf.test", "r") })
+    }
+
+    @Test
     fun `an Initiate that is refused since the check reads as off`() = runTest {
         assertEquals(
             JellyfinSignInError.QuickConnectOff,
