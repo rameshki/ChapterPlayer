@@ -5,11 +5,11 @@ Read this first in every session; it is short on purpose. The list of work is th
 ## Now (18 November 2026)
 - Version 0.5.4 (versionCode 10), tag `v0.5.4`. Tester builds 0.3.3, 0.4.0, 0.4.1, 0.5.3 and 0.5.4 were shared, signed with the key outside the repo (`C:\Users\Robert\ChapterPlayerSigning`). The 0.5.4 APK was built before #127 (the overnight wording), so it lacks that text change.
 - Debug builds are numbered: `scripts/install-debug.sh` installs `0.5.4-debug.N`. Robert's phone has debug build 3 (main as of #126).
-- `main` is at #127. 3,215 host tests pass. targetSdk 36. Sources: Audiobookshelf, Jellyfin (progress goes back; no downloads yet), Plex. Audible is skipped. iOS builds in CI and has never run on a device.
+- `main` is at #129. 3,215 host tests pass. targetSdk 36. Sources: Audiobookshelf, Jellyfin (progress goes back; no downloads yet), Plex. Audible is skipped. iOS builds in CI and has never run on a device.
 - Since the review of 14 November: 18 of its findings are done (R3 to R10, R15 to R18, R20, R22, R32, R33, R34, R37), plus the font choice, Mark as finished returning the book to 0:00, "play again" making a book not finished, and numbered debug builds.
 
 ## Open work
-- No unmerged feature branches and no worktrees. Open: Dependabot #128 (a GitHub Actions major) and #129 (19 minor and patch updates, one weekly group by the rule in `dependabot.yml`); merge after green CI and one install on the phone.
+- No unmerged feature branches and no worktrees, and no open pull requests. Dependabot #128 and #129 were merged on 19 November (one install on the phone first, build `0.5.4-debug.4`); the next weekly group arrives under the rule in `dependabot.yml`.
 - Outstanding in the 17 November review. Do first: R35 (review and real-server check of Mark as finished), R1 (device checks). R36 (playback stops overnight): the journal, Android's exit reasons in Report a problem, the Settings row and the first-play question are in main; what is left is one night on the phone with the battery setting, then reading the report. The first-play dialog and the journal have not run on a device (checked on an Android 15 emulator without a server).
 - CI now skips both build jobs for docs-only pull requests and iOS unless `shared/`, `iosApp/`, Gradle files or the workflow changed; a failed run uploads `test-reports`; `scripts/check-docs.sh` guards this file.
 
