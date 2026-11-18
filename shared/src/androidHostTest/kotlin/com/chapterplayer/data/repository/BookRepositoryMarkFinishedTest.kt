@@ -398,6 +398,28 @@ class BookRepositoryMarkFinishedTest {
     }
 
     @Test
+    fun `a mark finished interrupted between its two patches is queued and the retry completes it`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)))
+        f.abs.record = Triple(4_000.0, false, 50L)
+
+        // the first patch (not finished at 0) reaches the server, the second (finished) does not
+        f.abs.failAfterPatches = 1
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+        assertEquals(Triple(0.0, false, 5_000L), f.abs.record)
+        val queued = f.repo.pendingProgress().single()
+        assertEquals(true, queued.markedFinished)
+
+        // the flusher tries again: the server's row is newer than the mark but it is only the mark's own first half
+        f.abs.failAfterPatches = null
+        f.abs.serverClock = 6_000L
+        val server = f.repo.fetchServerProgress("abs_li_1").getOrThrow()
+        assertEquals(com.chapterplayer.domain.playback.FlushDecision.SEND, com.chapterplayer.domain.playback.flushDecision(queued, server))
+        f.repo.pushProgress(queued).getOrThrow()
+        assertEquals(true, f.abs.record!!.second)
+        assertEquals(0.0, f.abs.record!!.first)
+    }
+
+    @Test
     fun `live reports keep a queued reopen newest so it is still delivered`() = runTest {
         val f = fixture(listOf(ProgressEntity("abs_li_1", 0L, 9_000_000L, 100L, true)), loaded = "abs_li_1")
         f.abs.record = Triple(0.0, true, 50L)
