@@ -79,7 +79,7 @@ class AndroidExitReasons(private val context: Context, private val limit: Int = 
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             am.getHistoricalProcessExitReasons(context.packageName, 0, limit).map {
                 val at = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.timestamp), ZoneId.systemDefault())
-                describeProcessExit(at.format(EXIT_STAMP), it.reason, it.status, it.importance)
+                describeProcessExit(at.format(EXIT_STAMP), it.reason, it.status, it.importance, rssKb = it.rss, description = it.description)
             }
         } catch (_: Exception) {
             emptyList()

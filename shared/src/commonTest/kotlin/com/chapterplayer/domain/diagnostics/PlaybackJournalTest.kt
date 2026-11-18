@@ -38,6 +38,21 @@ class PlaybackJournalTest {
     }
 
     @Test
+    fun `an exit line can carry the memory in use and the systems own words`() {
+        assertEquals(
+            "t killed by a signal (status 9), was a foreground service (playing), 612 MB in use, system says: \"freezer: cached too long\"",
+            describeProcessExit("t", 2, 9, 125, rssKb = 612L * 1024L + 100L, description = "  freezer:\n cached   too long "),
+        )
+        // nothing known: the short form is unchanged
+        assertEquals("t killed by a signal (status 9), was a foreground service (playing)", describeProcessExit("t", 2, 9, 125, rssKb = 0L, description = null))
+        assertEquals("t killed by a signal (status 9), was a foreground service (playing)", describeProcessExit("t", 2, 9, 125, description = "   "))
+        // a long description is cut
+        val long = describeProcessExit("t", 2, 9, 125, description = "x".repeat(500))
+        assertEquals(true, "x".repeat(EXIT_NOTE_CHARS) in long)
+        assertEquals(false, "x".repeat(EXIT_NOTE_CHARS + 1) in long)
+    }
+
+    @Test
     fun `a journal line and an exit line survive the report redaction`() {
         val line = "2026-11-16 03h49m12s paused (audio focus lost) at 1h02m03s"
         val exit = describeProcessExit("2026-11-16 03h49m", 2, 9, 125)
