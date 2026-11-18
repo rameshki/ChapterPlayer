@@ -468,6 +468,9 @@ class ServerSetupViewModel(
     fun onJellyfinBack() = jellyfinHandler.onBack()
     fun onJellyfinSignInAgain(serverId: String) = jellyfinHandler.signInAgain(serverId)
     fun onJellyfinSecretsDiscarded() = jellyfinHandler.clearSecrets()
+    fun onJellyfinQuickConnect() = jellyfinHandler.signInWithQuickConnect()
+    fun onJellyfinQuickConnectAgain(serverId: String) = jellyfinHandler.signInAgainWithQuickConnect(serverId)
+    fun onJellyfinQuickConnectCancel() = jellyfinHandler.cancelQuickConnect()
 
     private var pollingJob: Job? = null
 

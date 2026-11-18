@@ -124,6 +124,8 @@ Versions: 12.0 removed the `/emby/` and `/mediabrowser/` prefixes, made `GetItem
 - Quick Connect (J3, designed in 5.1): `GET /QuickConnect/Enabled`, `POST /QuickConnect/Initiate` (12.0 removed the GET alias [R1]), poll `GET /QuickConnect/Connect?secret=`, then `POST /Users/AuthenticateWithQuickConnect`. Enabled by default [D2].
 
 ### 5.1 Quick Connect (J3, added at approval)
+**Built and run for real on 19 Nov 2026 against a Jellyfin 12.4 server:** the code is 6 digits, `Initiate` is a POST, `Enabled` is a bare JSON boolean, and a signed-in user approves with `POST /QuickConnect/Authorize?code=`. Deviation: the button is not hidden when Quick Connect is off; the line in the Availability bullet is shown when the button is tapped.
+
 Quick Connect lets a person sign the phone in without typing the password: the phone shows a short code, and the person approves it on another device where they are already signed in to Jellyfin (Jellyfin web or an app: the user menu, **Settings > Quick Connect**, enter the code) [D2]. It is offered next to username and password, in Add Server and in Sign in again. Calls (all in the OpenAPI spec; shapes from the docs and the v12.4 controller names, **(unverified)** until recorded on Robert's server):
 
 | Step | Call | Answer |

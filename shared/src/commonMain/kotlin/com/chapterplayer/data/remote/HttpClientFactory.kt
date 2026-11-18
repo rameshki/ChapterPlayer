@@ -115,12 +115,18 @@ internal fun HttpClientConfig<*>.installProbeDefaults(isDebuggable: Boolean, sin
     installSafeLogging(isDebuggable, sink)
 }
 
+private val QUERY_SECRET = Regex("(?i)([?&](?:secret|api_key|apikey|access_token|token)=)[^&\\s\"']+")
+
+/** [message] with the value of any secret-like query parameter (`?secret=...`, `&token=...`) replaced, the rest kept. */
+internal fun maskQuerySecrets(message: String): String = QUERY_SECRET.replace(message, "$1[removed]")
+
 // Debug builds only. Auth headers are never logged (project rule), and neither are bodies,
 // because login carries a password and its response carries the tokens.
 private fun HttpClientConfig<*>.installSafeLogging(isDebuggable: Boolean, sink: (String) -> Unit) {
     install(Logging) {
         logger = object : Logger {
-            override fun log(message: String) = sink(message)
+            // A request line carries its address, and a Jellyfin Quick Connect read carries its secret in the query.
+            override fun log(message: String) = sink(maskQuerySecrets(message))
         }
         level = if (isDebuggable) LogLevel.HEADERS else LogLevel.NONE
         sanitizeHeader { name ->

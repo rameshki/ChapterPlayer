@@ -7,6 +7,8 @@ import com.chapterplayer.data.remote.jellyfin.dto.JellyfinItemDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinItemsPageDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinPlaybackReportDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinPublicInfoDto
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinQuickConnectAuthDto
+import com.chapterplayer.data.remote.jellyfin.dto.JellyfinQuickConnectResultDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUpdateUserDataDto
 import com.chapterplayer.data.remote.jellyfin.dto.JellyfinUserDataDto
 import com.chapterplayer.domain.jellyfin.JellyfinClient
@@ -169,6 +171,29 @@ class JellyfinApiService(
             setBody(body)
         }
     }
+
+    /** `GET /QuickConnect/Enabled`: a bare JSON boolean, no token. */
+    suspend fun quickConnectEnabled(base: String, deviceId: String): Boolean =
+        client.get(endpoint(base, "QuickConnect/Enabled")) { authorize(deviceId, token = null) }.body()
+
+    /** `POST /QuickConnect/Initiate` with the header and no token (12.0 removed the GET alias): a new request with its secret and code. */
+    suspend fun quickConnectInitiate(base: String, deviceId: String): JellyfinQuickConnectResultDto =
+        client.post(endpoint(base, "QuickConnect/Initiate")) { authorize(deviceId, token = null) }.body()
+
+    /** `GET /QuickConnect/Connect?secret=`: the request again; `Authenticated` turns true once the person approved the code. */
+    suspend fun quickConnectConnect(base: String, deviceId: String, secret: String): JellyfinQuickConnectResultDto =
+        client.get(endpoint(base, "QuickConnect/Connect")) {
+            authorize(deviceId, token = null)
+            parameter("secret", secret)
+        }.body()
+
+    /** `POST /Users/AuthenticateWithQuickConnect`: the same answer as signing in by name, for an approved secret. */
+    suspend fun authenticateWithQuickConnect(base: String, deviceId: String, secret: String): JellyfinAuthResultDto =
+        client.post(endpoint(base, "Users/AuthenticateWithQuickConnect")) {
+            authorize(deviceId, token = null)
+            contentType(ContentType.Application.Json)
+            setBody(JellyfinQuickConnectAuthDto(secret))
+        }.body()
 
     private fun HttpRequestBuilder.authorize(deviceId: String, token: String?) {
         header(HttpHeaders.Authorization, jellyfinAuthHeader(clientInfo(deviceId), token))
