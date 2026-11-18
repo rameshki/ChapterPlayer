@@ -5,7 +5,7 @@ Records the shapes of a Jellyfin server's answers so ChapterPlayer's test fixtur
 
 ## Run it
 
-1. In Jellyfin's dashboard create a throwaway user (for example `devtest`) with access to the books library and the **Download**
+1. In Jellyfin's dashboard create a throwaway user (any name) with access to the books library and the **Download**
    permission. Do not use a real account: the script plays and marks items on that user.
 2. Set the three environment variables (never put them in a file in the repo):
 
