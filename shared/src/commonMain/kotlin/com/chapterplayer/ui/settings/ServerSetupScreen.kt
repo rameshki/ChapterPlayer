@@ -285,7 +285,9 @@ fun ServerSetupScreen(
                     onPasswordChanged = viewModel::onJellyfinPasswordChanged,
                     onSignIn = { cleartextGate.guard(uiState.jellyfin.address, viewModel::onJellyfinAddressChanged, viewModel::onJellyfinSignIn) },
                     onLibraryToggled = viewModel::onJellyfinLibraryToggled,
-                    onSave = viewModel::onJellyfinSave
+                    onSave = viewModel::onJellyfinSave,
+                    onQuickConnect = { cleartextGate.guard(uiState.jellyfin.address, viewModel::onJellyfinAddressChanged, viewModel::onJellyfinQuickConnect) },
+                    onCancelQuickConnect = viewModel::onJellyfinQuickConnectCancel
                 )
             } else if (uiState.source == ServerSource.JELLYFIN) {
                 // Editing keeps the stored sign-in; a new address needs Sign in again (the token is dropped on save).
@@ -301,7 +303,9 @@ fun ServerSetupScreen(
                         state = uiState.jellyfin,
                         onUsernameChanged = viewModel::onJellyfinUsernameChanged,
                         onPasswordChanged = viewModel::onJellyfinPasswordChanged,
-                        onSignIn = { cleartextGate.guard(uiState.baseUrl, viewModel::onBaseUrlChanged) { viewModel.onJellyfinSignInAgain(serverId) } }
+                        onSignIn = { cleartextGate.guard(uiState.baseUrl, viewModel::onBaseUrlChanged) { viewModel.onJellyfinSignInAgain(serverId) } },
+                        onQuickConnect = { cleartextGate.guard(uiState.baseUrl, viewModel::onBaseUrlChanged) { viewModel.onJellyfinQuickConnectAgain(serverId) } },
+                        onCancelQuickConnect = viewModel::onJellyfinQuickConnectCancel
                     )
                 }
             }

@@ -150,3 +150,24 @@ data class JellyfinUpdateUserDataDto(
     /** ISO-8601 UTC. */
     @SerialName("LastPlayedDate") val lastPlayedDate: String,
 )
+
+/**
+ * `QuickConnectResult` (`POST /QuickConnect/Initiate`, `GET /QuickConnect/Connect`). [secret] is a credential and [code] is
+ * what the person types on the other device: [toString] leaves both out so neither reaches a log.
+ */
+@Serializable
+data class JellyfinQuickConnectResultDto(
+    @SerialName("Secret") val secret: String? = null,
+    @SerialName("Code") val code: String? = null,
+    @SerialName("Authenticated") val authenticated: Boolean? = null,
+) {
+    override fun toString() = "JellyfinQuickConnectResultDto(authenticated=$authenticated)"
+}
+
+/** Body of `POST /Users/AuthenticateWithQuickConnect`. The secret is a credential: [toString] leaves it out. */
+@Serializable
+internal data class JellyfinQuickConnectAuthDto(
+    @SerialName("Secret") val secret: String,
+) {
+    override fun toString() = "JellyfinQuickConnectAuthDto()"
+}

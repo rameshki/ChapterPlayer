@@ -14,6 +14,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,6 +27,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.chapterplayer.domain.jellyfin.QUICK_CONNECT_INSTRUCTIONS
+import com.chapterplayer.domain.jellyfin.quickConnectWaitingText
 import com.chapterplayer.ui.theme.AmberGold
 import com.chapterplayer.ui.theme.TextSecondary
 
@@ -39,9 +43,15 @@ internal fun JellyfinAddSection(
     onSignIn: () -> Unit,
     onLibraryToggled: (String) -> Unit,
     onSave: () -> Unit,
+    onQuickConnect: () -> Unit,
+    onCancelQuickConnect: () -> Unit,
 ) {
     when (state.step) {
-        JellyfinStep.SIGN_IN -> JellyfinSignInForm(state, onAddressChanged, onUsernameChanged, onPasswordChanged, onSignIn)
+        JellyfinStep.SIGN_IN -> JellyfinSignInForm(
+            state, onAddressChanged, onUsernameChanged, onPasswordChanged, onSignIn,
+            onQuickConnect = onQuickConnect, onCancelQuickConnect = onCancelQuickConnect,
+            quickConnectReady = state.address.isNotBlank(),
+        )
         JellyfinStep.LIBRARIES -> JellyfinLibraryChoice(state, onLibraryToggled, onSave)
     }
 }
@@ -56,6 +66,8 @@ internal fun JellyfinSignInAgainSection(
     onUsernameChanged: (String) -> Unit,
     onPasswordChanged: (String) -> Unit,
     onSignIn: () -> Unit,
+    onQuickConnect: () -> Unit,
+    onCancelQuickConnect: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -76,7 +88,10 @@ internal fun JellyfinSignInAgainSection(
             onPasswordChanged = onPasswordChanged,
             onSignIn = onSignIn,
             showAddress = false,
-            buttonLabel = "Sign in again"
+            buttonLabel = "Sign in again",
+            onQuickConnect = onQuickConnect,
+            onCancelQuickConnect = onCancelQuickConnect,
+            quickConnectReady = true,
         )
     }
 }
@@ -90,6 +105,9 @@ private fun JellyfinSignInForm(
     onSignIn: () -> Unit,
     showAddress: Boolean = true,
     buttonLabel: String = "Sign in",
+    onQuickConnect: () -> Unit = {},
+    onCancelQuickConnect: () -> Unit = {},
+    quickConnectReady: Boolean = true,
 ) {
     val submit = { if (!state.isSigningIn) onSignIn() }
 
@@ -102,6 +120,12 @@ private fun JellyfinSignInForm(
             keyboardType = KeyboardType.Uri,
             imeAction = ImeAction.Next
         )
+        // A Quick Connect wait replaces the password fields: the code is what the person needs now.
+        val waiting = state.quickConnect
+        if (waiting != null) {
+            QuickConnectWait(waiting, onCancelQuickConnect)
+            return@Column
+        }
         ChapterTextField(
             value = state.username,
             onValueChange = onUsernameChanged,
@@ -140,6 +164,59 @@ private fun JellyfinSignInForm(
             } else {
                 Text(text = buttonLabel, style = MaterialTheme.typography.labelLarge)
             }
+        }
+
+        OutlinedButton(
+            onClick = onQuickConnect,
+            enabled = !state.isSigningIn && quickConnectReady,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = "Sign in with Quick Connect", style = MaterialTheme.typography.labelLarge, color = AmberGold)
+        }
+        Text(
+            text = "No password: you approve a code on another device where you are signed in to Jellyfin.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary
+        )
+    }
+}
+
+/**
+ * The Quick Connect wait (spec 5.1): the code in large digits, where to type it, a spinner with "Waiting for approval", and
+ * Cancel. Until the server has answered there is no code yet. The code is shown here only: no notification, no log.
+ */
+@Composable
+private fun QuickConnectWait(wait: QuickConnectUi, onCancel: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+        Text(text = "Quick Connect", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+        val code = wait.code
+        if (code == null) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp).semantics { contentDescription = "Starting Quick Connect" },
+                color = AmberGold,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text(
+                text = code,
+                style = MaterialTheme.typography.displaySmall.copy(letterSpacing = 6.sp),
+                color = AmberGold,
+                // Read digit by digit, not as one number.
+                modifier = Modifier.semantics { contentDescription = "Quick Connect code " + code.toList().joinToString(" ") }
+            )
+            Text(text = QUICK_CONNECT_INSTRUCTIONS, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = AmberGold, strokeWidth = 2.dp)
+                Text(
+                    text = quickConnectWaitingText(wait.serverTrouble),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                )
+            }
+        }
+        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+            Text(text = "Cancel", style = MaterialTheme.typography.labelLarge, color = AmberGold)
         }
     }
 }
