@@ -14,10 +14,21 @@ How to test on devices, and the checks still open. Phone testing happens only in
   - Mark as finished returns the book to 0:00 and shows Play again; playing it again makes it not finished in the app and in Jellyfin web.
   - A book on all three servers is one entry with three copies (Diagnostics), and listening on the Jellyfin copy moved the Audiobookshelf copy: after playing again the Audiobookshelf server held the new place, not finished (read by Diagnostics; the Audiobookshelf mobile app showed an older place until refreshed).
   - Found: after Mark as finished the details page offered Resume at the old place (fixed, #108); playback was killed by the system overnight (review R36).
+- 2026-11-18, Samsung S24+, debug build 0.5.4-debug.4 (main plus the 19 minor and patch dependency updates, Gradle 9.9.1), the owner's Audiobookshelf server:
+  - The app starts and Home shows the library, covers, Up next and progress; Resume plays; Pause stops it.
+  - The one-time "Keep playing overnight" question appeared on the first Play with the Unrestricted wording; Open settings opened Android's App battery usage; ChapterPlayer's page offers Optimised, Restricted and Unrestricted; choosing Unrestricted put the debug app on the system's unrestricted list.
+  - The playback journal file held "service created", "play asked", "sound started" and "paused" with the book position.
+  - Not seen: the Settings row after Unrestricted (the phone received a call during the session), the full Report a problem text, Android's exit reasons on this phone.
 
 ## Still open (as of 2026-11-17; to become a table with results, review R1)
 - Jellyfin, the rest of plan Task 15: 2 min in the resume band keeps the real place; stopping in the last 5 min is not finished unless it ended; offline listening delivered later; record the real answer shapes into the fixtures (review R39).
-- Mark as finished (review R35): Audiobookshelf right after the mark (finished at 0:00?), Plex's played state, a mark made offline, two devices.
+- Mark as finished (review R35; the table in `architecture/progress.md` says what each event sends, with a "Checked" column):
+  - Audiobookshelf right after Mark as finished: finished at 0:00 on the server (Diagnostics), and after a Pause at 0:00 it is still finished.
+  - Plex: Mark as finished shows the album played; Mark as not finished shows it unplayed; Play again after a finished album leaves the tracks before the place played and the rest unplayed.
+  - A mark made offline (flight mode), then the network back: the server takes it within a minute; the snackbar said it would.
+  - A network drop between the two Audiobookshelf requests (switch off Wi-Fi right after tapping Mark as finished on a slow link): the server never ends on a lost place, and the retry ends finished at 0:00.
+  - Two devices: mark finished on one, open the other; play again on the second and check the first.
+  - Throwaway-user script against a real Audiobookshelf for the request sequences (finish at 0, play again, a half-sent pair, a mark made offline); save the answers as fixtures.
 - Report a problem and the long press on the version line (Settings, About); the Listen widget following the loaded book.
 - Backup restore (R4): back up, uninstall, restore; no book may say Downloaded without its files.
 - Fonts: Home, Library, Book details and the player in each font, long titles, largest system text size (Lexend scale 0.94 is an estimate).
