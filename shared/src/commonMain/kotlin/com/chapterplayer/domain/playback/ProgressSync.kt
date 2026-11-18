@@ -124,6 +124,14 @@ fun flushDecision(pending: PendingProgress, server: ServerProgress?): FlushDecis
         if (server.isFinished && pending.bookId.startsWith(PLEX_ID_PREFIX)) return FlushDecision.SEND
         if (!server.isFinished && server.positionMs == 0L && pending.positionMs > 0L) return FlushDecision.SEND
     }
+    // A queued "finished" mark that a failed or cancelled delivery left half applied (review R35): Audiobookshelf's finish is
+    // two patches, so after the first the server holds the book not finished at 0 with a time newer than the mark; a Plex
+    // album scrobbled in part is not finished yet and also reads as newer. Neither is another device having the last word,
+    // so the mark is sent again (a finished server row is still no news).
+    if (pending.markedFinished == true && pending.mirrorOf == null && server != null && !server.isFinished) {
+        if (pending.bookId.startsWith(PLEX_ID_PREFIX)) return FlushDecision.SEND
+        if (server.positionMs == 0L && pending.positionMs == 0L) return FlushDecision.SEND
+    }
     return if (server != null && server.updatedAtMs > pending.updatedAtMs) {
         FlushDecision.DROP_SERVER_NEWER
     } else {

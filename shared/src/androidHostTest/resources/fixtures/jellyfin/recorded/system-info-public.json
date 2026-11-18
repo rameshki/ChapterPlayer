@@ -1,0 +1,9 @@
+{
+  "Id": "00000000000000000000000000000001",
+  "LocalAddress": "http://test.invalid:8096",
+  "OperatingSystem": "",
+  "ProductName": "Jellyfin Server",
+  "ServerName": "Test Server",
+  "StartupWizardCompleted": true,
+  "Version": "12.4.0"
+}
