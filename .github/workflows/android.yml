@@ -56,7 +56,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APK and run unit tests
-        run: ./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest :shared:testAndroidHostTest --stacktrace
+        # verifyRoborazziAndroidHostTest runs every host test AND fails when a screenshot differs from its golden (R2). The tests
+        # compare with a small per-pixel tolerance (FontCardScreenshotTest.SCREENSHOT_OPTIONS) because Windows and Linux draw
+        # glyph edges a hair differently. A failed run uploads the images (see the test-reports step below).
+        run: ./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest :shared:verifyRoborazziAndroidHostTest --stacktrace
 
       - name: Build the minified release APK and run Android lint
         # The APK testers get is the R8 release build; lint fails on anything not in androidApp/lint-baseline.xml.

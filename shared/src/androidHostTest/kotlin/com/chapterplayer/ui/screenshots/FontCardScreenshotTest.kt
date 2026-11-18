@@ -16,6 +16,8 @@ import com.chapterplayer.data.settings.AppFont
 import com.chapterplayer.data.settings.ThemeMode
 import com.chapterplayer.ui.settings.FontCard
 import com.chapterplayer.ui.theme.ChapterPlayerTheme
+import com.dropbox.differ.SimpleImageComparator
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
 import org.junit.Test
@@ -55,12 +57,22 @@ class FontCardScreenshotTest {
                 FontCard(selected = AppFont.BOOKISH, onSelect = {})
             }
         }
-        compose.onRoot().captureRoboImage(screenshotPath(name))
+        compose.onRoot().captureRoboImage(screenshotPath(name), roborazziOptions = SCREENSHOT_OPTIONS)
     }
 }
 
 /** A phone-width window at a medium density: small goldens that still show text clearly. */
 internal const val SCREENSHOT_QUALIFIERS = "w360dp-h900dp-mdpi"
+
+/**
+ * How strictly a capture is compared with its golden. Goldens recorded on Windows and drawn on Linux (CI) differ in about
+ * 0.1 percent of the pixels, by at most 2 of 255 in a colour channel (anti-aliasing at glyph edges), which is just over
+ * Roborazzi's default per-pixel distance of 0.007. A distance of 0.02 (about 5 of 255) ignores that and still fails on a
+ * change a person would see: a 2 dp shift moves whole glyphs by far more.
+ */
+internal val SCREENSHOT_OPTIONS = RoborazziOptions(
+    compareOptions = RoborazziOptions.CompareOptions(imageComparator = SimpleImageComparator(maxDistance = 0.02f)),
+)
 
 /** Where a golden lives (the plugin's outputDir); one file per name. */
 internal fun screenshotPath(name: String) = "src/androidHostTest/screenshots/$name.png"
