@@ -20,6 +20,13 @@ How to test on devices, and the checks still open. Phone testing happens only in
   - The playback journal file held "service created", "play asked", "sound started" and "paused" with the book position.
   - Not seen: the Settings row after Unrestricted (the phone received a call during the session), the full Report a problem text, Android's exit reasons on this phone.
 
+- 2026-11-19, Android 15 emulator, debug build of the Jellyfin download branch, a real Jellyfin 12.4 server (throwaway user):
+  - Add Server, Jellyfin, https address: signed in, the books library listed, 989 books synced; the merged library shows JF badges and "2 sources" for a book on Audiobookshelf and Jellyfin.
+  - Book details offers Download; with two copies it asks which; choosing Jellyfin downloaded the smallest book: the file is exactly the size the server reported, its cover came with it, the Downloads tab showed it.
+  - Found: the first attempt said "Books from this server cannot be downloaded": the Jellyfin source was bound in the common module only, not in Android's own download module (fixed: one shared `jellyfinDownloadModule`).
+  - With the network off the page said Downloaded and Play started from the file (journal: play asked, sound started); after the network came back the server held the place, 30.007 s (the exact UserData write).
+  - Not seen: Jellyfin on the real phone, a big book (the 1.3 GB one), pause, resume and Wi-Fi to mobile data during a download, the 403 of an account without the Download permission, removing a Jellyfin download.
+
 ## Still open (as of 2026-11-17; to become a table with results, review R1)
 - Jellyfin, the rest of plan Task 15: 2 min in the resume band keeps the real place; stopping in the last 5 min is not finished unless it ended; offline listening delivered later; record the real answer shapes into the fixtures (review R39).
 - Mark as finished (review R35; the table in `architecture/progress.md` says what each event sends, with a "Checked" column):

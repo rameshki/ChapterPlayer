@@ -77,7 +77,7 @@ data class BulkDownloadPlan(
     val alreadyOnPhone: Int,
     val needsChoice: Int,
     val resumeIds: List<String> = emptyList(),
-    /** Entries only on servers the app cannot download from yet (Jellyfin until J3). */
+    /** Entries only on servers the app cannot download from (none now; Jellyfin could not until J3). */
     val notDownloadable: Int = 0,
 )
 

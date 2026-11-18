@@ -156,6 +156,8 @@ val downloadModule = module {
             prepare = { server -> get<PlexConnectionManager>().forTokenRequest(server) },
         )
     } bind DownloadSource::class
+    // Jellyfin: one file per book (defined once, shared with the common download module).
+    includes(jellyfinDownloadModule)
     // One per app: the worker runs it, and its progress flow feeds the notification (and later the UI).
     single {
         BookDownloader(get(), get(), get(), getAll<DownloadSource>(), get(), get(), limitBytes = { get<AppSettings>().downloadStorageLimitBytes.first() }, io = Dispatchers.IO)

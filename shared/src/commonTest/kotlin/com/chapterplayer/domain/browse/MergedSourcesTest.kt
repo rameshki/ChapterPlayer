@@ -510,15 +510,14 @@ class MergedSourcesTest {
     }
 
     @Test
-    fun `a Jellyfin copy is never picked to download`() {
+    fun `a Jellyfin copy can be picked to download`() {
         val entry = merge(listOf(item("a", "abs1"), jf("j")), online = withJf).single()
-        assertNull(chosenDownloadSource(entry, SourceChoice.OfType(ServerSource.JELLYFIN), withJf))
-        assertNull(chosenDownloadSource(entry, SourceChoice.OfServer("jf1"), withJf))
+        assertEquals("j", chosenDownloadSource(entry, SourceChoice.OfType(ServerSource.JELLYFIN), withJf)?.book?.id)
+        assertEquals("j", chosenDownloadSource(entry, SourceChoice.OfServer("jf1"), withJf)?.book?.id)
         assertEquals("a", chosenDownloadSource(entry, SourceChoice.OfType(ServerSource.ABS), withJf)?.book?.id)
-        // A Jellyfin book on its own cannot be downloaded at all (until J3).
-        assertNull(chosenDownloadSource(jf("solo"), SourceChoice.Ask, withJf))
-        assertFalse(ServerSource.JELLYFIN.canDownload())
-        assertTrue(ServerSource.ABS.canDownload() && ServerSource.PLEX.canDownload())
+        // A Jellyfin book on its own downloads (J3).
+        assertEquals("solo", chosenDownloadSource(jf("solo"), SourceChoice.Ask, withJf)?.book?.id)
+        assertTrue(ServerSource.entries.all { it.canDownload() })
     }
 
     // ---- three copies (J2) ----

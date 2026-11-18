@@ -145,16 +145,20 @@ class BulkActionsTest {
     }
 
     @Test
-    fun `download leaves out books only on a server the app cannot download from yet`() {
+    fun `download takes a Jellyfin book on its own and asks about a book on Audiobookshelf and Jellyfin`() {
         val context = MergeContext(downloadChoice = SourceChoice.Ask, onlineServerIds = setOf("abs1", "jf1"))
         fun jf(id: String) = item(id, "jf1").let { it.copy(book = it.book.copy(source = ServerSource.JELLYFIN)) }
         val jfOnly = jf("j")
-        // With Jellyfin left out, one copy can download: it is taken without asking.
+        // Two kinds can download now, so a book on both needs a choice.
         val absAndJf = merged(item("a"), jf("k"))
         val plan = bulkDownloadPlan(listOf(jfOnly, absAndJf), context, statuses = emptyMap())
-        assertEquals(listOf("a"), plan.copyIds)
-        assertEquals(1, plan.notDownloadable)
-        assertEquals(0, plan.needsChoice)
+        assertEquals(listOf("j"), plan.copyIds)
+        assertEquals(0, plan.notDownloadable)
+        assertEquals(1, plan.needsChoice)
+    }
+
+    @Test
+    fun `the result text names books skipped on a server the app cannot download from`() {
         assertEquals(
             "Downloading 1 book. Skipped 1 on a server the app cannot download from yet",
             bulkResultText(BulkAction.DOWNLOAD, BulkTally(done = 1, notDownloadable = 1)),
