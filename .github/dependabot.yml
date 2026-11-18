@@ -1,4 +1,6 @@
 version: 2
+# Rule (owner, 2026-11-17): minor and patch updates come as one weekly group, merged after green CI and one install on the
+# phone (scripts/install-debug.sh). Major versions are left out of the group, so each arrives as its own pull request.
 updates:
   - package-ecosystem: gradle
     directory: "/"
@@ -6,12 +8,14 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      gradle-weekly:
+      gradle-minor-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
     groups:
-      actions-weekly:
+      actions-minor-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
