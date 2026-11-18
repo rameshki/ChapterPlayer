@@ -83,6 +83,9 @@ fun ServerSetupScreen(
     viewModel: ServerSetupViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // http to a public host needs a confirmation before a password is sent (review R11).
+    val cleartextGate = rememberCleartextGate()
+    cleartextGate.Dialog()
     val uriHandler = LocalUriHandler.current
 
     // Track whether we've already launched the browser for the current pin,
@@ -248,7 +251,7 @@ fun ServerSetupScreen(
                     onPasswordChanged = viewModel::onAbsPasswordChanged,
                     onUseApiKeyChanged = viewModel::onAbsUseApiKeyChanged,
                     onApiKeyChanged = viewModel::onAbsApiKeyChanged,
-                    onSignIn = viewModel::onAbsSignIn,
+                    onSignIn = { cleartextGate.guard(uiState.abs.address, viewModel::onAbsAddressChanged, viewModel::onAbsSignIn) },
                     onLibraryToggled = viewModel::onAbsLibraryToggled,
                     onSave = viewModel::onAbsSave
                 )
@@ -268,7 +271,7 @@ fun ServerSetupScreen(
                         onPasswordChanged = viewModel::onAbsPasswordChanged,
                         onUseApiKeyChanged = viewModel::onAbsUseApiKeyChanged,
                         onApiKeyChanged = viewModel::onAbsApiKeyChanged,
-                        onSignIn = { viewModel.onAbsSignInAgain(serverId) }
+                        onSignIn = { cleartextGate.guard(uiState.baseUrl, viewModel::onBaseUrlChanged) { viewModel.onAbsSignInAgain(serverId) } }
                     )
                 }
             }
@@ -280,7 +283,7 @@ fun ServerSetupScreen(
                     onAddressChanged = viewModel::onJellyfinAddressChanged,
                     onUsernameChanged = viewModel::onJellyfinUsernameChanged,
                     onPasswordChanged = viewModel::onJellyfinPasswordChanged,
-                    onSignIn = viewModel::onJellyfinSignIn,
+                    onSignIn = { cleartextGate.guard(uiState.jellyfin.address, viewModel::onJellyfinAddressChanged, viewModel::onJellyfinSignIn) },
                     onLibraryToggled = viewModel::onJellyfinLibraryToggled,
                     onSave = viewModel::onJellyfinSave
                 )
@@ -298,7 +301,7 @@ fun ServerSetupScreen(
                         state = uiState.jellyfin,
                         onUsernameChanged = viewModel::onJellyfinUsernameChanged,
                         onPasswordChanged = viewModel::onJellyfinPasswordChanged,
-                        onSignIn = { viewModel.onJellyfinSignInAgain(serverId) }
+                        onSignIn = { cleartextGate.guard(uiState.baseUrl, viewModel::onBaseUrlChanged) { viewModel.onJellyfinSignInAgain(serverId) } }
                     )
                 }
             }

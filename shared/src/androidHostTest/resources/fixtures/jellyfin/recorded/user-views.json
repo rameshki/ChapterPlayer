@@ -1,0 +1,171 @@
+{
+  "Items": [
+    {
+      "BackdropImageTags": [],
+      "CanDelete": false,
+      "CanDownload": false,
+      "ChannelId": null,
+      "Chapters": [],
+      "ChildCount": 626,
+      "CollectionType": "books",
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "DateLastMediaAdded": "2026-01-01T00:00:00.0000000Z",
+      "DisplayPreferencesId": "00000000000000000000000000000004",
+      "EnableMediaSourceDisplay": true,
+      "Etag": "00000000000000000000000000000005",
+      "ExternalUrls": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "00000000000000000000000000000004",
+      "ImageBlurHashes": {
+        "Primary": {
+          "00000000000000000000000000000007": "Test 00000000000000000000000000000007 12"
+        }
+      },
+      "ImageTags": {
+        "Primary": "00000000000000000000000000000007"
+      },
+      "IsFolder": true,
+      "LocalTrailerCount": 0,
+      "LocationType": "FileSystem",
+      "LockData": false,
+      "LockedFields": [],
+      "MediaType": "Unknown",
+      "Name": "Test Name 10",
+      "ParentId": "00000000000000000000000000000006",
+      "Path": "/media/audiobooks/Test Author/Test Book.m4b",
+      "People": [],
+      "PlayAccess": "Full",
+      "PrimaryImageAspectRatio": 1.7777777777777777,
+      "ProviderIds": {},
+      "RemoteTrailers": [],
+      "ServerId": "00000000000000000000000000000001",
+      "SortName": "Test SortName 11",
+      "SpecialFeatureCount": 0,
+      "Studios": [],
+      "Taglines": [],
+      "Tags": [],
+      "Type": "CollectionFolder",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "00000000000000000000000000000004",
+        "Key": "00000000-0000-0000-0000-000000000004",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "CanDelete": false,
+      "CanDownload": false,
+      "ChannelId": null,
+      "Chapters": [],
+      "ChildCount": 39,
+      "CollectionType": "movies",
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "DateLastMediaAdded": "2026-01-01T00:00:00.0000000Z",
+      "DisplayPreferencesId": "00000000000000000000000000000008",
+      "EnableMediaSourceDisplay": true,
+      "Etag": "00000000000000000000000000000009",
+      "ExternalUrls": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "00000000000000000000000000000008",
+      "ImageBlurHashes": {
+        "Primary": {
+          "0000000000000000000000000000000a": "Test 0000000000000000000000000000000a 15"
+        }
+      },
+      "ImageTags": {
+        "Primary": "0000000000000000000000000000000a"
+      },
+      "IsFolder": true,
+      "LocalTrailerCount": 0,
+      "LocationType": "FileSystem",
+      "LockData": false,
+      "LockedFields": [],
+      "MediaType": "Unknown",
+      "Name": "Test Name 13",
+      "ParentId": "00000000000000000000000000000006",
+      "Path": "/media/audiobooks/Test Author/Test Book.m4b",
+      "People": [],
+      "PlayAccess": "Full",
+      "PrimaryImageAspectRatio": 1.7777777777777777,
+      "ProviderIds": {},
+      "RemoteTrailers": [],
+      "ServerId": "00000000000000000000000000000001",
+      "SortName": "Test SortName 14",
+      "SpecialFeatureCount": 0,
+      "Studios": [],
+      "Taglines": [],
+      "Tags": [],
+      "Type": "CollectionFolder",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "00000000000000000000000000000008",
+        "Key": "00000000-0000-0000-0000-000000000008",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "CanDelete": false,
+      "CanDownload": false,
+      "ChannelId": null,
+      "Chapters": [],
+      "ChildCount": 910,
+      "CollectionType": "tvshows",
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "DateLastMediaAdded": "2026-01-01T00:00:00.0000000Z",
+      "DisplayPreferencesId": "0000000000000000000000000000000b",
+      "EnableMediaSourceDisplay": true,
+      "Etag": "0000000000000000000000000000000c",
+      "ExternalUrls": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "0000000000000000000000000000000b",
+      "ImageBlurHashes": {
+        "Primary": {
+          "0000000000000000000000000000000d": "Test 0000000000000000000000000000000d 18"
+        }
+      },
+      "ImageTags": {
+        "Primary": "0000000000000000000000000000000d"
+      },
+      "IsFolder": true,
+      "LocalTrailerCount": 0,
+      "LocationType": "FileSystem",
+      "LockData": false,
+      "LockedFields": [],
+      "MediaType": "Unknown",
+      "Name": "Test Name 16",
+      "ParentId": "00000000000000000000000000000006",
+      "Path": "/media/audiobooks/Test Author/Test Book.m4b",
+      "People": [],
+      "PlayAccess": "Full",
+      "PrimaryImageAspectRatio": 1.7777777777777777,
+      "ProviderIds": {},
+      "RemoteTrailers": [],
+      "ServerId": "00000000000000000000000000000001",
+      "SortName": "Test SortName 17",
+      "SpecialFeatureCount": 0,
+      "Studios": [],
+      "Taglines": [],
+      "Tags": [],
+      "Type": "CollectionFolder",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "0000000000000000000000000000000b",
+        "Key": "00000000-0000-0000-0000-00000000000b",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    }
+  ],
+  "StartIndex": 0,
+  "TotalRecordCount": 3
+}

@@ -146,6 +146,14 @@ private fun ServerRow(
                     modifier = Modifier.padding(top = 2.dp, end = 12.dp)
                 )
             }
+            if (row.notEncrypted) {
+                Text(
+                    text = NOT_ENCRYPTED_NOTE,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp, end = 12.dp)
+                )
+            }
             if (row.needsSignIn) {
                 Text(
                     text = "Sign in again",

@@ -10,6 +10,7 @@ import com.chapterplayer.data.sync.LibrarySyncCoordinator
 import com.chapterplayer.data.sync.ServerSyncPhase
 import com.chapterplayer.data.sync.ServerSyncStatus
 import com.chapterplayer.domain.browse.serverKindName
+import com.chapterplayer.domain.settings.isCleartextAddress
 import com.chapterplayer.domain.settings.serverStatusLine
 import com.chapterplayer.data.remote.HttpStatusException
 import com.chapterplayer.data.remote.jellyfin.JellyfinApiService
@@ -55,6 +56,8 @@ data class ServerRowUi(
     val canTestConnection: Boolean,
     val needsSignIn: Boolean,
     val libraryId: String?,
+    /** The address is plain http: the page says "Not encrypted" (review R11). */
+    val notEncrypted: Boolean = false,
 )
 
 /** One connection in the "Test connection" dialog. */
@@ -88,6 +91,7 @@ fun serverRows(servers: List<ServerConfig>, statuses: Map<String, ServerSyncStat
             canTestConnection = server.source == ServerSource.PLEX || server.source == ServerSource.JELLYFIN,
             needsSignIn = server.needsSignIn,
             libraryId = server.libraryId,
+            notEncrypted = isCleartextAddress(server.baseUrl),
         )
     }
 
