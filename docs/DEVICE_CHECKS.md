@@ -27,6 +27,13 @@ How to test on devices, and the checks still open. Phone testing happens only in
   - With the network off the page said Downloaded and Play started from the file (journal: play asked, sound started); after the network came back the server held the place, 30.007 s (the exact UserData write).
   - Not seen: Jellyfin on the real phone, a big book (the 1.3 GB one), pause, resume and Wi-Fi to mobile data during a download, the 403 of an account without the Download permission, removing a Jellyfin download.
 
+- 2026-11-19, Android 15 emulator, debug build of the Quick Connect branch, a real Jellyfin 12.4 server (throwaway user, which also played the "other device" through the API):
+  - Edit Server, Sign in again, Sign in with Quick Connect: the real server issued a 6-digit code; the screen showed it in large digits with the instruction, "Waiting for approval" and Cancel in place of the password fields.
+  - Approved with `POST /QuickConnect/Authorize` as the signed-in user: within a poll the app signed in on its own and went back to the Servers page; Sync now with the new token worked ("Last synced just now, 989 books").
+  - Cancel: 2 reads in 13 s while waiting (one per 5 s); after Cancel the form came back and there was no read in the next 16 s.
+  - The debug log showed `QuickConnect/Connect?secret=[removed]` and no real secret.
+  - Not seen: the Add Server path with Quick Connect (covered by the handler tests), a server with Quick Connect switched off, a code left to expire (five minutes), Quick Connect on the real phone.
+
 ## Still open (as of 2026-11-17; to become a table with results, review R1)
 - Jellyfin, the rest of plan Task 15: 2 min in the resume band keeps the real place; stopping in the last 5 min is not finished unless it ended; offline listening delivered later; record the real answer shapes into the fixtures (review R39).
 - Mark as finished (review R35; the table in `architecture/progress.md` says what each event sends, with a "Checked" column):
