@@ -23,6 +23,11 @@ class LibrarySyncCoordinatorStatusTest {
 
     private class Books : FakeBookRepository() {
         val synced = mutableListOf<String>()
+        val crossSynced = mutableListOf<String?>()
+        override suspend fun syncCopies(serverId: String?): com.chapterplayer.domain.playback.CopySyncResult {
+            crossSynced += serverId
+            return com.chapterplayer.domain.playback.CopySyncResult()
+        }
         var gate: CompletableDeferred<Unit>? = null
         var outcome: (ServerConfig) -> Result<Unit> = { Result.success(Unit) }
         override suspend fun syncBooksFromServer(server: ServerConfig): Result<Unit> {
@@ -127,5 +132,35 @@ class LibrarySyncCoordinatorStatusTest {
         c.syncNow("gone")
 
         assertEquals(emptyList(), books.synced)
+    }
+
+    @Test
+    fun `the first successful sync brings the copies to the newest listening, with the option on`() = runTest {
+        val books = Books()
+        val scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
+        val c = LibrarySyncCoordinator(books, FakeServerList(listOf(server("a"))), scope, statusStore = store, nowMs = { now }, crossSyncOnAdd = { true })
+        c.syncNow("a")
+        assertEquals(listOf<String?>("a"), books.crossSynced)
+        // A later sync of the same server is no new server.
+        c.syncNow("a")
+        assertEquals(listOf<String?>("a"), books.crossSynced)
+    }
+
+    @Test
+    fun `with the option off, or after a failed first sync, nothing is cross synced`() = runTest {
+        val off = Books()
+        val scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
+        LibrarySyncCoordinator(off, FakeServerList(listOf(server("a"))), scope, statusStore = store, nowMs = { now }).syncNow("a")
+        assertEquals(emptyList<String?>(), off.crossSynced)
+
+        val failing = Books()
+        failing.outcome = { Result.failure(SocketTimeoutException("x")) }
+        val other = DataStoreServerStatusStore(InMemoryPreferencesDataStore())
+        val c = LibrarySyncCoordinator(failing, FakeServerList(listOf(server("b"))), scope, statusStore = other, nowMs = { now }, crossSyncOnAdd = { true })
+        c.syncNow("b")
+        assertEquals(emptyList<String?>(), failing.crossSynced)
+        failing.outcome = { Result.success(Unit) }
+        c.syncNow("b")
+        assertEquals(listOf<String?>("b"), failing.crossSynced)
     }
 }
