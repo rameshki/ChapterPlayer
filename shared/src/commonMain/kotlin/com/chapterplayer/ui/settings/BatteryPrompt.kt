@@ -46,8 +46,9 @@ fun BatteryPrompt(isPlaying: Boolean, battery: BatterySetting = koinInject(), se
         title = { Text(BATTERY_TITLE) },
         text = {
             Text(
-                "Android may stop playback while the phone sits idle at night. Allow ChapterPlayer to run in the " +
-                    "background so a long book keeps playing. You can change this later in Settings."
+                "Android may stop playback while the phone sits idle at night. In the list that opens, pick " +
+                    "ChapterPlayer and choose Unrestricted (or Don't optimise) so a long book keeps playing. " +
+                    "You can change this later in Settings."
             )
         },
         confirmButton = { TextButton(onClick = { close(); battery.openSettings() }) { Text("Open settings") } },
