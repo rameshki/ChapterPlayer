@@ -75,7 +75,7 @@ private fun lineDetail(choice: SourceChoice, names: Map<String, String>, purpose
  */
 fun sourceChoiceCard(stored: SourceChoice, servers: List<ServerConfig>, purpose: SourcePurpose): SourceChoiceCard {
     val resolved = stored.resolvedAgainst(servers.map { it.id })
-    // "Download from" never names a kind the app cannot download from (Jellyfin until J3): such a choice reads as Ask.
+    // "Download from" never names a kind the app cannot download from (none now; Jellyfin could since J3): such a choice reads as Ask.
     val effective = if (purpose == SourcePurpose.DOWNLOAD) resolved.forDownload(servers) else resolved
     val names = serverDisplayNames(servers)
     val lines = mutableListOf<SourceChoice>(SourceChoice.Ask)

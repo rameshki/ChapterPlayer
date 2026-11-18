@@ -92,13 +92,12 @@ fun chosenDownloadSource(item: BrowseItem, choice: SourceChoice, onlineServerIds
 }
 
 /**
- * Whether the app can download books from this kind of server: Audiobookshelf and Plex can; Jellyfin cannot until its
- * download source exists (stage J3), so it is left out of Download, the "Download from" sheet and choice, and bulk
- * Download rather than shown as unavailable.
+ * Whether the app can download books from this kind of server: all three can (Jellyfin since stage J3: one file per book,
+ * `JellyfinDownloadSource`). A kind that could not would be left out of Download, the "Download from" sheet and choice, and
+ * bulk Download rather than shown as unavailable; iOS has no downloader at all (`PlatformFeatures.downloads`).
  */
 fun ServerSource.canDownload(): Boolean = when (this) {
-    ServerSource.ABS, ServerSource.PLEX -> true
-    ServerSource.JELLYFIN -> false
+    ServerSource.ABS, ServerSource.PLEX, ServerSource.JELLYFIN -> true
 }
 
 /**

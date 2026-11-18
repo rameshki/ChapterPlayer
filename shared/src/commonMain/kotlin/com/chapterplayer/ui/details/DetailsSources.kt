@@ -82,7 +82,7 @@ internal const val FAILED_RETRY_TEXT = "Failed: Try again"
 
 /**
  * The copies a download can come from: every copy on a server the app can download from (Audiobookshelf and Plex alike;
- * a Jellyfin copy is left out until J3, `canDownload`).
+ * a copy on a kind that cannot download is left out, `canDownload`; none now, Jellyfin until J3).
  */
 internal fun downloadableMembers(entry: BrowseItem): List<BrowseItem> =
     entry.allSources.filter { it.book.source.canDownload() }
