@@ -122,6 +122,26 @@ class MarkFinishedTest {
     }
 
     @Test
+    fun `a half applied finish at zero on the server is sent again`() {
+        // Mark as finished is two patches on Audiobookshelf: the first leaves the server not finished at 0 with a time newer
+        // than the queued mark, which must not read as another device having the last word.
+        val mark = pending(0, 500, marked = true)
+        assertEquals(FlushDecision.SEND, flushDecision(mark, ServerProgress(0, 100_000, false, 900)))
+        // a server that is not at zero, a mark that carries a place, and a finished server still follow newer server wins
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(mark, ServerProgress(20_000, 100_000, false, 900)))
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(pending(5_000, 500, marked = true), ServerProgress(0, 100_000, false, 900)))
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(mark, ServerProgress(0, 100_000, true, 900)))
+    }
+
+    @Test
+    fun `a half applied finish on Plex is sent again`() {
+        // Plex scrobbles every track: after some of them the album is not finished yet and its time is newer than the mark.
+        val mark = pending(0, 500, marked = true).copy(bookId = "plex_10")
+        assertEquals(FlushDecision.SEND, flushDecision(mark, ServerProgress(40_000, 100_000, false, 900)))
+        assertEquals(FlushDecision.DROP_SERVER_NEWER, flushDecision(mark, ServerProgress(100_000, 100_000, true, 900)))
+    }
+
+    @Test
     fun `a failed rewind holds the mark only for a while`() {
         assertTrue(rewindStillFailed(failedAtMs = 1_000, nowMs = 1_000 + MARK_REWIND_FAILED_LIMIT_MS))
         assertFalse(rewindStillFailed(failedAtMs = 1_000, nowMs = 1_001 + MARK_REWIND_FAILED_LIMIT_MS))
