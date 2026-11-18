@@ -56,7 +56,26 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APK and run unit tests
-        run: ./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest :shared:testAndroidHostTest --stacktrace
+        # R2 experiment: compareRoborazziAndroidHostTest runs every host test and writes the screenshot comparison without
+        # failing on a difference, to see whether the goldens recorded on Windows match what Linux draws.
+        run: ./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest :shared:compareRoborazziAndroidHostTest --stacktrace
+
+      - name: Screenshot comparison summary
+        if: always()
+        run: |
+          echo "goldens: $(ls shared/src/androidHostTest/screenshots/*.png 2>/dev/null | wc -l)"
+          echo "compare images (changed): $(find shared/build/outputs/roborazzi -name '*_compare.png' 2>/dev/null | wc -l)"
+          find shared/build/outputs/roborazzi -type f 2>/dev/null | head -20
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: roborazzi-compare
+          path: |
+            shared/build/outputs/roborazzi
+            shared/build/reports/roborazzi
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Build the minified release APK and run Android lint
         # The APK testers get is the R8 release build; lint fails on anything not in androidApp/lint-baseline.xml.
