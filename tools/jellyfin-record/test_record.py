@@ -49,7 +49,7 @@ class FakeJellyfin(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         authed = f'Token="{TOKEN}"' in self.headers.get("Authorization", "")
         if path == "/System/Info/Public":
-            return self._send(200, {"ServerName": "Home Jelly", "Version": "10.10.7", "Id": USER_ID, "LocalAddress": "http://192.168.7.7:8096"})
+            return self._send(200, {"ServerName": "Home Jelly", "ProductName": "Jellyfin Server", "Version": "10.10.7", "Id": USER_ID, "LocalAddress": "http://192.168.7.7:8096"})
         if path == "/Users/AuthenticateByName":
             return self._send(200, {"AccessToken": TOKEN, "User": {"Id": USER_ID, "Name": USER}, "ServerId": USER_ID})
         if not authed and not path.endswith("/Download"):
@@ -135,6 +135,8 @@ class WholeScriptTest(unittest.TestCase):
         self.assertNotIn("body", dl)
         self.assertEqual(json.loads((out / "download-no-token.json").read_text(encoding="utf-8"))["status"], 401)
         self.assertNotIn(BOOK_TITLE, dl["headers"].get("Content-Disposition", ""))
+        info = json.loads((out / "system-info-public.json").read_text(encoding="utf-8"))
+        self.assertEqual(info["body"]["ProductName"], "Jellyfin Server")  # the app recognises a Jellyfin server by it
 
     def test_the_token_goes_in_the_header_never_in_a_url(self):
         self.run_script("--with-writes")

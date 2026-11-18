@@ -1,0 +1,389 @@
+{
+  "Items": [
+    {
+      "Album": "Test Album 26",
+      "AlbumArtist": "Test AlbumArtist 27",
+      "AlbumArtists": [
+        {
+          "Id": "00000000000000000000000000000011",
+          "Name": "Test Name 22"
+        }
+      ],
+      "ArtistItems": [
+        {
+          "Id": "00000000000000000000000000000011",
+          "Name": "Test Name 22"
+        }
+      ],
+      "Artists": [
+        "Test Artists 25"
+      ],
+      "ChannelId": null,
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "GenreItems": [
+        {
+          "Id": "00000000000000000000000000000010",
+          "Name": "Test Name 23"
+        }
+      ],
+      "Genres": [
+        "Test Genres 21"
+      ],
+      "HasLyrics": false,
+      "Id": "0000000000000000000000000000000e",
+      "ImageBlurHashes": {
+        "Primary": {
+          "00000000000000000000000000000012": "Test 00000000000000000000000000000012 28"
+        }
+      },
+      "ImageTags": {
+        "Primary": "00000000000000000000000000000012"
+      },
+      "IndexNumber": 1,
+      "IsFolder": false,
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "Name": "Test Name 19",
+      "Overview": "Test Overview 20",
+      "ParentIndexNumber": 1,
+      "People": [
+        {
+          "Id": "0000000000000000000000000000000f",
+          "Name": "Test Name 22",
+          "Role": "",
+          "Type": "Author"
+        }
+      ],
+      "PremiereDate": "2026-01-01T00:00:00.0000000Z",
+      "ProductionYear": 2022,
+      "ProviderIds": {},
+      "RunTimeTicks": 848450416780,
+      "ServerId": "00000000000000000000000000000001",
+      "Type": "AudioBook",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "0000000000000000000000000000000e",
+        "Key": "Test Key 24",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "Album": "Test Album 38",
+      "AlbumArtist": "Test AlbumArtist 39",
+      "AlbumArtists": [
+        {
+          "Id": "00000000000000000000000000000019",
+          "Name": "Test Name 33"
+        }
+      ],
+      "ArtistItems": [
+        {
+          "Id": "00000000000000000000000000000018",
+          "Name": "Test Name 32"
+        }
+      ],
+      "Artists": [
+        "Test Artists 37"
+      ],
+      "ChannelId": null,
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "GenreItems": [
+        {
+          "Id": "00000000000000000000000000000017",
+          "Name": "Test Name 35"
+        }
+      ],
+      "Genres": [
+        "Test Genres 31"
+      ],
+      "HasLyrics": false,
+      "Id": "00000000000000000000000000000013",
+      "ImageBlurHashes": {
+        "Primary": {
+          "0000000000000000000000000000001a": "Test 0000000000000000000000000000001a 40"
+        }
+      },
+      "ImageTags": {
+        "Primary": "0000000000000000000000000000001a"
+      },
+      "IndexNumber": 1,
+      "IsFolder": false,
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "Name": "Test Name 29",
+      "Overview": "Test Overview 30",
+      "People": [
+        {
+          "Id": "00000000000000000000000000000014",
+          "Name": "Test Name 32",
+          "Role": "",
+          "Type": "Actor"
+        },
+        {
+          "Id": "00000000000000000000000000000015",
+          "Name": "Test Name 33",
+          "Role": "",
+          "Type": "Author"
+        },
+        {
+          "Id": "00000000000000000000000000000016",
+          "Name": "Test Name 34",
+          "Role": "",
+          "Type": "Narrator"
+        }
+      ],
+      "PremiereDate": "2026-01-01T00:00:00.0000000Z",
+      "ProductionYear": 1996,
+      "ProviderIds": {},
+      "RunTimeTicks": 1094658322000,
+      "ServerId": "00000000000000000000000000000001",
+      "Type": "AudioBook",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "00000000000000000000000000000013",
+        "Key": "Test Key 36",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "Album": "Test Album 46",
+      "AlbumArtist": "Test AlbumArtist 47",
+      "AlbumArtists": [
+        {
+          "Id": "0000000000000000000000000000001e",
+          "Name": "Test Name 43"
+        }
+      ],
+      "ArtistItems": [
+        {
+          "Id": "00000000000000000000000000000018",
+          "Name": "Test Name 32"
+        }
+      ],
+      "Artists": [
+        "Test Artists 37"
+      ],
+      "ChannelId": null,
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "GenreItems": [
+        {
+          "Id": "00000000000000000000000000000017",
+          "Name": "Test Name 35"
+        }
+      ],
+      "Genres": [
+        "Test Genres 31"
+      ],
+      "HasLyrics": false,
+      "Id": "0000000000000000000000000000001b",
+      "ImageBlurHashes": {
+        "Primary": {
+          "0000000000000000000000000000001f": "Test 0000000000000000000000000000001f 48"
+        }
+      },
+      "ImageTags": {
+        "Primary": "0000000000000000000000000000001f"
+      },
+      "IndexNumber": 1,
+      "IsFolder": false,
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "Name": "Test Name 41",
+      "Overview": "Test Overview 42",
+      "People": [
+        {
+          "Id": "00000000000000000000000000000014",
+          "Name": "Test Name 32",
+          "Role": "",
+          "Type": "Actor"
+        },
+        {
+          "Id": "0000000000000000000000000000001c",
+          "Name": "Test Name 43",
+          "Role": "",
+          "Type": "Author"
+        },
+        {
+          "Id": "0000000000000000000000000000001d",
+          "Name": "Test Name 44",
+          "Role": "",
+          "Type": "Narrator"
+        }
+      ],
+      "PremiereDate": "2026-01-01T00:00:00.0000000Z",
+      "ProductionYear": 2019,
+      "ProviderIds": {},
+      "RunTimeTicks": 98167466670,
+      "ServerId": "00000000000000000000000000000001",
+      "Type": "AudioBook",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "0000000000000000000000000000001b",
+        "Key": "Test Key 45",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "Album": "Test Album 52",
+      "AlbumArtist": "Test AlbumArtist 47",
+      "AlbumArtists": [
+        {
+          "Id": "0000000000000000000000000000001e",
+          "Name": "Test Name 43"
+        }
+      ],
+      "ArtistItems": [
+        {
+          "Id": "00000000000000000000000000000018",
+          "Name": "Test Name 32"
+        }
+      ],
+      "Artists": [
+        "Test Artists 37"
+      ],
+      "ChannelId": null,
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "GenreItems": [
+        {
+          "Id": "00000000000000000000000000000017",
+          "Name": "Test Name 35"
+        }
+      ],
+      "Genres": [
+        "Test Genres 31"
+      ],
+      "HasLyrics": false,
+      "Id": "00000000000000000000000000000020",
+      "ImageBlurHashes": {
+        "Primary": {
+          "00000000000000000000000000000021": "Test 00000000000000000000000000000021 53"
+        }
+      },
+      "ImageTags": {
+        "Primary": "00000000000000000000000000000021"
+      },
+      "IndexNumber": 1,
+      "IsFolder": false,
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "Name": "Test Name 49",
+      "Overview": "Test Overview 50",
+      "People": [
+        {
+          "Id": "00000000000000000000000000000014",
+          "Name": "Test Name 32",
+          "Role": "",
+          "Type": "Actor"
+        },
+        {
+          "Id": "0000000000000000000000000000001c",
+          "Name": "Test Name 43",
+          "Role": "",
+          "Type": "Author"
+        },
+        {
+          "Id": "00000000000000000000000000000016",
+          "Name": "Test Name 34",
+          "Role": "",
+          "Type": "Narrator"
+        }
+      ],
+      "PremiereDate": "2026-01-01T00:00:00.0000000Z",
+      "ProductionYear": 2013,
+      "ProviderIds": {},
+      "RunTimeTicks": 1504714826300,
+      "ServerId": "00000000000000000000000000000001",
+      "Type": "AudioBook",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "00000000000000000000000000000020",
+        "Key": "Test Key 51",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "Album": "Test Album 62",
+      "AlbumArtist": "Test AlbumArtist 63",
+      "AlbumArtists": [
+        {
+          "Id": "00000000000000000000000000000026",
+          "Name": "Test Name 57"
+        }
+      ],
+      "ArtistItems": [
+        {
+          "Id": "00000000000000000000000000000026",
+          "Name": "Test Name 57"
+        }
+      ],
+      "Artists": [
+        "Test Artists 61"
+      ],
+      "ChannelId": null,
+      "DateCreated": "2026-01-01T00:00:00.0000000Z",
+      "GenreItems": [
+        {
+          "Id": "00000000000000000000000000000025",
+          "Name": "Test Name 59"
+        }
+      ],
+      "Genres": [
+        "Test Genres 56"
+      ],
+      "HasLyrics": false,
+      "Id": "00000000000000000000000000000022",
+      "ImageBlurHashes": {
+        "Primary": {
+          "00000000000000000000000000000027": "Test 00000000000000000000000000000027 64"
+        }
+      },
+      "ImageTags": {
+        "Primary": "00000000000000000000000000000027"
+      },
+      "IndexNumber": 1,
+      "IsFolder": false,
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "Name": "Test Name 54",
+      "Overview": "Test Overview 55",
+      "People": [
+        {
+          "Id": "00000000000000000000000000000023",
+          "Name": "Test Name 57",
+          "Role": "",
+          "Type": "Author"
+        },
+        {
+          "Id": "00000000000000000000000000000024",
+          "Name": "Test Name 58",
+          "Role": "",
+          "Type": "Narrator"
+        }
+      ],
+      "PremiereDate": "2026-01-01T00:00:00.0000000Z",
+      "ProductionYear": 2013,
+      "ProviderIds": {},
+      "RunTimeTicks": 683466826300,
+      "ServerId": "00000000000000000000000000000001",
+      "Type": "AudioBook",
+      "UserData": {
+        "IsFavorite": false,
+        "ItemId": "00000000000000000000000000000022",
+        "Key": "Test Key 60",
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    }
+  ],
+  "StartIndex": 0,
+  "TotalRecordCount": 989
+}

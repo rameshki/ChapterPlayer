@@ -37,8 +37,16 @@ DETAIL_FIELDS = "Chapters,People,Overview,Genres,Studios,MediaSources"
 KEEP_KEYS = {
     "Type", "MediaType", "Container", "Codec", "CollectionType", "Protocol", "VideoType", "LocationType", "ChannelLayout",
     "Role", "Language", "ProductVersion", "Version", "StartupWizardCompleted", "OperatingSystem", "ImageType", "PlayMethod",
-    "RepeatMode", "PlaybackOrder", "AudioChannelLayout", "SampleRate", "Profile",
+    "ProductName", "RepeatMode", "PlaybackOrder", "AudioChannelLayout", "SampleRate", "Profile",
 }
+# Fields that carry content (titles, names, text): always replaced, even when a value is a single word.
+CONTENT_KEYS = {
+    "Name", "SortName", "ForcedSortName", "OriginalTitle", "Title", "Album", "AlbumArtist", "AlbumArtists", "Artists", "Overview",
+    "Taglines", "Tags", "Genres", "Studios", "SeriesName", "SeasonName", "Comment", "Description", "DisplayTitle", "DisplayName",
+    "UserName", "Username", "Author", "Narrator", "Publisher", "Label", "ProviderIds", "ExternalUrls",
+}
+# Any other single plain word (None, SDR, Default, Video, Legacy ...) describes structure and is kept: it keeps the fixtures real.
+ENUM_WORD = re.compile(r"^[A-Za-z]{1,24}$")
 ID_KEYS_AS_TOKEN = {"AccessToken", "Token"}
 PATH_KEYS = {"Path", "FileName"}
 ADDRESS_KEYS = {"LocalAddress", "Address", "WanAddress", "ServerName", "HostName"}
@@ -55,6 +63,7 @@ class Anonymiser:
         self.ids = {}
         self.texts = {}
         self.real = set()  # real values seen, to check none survives
+        self.origin = {}  # real value -> (kind, key it was seen under); for --explain-leaks, never printed with the value
 
     def _fake_id(self, value):
         key = value.replace("-", "").lower()
@@ -67,34 +76,48 @@ class Anonymiser:
             self.texts[(key, value)] = f"Test {key} {len(self.texts) + 1}"
         return self.texts[(key, value)]
 
+    def _note(self, v, kind, key):
+        self.real.add(v)
+        self.origin.setdefault(v, (kind, key))
+
+    def key(self, k):
+        """Dictionary keys can be ids too (Jellyfin keys image blur hashes by image tag)."""
+        if isinstance(k, str) and (HEX32.match(k) or GUID.match(k)):
+            self._note(k, "id-as-key", "")
+            self._note(k.replace("-", ""), "id-as-key", "")
+            fake = self._fake_id(k)
+            return fake if HEX32.match(k) else f"{fake[:8]}-{fake[8:12]}-{fake[12:16]}-{fake[16:20]}-{fake[20:]}"
+        return k
+
     def value(self, key, v):
         if isinstance(v, dict):
-            return {k: self.value(k, x) for k, x in v.items()}
+            # The invented text is built from the key name, so an id used as a key is replaced first.
+            return {self.key(k): self.value(self.key(k), x) for k, x in v.items()}
         if isinstance(v, list):
             return [self.value(key, x) for x in v]
         if not isinstance(v, str) or v == "":
             return v
         if key in ID_KEYS_AS_TOKEN:
-            self.real.add(v)
+            self._note(v, "token", key)
             return "REDACTED-TOKEN"
         if HEX32.match(v) or GUID.match(v):
-            self.real.add(v)
-            self.real.add(v.replace("-", ""))
+            self._note(v, "id", key)
+            self._note(v.replace("-", ""), "id", key)
             fake = self._fake_id(v)
             return fake if HEX32.match(v) else f"{fake[:8]}-{fake[8:12]}-{fake[12:16]}-{fake[16:20]}-{fake[20:]}"
         if DATE.match(v):
             return FIXED_DATE
         if key in PATH_KEYS:
-            self.real.add(v)
+            self._note(v, "path", key)
             return "/media/audiobooks/Test Author/Test Book.m4b" if "/" in v or "\\" in v else "Test Book.m4b"
         if key in ADDRESS_KEYS or "://" in v:
-            self.real.add(v)
+            self._note(v, "address", key)
             return "http://test.invalid:8096" if "://" in v else "Test Server"
-        if key in KEEP_KEYS:
+        if key in KEEP_KEYS or (ENUM_WORD.match(v) and key not in CONTENT_KEYS):
             return v
         if re.fullmatch(r"[A-Za-z]{1,12}", v) and key.endswith("Type"):
             return v
-        self.real.add(v)
+        self._note(v, "text", key)
         return self._fake_text(key or "Text", v)
 
     def run(self, data):
@@ -132,6 +155,8 @@ class Server:
             url += "?" + urllib.parse.urlencode(params)
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(url, data=data, method=method)
+        # Some servers sit behind a proxy that refuses the default Python client signature with a 403.
+        req.add_header("User-Agent", "ChapterPlayer-recorder/0.1")
         req.add_header("Authorization", self.header(token))
         req.add_header("Accept", "application/json")
         if body is not None:
@@ -158,6 +183,22 @@ SAFE_HEADERS = ["Content-Type", "Content-Length", "Content-Range", "Accept-Range
 FILENAME = re.compile(r'(filename\*?=)(?:UTF-8\'\')?"?([^";]*)"?', re.IGNORECASE)
 
 
+def survivors(node, v, path=""):
+    """Paths in the output where the real value v sits as a whole key or value (so an anonymiser rule is missing)."""
+    found = []
+    if isinstance(node, dict):
+        for k, x in node.items():
+            if k == v:
+                found.append(f"{path}.<key>")
+            found += survivors(x, v, f"{path}.{k}")
+    elif isinstance(node, list):
+        for i, x in enumerate(node):
+            found += survivors(x, v, f"{path}[{i}]")
+    elif node == v:
+        found.append(path or ".")
+    return found
+
+
 def safe_headers(headers, anon):
     """The few headers worth recording. Their values describe the transfer (type, size, ranges), so they are kept; the file
     name in Content-Disposition is real content and is replaced, keeping its extension."""
@@ -180,6 +221,7 @@ def safe_headers(headers, anon):
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="folder for the anonymised answers (outside the repository)")
+    ap.add_argument("--explain-leaks", action="store_true", help="when the safety check aborts, say where each leak sits (length and place, never the value)")
     ap.add_argument("--with-writes", action="store_true", help="also run calls that change state (throwaway user only)")
     args = ap.parse_args(argv)
     base, user, password = (os.environ.get(n) for n in ("JF_URL", "JF_USER", "JF_PASS"))
@@ -272,9 +314,39 @@ def main(argv):
     # Nothing real may remain in what is about to be written.
     rendered = {name: json.dumps(shape, indent=2, sort_keys=True) for name, shape in results.items()}
     blob = "\n".join(rendered.values())
-    leaks = [v for v in (anon.real | real_extra) if v and len(v) >= 4 and v in blob]
+    def is_leak(v):
+        if not v or len(v) < 4:
+            return False
+        kind = anon.origin.get(v, ("secret", ""))[0]
+        if kind != "text":
+            return v in blob  # ids, tokens, paths, addresses and the user's own secrets: any appearance at all
+        for shape in results.values():
+            for path in survivors(shape, v):
+                last = re.sub(r"\[\d+\]$", "", path.rsplit(".", 1)[-1])
+                if last not in KEEP_KEYS:
+                    return True  # a content text kept as a whole value or key, outside the structural fields kept on purpose
+        return (len(v) >= 12 or " " in v) and v in blob  # a longer text inside another text
+
+    leaks = [v for v in (anon.real | real_extra) if is_leak(v)]
     if leaks:
         print(f"Aborted: {len(leaks)} real value(s) would remain in the output; nothing written.", file=sys.stderr)
+        if args.explain_leaks:
+            # Kind and length only, never the value: where in the output it sits, so the anonymiser can be fixed.
+            for v in sorted(leaks, key=len):
+                kind, seen_under = anon.origin.get(v, ("secret", ""))
+                where = []
+                for name, shape in results.items():
+                    for path in survivors(shape, v):
+                        where.append(f"{name}:{path}")
+                print(f"  {kind} (seen under '{seen_under}'), length {len(v)}, survives at {', '.join(where[:4]) or 'a longer text'}", file=sys.stderr)
+                if not where:
+                    # Around the first place it sits inside a longer text: the rest of the output is anonymised, the value is masked.
+                    for name, text in rendered.items():
+                        i = text.find(v)
+                        if i >= 0:
+                            around = (text[max(0, i - 28):i] + "<VALUE>" + text[i + len(v):i + len(v) + 28]).replace("\n", " ")
+                            print(f"      {name}: ...{around}...", file=sys.stderr)
+                            break
         return 1
 
     out.mkdir(parents=True, exist_ok=True)

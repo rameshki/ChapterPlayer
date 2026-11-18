@@ -1,0 +1,208 @@
+{
+  "ActivityLogRetentionDays": 30,
+  "AllowClientLogUpload": true,
+  "CachePath": "Test CachePath 87",
+  "CacheSize": 800,
+  "CastReceiverApplications": [
+    {
+      "Id": "Test Id 83",
+      "Name": "Test Name 84"
+    },
+    {
+      "Id": "Test Id 85",
+      "Name": "Test Name 86"
+    }
+  ],
+  "ChapterImageResolution": "MatchSource",
+  "CodecsUsed": [],
+  "ContentTypes": [],
+  "CorsHosts": [
+    "Test CorsHosts 82"
+  ],
+  "DisableLiveTvChannelUserDataName": true,
+  "DisplaySpecialsWithinSeasons": true,
+  "DummyChapterDuration": 0,
+  "EnableCaseSensitiveItemIds": true,
+  "EnableExternalContentInSuggestions": true,
+  "EnableFolderView": false,
+  "EnableGroupingMoviesIntoCollections": false,
+  "EnableGroupingShowsIntoCollections": false,
+  "EnableLegacyAuthorization": false,
+  "EnableMetrics": false,
+  "EnableNormalizedItemByNameIds": true,
+  "EnableSlowResponseWarning": true,
+  "ImageExtractionTimeoutMs": 0,
+  "ImageSavingConvention": "Legacy",
+  "InactiveSessionThreshold": 0,
+  "IsPortAuthorized": true,
+  "IsStartupWizardCompleted": true,
+  "LibraryMetadataRefreshConcurrency": 0,
+  "LibraryMonitorDelay": 60,
+  "LibraryScanFanoutConcurrency": 0,
+  "LibraryUpdateDuration": 30,
+  "LogFileRetentionDays": 3,
+  "MaxAudiobookResume": 5,
+  "MaxResumePct": 90,
+  "MetadataCountryCode": "AU",
+  "MetadataOptions": [
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "Book",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "Movie",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [
+        "Test DisabledImageFetchers 76"
+      ],
+      "DisabledMetadataFetchers": [
+        "Test DisabledMetadataFetchers 75"
+      ],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "MusicVideo",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "Series",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [
+        "TheAudioDB"
+      ],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "MusicAlbum",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [
+        "TheAudioDB"
+      ],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "MusicArtist",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "BoxSet",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "Season",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    },
+    {
+      "DisabledImageFetchers": [],
+      "DisabledMetadataFetchers": [],
+      "DisabledMetadataSavers": [],
+      "ImageFetcherOrder": [],
+      "ItemType": "Episode",
+      "LocalMetadataReaderOrder": [],
+      "MetadataFetcherOrder": []
+    }
+  ],
+  "MetadataPath": "Test MetadataPath 65",
+  "MinAudiobookResume": 5,
+  "MinResumeDurationSeconds": 300,
+  "MinResumePct": 5,
+  "ParallelImageEncodingLimit": 0,
+  "PathSubstitutions": [],
+  "PluginRepositories": [
+    {
+      "Enabled": true,
+      "Name": "Test Name 78",
+      "Url": "http://test.invalid:8096"
+    },
+    {
+      "Enabled": true,
+      "Name": "Test Name 79",
+      "Url": "http://test.invalid:8096"
+    },
+    {
+      "Enabled": true,
+      "Name": "Test Name 80",
+      "Url": "http://test.invalid:8096"
+    },
+    {
+      "Enabled": true,
+      "Name": "Test Name 81",
+      "Url": "http://test.invalid:8096"
+    }
+  ],
+  "PreferredMetadataLanguage": "en",
+  "QuickConnectAvailable": true,
+  "RemoteClientBitrateLimit": 0,
+  "SaveMetadataHidden": false,
+  "ServerName": "Test Server",
+  "SkipDeserializationForBasicTypes": true,
+  "SlowResponseThresholdMs": 500,
+  "SortRemoveCharacters": [
+    "Test SortRemoveCharacters 69",
+    "Test SortRemoveCharacters 70",
+    "Test SortRemoveCharacters 71",
+    "Test SortRemoveCharacters 72",
+    "Test SortRemoveCharacters 73",
+    "Test SortRemoveCharacters 74"
+  ],
+  "SortRemoveWords": [
+    "the",
+    "a",
+    "an"
+  ],
+  "SortReplaceCharacters": [
+    "Test SortReplaceCharacters 66",
+    "Test SortReplaceCharacters 67",
+    "Test SortReplaceCharacters 68"
+  ],
+  "TrickplayOptions": {
+    "EnableHwAcceleration": false,
+    "EnableHwEncoding": false,
+    "EnableKeyFrameOnlyExtraction": false,
+    "Interval": 10000,
+    "JpegQuality": 90,
+    "ProcessPriority": "BelowNormal",
+    "ProcessThreads": 1,
+    "Qscale": 4,
+    "ScanBehavior": "NonBlocking",
+    "TileHeight": 10,
+    "TileWidth": 10,
+    "WidthResolutions": [
+      320
+    ]
+  },
+  "UICulture": "Test UICulture 77"
+}

@@ -1,0 +1,681 @@
+{
+  "Album": "Test Album 26",
+  "AlbumArtist": "Test AlbumArtist 27",
+  "AlbumArtists": [
+    {
+      "Id": "00000000000000000000000000000011",
+      "Name": "Test Name 22"
+    }
+  ],
+  "ArtistItems": [
+    {
+      "Id": "00000000000000000000000000000011",
+      "Name": "Test Name 22"
+    }
+  ],
+  "Artists": [
+    "Test Artists 25"
+  ],
+  "BackdropImageTags": [],
+  "CanDelete": false,
+  "CanDownload": true,
+  "ChannelId": null,
+  "Chapters": [
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 96",
+      "StartPositionTicks": 0
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 97",
+      "StartPositionTicks": 217340000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 98",
+      "StartPositionTicks": 19814980000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 99",
+      "StartPositionTicks": 30836330000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 100",
+      "StartPositionTicks": 43001030000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 101",
+      "StartPositionTicks": 50152550000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 102",
+      "StartPositionTicks": 72013210000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 103",
+      "StartPositionTicks": 90019820000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 104",
+      "StartPositionTicks": 93477270000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 105",
+      "StartPositionTicks": 112136820000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 106",
+      "StartPositionTicks": 119188260000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 107",
+      "StartPositionTicks": 135706240000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 108",
+      "StartPositionTicks": 152457110000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 109",
+      "StartPositionTicks": 160594780000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 110",
+      "StartPositionTicks": 170275180000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 111",
+      "StartPositionTicks": 177872750000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 112",
+      "StartPositionTicks": 187796260000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 113",
+      "StartPositionTicks": 197664040000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 114",
+      "StartPositionTicks": 205006660000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 115",
+      "StartPositionTicks": 210392290000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 116",
+      "StartPositionTicks": 221570840000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 117",
+      "StartPositionTicks": 227231870000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 118",
+      "StartPositionTicks": 240031640000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 119",
+      "StartPositionTicks": 250757630000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 120",
+      "StartPositionTicks": 254492100000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 121",
+      "StartPositionTicks": 265106170000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 122",
+      "StartPositionTicks": 281809210000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 123",
+      "StartPositionTicks": 289575820000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 124",
+      "StartPositionTicks": 298928120000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 125",
+      "StartPositionTicks": 307704570000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 126",
+      "StartPositionTicks": 316483800000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 127",
+      "StartPositionTicks": 323701030000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 128",
+      "StartPositionTicks": 334182280000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 129",
+      "StartPositionTicks": 346503020000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 130",
+      "StartPositionTicks": 364500110000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 131",
+      "StartPositionTicks": 372215870000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 132",
+      "StartPositionTicks": 387428430000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 133",
+      "StartPositionTicks": 408969580000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 134",
+      "StartPositionTicks": 423393350000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 135",
+      "StartPositionTicks": 432251990000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 136",
+      "StartPositionTicks": 440861720000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 137",
+      "StartPositionTicks": 446068330000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 138",
+      "StartPositionTicks": 457023040000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 139",
+      "StartPositionTicks": 462124000000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 140",
+      "StartPositionTicks": 469860660000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 141",
+      "StartPositionTicks": 480777290000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 142",
+      "StartPositionTicks": 489652880000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 143",
+      "StartPositionTicks": 499611230000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 144",
+      "StartPositionTicks": 514318280000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 145",
+      "StartPositionTicks": 522970270000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 146",
+      "StartPositionTicks": 533904080000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 147",
+      "StartPositionTicks": 540448390000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 148",
+      "StartPositionTicks": 554804360000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 149",
+      "StartPositionTicks": 569347480000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 150",
+      "StartPositionTicks": 575745970000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 151",
+      "StartPositionTicks": 581583010000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 152",
+      "StartPositionTicks": 590119130000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 153",
+      "StartPositionTicks": 601886530000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 154",
+      "StartPositionTicks": 607464430000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 155",
+      "StartPositionTicks": 620883940000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 156",
+      "StartPositionTicks": 625494490000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 157",
+      "StartPositionTicks": 633162190000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 158",
+      "StartPositionTicks": 639754570000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 159",
+      "StartPositionTicks": 648350130000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 160",
+      "StartPositionTicks": 658154750000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 161",
+      "StartPositionTicks": 672058170000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 162",
+      "StartPositionTicks": 683250650000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 163",
+      "StartPositionTicks": 699633950000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 164",
+      "StartPositionTicks": 711382320000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 165",
+      "StartPositionTicks": 713518560000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 166",
+      "StartPositionTicks": 727268720000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 167",
+      "StartPositionTicks": 735442370000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 168",
+      "StartPositionTicks": 738217850000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 169",
+      "StartPositionTicks": 755227630000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 170",
+      "StartPositionTicks": 776908100000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 171",
+      "StartPositionTicks": 784521000000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 172",
+      "StartPositionTicks": 792137610000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 173",
+      "StartPositionTicks": 807366180000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 174",
+      "StartPositionTicks": 825662110000
+    },
+    {
+      "ImageDateModified": "2026-01-01T00:00:00.0000000Z",
+      "Name": "Test Name 175",
+      "StartPositionTicks": 842242790000
+    }
+  ],
+  "DateCreated": "2026-01-01T00:00:00.0000000Z",
+  "DisplayPreferencesId": "0000000000000000000000000000002b",
+  "EnableMediaSourceDisplay": true,
+  "Etag": "00000000000000000000000000000028",
+  "ExternalUrls": [],
+  "GenreItems": [
+    {
+      "Id": "00000000000000000000000000000010",
+      "Name": "Test Name 23"
+    }
+  ],
+  "Genres": [
+    "Test Genres 21"
+  ],
+  "HasLyrics": false,
+  "Id": "0000000000000000000000000000000e",
+  "ImageBlurHashes": {
+    "Primary": {
+      "00000000000000000000000000000012": "Test 00000000000000000000000000000012 28"
+    }
+  },
+  "ImageTags": {
+    "Primary": "00000000000000000000000000000012"
+  },
+  "IndexNumber": 1,
+  "IsFolder": false,
+  "LocalTrailerCount": 0,
+  "LocationType": "FileSystem",
+  "LockData": false,
+  "LockedFields": [],
+  "MediaSources": [
+    {
+      "Bitrate": 126975,
+      "Container": "m4a",
+      "DefaultAudioStreamIndex": 0,
+      "ETag": "00000000000000000000000000000029",
+      "Formats": [],
+      "GenPtsInput": false,
+      "HasSegments": false,
+      "Id": "0000000000000000000000000000000e",
+      "IgnoreDts": false,
+      "IgnoreIndex": false,
+      "IsInfiniteStream": false,
+      "IsRemote": false,
+      "MediaAttachments": [],
+      "MediaStreams": [
+        {
+          "AudioSpatialFormat": "None",
+          "BitRate": 125589,
+          "ChannelLayout": "stereo",
+          "Channels": 2,
+          "Codec": "aac",
+          "CodecTag": "Test CodecTag 89",
+          "DisplayTitle": "Test DisplayTitle 91",
+          "Index": 0,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsOriginal": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "LocalizedDefault": "Default",
+          "LocalizedExternal": "External",
+          "LocalizedLanguage": "Undetermined",
+          "LocalizedOriginal": "Original",
+          "Profile": "LC",
+          "SampleRate": 44100,
+          "SupportsExternalStream": false,
+          "TimeBase": "Test TimeBase 90",
+          "Type": "Audio",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown"
+        },
+        {
+          "AudioSpatialFormat": "None",
+          "Codec": "bin_data",
+          "CodecTag": "text",
+          "Index": 1,
+          "IsDefault": false,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsOriginal": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "SupportsExternalStream": false,
+          "TimeBase": "Test TimeBase 90",
+          "Type": "Data",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown"
+        },
+        {
+          "AspectRatio": "Test AspectRatio 94",
+          "AudioSpatialFormat": "None",
+          "BitDepth": 8,
+          "Codec": "mjpeg",
+          "ColorSpace": "Test ColorSpace 92",
+          "Height": 500,
+          "Index": 2,
+          "IsAnamorphic": false,
+          "IsDefault": false,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsOriginal": false,
+          "IsTextSubtitleStream": false,
+          "Level": -99,
+          "PixelFormat": "Test PixelFormat 95",
+          "Profile": "Baseline",
+          "RealFrameRate": 90000,
+          "ReferenceFrameRate": 90000,
+          "SupportsExternalStream": false,
+          "TimeBase": "Test TimeBase 93",
+          "Type": "EmbeddedImage",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown",
+          "Width": 500
+        }
+      ],
+      "Name": "Test Name 19",
+      "Path": "/media/audiobooks/Test Author/Test Book.m4b",
+      "Protocol": "File",
+      "ReadAtNativeFramerate": false,
+      "RequiredHttpHeaders": {},
+      "RequiresClosing": false,
+      "RequiresLooping": false,
+      "RequiresOpening": false,
+      "RunTimeTicks": 848450416780,
+      "Size": 1346649900,
+      "SupportsDirectPlay": true,
+      "SupportsDirectStream": true,
+      "SupportsProbing": true,
+      "SupportsTranscoding": true,
+      "TranscodingSubProtocol": "http",
+      "Type": "Default",
+      "UseMostCompatibleTranscodingProfile": false
+    }
+  ],
+  "MediaStreams": [
+    {
+      "AudioSpatialFormat": "None",
+      "BitRate": 125589,
+      "ChannelLayout": "stereo",
+      "Channels": 2,
+      "Codec": "aac",
+      "CodecTag": "Test CodecTag 89",
+      "DisplayTitle": "Test DisplayTitle 91",
+      "Index": 0,
+      "IsDefault": true,
+      "IsExternal": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsInterlaced": false,
+      "IsOriginal": false,
+      "IsTextSubtitleStream": false,
+      "Language": "und",
+      "LocalizedDefault": "Default",
+      "LocalizedExternal": "External",
+      "LocalizedLanguage": "Undetermined",
+      "LocalizedOriginal": "Original",
+      "Profile": "LC",
+      "SampleRate": 44100,
+      "SupportsExternalStream": false,
+      "TimeBase": "Test TimeBase 90",
+      "Type": "Audio",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown"
+    },
+    {
+      "AudioSpatialFormat": "None",
+      "Codec": "bin_data",
+      "CodecTag": "text",
+      "Index": 1,
+      "IsDefault": false,
+      "IsExternal": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsInterlaced": false,
+      "IsOriginal": false,
+      "IsTextSubtitleStream": false,
+      "Language": "und",
+      "SupportsExternalStream": false,
+      "TimeBase": "Test TimeBase 90",
+      "Type": "Data",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown"
+    },
+    {
+      "AspectRatio": "Test AspectRatio 94",
+      "AudioSpatialFormat": "None",
+      "BitDepth": 8,
+      "Codec": "mjpeg",
+      "ColorSpace": "Test ColorSpace 92",
+      "Height": 500,
+      "Index": 2,
+      "IsAnamorphic": false,
+      "IsDefault": false,
+      "IsExternal": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsInterlaced": false,
+      "IsOriginal": false,
+      "IsTextSubtitleStream": false,
+      "Level": -99,
+      "PixelFormat": "Test PixelFormat 95",
+      "Profile": "Baseline",
+      "RealFrameRate": 90000,
+      "ReferenceFrameRate": 90000,
+      "SupportsExternalStream": false,
+      "TimeBase": "Test TimeBase 93",
+      "Type": "EmbeddedImage",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown",
+      "Width": 500
+    }
+  ],
+  "MediaType": "Audio",
+  "Name": "Test Name 19",
+  "Overview": "Test Overview 20",
+  "ParentId": "0000000000000000000000000000002a",
+  "ParentIndexNumber": 1,
+  "Path": "/media/audiobooks/Test Author/Test Book.m4b",
+  "People": [
+    {
+      "Id": "0000000000000000000000000000000f",
+      "Name": "Test Name 22",
+      "Role": "",
+      "Type": "Author"
+    }
+  ],
+  "PlayAccess": "Full",
+  "PremiereDate": "2026-01-01T00:00:00.0000000Z",
+  "PrimaryImageAspectRatio": 0.625,
+  "ProductionYear": 2022,
+  "ProviderIds": {},
+  "RemoteTrailers": [],
+  "RunTimeTicks": 848450416780,
+  "ServerId": "00000000000000000000000000000001",
+  "SortName": "Test SortName 88",
+  "SpecialFeatureCount": 0,
+  "Studios": [],
+  "Taglines": [],
+  "Tags": [],
+  "Type": "AudioBook",
+  "UserData": {
+    "IsFavorite": false,
+    "ItemId": "0000000000000000000000000000000e",
+    "Key": "Test Key 24",
+    "PlayCount": 0,
+    "PlaybackPositionTicks": 0,
+    "Played": false
+  }
+}
