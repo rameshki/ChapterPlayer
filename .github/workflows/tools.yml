@@ -1,0 +1,42 @@
+name: Tools CI
+
+# The audiobook converter (tools/audiobook-to-m4b) with the real ffmpeg (review R23). Runs only when tools/ or this file
+# changes, so other pull requests are not held up. The real-encoding tests must RUN here: a skip fails the job.
+on:
+  push:
+    branches: [main]
+    paths: ['tools/**', '.github/workflows/tools.yml']
+  pull_request:
+    paths: ['tools/**', '.github/workflows/tools.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  converter:
+    name: Converter tests with real ffmpeg
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Run all converter tests
+        run: python3 -m unittest discover -v -s tools/audiobook-to-m4b/tests
+
+      - name: The real ffmpeg tests ran (a skip is a failure)
+        working-directory: tools/audiobook-to-m4b/tests
+        run: |
+          python3 -m unittest -v test_real_ffmpeg 2>&1 | tee real.log
+          ! grep -qi "skipped" real.log
