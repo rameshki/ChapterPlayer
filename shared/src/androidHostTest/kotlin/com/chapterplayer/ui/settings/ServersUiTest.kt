@@ -49,6 +49,14 @@ class ServersUiTest {
     private val plex = ServerConfig("p1", ServerSource.PLEX, "Home Plex", "http://192.0.2.11:32400", "secret-plex")
 
     @Test
+    fun `a server on plain http says Not encrypted and an https server does not`() {
+        val secure = ServerConfig("a2", ServerSource.ABS, "Secure ABS", "https://abs.example.org", "secret-abs2")
+        val rows = serverRows(listOf(abs, plex, secure), emptyMap(), nowMs = 0L)
+        assertEquals(listOf(true, true, false), rows.map { it.notEncrypted })
+        assertEquals("Not encrypted (http)", NOT_ENCRYPTED_NOTE)
+    }
+
+    @Test
     fun `each row has the name, type, connection, status and the actions it allows`() {
         val statuses = mapOf(
             "a1" to ServerSyncStatus("a1", ServerSyncPhase.Idle(10 * minute, 342), "Audiobookshelf address"),
