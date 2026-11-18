@@ -76,7 +76,7 @@ class SettingsSummaryTest {
     @Test
     fun `the battery row says what the setting is and what a tap does`() {
         assertEquals("Allowed to run in the background", batterySummary(true))
-        assertEquals("Android may stop playback at night. Tap to allow it.", batterySummary(false))
+        assertEquals("Android may stop playback at night. Tap, pick ChapterPlayer and choose Unrestricted (or Don't optimise).", batterySummary(false))
         assertEquals("Keep playing overnight", BATTERY_TITLE)
     }
 
