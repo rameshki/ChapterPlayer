@@ -10,7 +10,7 @@ Records the shapes of a Jellyfin server's answers so ChapterPlayer's test fixtur
 2. Set the three environment variables (never put them in a file in the repo):
 
    ```
-   JF_URL=http://your-server:8096   JF_USER=devtest   JF_PASS=<its password>
+   JF_URL=http://your-server:8096   JF_USER=<the user>  JF_PASS=<its password>
    ```
 
 3. `python tools/jellyfin-record/record.py --out <a folder outside the repo>` for the reads only, or add `--with-writes` to also
