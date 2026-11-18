@@ -132,7 +132,7 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `a merged book with a Jellyfin copy downloads only from Audiobookshelf or Plex and plays from all three`() = runTest {
+    fun `a merged book with a Jellyfin copy downloads from any of the three and plays from all three`() = runTest {
         val s = Setup(listOf(abs("a"), plex("p"), jf("j")), "j")
         val state = collect(s)
         assertEquals(3, state().sources.size)
@@ -140,9 +140,9 @@ class BookDetailsMergeTest {
         s.vm.onDownloadClicked()
         val download = assertNotNull(state().sourceSheet)
         assertEquals(SourceAction.DOWNLOAD, download.action)
-        assertEquals(listOf("a", "p"), download.rows.map { it.bookId })
+        assertEquals(listOf("a", "j", "p"), download.rows.map { it.bookId })
         s.vm.onSourceChosen("j")
-        assertTrue(s.downloads.calls.isEmpty())
+        assertEquals(listOf("enqueue j"), s.downloads.calls)
         s.vm.onSourceSheetDismissed()
 
         s.vm.onResumeClicked()
@@ -152,32 +152,32 @@ class BookDetailsMergeTest {
     }
 
     @Test
-    fun `a Jellyfin book alone has no download control`() = runTest {
+    fun `a Jellyfin book alone has a download control and downloads`() = runTest {
         val s = Setup(listOf(jf("j"), abs("x", title = "Other")), "j")
         val state = collect(s)
-        assertEquals(DetailsDownloadPhase.HIDDEN, state().download.phase)
+        assertEquals(DetailsDownloadPhase.IDLE, state().download.phase)
         assertFalse(state().download.canDownloadAnotherCopy)
         s.vm.onDownloadClicked()
-        assertTrue(s.downloads.calls.isEmpty())
+        assertEquals(listOf("enqueue j"), s.downloads.calls)
     }
 
     @Test
-    fun `an Audiobookshelf and Jellyfin book downloads the Audiobookshelf copy from the Jellyfin page`() = runTest {
+    fun `an Audiobookshelf and Jellyfin book asks which copy to download`() = runTest {
         val s = Setup(listOf(abs("a"), jf("j")), "j")
         val state = collect(s)
         assertEquals(DetailsDownloadPhase.IDLE, state().download.phase)
         s.vm.onDownloadClicked()
-        assertNull(state().sourceSheet)
-        assertEquals(listOf("enqueue a"), s.downloads.calls)
+        assertEquals(listOf("a", "j"), state().sourceSheet?.rows?.map { it.bookId })
+        assertTrue(s.downloads.calls.isEmpty())
     }
 
     @Test
-    fun `download from Jellyfin asks among the copies that can download`() = runTest {
+    fun `download from Jellyfin downloads the Jellyfin copy without asking`() = runTest {
         val s = Setup(listOf(abs("a"), plex("p"), jf("j")), "a", download = SourceChoice.OfType(ServerSource.JELLYFIN))
         val state = collect(s)
         s.vm.onDownloadClicked()
-        assertEquals(listOf("a", "p"), state().sourceSheet?.rows?.map { it.bookId })
-        assertTrue(s.downloads.calls.isEmpty())
+        assertNull(state().sourceSheet)
+        assertEquals(listOf("enqueue j"), s.downloads.calls)
     }
 
     @Test

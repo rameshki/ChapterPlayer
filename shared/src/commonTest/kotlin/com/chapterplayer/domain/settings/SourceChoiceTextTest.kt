@@ -138,33 +138,33 @@ class SourceChoiceTextTest {
     private fun jf(id: String, name: String) = ServerConfig(id, ServerSource.JELLYFIN, name, "http://$id", "t")
 
     @Test
-    fun `with Audiobookshelf and Jellyfin servers play offers both and download offers no Jellyfin`() {
+    fun `with Audiobookshelf and Jellyfin servers play and download both offer both`() {
         val servers = listOf(abs("a1", "Home ABS"), jf("j1", "Home Jellyfin"))
         val play = sourceChoiceCard(SourceChoice.Ask, servers, SourcePurpose.PLAY)
         assertEquals(listOf("Ask every time", "Audiobookshelf", "Jellyfin"), play.lines.map { it.label })
         val download = sourceChoiceCard(SourceChoice.Ask, servers, SourcePurpose.DOWNLOAD)
-        assertEquals(listOf("Ask every time", "Audiobookshelf"), download.lines.map { it.label })
+        assertEquals(listOf("Ask every time", "Audiobookshelf", "Jellyfin"), download.lines.map { it.label })
     }
 
     @Test
-    fun `two Jellyfin servers get their own play lines but no download lines`() {
+    fun `two Jellyfin servers get their own play lines and download lines`() {
         val servers = listOf(abs("a1", "Home ABS"), jf("j1", "Den"), jf("j2", "Office"))
         val play = sourceChoiceCard(SourceChoice.Ask, servers, SourcePurpose.PLAY).lines.map { it.label }
         assertEquals(listOf("Ask every time", "Audiobookshelf", "Jellyfin", "Jellyfin: Den", "Jellyfin: Office"), play)
         val download = sourceChoiceCard(SourceChoice.Ask, servers, SourcePurpose.DOWNLOAD).lines.map { it.label }
-        assertEquals(listOf("Ask every time", "Audiobookshelf"), download)
+        assertEquals(listOf("Ask every time", "Audiobookshelf", "Jellyfin", "Jellyfin: Den", "Jellyfin: Office"), download)
     }
 
     @Test
-    fun `a Download from choice of Jellyfin reads as ask`() {
+    fun `a Download from choice of Jellyfin is kept`() {
         val servers = listOf(abs("a1", "Home ABS"), jf("j1", "Home Jellyfin"))
         val byType = sourceChoiceCard(SourceChoice.OfType(ServerSource.JELLYFIN), servers, SourcePurpose.DOWNLOAD)
-        assertEquals("Ask every time", byType.label)
-        assertEquals(SourceChoice.Ask, byType.lines.single { it.selected }.choice)
+        assertEquals("Jellyfin", byType.label)
+        assertEquals(SourceChoice.OfType(ServerSource.JELLYFIN), byType.lines.single { it.selected }.choice)
         assertNull(byType.removedNote)
         val byServer = sourceChoiceCard(SourceChoice.OfServer("j1"), servers, SourcePurpose.DOWNLOAD)
-        assertEquals("Ask every time", byServer.label)
-        assertEquals("Play from Jellyfin, download asks", sourceChoicesSummary(SourceChoice.OfType(ServerSource.JELLYFIN), SourceChoice.OfType(ServerSource.JELLYFIN), servers))
+        assertEquals("Jellyfin: Home Jellyfin", byServer.label)
+        assertEquals("Download and play from Jellyfin", sourceChoicesSummary(SourceChoice.OfType(ServerSource.JELLYFIN), SourceChoice.OfType(ServerSource.JELLYFIN), servers))
     }
 
     @Test

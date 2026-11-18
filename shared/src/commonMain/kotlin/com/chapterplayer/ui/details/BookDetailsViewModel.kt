@@ -306,7 +306,7 @@ class BookDetailsViewModel(
                 currentPositionMs = if (thisLoaded) env.player.positionMs else progress?.positionMs ?: 0L,
                 resumePositionMs = savedStart,
                 finished = progress?.isFinished == true,
-                // No copy on a server the app can download from (a Jellyfin book until J3) and no download: no control at
+                // No copy on a server the app can download from (none now; a Jellyfin book until J3) and no download: no control at
                 // all, rather than a Download that could only fail.
                 download = if (env.download == null && entry != null && downloadableMembers(entry).isEmpty()) DetailsDownload() else detailsDownload(
                     env.download, env.online,
