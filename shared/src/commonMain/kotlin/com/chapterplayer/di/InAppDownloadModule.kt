@@ -20,6 +20,7 @@ import com.chapterplayer.data.downloads.DownloadStorage
 import com.chapterplayer.data.downloads.FileDownloader
 import com.chapterplayer.data.downloads.LiveDownloadProgress
 import com.chapterplayer.data.downloads.LocalBookFiles
+import com.chapterplayer.data.downloads.JellyfinDownloadSource
 import com.chapterplayer.data.downloads.PlexDownloadSource
 import com.chapterplayer.data.downloads.RoomDownloadOverview
 import com.chapterplayer.data.downloads.RoomLocalBookFiles
@@ -28,6 +29,7 @@ import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.permissions.DownloadNotices
 import com.chapterplayer.data.permissions.NotificationPermission
 import com.chapterplayer.data.playback.PlaybackController
+import com.chapterplayer.data.repository.ServerRepository
 import com.chapterplayer.data.remote.createDownloadHttpClient
 import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.sync.PlexConnectionManager
@@ -83,6 +85,15 @@ fun inAppDownloadModule(
             get(), get(), get(DownloadClientQualifier),
             onConnectionFailure = { server, error -> get<PlexConnectionManager>().afterFailure(server, error, force = false, notify = true).retryWith },
             prepare = { server -> get<PlexConnectionManager>().forTokenRequest(server) },
+        )
+    } bind DownloadSource::class
+    // Jellyfin: one file per book from /Items/{id}/Download with the MediaBrowser header; its tokens cannot be refreshed, so a
+    // refused one is blanked ("Sign in again") the way Plex's and the library source's are.
+    single {
+        val servers = get<ServerRepository>()
+        JellyfinDownloadSource(
+            api = get(), installId = get(), appInfo = get(),
+            markSignedOut = { refused -> blankRefusedPlexToken(servers, refused) },
         )
     } bind DownloadSource::class
     single {
