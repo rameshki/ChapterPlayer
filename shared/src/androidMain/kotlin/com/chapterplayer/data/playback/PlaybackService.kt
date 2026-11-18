@@ -12,6 +12,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import com.chapterplayer.data.diagnostics.PlaybackJournal
+import com.chapterplayer.domain.playback.IdleStopPolicy
+import com.chapterplayer.domain.playback.IdleTimerAction
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -62,6 +64,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     private var session: MediaLibrarySession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var pausedStopJob: Job? = null
+    private val idleStop = IdleStopPolicy()
     private val playbackController: PlaybackController by inject()
     private val journal: PlaybackJournal by inject()
 
@@ -207,15 +210,19 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
     private fun updateStopTimer(p: Player) {
         val notPlaying = !p.playWhenReady ||
             p.playbackState == Player.STATE_IDLE || p.playbackState == Player.STATE_ENDED
-        if (!notPlaying) {
-            pausedStopJob?.cancel()
-            pausedStopJob = null
-        } else if (pausedStopJob?.isActive != true) {
-            pausedStopJob = scope.launch {
+        when (idleStop.onState(notPlaying, timerActive = pausedStopJob?.isActive == true)) {
+            IdleTimerAction.CANCEL -> {
+                pausedStopJob?.cancel()
+                pausedStopJob = null
+            }
+            IdleTimerAction.ARM -> pausedStopJob = scope.launch {
                 delay(PAUSED_STOP_AFTER_MS)
+                // Once only: the stop pauses the player, and that must not arm the timer again (see IdleStopPolicy).
+                idleStop.onFired()
                 journal.add("service stopped itself after ${PAUSED_STOP_AFTER_MS / 60_000} minutes of not playing", journalPosition())
                 stopAndEndSession()
             }
+            IdleTimerAction.NONE -> Unit
         }
     }
 

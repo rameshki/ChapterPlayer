@@ -42,8 +42,22 @@ private val PROCESS_IMPORTANCES = mapOf(
  * One line for one of Android's own records of why the app's process ended (ApplicationExitInfo): [timeText] is already
  * formatted, [reason] and [importance] are the system's numbers, [status] the exit status or signal.
  */
-fun describeProcessExit(timeText: String, reason: Int, status: Int, importance: Int): String {
+fun describeProcessExit(
+    timeText: String,
+    reason: Int,
+    status: Int,
+    importance: Int,
+    rssKb: Long = 0L,
+    description: String? = null,
+): String {
     val why = PROCESS_EXIT_REASONS[reason] ?: "reason $reason"
     val state = PROCESS_IMPORTANCES[importance] ?: "importance $importance"
-    return "$timeText $why (status $status), $state"
+    val memory = if (rssKb > 0L) ", ${rssKb / 1024L} MB in use" else ""
+    // The system's own words (on some phones they name what killed the app): one line, short; the report redacts it again.
+    val note = description?.replace(Regex("\\s+"), " ")?.trim()?.take(EXIT_NOTE_CHARS)?.takeIf { it.isNotEmpty() }
+        ?.let { ", system says: \"$it\"" }.orEmpty()
+    return "$timeText $why (status $status), $state$memory$note"
 }
+
+/** How much of the system's description of a process exit the report keeps. */
+const val EXIT_NOTE_CHARS = 120
