@@ -26,6 +26,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -45,6 +48,7 @@ fun ServersSettingsScreen(
 ) {
     val rows by viewModel.rows.collectAsStateWithLifecycle()
     val test by viewModel.connectionTest.collectAsStateWithLifecycle()
+    var pendingDelete by remember { mutableStateOf<ServerRowUi?>(null) }
 
     SettingsPage(
         title = "Servers",
@@ -77,13 +81,26 @@ fun ServersSettingsScreen(
                     onSyncNow = { viewModel.syncNow(row.id) },
                     onTestConnection = { viewModel.testConnection(row.id) },
                     onEdit = { onEditServer(row.id) },
-                    onDelete = { viewModel.deleteServer(row.id) }
+                    onDelete = { pendingDelete = row }
                 )
             }
         }
     }
 
     test?.let { ConnectionTestDialog(it, onDismiss = viewModel::dismissConnectionTest) }
+    pendingDelete?.let { row ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(removeServerTitle(row.name)) },
+            text = { Text(REMOVE_SERVER_TEXT) },
+            confirmButton = {
+                TextButton(onClick = { pendingDelete = null; viewModel.deleteServer(row.id) }) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Keep") } },
+        )
+    }
 }
 
 @Composable
@@ -227,3 +244,9 @@ private fun ConnectionTestDialog(test: ConnectionTestUi, onDismiss: () -> Unit) 
         }
     )
 }
+
+internal fun removeServerTitle(name: String) = "Remove $name?"
+
+internal const val REMOVE_SERVER_TEXT =
+    "This removes the server, its books and this phone's bookmarks, history, favourites and Up next entries for them. " +
+        "Nothing is deleted on the server itself. Adding it again brings back its books and the listening position the server holds."
