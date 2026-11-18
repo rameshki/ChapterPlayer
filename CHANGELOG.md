@@ -2,10 +2,12 @@
 
 What changed in each tester build, newest first. (The long history of how the project was built is in `docs/CHANGELOG.md`.)
 
-## 0.5.4 (17 November 2026)
+## 0.5.4 (18 November 2026)
 **New**
 - **Font choice:** Settings, Appearance, Font: Classic (the look you know), Bookish, Inter, Manrope, Lexend, or the phone's own font.
 - **Report a problem:** Settings, About. Shares a text report (app and phone version, your servers by kind, the last sync, the last crash). Addresses, names and passwords are removed, and nothing is sent unless you choose where. A long press on the version line opens the book-level Diagnostics page.
+- **Keep playing overnight:** Settings, Listening. If Android may stop the app in the background at night, this row says so and opens Android's battery screen so you can allow it. The first time a book plays on such a phone, the app asks once.
+- **Report a problem now also says why playback stopped:** it adds Android's own record of why it ended the app, and a short playback journal (when playback started, paused and why, with the place in the book; no book names). Please send it after a night where playback stopped.
 - **Jellyfin sends your place back:** listening to a Jellyfin book now updates its place and played state in Jellyfin, and Mark as finished and Mark as not finished work on Jellyfin too.
 - **Mark as finished returns the book to the start (0:00), and the page offers Play again.** Playing a finished book again makes it not finished, on the phone and on your servers.
 
