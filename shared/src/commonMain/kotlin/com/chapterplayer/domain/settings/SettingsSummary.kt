@@ -67,7 +67,7 @@ fun carSummary(resumeOnConnect: Boolean): String = "Resume on connect: ${if (res
 
 /** The "keep playing overnight" row: says what the setting is now and, when it is limited, what a tap does. */
 fun batterySummary(unrestricted: Boolean): String =
-    if (unrestricted) "Allowed to run in the background" else "Android may stop playback at night. Tap to allow it."
+    if (unrestricted) "Allowed to run in the background" else "Android may stop playback at night. Tap, pick ChapterPlayer and choose Unrestricted (or Don't optimise)."
 
 const val BATTERY_TITLE = "Keep playing overnight"
 
