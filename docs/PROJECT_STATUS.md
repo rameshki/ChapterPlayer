@@ -2,21 +2,21 @@
 
 Read this first in every session; it is short on purpose. The list of work is the latest review (`reviews/2026-11-17-project-review.md`). History is in `CHANGELOG.md`, decisions in `DECISIONS.md`, device checks in `DEVICE_CHECKS.md`, design detail in `architecture/`. What has merged is `git log`; do not list it here.
 
-## Now (17 November 2026)
-- Version 0.5.3 (versionCode 9), tag `v0.5.3`. Tester builds 0.3.3, 0.4.0, 0.4.1 and 0.5.3 were shared, signed with the key outside the repo. 24 pull requests have merged since 0.5.3; no 0.5.4 has been built.
-- Debug builds are numbered: `scripts/install-debug.sh` installs `0.5.3-debug.N`. Robert's phone has debug build 2 (main as of 16 Nov, before the shared library #115).
-- `main` is at #121. 3,202 host tests pass. targetSdk 36. Sources: Audiobookshelf, Jellyfin (progress goes back; no downloads yet), Plex. Audible is skipped. iOS builds in CI and has never run on a device.
+## Now (18 November 2026)
+- Version 0.5.4 (versionCode 10), tag `v0.5.4`. Tester builds 0.3.3, 0.4.0, 0.4.1, 0.5.3 and 0.5.4 were shared, signed with the key outside the repo (`C:\Users\Robert\ChapterPlayerSigning`). The 0.5.4 APK was built before #127 (the overnight wording), so it lacks that text change.
+- Debug builds are numbered: `scripts/install-debug.sh` installs `0.5.4-debug.N`. Robert's phone has debug build 3 (main as of #126).
+- `main` is at #127. 3,215 host tests pass. targetSdk 36. Sources: Audiobookshelf, Jellyfin (progress goes back; no downloads yet), Plex. Audible is skipped. iOS builds in CI and has never run on a device.
 - Since the review of 14 November: 18 of its findings are done (R3 to R10, R15 to R18, R20, R22, R32, R33, R34, R37), plus the font choice, Mark as finished returning the book to 0:00, "play again" making a book not finished, and numbered debug builds.
 
 ## Open work
-- No unmerged feature branches and no worktrees. One open pull request: Dependabot #114 (18 dependency updates; waits for a rule, review R14).
-- Outstanding in the 17 November review. Do first: R35 (review and real-server check of Mark as finished), R36 (playback stops overnight on the phone), R1 (device checks).
+- No unmerged feature branches and no worktrees. Open: Dependabot #128 (a GitHub Actions major) and #129 (19 minor and patch updates, one weekly group by the rule in `dependabot.yml`); merge after green CI and one install on the phone.
+- Outstanding in the 17 November review. Do first: R35 (review and real-server check of Mark as finished), R1 (device checks). R36 (playback stops overnight): the journal, Android's exit reasons in Report a problem, the Settings row and the first-play question are in main; what is left is one night on the phone with the battery setting, then reading the report. The first-play dialog and the journal have not run on a device (checked on an Android 15 emulator without a server).
 - CI now skips both build jobs for docs-only pull requests and iOS unless `shared/`, `iosApp/`, Gradle files or the workflow changed; a failed run uploads `test-reports`; `scripts/check-docs.sh` guards this file.
 
 ## Next steps
 1. Batch 1 of the review is finished.
-2. Batch 2: R35, R36 and the device checks (R1), with Robert's phone over wireless debugging.
-3. Batch 3: the release pipeline (R12), a demo library (R41), a rule for dependency updates (R14), then Google Play (R31).
+2. Batch 2: R35, the R36 night trial and the device checks (R1), with Robert's phone over wireless debugging (the phone must be unlocked).
+3. Batch 3: the release pipeline (R12), a demo library (R41), Dependabot alerts and the bouncycastle advisory (R14), then Google Play (R31).
 4. Questions waiting for Robert are listed in `DECISIONS.md` under "Open decisions".
 
 ## Process
