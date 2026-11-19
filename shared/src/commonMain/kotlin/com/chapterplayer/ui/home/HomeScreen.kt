@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -125,54 +126,14 @@ fun HomeScreen(
             )
         }
 
-        val nothingToShow = state.resume == null && state.continueSeries.isEmpty() &&
-            state.inProgress.isEmpty() && state.recentlyAdded.isEmpty() && state.favourites.isEmpty() && state.upNext.isEmpty()
-        when {
-            state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AmberGold)
-            }
-
-            !state.hasServers -> ScrollingEmpty {
-                EmptyState(
-                    icon = Icons.Default.Home,
-                    message = "Add a server to see your audiobooks here."
-                ) {
-                    Button(
-                        onClick = onOpenServers,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AmberGold,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    ) { Text("Add a server") }
-                }
-            }
-
-            nothingToShow -> ScrollingEmpty {
-                if (state.hasBooks) {
-                    if (state.downloadedFilterOn) {
-                        EmptyState(Icons.Default.CloudDownload, "Nothing downloaded here yet")
-                    } else {
-                        EmptyState(Icons.Default.Warning, FILTERS_HIDING_TEXT) {
-                            ClearFiltersButton(viewModel::onFiltersCleared)
-                        }
-                    }
-                } else if (state.isSyncing) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = AmberGold)
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = "Syncing your libraries...",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = TextSecondary
-                        )
-                    }
-                } else {
-                    EmptyState(Icons.Default.Home, "Nothing here yet. Pull to refresh in Library.")
-                }
-            }
-
-            else -> HomeShelves(state, onBookClick, onResume = { viewModel.resume(it, openPlayerAfterStart) }, onBookLongClick = bookActions::open)
-        }
+        HomeBody(
+            state = state,
+            onOpenServers = onOpenServers,
+            onBookClick = onBookClick,
+            onResume = { viewModel.resume(it, openPlayerAfterStart) },
+            onBookLongClick = bookActions::open,
+            onFiltersCleared = viewModel::onFiltersCleared,
+        )
     }
         SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
@@ -187,6 +148,66 @@ fun HomeScreen(
             )
         }
         SourceSheet(sheet, actions)
+    }
+}
+
+/** What Home shows under its top bar for [state]: the spinner, the empty states or the shelves (a screenshot test draws it). */
+@Composable
+internal fun HomeBody(
+    state: HomeUiState,
+    onOpenServers: () -> Unit,
+    onBookClick: (String) -> Unit,
+    onResume: (AudioBook) -> Unit,
+    onBookLongClick: (String) -> Unit,
+    onFiltersCleared: () -> Unit,
+) {
+    val nothingToShow = state.resume == null && state.continueSeries.isEmpty() &&
+        state.inProgress.isEmpty() && state.recentlyAdded.isEmpty() && state.favourites.isEmpty() && state.upNext.isEmpty()
+    when {
+        state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = AmberGold)
+        }
+
+        !state.hasServers -> ScrollingEmpty {
+            EmptyState(
+                icon = Icons.Default.Home,
+                message = "Add a server to see your audiobooks here."
+            ) {
+                Button(
+                    onClick = onOpenServers,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AmberGold,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) { Text("Add a server") }
+            }
+        }
+
+        nothingToShow -> ScrollingEmpty {
+            if (state.hasBooks) {
+                if (state.downloadedFilterOn) {
+                    EmptyState(Icons.Default.CloudDownload, "Nothing downloaded here yet")
+                } else {
+                    EmptyState(Icons.Default.Warning, FILTERS_HIDING_TEXT) {
+                        ClearFiltersButton(onFiltersCleared)
+                    }
+                }
+            } else if (state.isSyncing) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = AmberGold)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "Syncing your libraries...",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = TextSecondary
+                    )
+                }
+            } else {
+                EmptyState(Icons.Default.Home, "Nothing here yet. Pull to refresh in Library.")
+            }
+        }
+
+        else -> HomeShelves(state, onBookClick, onResume, onBookLongClick)
     }
 }
 
@@ -216,7 +237,8 @@ private fun HomeShelves(state: HomeUiState, onBookClick: (String) -> Unit, onRes
                 onOpenDetails = { onBookClick(resume.item.book.id) },
                 onResume = { onResume(resume.item.book) },
                 onLongClick = { onBookLongClick(resume.entry.book.id) },
-                modifier = Modifier.padding(horizontal = 16.dp)
+                // On a tablet the card stays a card: its button and progress bar are not stretched across the screen.
+                modifier = Modifier.widthIn(max = 640.dp).padding(horizontal = 16.dp)
             )
             Spacer(Modifier.height(24.dp))
         }
