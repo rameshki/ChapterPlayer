@@ -10,6 +10,7 @@ import com.chapterplayer.data.playback.PlaybackSession
 import com.chapterplayer.domain.diagnostics.ServerProgressReading
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.CopySyncResult
 import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.domain.playback.PendingProgress
 import com.chapterplayer.domain.playback.ServerProgress
@@ -114,6 +115,15 @@ interface BookRepository {
      * a place for it (see [saveServerProgress]). Never throws except for cancellation.
      */
     suspend fun mergeAllServerProgress(serverId: String)
+
+    /**
+     * Brings every copy of each merged book to where listening is newest: for the books of [serverId] that exist on more than
+     * one server (every merged book when null), the copy with the newest listening is the source and the others follow, on this
+     * phone and, through the send queue, on their servers (the flusher checks each server first and never writes over newer
+     * listening). Both ways: the new server's place can be the newer or the older. Needs mirroring on (no copies are known with
+     * it off). Best effort and safe to repeat; never throws except for cancellation.
+     */
+    suspend fun syncCopies(serverId: String? = null): CopySyncResult = CopySyncResult()
 
     // ---- Bookmarks (local first, synced with Audiobookshelf) and position history (local only) ----
 

@@ -31,6 +31,7 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
     val storageUsed by viewModel.downloadStorageUsed.collectAsStateWithLifecycle()
     val sourceChoices by viewModel.sourceChoiceCards.collectAsStateWithLifecycle()
     val mirrorProgress by viewModel.mirrorProgress.collectAsStateWithLifecycle()
+    val crossSyncOnAdd by viewModel.crossSyncOnAdd.collectAsStateWithLifecycle()
     // A card may have been put in or taken out since the screen was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
 
@@ -69,6 +70,15 @@ fun DownloadsSettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = k
             checked = mirrorProgress,
             onChange = viewModel::setMirrorProgress
         )
+        if (mirrorProgress) {
+            Spacer(Modifier.height(8.dp))
+            SwitchCard(
+                title = "Sync listening when a server is added",
+                description = "A new server's books take the newest place from any other copy, and the other copies take the new server's if it is newer. Changes the servers.",
+                checked = crossSyncOnAdd,
+                onChange = viewModel::setCrossSyncOnAdd
+            )
+        }
     }
 }
 

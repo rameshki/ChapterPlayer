@@ -70,6 +70,12 @@ class FakeAppSettings(
         if (failOnSet) error("storage unavailable")
         playChoiceFlow.value = choice
     }
+    val crossSyncOnAddFlow = MutableStateFlow(false)
+    override val crossSyncOnAdd: Flow<Boolean> = crossSyncOnAddFlow
+    override suspend fun setCrossSyncOnAdd(enabled: Boolean) {
+        if (failOnSet) throw IllegalStateException("disk full")
+        crossSyncOnAddFlow.value = enabled
+    }
     val mirrorProgressFlow = MutableStateFlow(true)
     override val mirrorProgress: Flow<Boolean> = mirrorProgressFlow
     override suspend fun setMirrorProgress(enabled: Boolean) {

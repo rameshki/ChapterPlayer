@@ -54,6 +54,7 @@ import com.chapterplayer.data.diagnostics.DiagnosticsLogger
 import com.chapterplayer.data.diagnostics.ProblemReporter
 import com.chapterplayer.data.diagnostics.PlatformDiagnosticsLogger
 import com.chapterplayer.data.diagnostics.RoomDiagnosticsData
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -257,7 +258,8 @@ val commonServerModule = module {
     single { PlexConnectionManager(get(), get(), get(), get(), io = get(BlockingIoQualifier)) }
     // A switched Plex address syncs that server again, so stored cover addresses follow the address in use.
     single {
-        LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get(), lengthFiller = get()).also { sync ->
+        LibrarySyncCoordinator(get(), get(), get(AppScopeQualifier), connections = get(), statusStore = get(), lengthFiller = get(),
+            crossSyncOnAdd = { get<AppSettings>().crossSyncOnAdd.first() }).also { sync ->
             get<PlexConnectionManager>().onSwitched = { id -> sync.requestSync(id) }
         }
     }

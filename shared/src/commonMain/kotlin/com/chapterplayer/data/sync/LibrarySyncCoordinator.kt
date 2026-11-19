@@ -61,6 +61,8 @@ class LibrarySyncCoordinator(
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Reads Plex album lengths after a Plex sync, in the background; null for none. */
     private val lengthFiller: PlexLengthFiller? = null,
+    /** Whether a server's first successful sync brings its books' other copies to the newest listening ([BookRepository.syncCopies]). */
+    private val crossSyncOnAdd: suspend () -> Boolean = { false },
 ) : LibrarySync, SyncAllServers {
     private data class Activity(val running: Int = 0, val errors: List<String> = emptyList())
 
@@ -327,9 +329,11 @@ class LibrarySyncCoordinator(
         }
         // The books are cached: bring in what the server knows about listening to them (best effort). Jellyfin's comes
         // with the list it just read (no extra call); bookmarks are Audiobookshelf's only.
+        val firstSync = outcome.isSuccess && firstSuccess(server.id)
         if (outcome.isSuccess && (server.source == ServerSource.ABS || server.source == ServerSource.JELLYFIN)) {
             mergeProgress(server)
         }
+        if (firstSync) crossSyncCopies(server)
         if (outcome.isSuccess && server.source == ServerSource.ABS) pullBookmarks(server)
         // Plex album lists carry no length: read the lengths afterwards, without holding up this sync.
         if (outcome.isSuccess && server.source == ServerSource.PLEX) lengthFiller?.request(server)
@@ -379,6 +383,20 @@ class LibrarySyncCoordinator(
         throw e
     } catch (e: Exception) {
         null
+    }
+
+    /** Whether this server has never synced successfully before (a newly added one); false when that cannot be read. */
+    private suspend fun firstSuccess(serverId: String): Boolean = choose { statusStore.get(serverId).lastSuccessAtMs == null } ?: false
+
+    /** With the Settings option on: the new server's books and their other copies agree on the newest listening. Best effort. */
+    private suspend fun crossSyncCopies(server: ServerConfig) {
+        try {
+            if (crossSyncOnAdd()) books.syncCopies(server.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best effort.
+        }
     }
 
     /** A failure here never fails the sync and shows no error: the next sync tries again. */
