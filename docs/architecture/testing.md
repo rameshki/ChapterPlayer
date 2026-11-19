@@ -21,6 +21,7 @@ Started by review finding R2 (no UI or screenshot tests; layout faults were only
   Robolectric runner: "1 selected", Select all gives "3 selected", the actions menu offers the mark and favourite
   rows and (outside the app's `LocalPlatformFeatures` provider) no Up next row, Close leaves the mode.
 
+- **Add Server (R2 step 2):** `ui/screenshots/AddServerScreenshotTest` draws the internal `AbsAddSection` and `JellyfinAddSection` (they already take plain state, so no refactor was needed) for the Audiobookshelf form and its error, the Jellyfin form, the Quick Connect wait with a code and the libraries step, in dark, light and at font scale 2.0 (a tall window, since the page scrolls in the app): 11 goldens. Plex's section needs a refactor and is not covered.
 - **Mini player (R2 step 2, R25):** `ui/screenshots/MiniPlayerScreenshotTest` draws `MiniPlayerContent` with a short and a very long title in dark and light, at font scale 2.0, in landscape (800 x 360 dp) and at a 10 inch tablet width (1280 x 800 dp): 5 goldens. Nothing clipped; at scale 2.0 a long title shortens to one line (the full title is in the content description). Each test can set its own window with `@Config(qualifiers = ...)`, the way to add tablet and landscape cases for other screens.
 
 - Checked on Windows (JDK 17): `verifyRoborazziAndroidHostTest` passes with all 3191 host tests; widening the
