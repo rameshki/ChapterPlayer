@@ -65,13 +65,14 @@ class FontCardScreenshotTest {
 internal const val SCREENSHOT_QUALIFIERS = "w360dp-h900dp-mdpi"
 
 /**
- * How strictly a capture is compared with its golden. Goldens recorded on Windows and drawn on Linux (CI) differ in about
- * 0.1 percent of the pixels, by at most 2 of 255 in a colour channel (anti-aliasing at glyph edges), which is just over
- * Roborazzi's default per-pixel distance of 0.007. A distance of 0.02 (about 5 of 255) ignores that and still fails on a
- * change a person would see: a 2 dp shift moves whole glyphs by far more.
+ * How strictly a capture is compared with its golden. Goldens recorded on Windows and drawn on Linux (CI) differ in a small
+ * share of the pixels (0.01 to 0.1 percent, glyph edges), by up to 4 of 255 in a colour channel. Dropbox Differ's distance is the
+ * Euclidean one over the channels divided by 255, so 4 in each channel is 0.027: a distance of 0.02 (the first value) made the
+ * player's images fail on CI. 0.05 (about 7 per channel) ignores that and still fails on a change a person would see: a 2 dp
+ * shift moves whole glyphs by far more.
  */
 internal val SCREENSHOT_OPTIONS = RoborazziOptions(
-    compareOptions = RoborazziOptions.CompareOptions(imageComparator = SimpleImageComparator(maxDistance = 0.02f)),
+    compareOptions = RoborazziOptions.CompareOptions(imageComparator = SimpleImageComparator(maxDistance = 0.05f)),
 )
 
 /** Where a golden lives (the plugin's outputDir); one file per name. */
