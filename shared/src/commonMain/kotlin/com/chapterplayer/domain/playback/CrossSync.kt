@@ -13,10 +13,11 @@ import com.chapterplayer.data.model.ReadingProgress
 /**
  * Where listening is across a book's copies: the newest row that says anything (a place past the start, or finished). On the
  * same time a copy's own row beats a mirrored one (a mirror only repeats another row), then the first in the order given.
- * Null when no copy has been listened to.
+ * A row without a time (a server that gave none) cannot be weighed against the others and is never the source, like
+ * [newestAcrossCopies]. Null when no copy has been listened to.
  */
 fun newestCopyProgress(rows: Collection<ReadingProgress>): ReadingProgress? =
-    rows.filter { it.isFinished || it.positionMs > 0L }
+    rows.filter { it.lastPlayedAt > 0L && (it.isFinished || it.positionMs > 0L) }
         .fold(null as ReadingProgress?) { best, row ->
             when {
                 best == null -> row
