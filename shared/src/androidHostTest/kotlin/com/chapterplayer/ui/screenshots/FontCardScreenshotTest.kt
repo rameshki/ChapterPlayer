@@ -79,11 +79,11 @@ internal fun screenshotPath(name: String) = "src/androidHostTest/screenshots/$na
 
 /** The app theme on the page colour, with the font scale applied the way the system applies it. */
 @Composable
-internal fun ScreenshotFrame(theme: ThemeMode, fontScale: Float, content: @Composable () -> Unit) {
+internal fun ScreenshotFrame(theme: ThemeMode, fontScale: Float, padded: Boolean = true, content: @Composable () -> Unit) {
     ChapterPlayerTheme(themeMode = theme, font = AppFont.CLASSIC) {
         val density = LocalDensity.current
         CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-            Box(Modifier.background(MaterialTheme.colorScheme.background).padding(16.dp)) {
+            Box(Modifier.background(MaterialTheme.colorScheme.background).then(if (padded) Modifier.padding(16.dp) else Modifier)) {
                 content()
             }
         }
