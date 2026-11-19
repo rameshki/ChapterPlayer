@@ -75,7 +75,7 @@ Every screenshot is drawn in dark and light at font scale 1.0 and 1.3 (four gold
    `test-reports` artifact, so a reviewer sees the diff. Found by the first CI comparison (19 Nov): the goldens recorded on Windows
    differ from what Linux draws in about 0.1 percent of the pixels, by at most 2 of 255 in a colour channel (glyph edges), which is
    just over Roborazzi's default per-pixel distance of 0.007, so every image read as changed. The tests now compare with
-   `SimpleImageComparator(maxDistance = 0.02f)` (`SCREENSHOT_OPTIONS` in `FontCardScreenshotTest.kt`); a 2 dp padding change still
+   `SimpleImageComparator(maxDistance = 0.05f)` (`SCREENSHOT_OPTIONS` in `FontCardScreenshotTest.kt`); a 2 dp padding change still
    fails all four images. Keep that options value for every new screenshot test.
 5. **Instrumented smoke test on a CI emulator:** one `androidApp` `androidTest` that starts `MainActivity` with an
    in-memory fake server module (or a MockWebServer serving the fixtures), opens Library, a book's details and the
