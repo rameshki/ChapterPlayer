@@ -413,6 +413,102 @@ class BookRepositoryMirrorTest {
         assertEquals(MarkOutcome.PARTIAL_QUEUED, f.repo.markFinished("jf_1", finished = true).getOrNull())
     }
 
+    // ---- Cross sync when a server is added (syncCopies) ----
+
+    @Test
+    fun `cross sync brings the older copy to the newer one, locally and in the send queue`() = runTest {
+        // Plex holds the newer place (6 h of 12), ABS an older one.
+        val f = fixture(local = listOf(
+            ProgressEntity("abs_1", 1 * HOUR, ABS_LENGTH, 1_000L, false),
+            ProgressEntity("plex_1", 6 * HOUR, PLEX_LENGTH, 5_000L, false),
+        ))
+        val result = f.repo.syncCopies("srv_plex")
+        assertEquals(1, result.booksChecked)
+        assertEquals(1, result.copiesUpdated)
+        assertEquals(ReadingProgress("abs_1", 5 * HOUR, ABS_LENGTH, 5_000L, isFinished = false, mirrored = true), f.row("abs_1"))
+        assertEquals(6 * HOUR, f.row("plex_1")?.positionMs)
+        val queued = f.pending.rows.value.single()
+        assertEquals("abs_1", queued.bookId)
+        assertEquals("srv_abs", queued.serverId)
+        assertEquals(5 * HOUR, queued.positionMs)
+        assertEquals(5_000L, queued.updatedAtMs)
+    }
+
+    @Test
+    fun `cross sync works both ways`() = runTest {
+        val f = fixture(local = listOf(
+            ProgressEntity("abs_1", 4 * HOUR, ABS_LENGTH, 9_000L, false),
+            ProgressEntity("plex_1", 1 * HOUR, PLEX_LENGTH, 2_000L, false),
+        ))
+        f.repo.syncCopies("srv_abs")
+        assertEquals(ReadingProgress("plex_1", 4 * HOUR + 48 * 60_000L, PLEX_LENGTH, 9_000L, isFinished = false, mirrored = true), f.row("plex_1"))
+        assertEquals("srv_plex", f.pending.rows.value.single().serverId)
+    }
+
+    @Test
+    fun `cross sync fills a copy that has no row at all`() = runTest {
+        val f = fixture(local = listOf(ProgressEntity("abs_1", 5 * HOUR, ABS_LENGTH, 3_000L, false)))
+        f.repo.syncCopies()
+        assertEquals(6 * HOUR, f.row("plex_1")?.positionMs)
+        assertEquals(1, f.pending.rows.value.size)
+    }
+
+    @Test
+    fun `cross sync of a finished book finishes the other copy`() = runTest {
+        val f = fixture(local = listOf(
+            ProgressEntity("abs_1", ABS_LENGTH, ABS_LENGTH, 8_000L, true),
+            ProgressEntity("plex_1", 1 * HOUR, PLEX_LENGTH, 2_000L, false),
+        ))
+        f.repo.syncCopies()
+        assertEquals(true, f.row("plex_1")?.isFinished)
+        assertEquals(true, f.pending.rows.value.single().markedFinished)
+    }
+
+    @Test
+    fun `cross sync twice changes nothing the second time`() = runTest {
+        val f = fixture(local = listOf(ProgressEntity("abs_1", 5 * HOUR, ABS_LENGTH, 3_000L, false)))
+        f.repo.syncCopies()
+        val before = f.pending.rows.value
+        val again = f.repo.syncCopies()
+        assertEquals(before, f.pending.rows.value)
+        // The mirror is only queued again (the same row, coalesced), never moved on.
+        assertEquals(6 * HOUR, f.row("plex_1")?.positionMs)
+        assertEquals(1, again.booksChecked)
+    }
+
+    @Test
+    fun `cross sync leaves the loaded copy and books with no listening alone`() = runTest {
+        val f = fixture(
+            local = listOf(
+                ProgressEntity("abs_1", 5 * HOUR, ABS_LENGTH, 3_000L, false),
+                ProgressEntity("plex_1", 1 * HOUR, PLEX_LENGTH, 1_000L, false),
+            ),
+            loaded = "plex_1",
+        )
+        f.repo.syncCopies()
+        assertEquals(1 * HOUR, f.row("plex_1")?.positionMs)
+        assertTrue(f.pending.rows.value.isEmpty())
+
+        val none = fixture()
+        none.repo.syncCopies()
+        assertNull(none.row("abs_1"))
+        assertTrue(none.pending.rows.value.isEmpty())
+    }
+
+    @Test
+    fun `cross sync without copies or with unreadable copies does nothing`() = runTest {
+        val f = fixture(local = listOf(ProgressEntity("abs_1", 5 * HOUR, ABS_LENGTH, 3_000L, false)))
+        f.peers.groups = emptyMap()
+        assertEquals(0, f.repo.syncCopies().booksChecked)
+        val unreadable = object : ProgressMirrorPeers {
+            override suspend fun peersOf(bookId: String): List<MirrorPeer> = emptyList()
+            override suspend fun peersOfAll(bookIds: Collection<String>): Map<String, List<MirrorPeer>>? = null
+        }
+        val g = fixture(local = listOf(ProgressEntity("abs_1", 5 * HOUR, ABS_LENGTH, 3_000L, false)), peers = unreadable)
+        assertEquals(0, g.repo.syncCopies().booksChecked)
+        assertNull(g.row("plex_1"))
+    }
+
     private companion object {
         const val HOUR = 3_600_000L
         const val ABS_LENGTH = 10 * HOUR

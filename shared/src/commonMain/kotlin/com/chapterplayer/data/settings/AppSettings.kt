@@ -73,6 +73,10 @@ interface AppSettings {
     val mirrorProgress: Flow<Boolean>
     suspend fun setMirrorProgress(enabled: Boolean)
 
+    /** When a server is added, bring every other copy of its books to where listening is newest (off by default: it writes to servers). */
+    val crossSyncOnAdd: Flow<Boolean>
+    suspend fun setCrossSyncOnAdd(enabled: Boolean)
+
     /** The Library filters and sort as `encodeBrowseQuery` writes them (never the search text); null until first changed. */
     val browseFilters: Flow<String?>
     suspend fun setBrowseFilters(encoded: String)
@@ -100,6 +104,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val downloadSourceChoice = stringPreferencesKey("download_source_choice")
         val playSourceChoice = stringPreferencesKey("play_source_choice")
         val mirrorProgress = booleanPreferencesKey("mirror_progress")
+        val crossSyncOnAdd = booleanPreferencesKey("cross_sync_on_add")
         val browseFilters = stringPreferencesKey("browse_filters")
         val libraryView = stringPreferencesKey("library_view")
     }
@@ -143,6 +148,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override val playSourceChoice: Flow<SourceChoice> = prefs.map { choiceOf(it, Keys.playSourceChoice) }
 
     override val mirrorProgress: Flow<Boolean> = prefs.map { it[Keys.mirrorProgress] ?: true }
+    override val crossSyncOnAdd: Flow<Boolean> = prefs.map { it[Keys.crossSyncOnAdd] ?: false }
 
     override val browseFilters: Flow<String?> = prefs.map { it[Keys.browseFilters] }
 
@@ -178,6 +184,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
             p.remove(Keys.oldSourcePreference)
         }
     }
+    override suspend fun setCrossSyncOnAdd(enabled: Boolean) { store.edit { it[Keys.crossSyncOnAdd] = enabled } }
     override suspend fun setMirrorProgress(enabled: Boolean) { store.edit { it[Keys.mirrorProgress] = enabled } }
     override suspend fun setBrowseFilters(encoded: String) { store.edit { it[Keys.browseFilters] = encoded } }
     override suspend fun setLibraryView(name: String) { store.edit { it[Keys.libraryView] = name } }

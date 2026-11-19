@@ -31,6 +31,9 @@ import com.chapterplayer.data.source.PlaceNotSavedException
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.BookmarkState
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.CopySyncResult
+import com.chapterplayer.domain.playback.crossSyncPending
+import com.chapterplayer.domain.playback.newestCopyProgress
 import com.chapterplayer.domain.playback.MarkOutcome
 import com.chapterplayer.domain.playback.MirrorPeer
 import com.chapterplayer.domain.playback.combinedMarkOutcome
@@ -70,6 +73,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -461,6 +465,70 @@ class BookRepositoryImpl(
         } catch (e: Exception) {
             // Best effort: the library sync never fails over progress.
         }
+    }
+
+    override suspend fun syncCopies(serverId: String?): CopySyncResult {
+        try {
+            val books = if (serverId == null) bookDao.observeAll().first() else bookDao.getByServer(serverId)
+            val ids = books.map { it.id }
+            val peers = mirrorPeers.peersOfAll(ids) ?: return CopySyncResult()
+            val byId = books.associateBy { it.id }
+            val loaded = loadedOrNull()
+            val seen = HashSet<String>()
+            var checked = 0
+            var updated = 0
+            for (id in ids) {
+                val others = peers[id].orEmpty()
+                if (others.isEmpty() || id in seen) continue
+                val book = byId[id] ?: continue
+                val members = others + MirrorPeer(id, book.serverId, book.durationMs)
+                seen += members.map { it.bookId }
+                checked++
+                // Each book on its own: read, decide and write together (as a save from the player does), never all at once.
+                progressLock.withLock {
+                    inTransaction { updated += crossSyncLocked(members, loaded) }
+                }
+            }
+            if (updated > 0) onQueued()
+            return CopySyncResult(checked, updated)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best effort: nothing here may fail a sync or a tap; the rows already written stay consistent one book at a time.
+            return CopySyncResult()
+        }
+    }
+
+    /**
+     * One book's copies ([members], all of them): the newest listening ([newestCopyProgress]) becomes the source and each other
+     * copy follows. A copy whose local row changes is queued for its server; so is a copy whose local row is already the
+     * mirror of this source (the earlier server merge moved it, but its server was never told). The queue's flusher asks that
+     * server first and sends only when it holds something older. Never the copy loaded in the player and (the newest-wins rule keeps a copy the person just marked).
+     * Call with [progressLock] held, inside a transaction. Returns the
+     * copies brought up to date.
+     */
+    private suspend fun crossSyncLocked(members: List<MirrorPeer>, loaded: String?): Int {
+        val rows = members.mapNotNull { progressDao.get(it.bookId)?.toDomain() }
+        val source = newestCopyProgress(rows) ?: return 0
+        var count = 0
+        for (peer in members) {
+            if (peer.bookId == source.bookId || peer.bookId == loaded) continue
+            val existing = progressDao.get(peer.bookId)?.toDomain()
+            val mirror = mirroredProgress(source, peer.bookId, peer.durationMs, existing)
+            val told = when {
+                mirror != null -> {
+                    progressDao.upsert(ProgressEntity.fromDomain(mirror))
+                    mirror
+                }
+                // Already moved here by a server merge, from this very source: only its server may not know yet.
+                existing != null && existing.mirrored && existing.lastPlayedAt == source.lastPlayedAt &&
+                    existing.isFinished == source.isFinished -> existing
+                else -> null
+            } ?: continue
+            queueLocked(crossSyncPending(source, peer, told))
+            count++
+        }
+        return count
     }
 
     // -------------------------------------------------------------------------

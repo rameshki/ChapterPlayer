@@ -288,6 +288,21 @@ class SettingsViewModel(
             initialValue = true
         )
 
+    /** When a server is added its books' other copies are brought to the newest listening (off by default). */
+    val crossSyncOnAdd: StateFlow<Boolean> =
+        appSettings.crossSyncOnAdd.stateIn(scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = false)
+
+    fun setCrossSyncOnAdd(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                appSettings.setCrossSyncOnAdd(enabled)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
+    }
+
     fun setMirrorProgress(enabled: Boolean) {
         viewModelScope.launch {
             try {
@@ -453,6 +468,9 @@ class ServerSetupViewModel(
     fun onJellyfinBack() = jellyfinHandler.onBack()
     fun onJellyfinSignInAgain(serverId: String) = jellyfinHandler.signInAgain(serverId)
     fun onJellyfinSecretsDiscarded() = jellyfinHandler.clearSecrets()
+    fun onJellyfinQuickConnect() = jellyfinHandler.signInWithQuickConnect()
+    fun onJellyfinQuickConnectAgain(serverId: String) = jellyfinHandler.signInAgainWithQuickConnect(serverId)
+    fun onJellyfinQuickConnectCancel() = jellyfinHandler.cancelQuickConnect()
 
     private var pollingJob: Job? = null
 
