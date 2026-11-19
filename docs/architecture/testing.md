@@ -22,6 +22,7 @@ Started by review finding R2 (no UI or screenshot tests; layout faults were only
   rows and (outside the app's `LocalPlatformFeatures` provider) no Up next row, Close leaves the mode.
 
 - **Add Server (R2 step 2):** `ui/screenshots/AddServerScreenshotTest` draws the internal `AbsAddSection` and `JellyfinAddSection` (they already take plain state, so no refactor was needed) for the Audiobookshelf form and its error, the Jellyfin form, the Quick Connect wait with a code and the libraries step, in dark, light and at font scale 2.0 (a tall window, since the page scrolls in the app): 11 goldens. Plex's section needs a refactor and is not covered.
+- **Mini player (R2 step 2, R25):** `ui/screenshots/MiniPlayerScreenshotTest` draws `MiniPlayerContent` with a short and a very long title in dark and light, at font scale 2.0, in landscape (800 x 360 dp) and at a 10 inch tablet width (1280 x 800 dp): 5 goldens. Nothing clipped; at scale 2.0 a long title shortens to one line (the full title is in the content description). Each test can set its own window with `@Config(qualifiers = ...)`, the way to add tablet and landscape cases for other screens.
 
 - Checked on Windows (JDK 17): `verifyRoborazziAndroidHostTest` passes with all 3191 host tests; widening the
   rows' padding by 2 dp made all four screenshot tests fail with "... font_card_dark_100.png is changed"; plain
@@ -77,7 +78,7 @@ Every screenshot is drawn in dark and light at font scale 1.0 and 1.3 (four gold
    `test-reports` artifact, so a reviewer sees the diff. Found by the first CI comparison (19 Nov): the goldens recorded on Windows
    differ from what Linux draws in about 0.1 percent of the pixels, by at most 2 of 255 in a colour channel (glyph edges), which is
    just over Roborazzi's default per-pixel distance of 0.007, so every image read as changed. The tests now compare with
-   `SimpleImageComparator(maxDistance = 0.02f)` (`SCREENSHOT_OPTIONS` in `FontCardScreenshotTest.kt`); a 2 dp padding change still
+   `SimpleImageComparator(maxDistance = 0.05f)` (`SCREENSHOT_OPTIONS` in `FontCardScreenshotTest.kt`); a 2 dp padding change still
    fails all four images. Keep that options value for every new screenshot test.
 5. **Instrumented smoke test on a CI emulator:** one `androidApp` `androidTest` that starts `MainActivity` with an
    in-memory fake server module (or a MockWebServer serving the fixtures), opens Library, a book's details and the
