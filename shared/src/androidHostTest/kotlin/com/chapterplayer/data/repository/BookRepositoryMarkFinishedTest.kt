@@ -718,6 +718,18 @@ class BookRepositoryMarkFinishedTest {
     }
 
     @Test
+    fun `a session close at the old place right after the mark never reaches the server`() = runTest {
+        val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1")
+        f.repo.markFinished("abs_li_1", true).getOrThrow()
+        val before = f.abs.requests.size
+        f.now[0] = 1_200L
+        f.repo.closePlayback(session, 4_000_500L, 1_000L).getOrThrow()
+        f.repo.closePlayback(session, 300L, 0L).getOrThrow()
+        assertEquals(before, f.abs.requests.size)
+        assertEquals(true, f.abs.record!!.second)
+    }
+
+    @Test
     fun `listening again after the mark reports again and may un-finish the book on the server`() = runTest {
         val f = fixture(listOf(ProgressEntity("abs_li_1", 4_000_000L, 9_000_000L, 100L, false)), loaded = "abs_li_1")
         f.repo.markFinished("abs_li_1", true).getOrThrow()

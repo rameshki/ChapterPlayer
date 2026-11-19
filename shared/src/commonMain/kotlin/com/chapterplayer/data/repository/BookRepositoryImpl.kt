@@ -262,8 +262,10 @@ class BookRepositoryImpl(
 
     override suspend fun closePlayback(session: PlaybackSession, positionMs: Long, listenedMs: Long): Result<Unit> =
         try {
-            // A finished book only touched at the start: its server hears nothing (no listening happened).
+            // A finished book only touched at the start: its server hears nothing (no listening happened). Nor does a close
+            // after a finished mark carry the old place (a failed rewind may leave the player there: it would un-finish the book).
             if (silentAtStart(progressDao.get(session.bookId)?.toDomain(), positionMs)) return Result.success(Unit)
+            if (!reportAllowed(session.bookId, positionMs, isPlaying = false)) return Result.success(Unit)
             val server = servers.getById(session.serverId) ?: error("The book's server is no longer configured")
             val source = sources.firstOrNull { it.type == server.source }
                 ?: error("No library source for ${server.source}")
