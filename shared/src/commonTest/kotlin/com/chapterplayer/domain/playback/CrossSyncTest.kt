@@ -22,6 +22,12 @@ class CrossSyncTest {
     }
 
     @Test
+    fun `a copy without a listening time is never the source`() {
+        assertNull(newestCopyProgress(listOf(row("jf", 30_000, at = 0))))
+        assertEquals("abs", newestCopyProgress(listOf(row("jf", 30_000, at = 0), row("abs", 5_000, at = 100)))?.bookId)
+    }
+
+    @Test
     fun `a finished book is a source even at zero`() {
         assertEquals("jf", newestCopyProgress(listOf(row("abs", 10_000, at = 100), row("jf", 0, at = 300, finished = true)))?.bookId)
     }
