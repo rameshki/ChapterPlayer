@@ -4,13 +4,13 @@
 
 An audiobook player for the places your books already live: **Audiobookshelf**, **Jellyfin** and **Plex** (Audible is skipped for now). Chapter-first playback, progress that follows you between devices and servers, downloads for offline listening, car and widget support.
 
-> **Work in progress (version 0.5.3).** ChapterPlayer is under active development. The Android app is feature-rich and used day to day by its author and a small group of testers; the iOS app compiles and runs its shared tests in CI but has never been run on a device. A Google Play release is planned ([`docs/PLAY_RELEASE.md`](docs/PLAY_RELEASE.md)); there is no store listing yet. Expect rough edges and changes.
+> **Work in progress (version 0.5.4).** ChapterPlayer is under active development. The Android app is feature-rich and used day to day by its author and a small group of testers; the iOS app compiles and runs its shared tests in CI but has never been run on a device. A Google Play release is planned ([`docs/PLAY_RELEASE.md`](docs/PLAY_RELEASE.md)); there is no store listing yet. Expect rough edges and changes.
 
 ## What it does
 
-- **Sources:** sign in to one or more Audiobookshelf servers, Jellyfin servers (username and password) and Plex servers (plex.tv). Plex servers are reached through the best connection (local, remote or relay) that actually answers. Jellyfin progress is sent back to the server too.
+- **Sources:** sign in to one or more Audiobookshelf servers, Jellyfin servers (username and password, or Quick Connect) and Plex servers (plex.tv). Plex servers are reached through the best connection (local, remote or relay) that actually answers. Jellyfin progress is sent back to the server too, and Jellyfin books download for offline listening.
 - **One library:** every book from every server in one place, with filters (progress, downloaded, server), sorting, Authors / Narrators / Series / Collections views, search, an A to Z scroller and a Stats page (listening time, streaks, series finished and series to finish).
-- **One entry per book:** a book that several servers have shows once; Play and Download ask which copy to use (or follow your default), and progress stays in step between the copies.
+- **One entry per book:** a book that several servers have shows once; Play and Download ask which copy to use (or follow your default), and progress stays in step between the copies. An optional setting also brings every copy to the newest listening when you add a server.
 - **Your own shelf:** favourites, an Up next queue with Play next, a long-press menu on every book, multi-select with bulk actions, and a choice of app font (Classic, Bookish, Inter, Manrope, Lexend, System).
 - **Playback:** chapters, speed, sleep timer, skip 15 / 30 seconds, bookmarks, position history, lock-screen controls, a full player and a mini player. Books that are many files play as one timeline.
 - **Progress sync:** saved locally first, then sent to the server in the background; offline listening is queued and delivered later. Plex progress uses the timeline and scrobble calls.
@@ -23,7 +23,7 @@ An audiobook player for the places your books already live: **Audiobookshelf**, 
 
 | Platform | State |
 |---|---|
-| Android | Working app, version 0.5.3; signed test builds go to a few testers, verified on real devices; Google Play planned. |
+| Android | Working app, version 0.5.4; signed test builds go to a few testers, verified on real devices; Google Play planned. |
 | iOS | Shared code, sync, AVPlayer playback and downloads are written and compile; CI links the framework and builds an unsigned `.ipa`. Not yet run on a phone. |
 
 See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the live state of the project (what is merged, what is verified on devices, next steps) and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the stages and scope.
