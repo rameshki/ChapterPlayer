@@ -40,7 +40,7 @@ class CrossSyncTest {
     }
 
     @Test
-    fun `the push carries the mapped place, the source's time and no listened time`() {
+    fun `the push carries the mapped place and the source time and no listened time`() {
         val source = row("jf", 40_000, at = 300, duration = 100_000)
         val peer = MirrorPeer("abs", "srv_abs", 200_000)
         val mirror = mirroredProgress(source, peer.bookId, peer.durationMs, null)!!
