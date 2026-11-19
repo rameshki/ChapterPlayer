@@ -21,6 +21,8 @@ Started by review finding R2 (no UI or screenshot tests; layout faults were only
   Robolectric runner: "1 selected", Select all gives "3 selected", the actions menu offers the mark and favourite
   rows and (outside the app's `LocalPlatformFeatures` provider) no Up next row, Close leaves the mode.
 
+- **Add Server (R2 step 2):** `ui/screenshots/AddServerScreenshotTest` draws the internal `AbsAddSection` and `JellyfinAddSection` (they already take plain state, so no refactor was needed) for the Audiobookshelf form and its error, the Jellyfin form, the Quick Connect wait with a code and the libraries step, in dark, light and at font scale 2.0 (a tall window, since the page scrolls in the app): 11 goldens. Plex's section needs a refactor and is not covered.
+
 - Checked on Windows (JDK 17): `verifyRoborazziAndroidHostTest` passes with all 3191 host tests; widening the
   rows' padding by 2 dp made all four screenshot tests fail with "... font_card_dark_100.png is changed"; plain
   `testAndroidHostTest` left the goldens untouched. `createComposeRule` warns that it is deprecated in favour of
