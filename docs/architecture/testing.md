@@ -23,6 +23,8 @@ Started by review finding R2 (no UI or screenshot tests; layout faults were only
 
 - **Player (R2 step 2, R25):** `ui/screenshots/PlayerScreenshotTest` draws `PlayerContent` (already stateless; the Up next sheet is a stand-in) playing with chapters and a sleep timer in dark and light, at font scale 2.0, with very long titles and an error banner, in landscape, at a tablet width and as a failed start: 8 goldens. They found that the tool row broke labels inside words ("Bookmark" and "s") on a 360 dp phone and at large text; `toolsPerRow` now puts them in rows of 3 and 2 (or 2) when five do not fit. Known and left: the error banner shows two lines of its text at 2.0 scale.
 
+- **Home (R2 step 2, R25):** `ui/screenshots/HomeScreenshotTest` draws `HomeBody` (extracted from `HomeScreen`: the spinner, the empty states and the shelves, from `HomeUiState` and callbacks) with the Resume card and every shelf in dark and light, at font scale 2.0, with a long title, at a tablet width, and the no-server, syncing and filters-hiding states: 8 goldens. The tablet image showed the Resume card and its button stretched across 1264 dp; the card is now at most 640 dp wide. Covers are the app's placeholders (no Coil in the test).
+
 - Checked on Windows (JDK 17): `verifyRoborazziAndroidHostTest` passes with all 3191 host tests; widening the
   rows' padding by 2 dp made all four screenshot tests fail with "... font_card_dark_100.png is changed"; plain
   `testAndroidHostTest` left the goldens untouched. `createComposeRule` warns that it is deprecated in favour of
