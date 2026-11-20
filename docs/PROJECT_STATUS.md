@@ -4,7 +4,7 @@ Read this first in every session; it is short on purpose. The list of work is th
 
 ## Now (20 November 2026)
 - Version 0.5.4 (versionCode 10, tag `v0.5.4`). Tester builds up to 0.5.4 were shared, signed with the key in `C:\Users\Robert\ChapterPlayerSigning` (outside the repo); that APK predates #127.
-- Debug builds are numbered: `scripts/install-debug.sh` installs `0.5.4-debug.N`; Robert's phone has build 9 (20 Nov, main with the screenshot fixes and widget sizes).
+- Debug builds are numbered: `scripts/install-debug.sh` installs `0.5.4-debug.N`; Robert's phone has build 10 (20 Nov, main with the screenshot fixes and widget sizes).
 - `main` is at #159. 3,411 host tests pass. targetSdk 36. Sources: Audiobookshelf, Jellyfin (progress, downloads and Quick Connect work on the phone), Plex. Audible is skipped. iOS builds in CI and has never run on a device.
 - Since the review of 14 November: 19 of its findings are done (R3 to R10, R11, R15 to R18, R20, R22, R32, R33, R34, R37), plus Quick Connect, the Settings option "Sync listening when a server is added" (off by default; both ways; checked on the phone), a confirm before removing a server, layout fixes the screenshots found (player tool buttons, Library grid, Details header, a 640 dp settings column, widget title room), the font choice, Mark as finished returning to 0:00.
 
