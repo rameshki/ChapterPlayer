@@ -4,22 +4,71 @@ Saving and syncing listening progress, bookmarks, history and the statistics pag
 
 Detail moved out of `CLAUDE.md` (review R8); keep it current when this area changes.
 
-- Progress: `PlaybackProgressSaver` saves locally every 10 s while playing; `ProgressSyncer` sends the position through the ABS playback session every ~10 s and, when that fails, writes one coalesced row per book into `pending_progress` (Room v4); `PendingProgressFlusher` delivers the queue (on start, when the network returns, with backoff) and drops a queued row when the server holds something newer; a live sync the server took also deletes the older queued position of that book (never a queued mark), so it cannot be replayed over newer listening. The pure decisions (newest wins, timing, backoff, merge) are in `domain/playback/ProgressSync.kt`. Audiobookshelf progress is merged into local progress during the library sync; for both ABS and Plex the server progress is consulted by `PlaybackStarter` when a book opens (Plex is read only then, and when the queue flushes)
-- Mark as finished and Play again (owner's rule, 16 Nov): Mark as finished sets the flag AND returns the book to 0:00; playing a finished book again makes it not finished, here and on every server. Rules: `domain/playback/MarkFinished.kt`; ABS request shapes: `domain/playback/AbsProgressPatches.kt`; Plex plan: `plexProgressPlan` (`domain/plex/PlexPlayback.kt`); delivery and queue: `BookRepositoryImpl`, `pending_progress`, the flusher. What each event sends and what the server then holds (review R35). "Checked" says how far a row is verified: **real** = seen on a real server or phone, **mock** = the host tests' mock server (`BookRepositoryMarkFinishedTest.MockAbs`, built from Audiobookshelf's `applyProgressUpdate` source), **code** = read from the code only.
+## Saving and syncing progress
 
-| Event | Audiobookshelf: requests, then what it holds | Plex | Jellyfin | Checked |
-|---|---|---|---|---|
-| Mark as finished | 2 PATCHes: not finished at 0 (moves the time to 0), then finished with no time (time unchanged, flag holds). Holds: finished at 0. | scrobble every track | MarkPlayed (the place is ignored) | ABS mock; Jellyfin real (16 Nov); Plex code |
-| Mark as not finished | 1 PATCH: not finished at 0 (server resets the time to 0). Holds: not finished at 0. | unscrobble the tracks that count as played, stopped timeline at 0 | Played = false | ABS mock; Jellyfin real (16 Nov); Plex code |
-| Play again (first real listening: more than 2 s from the start of a finished book) | 2 PATCHes: not finished with no time (resets a finished item to 0), then the place. Holds: not finished at the place heard. | unscrobble from the position's track on, stopped timeline at the place, scrobble earlier unplayed tracks | Played = false; live progress writes carry it too, session pin cleared | ABS real (16 Nov: held 53:28, not finished); Jellyfin real; Plex code |
-| Heard to the end | 1 PATCH: finished at the place past the start | scrobble all tracks | played | mock; code |
-| Ordinary place while listening | 1 PATCH, or the open session's sync | stopped or playing timeline | progress write | real (everyday use) |
-| Play then Pause within 2 s of the start of a finished book | nothing: stays finished, no live report and no session close | nothing | nothing | mock |
-| Mark made offline | the mark is queued in `pending_progress` in the same transaction as the local write; the flusher sends the row of the first, second or third event above when the network returns; the snackbar says it will reach the server | same | same | mock |
-| Network drops between ABS's two PATCHes | the server holds not finished at 0 after the first; the queued row stays and the retry sends both again, ending finished at 0 (since #131: before it `flushDecision` read the server's newer row as another device's word and dropped the mark) | several requests (one scrobble per track, or unscrobble, timeline, scrobble): a drop leaves some tracks done until the retry (code) | one request | ABS mock; **not seen on a real server**; Plex code |
-| Another copy of the book on another server | mirrored by `ProgressMirrorPusher`; a finished other copy that the player's save un-finishes gets its own queued not finished, so ABS gets the two-PATCH sequence and keeps the place | same | same | mock; position mirroring between copies seen real (6 Nov), marks not |
+- Progress: `PlaybackProgressSaver` saves locally every 10 s while playing;
+  - `ProgressSyncer` sends the position through the ABS playback session every ~10 s and, when that fails, writes one coalesced row per book into `pending_progress` (Room v4);
+  - `PendingProgressFlusher` delivers the queue (on start, when the network returns, with backoff) and drops a queued row when the server holds something newer;
+  - a live sync the server took also deletes the older queued position of that book (never a queued mark), so it cannot be replayed over newer listening.
+- The pure decisions (newest wins, timing, backoff, merge) are in `domain/playback/ProgressSync.kt`.
+- Audiobookshelf progress is merged into local progress during the library sync; for both ABS and Plex the server progress is consulted by `PlaybackStarter` when a book opens (Plex is read only then, and when the queue flushes)
 
-Server facts the rows rest on (Audiobookshelf `applyProgressUpdate`): a finished item is un-finished whenever its time moves away from the end, even in the request that sets it finished; setting not finished resets the time to 0 and drops a time sent with it. Plex keeps progress per track and no `viewOffset` for audio tracks in this library type (see `DECISIONS.md`). Not confirmed on a real Audiobookshelf yet: the two-PATCH finish, the half-sent pair, and a queued mark delivered later (R35 asks for a script with a throwaway user).
+## Mark as finished and Play again
+
+- Mark as finished and Play again (owner's rule, 16 Nov): Mark as finished sets the flag AND returns the book to 0:00; playing a finished book again makes it not finished, here and on every server.
+- Rules: `domain/playback/MarkFinished.kt`; ABS request shapes: `domain/playback/AbsProgressPatches.kt`; Plex plan: `plexProgressPlan` (`domain/plex/PlexPlayback.kt`); delivery and queue: `BookRepositoryImpl`, `pending_progress`, the flusher.
+- What each event sends and what the server then holds (review R35).
+- "Checked" says how far a row is verified: **real** = seen on a real server or phone, **mock** = the host tests' mock server (`BookRepositoryMarkFinishedTest.MockAbs`, built from Audiobookshelf's `applyProgressUpdate` source), **code** = read from the code only.
+
+- **Mark as finished**
+  - Audiobookshelf: 2 PATCHes: not finished at 0 (moves the time to 0), then finished with no time (time unchanged, flag holds). Holds: finished at 0.
+  - Plex: scrobble every track
+  - Jellyfin: MarkPlayed (the place is ignored)
+  - Checked: ABS mock; Jellyfin real (16 Nov); Plex code
+- **Mark as not finished**
+  - Audiobookshelf: 1 PATCH: not finished at 0 (server resets the time to 0). Holds: not finished at 0.
+  - Plex: unscrobble the tracks that count as played, stopped timeline at 0
+  - Jellyfin: Played = false
+  - Checked: ABS mock; Jellyfin real (16 Nov); Plex code
+- **Play again (first real listening: more than 2 s from the start of a finished book)**
+  - Audiobookshelf: 2 PATCHes: not finished with no time (resets a finished item to 0), then the place. Holds: not finished at the place heard.
+  - Plex: unscrobble from the position's track on, stopped timeline at the place, scrobble earlier unplayed tracks
+  - Jellyfin: Played = false; live progress writes carry it too, session pin cleared
+  - Checked: ABS real (16 Nov: held 53:28, not finished); Jellyfin real; Plex code
+- **Heard to the end**
+  - Audiobookshelf: 1 PATCH: finished at the place past the start
+  - Plex: scrobble all tracks
+  - Jellyfin: played
+  - Checked: mock; code
+- **Ordinary place while listening**
+  - Audiobookshelf: 1 PATCH, or the open session's sync
+  - Plex: stopped or playing timeline
+  - Jellyfin: progress write
+  - Checked: real (everyday use)
+- **Play then Pause within 2 s of the start of a finished book**
+  - Audiobookshelf: nothing: stays finished, no live report and no session close
+  - Plex: nothing
+  - Jellyfin: nothing
+  - Checked: mock
+- **Mark made offline**
+  - Audiobookshelf: the mark is queued in `pending_progress` in the same transaction as the local write; the flusher sends the row of the first, second or third event above when the network returns; the snackbar says it will reach the server
+  - Plex: same
+  - Jellyfin: same
+  - Checked: mock
+- **Network drops between ABS's two PATCHes**
+  - Audiobookshelf: the server holds not finished at 0 after the first; the queued row stays and the retry sends both again, ending finished at 0 (since #131: before it `flushDecision` read the server's newer row as another device's word and dropped the mark)
+  - Plex: several requests (one scrobble per track, or unscrobble, timeline, scrobble): a drop leaves some tracks done until the retry (code)
+  - Jellyfin: one request
+  - Checked: ABS mock; **not seen on a real server**; Plex code
+- **Another copy of the book on another server**
+  - Audiobookshelf: mirrored by `ProgressMirrorPusher`; a finished other copy that the player's save un-finishes gets its own queued not finished, so ABS gets the two-PATCH sequence and keeps the place
+  - Plex: same
+  - Jellyfin: same
+  - Checked: mock; position mirroring between copies seen real (6 Nov), marks not
+
+Server facts the rows rest on (Audiobookshelf `applyProgressUpdate`): a finished item is un-finished whenever its time moves away from the end, even in the request that sets it finished; setting not finished resets the time to 0 and drops a time sent with it.
+Plex keeps progress per track and no `viewOffset` for audio tracks in this library type (see `DECISIONS.md`).
+Not confirmed on a real Audiobookshelf yet: the two-PATCH finish, the half-sent pair, and a queued mark delivered later (R35 asks for a script with a throwaway user).
 
 Local guards (all host-tested; each is one function in `MarkFinished.kt` unless noted):
 - Rewind: when the book, or another copy of its entry, is loaded, `rewindLoaded` (pause, then seek to 0 on the main thread, only if that book is still loaded) runs after the local marks and before any server call. Tried twice; a failure logs one `ProblemLog` line (book id and error type only).
@@ -30,6 +79,35 @@ Local guards (all host-tested; each is one function in `MarkFinished.kt` unless 
 - `playedAgain` (a finished row turned not finished past the start by the player's save) queues a "not finished at the place heard" row (`markedFinished = false`) in the same transaction as the local write, so a cancelled saver loses nothing, and kicks the flusher. A live report the server took dates that queued row now (`keepReopenNewest`).
 - The queued row follows newer-server-wins (`flushDecision`) with two exceptions: a Plex book's finished server row never drops it, and a server row at 0 that is not finished never drops a queued not finished past the start (the first half of an Audiobookshelf pair).
 - A mark flagged `setNotFinished` is delivered as the two-PATCH sequence by `pushProgress(setNotFinished = true)`.
-- Bookmarks and History: `bookmarks` (Room v5; state SYNCED / PENDING_CREATE / PENDING_RENAME / PENDING_DELETE, identity = book + whole second) merge with the server's `GET /api/me` bookmarks through `mergeBookmarks` (`domain/playback/Bookmarks.kt`); `BookmarkSyncer` (`data/bookmarks`) pulls then pushes at start, when the network returns, after library syncs and a few seconds after a local change. `HistoryRecorder` records the position left on a big jump (`domain/playback/History.kt`, local only, last 10 per book). Player bottom row: Speed, Sleep timer, Bookmarks, History
-- Stats: `ListeningRecorder` (`data/stats`, app-scoped, started by the application) watches `PlaybackController.state` and logs listening per local day and book into `listening_log` (Room v11; wall and book seconds, server, source). Time counts only while sound plays: no seeks, no buffering, no gaps over 5 s. The log is written every ~30 s and on pause or stop; after a failed write it waits 5 s, doubling to 5 min. `ListeningStatsImporter` (bound as `ListeningImport`) imports Audiobookshelf's `GET /api/me/listening-stats` once per server into `imported_listening_days` / `imported_listening_items`; `listening_imports` records which servers were imported. Each item row stores `loggedAtImport`, the app's logged total for that book at the import. A failed first import retries after 30 s, doubling to 30 min, and at once when the server row changes or the network returns. It is never tried while offline or while the server needs a sign-in. The stats page's Refresh imports again. ABS `days` keys are server-zone dates, read as phone-zone days. Rules: a day counts the larger of the log and the summed imported history; the source split adds the history beyond the log as ABS, so it sums to the total. All-time top lists add each book's server total minus `loggedAtImport` on top of the log, so they grow with new listening without a Refresh. Days are epoch days in an injected `DayZone` (`SystemDayZone` on Android; no java.time in commonMain). The pure rules (periods, day totals, streaks, top lists, series finished / to finish, heat grid, texts) are in `domain/stats` with host tests. `ui/stats` holds `StatsScreen`, `StatsViewModel` (route `stats`, from the Library top bar and Settings; a minute ticker follows midnight) and `HeatColors.kt`, where `HeatColorsTest` checks the level contrast in both themes. Host-tested only
-- Cross sync when a server is added (Settings, Downloads, "Sync listening when a server is added", off by default, only with mirroring on): after a server's first successful sync the coordinator calls `BookRepository.syncCopies(serverId)`. For each merged book the newest listening (`newestCopyProgress`) is the source; older or empty copies get a mirrored local row (`mirroredProgress`, by fraction) and a queued push (`crossSyncPending`, the source's time, `mirrorOf`), so the flusher's newest-wins check protects a server that is newer. Never the loaded copy; safe to repeat. Both directions.
+
+## Bookmarks and History
+
+- Bookmarks and History: `bookmarks` (Room v5; state SYNCED / PENDING_CREATE / PENDING_RENAME / PENDING_DELETE, identity = book + whole second) merge with the server's `GET /api/me` bookmarks through `mergeBookmarks` (`domain/playback/Bookmarks.kt`);
+  - `BookmarkSyncer` (`data/bookmarks`) pulls then pushes at start, when the network returns, after library syncs and a few seconds after a local change.
+- `HistoryRecorder` records the position left on a big jump (`domain/playback/History.kt`, local only, last 10 per book).
+- Player bottom row: Speed, Sleep timer, Bookmarks, History
+
+## Statistics
+
+- Stats: `ListeningRecorder` (`data/stats`, app-scoped, started by the application) watches `PlaybackController.state` and logs listening per local day and book into `listening_log` (Room v11; wall and book seconds, server, source).
+- Time counts only while sound plays: no seeks, no buffering, no gaps over 5 s.
+- The log is written every ~30 s and on pause or stop; after a failed write it waits 5 s, doubling to 5 min.
+- `ListeningStatsImporter` (bound as `ListeningImport`) imports Audiobookshelf's `GET /api/me/listening-stats` once per server into `imported_listening_days` / `imported_listening_items`; `listening_imports` records which servers were imported.
+- Each item row stores `loggedAtImport`, the app's logged total for that book at the import.
+- A failed first import retries after 30 s, doubling to 30 min, and at once when the server row changes or the network returns.
+- It is never tried while offline or while the server needs a sign-in.
+- The stats page's Refresh imports again.
+- ABS `days` keys are server-zone dates, read as phone-zone days.
+- Rules: a day counts the larger of the log and the summed imported history; the source split adds the history beyond the log as ABS, so it sums to the total.
+- All-time top lists add each book's server total minus `loggedAtImport` on top of the log, so they grow with new listening without a Refresh.
+- Days are epoch days in an injected `DayZone` (`SystemDayZone` on Android; no java.time in commonMain).
+- The pure rules (periods, day totals, streaks, top lists, series finished / to finish, heat grid, texts) are in `domain/stats` with host tests.
+- `ui/stats` holds `StatsScreen`, `StatsViewModel` (route `stats`, from the Library top bar and Settings; a minute ticker follows midnight) and `HeatColors.kt`, where `HeatColorsTest` checks the level contrast in both themes.
+- Host-tested only
+
+## Cross sync when a server is added
+
+- Cross sync when a server is added (Settings, Downloads, "Sync listening when a server is added", off by default, only with mirroring on): after a server's first successful sync the coordinator calls `BookRepository.syncCopies(serverId)`.
+- For each merged book the newest listening (`newestCopyProgress`) is the source; older or empty copies get a mirrored local row (`mirroredProgress`, by fraction) and a queued push (`crossSyncPending`, the source's time, `mirrorOf`), so the flusher's newest-wins check protects a server that is newer.
+- Never the loaded copy; safe to repeat.
+- Both directions.
