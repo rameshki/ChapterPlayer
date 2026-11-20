@@ -95,3 +95,10 @@ Detail moved out of `CLAUDE.md` (review R8); keep it current when this area chan
 - Signing in to a public http address (the four sign-in actions on the Add and Edit Server screen, through `CleartextGate`) asks first: "Use https" rewrites the address and does not sign in; "Continue anyway" signs in as typed.
 - Any http server shows "Not encrypted (http)" on the Servers page (`ServerRowUi.notEncrypted`).
 - Plex addresses come from plex.tv and are not gated.
+
+## Known limits
+
+Accepted in a review and left as they are; each project review decides for each line: fix, accept or drop (review R40).
+
+- A saved crash trace is never cleared, so an old crash is reported for ever (R7 review).
+- Report a problem has no crash capture on iOS (R7 review).

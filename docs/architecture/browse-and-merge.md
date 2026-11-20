@@ -129,3 +129,10 @@ Detail moved out of `CLAUDE.md` (review R8); keep it current when this area chan
 - Server merges mirror locally only (no push).
 - Bookmarks and history stay per copy.
 - Host-tested only
+
+## Known limits
+
+Accepted in a review and left as they are; each project review decides for each line: fix, accept or drop (review R40).
+
+- Progress mirroring still groups copies by itself, apart from the merged library the lists share (R10 review).
+- A list read by the car or a widget can be a few milliseconds behind a write (R10 review).
