@@ -4,7 +4,8 @@
 #   2. it never says "not pushed";
 #   3. every branch it names (stage-*/..., fix/...) exists on the remote;
 #   4. no finding id (R12) is both on a line that says done or merged and in the Open work or Next steps sections;
-#   5. no line in docs/architecture is longer than 400 characters (review R38: a plan can point to a section, a diff can be read).
+#   5. no line in docs/architecture is longer than 400 characters (review R38: a plan can point to a section, a diff can be read);
+#   6. the bundled copy of CHANGELOG.md (the app's What's new) equals the root CHANGELOG.md (review R28).
 # Needs git with an origin remote. Set STATUS_FILE to check another file, ARCH_DIR another folder (used by the self-test).
 set -u
 file="${STATUS_FILE:-docs/PROJECT_STATUS.md}"
@@ -38,6 +39,13 @@ arch_dir="${ARCH_DIR:-docs/architecture}"
 if [ -d "$arch_dir" ]; then
   long=$(awk 'length($0) > 400 { printf "%s:%d (%d) ", FILENAME, FNR, length($0) }' "$arch_dir"/*.md)
   [ -z "$long" ] || say "lines over 400 characters in $arch_dir: $long"
+fi
+
+# The "What's new" sheet reads the bundled copy, so the two must not drift (review R28). CHANGELOG_FILE / CHANGELOG_COPY for the self-test.
+changelog="${CHANGELOG_FILE:-CHANGELOG.md}"
+copy="${CHANGELOG_COPY:-shared/src/commonMain/composeResources/files/CHANGELOG.md}"
+if [ -f "$changelog" ] && [ -f "$copy" ]; then
+  cmp -s "$changelog" "$copy" || say "$copy differs from $changelog; copy the root file over it (the app shows it as What's new)"
 fi
 
 [ "$fail" -eq 0 ] && echo "check-docs: ok ($size bytes)"

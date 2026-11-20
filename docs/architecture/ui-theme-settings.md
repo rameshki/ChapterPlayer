@@ -57,6 +57,14 @@ Detail moved out of `CLAUDE.md` (review R8); keep it current when this area chan
 - The About page reads the version through `AppInfo` (`data/AppInfo.kt`), which `androidApp` provides in `AppModule` (iOS: `IosAppInfo`, the bundle's `CFBundleShortVersionString`).
 - The hub is host-tested for text and routes only, not checked on a device
 
+## First run and What's new
+
+- Home with no server shows `FirstRunGuide` (`ui/home`): a welcome and three steps (add a server, pick libraries, add a widget) with the "Add a server" button. It is the empty state, so it needs no saved flag and goes away with the first server.
+- `WhatsNewPrompt` (`ui/settings`, shown from `AppNavigation` next to `BatteryPrompt`) shows a bottom sheet with the notes of the installed version once. The text is `CHANGELOG.md`, read by the pure parser `domain/whatsnew/WhatsNew.kt` (`parseChangelog`, `notesToShow`).
+- The app reads a bundled copy at `shared/src/commonMain/composeResources/files/CHANGELOG.md`; `scripts/check-docs.sh` fails when it differs from the root file. After editing `CHANGELOG.md`, copy it over the bundled one.
+- The saved value is `AppSettings.lastSeenVersion` (release part only: `0.5.4-debug.12` counts as `0.5.4`). A fresh install (no servers) records the version silently and sees no sheet; an install that already has servers and no record sees the notes once.
+- A new version needs a `## <version> (<date>)` section in `CHANGELOG.md` or nothing is shown. Not checked: the sheet on a real phone after an update.
+
 ## Diagnostics
 
 - Diagnostics (debug builds only): Settings, About shows a Diagnostics row only when `DebuggableQualifier` is true (`showDiagnosticsRow`; the route `settings/diagnostics` is registered only then).

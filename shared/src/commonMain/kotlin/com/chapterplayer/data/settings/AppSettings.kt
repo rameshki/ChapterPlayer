@@ -39,6 +39,10 @@ interface AppSettings {
     val batteryPromptShown: Flow<Boolean>
     suspend fun setBatteryPromptShown()
 
+    /** The release version ("0.5.4", no debug suffix) whose "What's new" the person last saw or skipped; null until then. */
+    val lastSeenVersion: Flow<String?>
+    suspend fun setLastSeenVersion(version: String)
+
     /** Offline-style browsing: only downloaded books play, even with a network. */
     val downloadedOnly: Flow<Boolean>
     suspend fun setDownloadedOnly(enabled: Boolean)
@@ -94,6 +98,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val layout = stringPreferencesKey("library_layout")
         val carResume = booleanPreferencesKey("resume_on_car_connect")
         val batteryPromptShown = booleanPreferencesKey("battery_prompt_shown")
+        val lastSeenVersion = stringPreferencesKey("last_seen_version")
         val downloadedOnly = booleanPreferencesKey("downloaded_only")
         val playbackSpeed = floatPreferencesKey("playback_speed")
         val downloadWifiOnly = booleanPreferencesKey("download_wifi_only")
@@ -128,6 +133,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
 
     override val resumeOnCarConnect: Flow<Boolean> = prefs.map { it[Keys.carResume] ?: true }
     override val batteryPromptShown: Flow<Boolean> = prefs.map { it[Keys.batteryPromptShown] ?: false }
+    override val lastSeenVersion: Flow<String?> = prefs.map { it[Keys.lastSeenVersion] }
 
     override val downloadedOnly: Flow<Boolean> = prefs.map { it[Keys.downloadedOnly] ?: false }
 
@@ -159,6 +165,7 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override suspend fun setLibraryLayout(layout: LibraryLayout) { store.edit { it[Keys.layout] = layout.name } }
     override suspend fun setResumeOnCarConnect(enabled: Boolean) { store.edit { it[Keys.carResume] = enabled } }
     override suspend fun setBatteryPromptShown() { store.edit { it[Keys.batteryPromptShown] = true } }
+    override suspend fun setLastSeenVersion(version: String) { store.edit { it[Keys.lastSeenVersion] = version } }
     override suspend fun setDownloadedOnly(enabled: Boolean) { store.edit { it[Keys.downloadedOnly] = enabled } }
     override suspend fun setDownloadWifiOnly(enabled: Boolean) { store.edit { it[Keys.downloadWifiOnly] = enabled } }
     override suspend fun setDownloadStorageLimitBytes(limitBytes: Long?) {
