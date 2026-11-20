@@ -34,7 +34,8 @@ internal val FIRST_RUN_STEPS = listOf(
 
 /** What Home shows before any server exists: a welcome, the steps, and the button that starts the first one. */
 @Composable
-internal fun FirstRunGuide(onOpenServers: () -> Unit) {
+internal fun FirstRunGuide(onOpenServers: () -> Unit, showWidgetStep: Boolean = true) {
+    val steps = if (showWidgetStep) FIRST_RUN_STEPS else FIRST_RUN_STEPS.dropLast(1)
     Column(
         modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth().padding(horizontal = 32.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -48,7 +49,7 @@ internal fun FirstRunGuide(onOpenServers: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            FIRST_RUN_STEPS.forEachIndexed { index, (title, detail) ->
+            steps.forEachIndexed { index, (title, detail) ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("${index + 1}", style = MaterialTheme.typography.titleMedium, color = AmberGold)
                     Column {

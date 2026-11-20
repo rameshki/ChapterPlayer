@@ -34,7 +34,8 @@ fun parseChangelog(text: String): List<ReleaseNotes> {
             date = if (open >= 0 && head.endsWith(")")) head.substring(open + 1, head.length - 1).trim() else null
         } else if (version != null && line.isNotEmpty()) {
             lines += when {
-                line.startsWith("- ") -> NoteLine.Bullet(line.removePrefix("- ").trim())
+                line.startsWith("- ") || line.startsWith("* ") -> NoteLine.Bullet(line.drop(2).trim())
+                line.startsWith("#") && line.trimStart('#').startsWith(" ") -> NoteLine.Heading(line.trimStart('#').trim())
                 line.length > 4 && line.startsWith("**") && line.endsWith("**") && !line.drop(2).dropLast(2).contains("**") ->
                     NoteLine.Heading(line.drop(2).dropLast(2))
                 else -> NoteLine.Plain(line)
@@ -67,14 +68,27 @@ fun splitBold(text: String): List<TextRun> {
 /** The release part of a version name: "0.5.4-debug.12" is "0.5.4", so a debug build does not count as a new version. */
 fun releaseVersion(versionName: String): String = versionName.substringBefore('-').trim()
 
+/** Whether release version [a] is newer than [b] ("0.10.0" is newer than "0.9.2"); a part that is not a number counts as 0. */
+fun isNewerVersion(a: String, b: String): Boolean {
+    val x = a.split('.').map { it.toIntOrNull() ?: 0 }
+    val y = b.split('.').map { it.toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(x.size, y.size)) {
+        val p = x.getOrElse(i) { 0 }
+        val q = y.getOrElse(i) { 0 }
+        if (p != q) return p > q
+    }
+    return false
+}
+
 /**
  * The notes to show once, or null for none. [lastSeen] is the release version the person last saw notes for (null on a
  * first launch since this feature, or a fresh install). A fresh install ([hasServers] false) is not an update, so it
  * sees the first-run guidance instead; an app that already has servers sees the notes of the version it just got.
- * Nothing is shown when the changelog has no section for [current].
+ * Nothing is shown when the changelog has no section for [current], or when [current] is not newer than [lastSeen]
+ * (an older build installed again is not an update).
  */
 fun notesToShow(lastSeen: String?, current: String, hasServers: Boolean, notes: List<ReleaseNotes>): ReleaseNotes? {
-    if (lastSeen == current) return null
+    if (lastSeen != null && !isNewerVersion(current, lastSeen)) return null
     if (lastSeen == null && !hasServers) return null
     return notes.firstOrNull { it.version == current }
 }

@@ -81,4 +81,21 @@ class WhatsNewTest {
     @Test fun `a version the changelog does not know shows nothing`() {
         assertNull(notesToShow(lastSeen = "0.5.4", current = "0.6.0", hasServers = true, notes = parseChangelog(changelog)))
     }
+
+    @Test fun `an older build installed again is not an update`() {
+        val notes = parseChangelog(changelog)
+        assertNull(notesToShow(lastSeen = "0.5.5", current = "0.5.4", hasServers = true, notes = notes))
+    }
+
+    @Test fun `versions compare by number not by text`() {
+        assertEquals(true, isNewerVersion("0.10.0", "0.9.2"))
+        assertEquals(false, isNewerVersion("0.5.4", "0.5.4"))
+        assertEquals(true, isNewerVersion("1.0", "0.9.9"))
+        assertEquals(false, isNewerVersion("0.5", "0.5.0"))
+    }
+
+    @Test fun `star bullets and hash headings read like dash bullets and bold headings`() {
+        val lines = parseChangelog("## 1.0.0\n### New\n* one\n- two").single().lines
+        assertEquals(listOf(NoteLine.Heading("New"), NoteLine.Bullet("one"), NoteLine.Bullet("two")), lines)
+    }
 }

@@ -2,6 +2,7 @@ package com.chapterplayer.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -74,8 +76,8 @@ fun WhatsNewPrompt(
             // No notes is better than a failed start: the sheet simply does not appear.
         }
     }
-    val shown = notes ?: return
     val scope = rememberCoroutineScope()
+    val shown = notes ?: return
     val close = {
         notes = null
         scope.launch {
@@ -110,7 +112,11 @@ internal fun WhatsNewContent(notes: ReleaseNotes, onClose: () -> Unit) {
                         color = AmberGold,
                         modifier = Modifier.padding(top = 8.dp).semantics { heading() }
                     )
-                    is NoteLine.Bullet -> Text(boldText("•  " + line.text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    is NoteLine.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // The dot is drawn on its own and hidden from TalkBack; wrapped lines hang under the text.
+                        Text("•", color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.clearAndSetSemantics { })
+                        Text(boldText(line.text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
                     is NoteLine.Plain -> Text(boldText(line.text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
             }

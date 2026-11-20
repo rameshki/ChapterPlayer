@@ -67,6 +67,7 @@ import com.chapterplayer.domain.browse.isFavourite
 import com.chapterplayer.ui.details.BookActionsHost
 import com.chapterplayer.ui.details.rememberBookActions
 import com.chapterplayer.ui.library.LibraryView
+import com.chapterplayer.ui.components.LocalPlatformFeatures
 import com.chapterplayer.ui.components.DimmedCoverOverlay
 import com.chapterplayer.ui.library.CoverArt
 import com.chapterplayer.ui.theme.SurfaceElevated
@@ -133,6 +134,7 @@ fun HomeScreen(
             onResume = { viewModel.resume(it, openPlayerAfterStart) },
             onBookLongClick = bookActions::open,
             onFiltersCleared = viewModel::onFiltersCleared,
+            showWidgetStep = LocalPlatformFeatures.current.widgets,
         )
     }
         SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
@@ -160,6 +162,8 @@ internal fun HomeBody(
     onResume: (AudioBook) -> Unit,
     onBookLongClick: (String) -> Unit,
     onFiltersCleared: () -> Unit,
+    /** The first-run guide's widget step: Android only. */
+    showWidgetStep: Boolean = true,
 ) {
     val nothingToShow = state.resume == null && state.continueSeries.isEmpty() &&
         state.inProgress.isEmpty() && state.recentlyAdded.isEmpty() && state.favourites.isEmpty() && state.upNext.isEmpty()
@@ -168,7 +172,7 @@ internal fun HomeBody(
             CircularProgressIndicator(color = AmberGold)
         }
 
-        !state.hasServers -> ScrollingEmpty { FirstRunGuide(onOpenServers) }
+        !state.hasServers -> ScrollingEmpty { FirstRunGuide(onOpenServers, showWidgetStep) }
 
         nothingToShow -> ScrollingEmpty {
             if (state.hasBooks) {
