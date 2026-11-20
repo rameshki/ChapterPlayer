@@ -65,6 +65,8 @@ class HomeScreenshotTest {
     @Test fun longResumeTitle() = shot("home_long_resume", ThemeMode.DARK, 1.0f, full.copy(resume = ResumeInfo(resumeLong, "Chapter 12. A Chapter Name That Is Also Far Too Long To Fit", 0.42f, "5 h 48 min left")))
     @Test @Config(qualifiers = "w1280dp-h800dp-mdpi") fun tablet() = shot("home_tablet", ThemeMode.DARK, 1.0f, full)
     @Test fun noServer() = shot("home_no_server", ThemeMode.DARK, 1.0f, HomeUiState(isLoading = false))
+    @Test fun noServerLight() = shot("home_no_server_light", ThemeMode.LIGHT, 1.0f, HomeUiState(isLoading = false))
+    @Test @Config(qualifiers = "w360dp-h1800dp-mdpi") fun noServerScale200() = shot("home_no_server_200", ThemeMode.DARK, 2.0f, HomeUiState(isLoading = false))
     @Test fun syncing() = shot("home_syncing", ThemeMode.DARK, 1.0f, HomeUiState(hasServers = true, isLoading = false, isSyncing = true))
     @Test fun filtersHiding() = shot("home_filters_hiding", ThemeMode.DARK, 1.0f, HomeUiState(hasServers = true, hasBooks = true, isLoading = false))
 

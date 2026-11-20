@@ -34,6 +34,9 @@ class FakeAppSettings(
     val batteryShown = MutableStateFlow(false)
     override val batteryPromptShown: Flow<Boolean> = batteryShown
     override suspend fun setBatteryPromptShown() { batteryShown.value = true }
+    val lastSeen = MutableStateFlow<String?>(null)
+    override val lastSeenVersion: Flow<String?> = lastSeen
+    override suspend fun setLastSeenVersion(version: String) { lastSeen.value = version }
     val downloadedOnlyFlow = MutableStateFlow(false)
     override val downloadedOnly: Flow<Boolean> = downloadedOnlyFlow
     override suspend fun setDownloadedOnly(enabled: Boolean) { downloadedOnlyFlow.value = enabled }

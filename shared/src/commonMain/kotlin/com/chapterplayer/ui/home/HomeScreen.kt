@@ -168,20 +168,7 @@ internal fun HomeBody(
             CircularProgressIndicator(color = AmberGold)
         }
 
-        !state.hasServers -> ScrollingEmpty {
-            EmptyState(
-                icon = Icons.Default.Home,
-                message = "Add a server to see your audiobooks here."
-            ) {
-                Button(
-                    onClick = onOpenServers,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AmberGold,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) { Text("Add a server") }
-            }
-        }
+        !state.hasServers -> ScrollingEmpty { FirstRunGuide(onOpenServers) }
 
         nothingToShow -> ScrollingEmpty {
             if (state.hasBooks) {
