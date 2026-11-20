@@ -107,7 +107,7 @@ class ListenWidgetReceiver : GlanceAppWidgetReceiver(), KoinComponent {
 }
 
 @Composable
-private fun ListenContent(context: Context, state: ListenWidgetState, cover: Bitmap?, colors: WidgetColors) {
+internal fun ListenContent(context: Context, state: ListenWidgetState, cover: Bitmap?, colors: WidgetColors) {
     val width = LocalSize.current.width.value
     val layout = listenLayout(width, LocalSize.current.height.value, state)
     // The body opens the player while a book is loaded, else the app.

@@ -32,6 +32,8 @@ Started by review finding R2 (no UI or screenshot tests; layout faults were only
 
 - **Settings pages (R25):** `ui/screenshots/SettingsPageScreenshotTest` draws the shared `SettingsPage` frame with switch cards on a phone, in landscape and on a tablet: 3 goldens. `SettingsPage` and Add Server now keep their content in a column at most 640 dp wide (`SETTINGS_MAX_WIDTH`), centred; before, the cards ran across the whole tablet. Other settings pages use `SettingsPage`, so they follow.
 
+- **Widgets (R2 step 3):** `ui/screenshots/WidgetScreenshotTest` composes each Glance widget at an exact size with `GlanceAppWidget.compose` (a test widget with `SizeMode.Exact` that calls the internal `NowPlayingContent`, `ListenContent` or `ContinueContent`), inflates the `RemoteViews` into a `FrameLayout` under Robolectric, draws that into a bitmap and captures the bitmap (Roborazzi's View capture needs an Activity). 28 goldens: Now Playing at three widths, with a long title, Resume and empty; Continue Listening with a book and empty; Listen at all ten size buckets in dark, three of them in light and with long titles, plus Resume and empty. Colours are baked for the chosen theme (`widgetColors`), the cover is a drawn bitmap. Seen and left: at the smallest widths the title gets about 60 dp ("A Reaso...", "An Extr..."), which is a thresholds question for the owner.
+
 - Checked on Windows (JDK 17): `verifyRoborazziAndroidHostTest` passes with all 3191 host tests; widening the
   rows' padding by 2 dp made all four screenshot tests fail with "... font_card_dark_100.png is changed"; plain
   `testAndroidHostTest` left the goldens untouched. `createComposeRule` warns that it is deprecated in favour of

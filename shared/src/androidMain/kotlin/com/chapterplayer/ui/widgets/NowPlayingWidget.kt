@@ -111,7 +111,7 @@ internal suspend fun themeOrSystem(mode: Flow<ThemeMode>): ThemeMode = try {
 }
 
 @Composable
-private fun NowPlayingContent(context: Context, state: NowPlayingWidgetState, cover: Bitmap?, colors: WidgetColors) {
+internal fun NowPlayingContent(context: Context, state: NowPlayingWidgetState, cover: Bitmap?, colors: WidgetColors) {
     val width = LocalSize.current.width.value
     val wide = nowPlayingIsWide(width)
     val open = openAppIntent(context, openPlayer = state is NowPlayingWidgetState.Book)
