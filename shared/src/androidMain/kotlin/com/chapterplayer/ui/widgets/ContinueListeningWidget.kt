@@ -71,7 +71,7 @@ class ContinueListeningWidgetReceiver : GlanceAppWidgetReceiver(), KoinComponent
 }
 
 @Composable
-private fun ContinueContent(context: Context, state: ContinueWidgetState, cover: Bitmap?, colors: WidgetColors) {
+internal fun ContinueContent(context: Context, state: ContinueWidgetState, cover: Bitmap?, colors: WidgetColors) {
     val open = openAppIntent(context, openPlayer = false)
     var body = cardModifier(colors)
     if (open != null) body = body.clickable(actionStartActivity(open))
