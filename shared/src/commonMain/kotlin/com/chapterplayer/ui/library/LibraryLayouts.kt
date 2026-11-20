@@ -1,5 +1,8 @@
 package com.chapterplayer.ui.library
 
+import com.chapterplayer.domain.browse.libraryGridColumns
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -136,11 +139,12 @@ fun BookLayout(
     // The strip sits over the right edge, so the items always leave it room (no shift when it comes and goes).
     val scrollerRoom = 8.dp
     when (layout) {
-        LibraryLayout.LIST -> Box(modifier = modifier) {
+        LibraryLayout.LIST -> Box(modifier = modifier, contentAlignment = Alignment.TopCenter) {
             val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                // On a tablet the rows stay a readable width instead of running across the whole screen.
+                modifier = Modifier.widthIn(max = 720.dp).fillMaxSize(),
                 contentPadding = PaddingValues(end = scrollerRoom, bottom = BottomPadding)
             ) {
                 item(key = "count") { CountHeader(items.size) }
@@ -163,9 +167,9 @@ fun BookLayout(
             )
         }
 
-        LibraryLayout.LARGE_GRID, LibraryLayout.SMALL_GRID -> Box(modifier = modifier) {
+        LibraryLayout.LARGE_GRID, LibraryLayout.SMALL_GRID -> BoxWithConstraints(modifier = modifier) {
             val gridState = rememberLazyGridState()
-            BookGrid(items, layout, gridState, scrollerRoom, isDimmed, onBookClick, onBookLongClick, isFavourite, selection, onToggleSelected)
+            BookGrid(items, layout, libraryGridColumns(layout, maxWidth.value), gridState, scrollerRoom, isDimmed, onBookClick, onBookLongClick, isFavourite, selection, onToggleSelected)
             FastScroller(
                 letters = fastScroll,
                 isListScrolling = gridState.isScrollInProgress,
@@ -184,6 +188,7 @@ private val BottomPadding = 16.dp
 private fun BookGrid(
     items: List<BrowseItem>,
     layout: LibraryLayout,
+    columns: Int,
     gridState: LazyGridState,
     scrollerRoom: Dp,
     isDimmed: (BrowseItem) -> Boolean,
@@ -194,7 +199,7 @@ private fun BookGrid(
     onToggleSelected: (String) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(if (layout == LibraryLayout.LARGE_GRID) 2 else 3),
+        columns = GridCells.Fixed(columns),
         state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp + scrollerRoom, bottom = BottomPadding),

@@ -66,6 +66,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import com.chapterplayer.domain.playback.toolsPerRow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -154,6 +157,7 @@ private const val SHEET_HISTORY = 5
 private const val SHEET_UP_NEXT = 6
 
 /** The screen from state and callbacks only. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlayerContent(
     state: PlayerUiState,
@@ -263,7 +267,14 @@ fun PlayerContent(
         Spacer(Modifier.height(8.dp))
         TransportRow(state, onPreviousChapter, onSkipBack, onPlayPause, onSkipForward, onNextChapter)
         Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        // Five buttons on one row when each has room for its label; two rows when the screen is narrow or the text is
+        // large, so a label wraps between words and never inside one.
+        val perRow = toolsPerRow((availWidth - 32.dp).value, LocalDensity.current.fontScale)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            maxItemsInEachRow = perRow,
+        ) {
             ToolButton(Icons.Default.Speed, state.speedLabel, "Playback speed", Modifier.weight(1f)) { sheet = SHEET_SPEED }
             ToolButton(Icons.Default.Bedtime, state.sleepLabel, "Sleep timer", Modifier.weight(1f)) { sheet = SHEET_SLEEP }
             ToolButton(Icons.Default.Bookmark, "Bookmarks", "Bookmarks", Modifier.weight(1f)) { sheet = SHEET_BOOKMARKS }
