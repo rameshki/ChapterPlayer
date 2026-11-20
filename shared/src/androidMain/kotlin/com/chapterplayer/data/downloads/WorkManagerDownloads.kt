@@ -1,5 +1,6 @@
 package com.chapterplayer.data.downloads
 
+import com.chapterplayer.shared.R
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -168,7 +169,7 @@ internal class DownloadNotifications(private val context: Context) {
         ensureChannel()
         val percent = progress?.let { (it.fraction * 100).toInt().coerceIn(0, 100) } ?: 0
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(downloadNotificationText(progress))
             .setProgress(100, percent, progress == null)

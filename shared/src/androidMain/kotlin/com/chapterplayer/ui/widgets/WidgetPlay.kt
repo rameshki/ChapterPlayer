@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.widgets
 
+import com.chapterplayer.shared.R
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -111,7 +112,7 @@ class PlaybackNotices(private val context: Context) {
             if (openPlayer) launch.putExtra(EXTRA_OPEN_PLAYER, true)
             val content = PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setContentIntent(content)

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small icon of every ChapterPlayer notification (media, downloads, notices, "Tap to keep listening"): the launcher
+     icon's shape in one colour (headphones over an open book), the same paths as ic_launcher_monochrome. The system
+     tints it; only its shape counts. The drawing (x 20 to 88, y 29 to 78 on the launcher's 108 grid) is centred on
+     a 72 unit square, so it fills the 24 dp icon without the launcher's safe-zone margin. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <group
+        android:translateX="-18"
+        android:translateY="-17.5">
+        <!-- Headband -->
+        <path
+            android:pathData="M28,58 A26,26 0 0,1 80,58"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+        <!-- Ear cups -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M25.5,52 L27.5,52 A5.5,5.5 0 0,1 33,57.5 L33,70.5 A5.5,5.5 0 0,1 27.5,76 L25.5,76 A5.5,5.5 0 0,1 20,70.5 L20,57.5 A5.5,5.5 0 0,1 25.5,52 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M80.5,52 L82.5,52 A5.5,5.5 0 0,1 88,57.5 L88,70.5 A5.5,5.5 0 0,1 82.5,76 L80.5,76 A5.5,5.5 0 0,1 75,70.5 L75,57.5 A5.5,5.5 0 0,1 80.5,52 Z" />
+        <!-- Open book (the two pages 1.5 apart at the spine so they do not merge in one colour) -->
+        <group android:translateX="-0.75">
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M54,78 C48,73 41,71 36,72.5 L36,54 C41,52.5 48,54 54,59 Z" />
+        </group>
+        <group android:translateX="0.75">
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M54,78 C60,73 67,71 72,72.5 L72,54 C67,52.5 60,54 54,59 Z" />
+        </group>
+    </group>
+</vector>
