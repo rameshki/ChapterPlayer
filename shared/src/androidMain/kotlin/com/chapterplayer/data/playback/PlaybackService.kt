@@ -1,5 +1,6 @@
 package com.chapterplayer.data.playback
 
+import android.content.pm.ApplicationInfo
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.SystemClock
@@ -154,6 +155,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         // Android Auto, the Assistant and the system come in through this callback; it starts books the phone's way.
         val callback = CarLibraryCallback(
             ownPackage = packageName,
+            debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,
             player = sessionPlayer,
             expectAnswer = sessionPlayer::expectAnswer,
             books = get(),

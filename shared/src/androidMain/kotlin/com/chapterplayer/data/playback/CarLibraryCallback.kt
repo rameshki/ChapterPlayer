@@ -76,6 +76,8 @@ class CarRequestException(message: String) : Exception(message)
 @UnstableApi
 class CarLibraryCallback(
     private val ownPackage: String,
+    /** A debuggable build also trusts the Desktop Head Unit simulator (review R19); a release never does. */
+    private val debuggable: Boolean = false,
     private val player: Player,
     private val expectAnswer: (List<MediaItem>) -> Unit,
     private val books: BookRepository,
@@ -96,10 +98,10 @@ class CarLibraryCallback(
     // Book rows point at the app's cover provider; the car reads covers there.
     private val coverAuthority = coverAuthority(ownPackage)
 
-    private val carConnections = CarConnectionTracker<MediaSession.ControllerInfo>()
+    private val carConnections = CarConnectionTracker<MediaSession.ControllerInfo>(debuggable)
 
     private fun access(controller: MediaSession.ControllerInfo): CarAccess =
-        carAccess(controller.packageName, ownPackage, controller.isPackageNameVerified)
+        carAccess(controller.packageName, ownPackage, controller.isPackageNameVerified, debuggable)
 
     // -- Connecting --------------------------------------------------------------------------
 
@@ -139,7 +141,7 @@ class CarLibraryCallback(
             val snap = snapshot()
             val busy = playback.state.value.bookId != null || player.isPlaying || player.mediaItemCount > 0
             val book = carConnectResume(
-                enabled, controller.packageName, controller.isPackageNameVerified, busy, snap.data.items, snap.online, now(),
+                enabled, controller.packageName, controller.isPackageNameVerified, busy, snap.data.items, snap.online, now(), debuggable,
             ) ?: return
             val busyNow = playback.state.value.bookId != null || player.isPlaying || player.mediaItemCount > 0
             if (carStarts != startsBefore || busyNow) return

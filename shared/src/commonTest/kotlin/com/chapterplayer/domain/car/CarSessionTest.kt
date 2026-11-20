@@ -203,7 +203,14 @@ class CarSessionTest {
     @Test
     fun `the car connecting resumes the last played book when the switch is on and nothing plays`() {
         assertEquals("a", resume())
-        assertEquals("a", resume(pkg = "com.google.android.autosimulator"))
+    }
+
+    @Test
+    fun `the simulator resumes a book only in a debuggable build`() {
+        val sim = "com.google.android.autosimulator"
+        assertEquals("a", carConnectResume(true, sim, true, false, history, true, now, debuggable = true)?.id)
+        assertEquals(null, carConnectResume(true, sim, true, false, history, true, now))
+        assertEquals(null, carConnectResume(true, sim, true, false, history, true, now, debuggable = false))
     }
 
     @Test

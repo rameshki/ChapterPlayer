@@ -141,7 +141,13 @@ class CoverRulesTest {
         assertTrue(coverCallerAllowed(listOf("com.chapterplayer"), "com.chapterplayer"))
         assertTrue(coverCallerAllowed(listOf("com.google.android.projection.gearhead"), "com.chapterplayer"))
         assertTrue(coverCallerAllowed(listOf("com.android.systemui"), "com.chapterplayer"))
-        assertTrue(coverCallerAllowed(listOf("com.google.android.autosimulator"), "com.chapterplayer"))
+    }
+
+    @Test
+    fun `the simulator may read covers only in a debuggable build`() {
+        assertTrue(coverCallerAllowed(listOf("com.google.android.autosimulator"), "com.chapterplayer", debuggable = true))
+        assertFalse(coverCallerAllowed(listOf("com.google.android.autosimulator"), "com.chapterplayer"))
+        assertFalse(coverCallerAllowed(listOf("com.google.android.autosimulator"), "com.chapterplayer", debuggable = false))
     }
 
     @Test

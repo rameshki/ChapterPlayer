@@ -1,5 +1,6 @@
 package com.chapterplayer.data.images
 
+import android.content.pm.ApplicationInfo
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
@@ -41,7 +42,8 @@ class CoverProvider : ContentProvider(), KoinComponent {
         val uid = Binder.getCallingUid()
         val packages = if (uid == Process.myUid()) listOf(context.packageName)
         else context.packageManager.getPackagesForUid(uid)?.toList()
-        return coverCallerAllowed(packages, context.packageName)
+        val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        return coverCallerAllowed(packages, context.packageName, debuggable)
     }
 
     private fun bookIdOf(uri: Uri): String? {

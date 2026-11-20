@@ -42,8 +42,8 @@ enum class CarAccess(
 }
 
 /** Decides [CarAccess]; a package name the system did not verify is never trusted as this app. */
-fun carAccess(callerPackage: String?, ownPackage: String, packageVerified: Boolean): CarAccess =
-    when (isTrustedCarController(callerPackage, ownPackage)) {
+fun carAccess(callerPackage: String?, ownPackage: String, packageVerified: Boolean, debuggable: Boolean = false): CarAccess =
+    when (isTrustedCarController(callerPackage, ownPackage, debuggable)) {
         CarTrust.OWN -> if (packageVerified) CarAccess.FULL else CarAccess.TRANSPORT_ONLY
         CarTrust.CAR -> if (packageVerified) CarAccess.CAR else CarAccess.CAR_UNVERIFIED
         CarTrust.NONE -> CarAccess.TRANSPORT_ONLY
@@ -52,8 +52,11 @@ fun carAccess(callerPackage: String?, ownPackage: String, packageVerified: Boole
 /** The car itself (not the Assistant or the system): only its connecting starts a book by itself. */
 val CAR_HEAD_UNIT_PACKAGES: Set<String> = setOf(
     "com.google.android.projection.gearhead",
-    "com.google.android.autosimulator",
 )
+
+/** Whether [callerPackage] is a head unit that connects by itself: the car, and the simulator in a debuggable build. */
+fun isCarHeadUnit(callerPackage: String?, debuggable: Boolean): Boolean =
+    callerPackage in CAR_HEAD_UNIT_PACKAGES || (debuggable && callerPackage in DEBUG_ONLY_CAR_PACKAGES)
 
 /** What a car asked to play. */
 sealed interface CarRequest {
@@ -182,12 +185,12 @@ const val CAR_RESUME_PAUSE_GUARD_MS = 60_000L
  * true only for the first verified head-unit connection since the car was last gone. Not thread-safe:
  * the session calls it on its one thread.
  */
-class CarConnectionTracker<K> {
+class CarConnectionTracker<K>(private val debuggable: Boolean = false) {
     private val open = mutableSetOf<K>()
     private var tried = false
 
     fun connected(key: K, callerPackage: String?, packageVerified: Boolean): Boolean {
-        if (!packageVerified || callerPackage !in CAR_HEAD_UNIT_PACKAGES) return false
+        if (!packageVerified || !isCarHeadUnit(callerPackage, debuggable)) return false
         open += key
         if (tried) return false
         tried = true
@@ -213,9 +216,10 @@ fun carConnectResume(
     items: List<BrowseItem>,
     online: Boolean,
     nowMs: Long,
+    debuggable: Boolean = false,
 ): AudioBook? {
     if (!enabled || playerBusy) return null
-    if (!packageVerified || callerPackage !in CAR_HEAD_UNIT_PACKAGES) return null
+    if (!packageVerified || !isCarHeadUnit(callerPackage, debuggable)) return null
     val resume = resumeCandidate(items) ?: return null
     // The guard and the start are about the same copy: the one played last.
     val last = resume.item.progress?.lastPlayedAt ?: return null
