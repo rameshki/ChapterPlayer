@@ -111,3 +111,11 @@ Local guards (all host-tested; each is one function in `MarkFinished.kt` unless 
 - For each merged book the newest listening (`newestCopyProgress`) is the source; older or empty copies get a mirrored local row (`mirroredProgress`, by fraction) and a queued push (`crossSyncPending`, the source's time, `mirrorOf`), so the flusher's newest-wins check protects a server that is newer.
 - Never the loaded copy; safe to repeat.
 - Both directions.
+
+## Known limits
+
+Accepted in a review and left as they are; each project review decides for each line: fix, accept or drop (review R40).
+
+- A one-second play of a finished book leaves a session open on the server (#109).
+- If the network drops between the two Audiobookshelf requests, the book is left not finished at 0:00 until it is marked again (#109).
+- A mark made offline loses to another device's newer change (#109).
