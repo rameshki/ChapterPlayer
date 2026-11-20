@@ -1,5 +1,7 @@
 package com.chapterplayer.ui.settings
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -179,10 +181,11 @@ fun ServerSetupScreen(
             )
         }
     ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.TopCenter) {
         Column(
             modifier = Modifier
+                .widthIn(max = SETTINGS_MAX_WIDTH)
                 .fillMaxSize()
-                .padding(innerPadding)
                 // The app draws edge to edge, so the keyboard no longer shrinks the window: pad by its height,
                 // and the scroll below can bring a focused field (the password) above it.
                 .imePadding()
@@ -364,6 +367,7 @@ fun ServerSetupScreen(
             }
 
             Spacer(Modifier.height(32.dp))
+        }
         }
     }
 }
