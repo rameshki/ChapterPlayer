@@ -1,9 +1,11 @@
 package com.chapterplayer.data.playback
 
+import com.chapterplayer.shared.R
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
@@ -180,6 +182,8 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         setListener(object : MediaSessionService.Listener {
             override fun onForegroundServiceStartNotAllowedException() = onPlaybackRefused()
         })
+        // The media notification wears the app's own small icon, not Media3's default.
+        setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().also { it.setSmallIcon(R.drawable.ic_notification) })
         session = builder.build().also {
             // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
             it.setMediaButtonPreferences(

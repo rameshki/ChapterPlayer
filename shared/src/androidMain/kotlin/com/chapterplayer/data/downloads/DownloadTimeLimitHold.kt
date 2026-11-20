@@ -1,5 +1,6 @@
 package com.chapterplayer.data.downloads
 
+import com.chapterplayer.shared.R
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -79,7 +80,7 @@ class DownloadTimeLimitHold(
             val content = PendingIntent.getActivity(context, NOTICE_ID, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val notice = timeLimitNotice(waitingBooks)
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(notice.title)
                 .setContentText(notice.text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(notice.text))
