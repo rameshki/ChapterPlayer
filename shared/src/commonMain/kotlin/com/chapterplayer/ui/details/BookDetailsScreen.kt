@@ -1,5 +1,7 @@
 package com.chapterplayer.ui.details
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -209,7 +211,8 @@ fun BookDetailsContent(
             contentAlignment = Alignment.Center
         ) { CircularProgressIndicator(color = AmberGold) }
 
-        else -> Column(modifier = modifier.fillMaxSize()) {
+        // On a tablet the page stays a readable column instead of stretching its button, tabs and times across the screen.
+        else -> Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) { Column(modifier = Modifier.widthIn(max = DETAILS_MAX_WIDTH).fillMaxSize()) {
             if (state.loadingDetails) {
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth().height(2.dp),
@@ -224,9 +227,11 @@ fun BookDetailsContent(
                 state, book, onPlayClick, onOpenPlayer, onChapterClick, onSelectTab, onOpenBook, onOpenGroup, downloadActions,
                 onFavouriteClick, UpNextClicks(onPlayNext, onUpNext), Modifier.weight(1f),
             )
-        }
+        } }
     }
 }
+
+private val DETAILS_MAX_WIDTH = 720.dp
 
 @Composable
 private fun LoadedList(
@@ -273,7 +278,9 @@ private fun DetailsHeader(
     upNext: UpNextClicks,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        // At large text the title would wrap inside words in the narrow column beside the cover: the cover goes above it.
+        val stacked = LocalDensity.current.fontScale >= 1.5f
+        val cover: @Composable () -> Unit = {
             Box(
                 modifier = Modifier
                     .size(120.dp)
@@ -282,7 +289,9 @@ private fun DetailsHeader(
             ) {
                 CoverArt(book, Modifier.fillMaxSize())
             }
-            Column(modifier = Modifier.weight(1f)) {
+        }
+        val titleBlock: @Composable (Modifier) -> Unit = { blockModifier ->
+            Column(modifier = blockModifier) {
                 Text(
                     text = book.title,
                     style = MaterialTheme.typography.titleLarge,
@@ -295,6 +304,17 @@ private fun DetailsHeader(
                 state.about?.narratorLine?.let { InfoLine(it) }
                 lengthLine(state.lengthText, state.timeLeft)?.let { InfoLine(it) }
                 state.links.series?.let { SeriesLine(it, onOpenGroup) }
+            }
+        }
+        if (stacked) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                cover()
+                titleBlock(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                cover()
+                titleBlock(Modifier.weight(1f))
             }
         }
         Spacer(Modifier.height(16.dp))
