@@ -163,7 +163,7 @@ class ListenWidgetStateTest {
     fun eachBucketIsItsOwnSizeClass() {
         val expected = mapOf(
             "MINI" to ListenSize.MINI, "MINI_TALL" to ListenSize.MINI,
-            "BAR" to ListenSize.BAR, "BAR_ROOMY" to ListenSize.BAR,
+            "BAR" to ListenSize.BAR, "BAR_MID" to ListenSize.BAR, "BAR_ROOMY" to ListenSize.BAR,
             "SQUARE" to ListenSize.SQUARE,
             "WIDE" to ListenSize.WIDE, "WIDE_MID" to ListenSize.WIDE, "WIDE_ROOMY" to ListenSize.WIDE,
             "LARGE" to ListenSize.LARGE, "LARGE_ROOMY" to ListenSize.LARGE,
@@ -182,7 +182,7 @@ class ListenWidgetStateTest {
             "4x1 sideways" to (554f to 51f), "4x2 sideways" to (554f to 117f), "4x3 sideways" to (554f to 184f),
         )
         val expected = mapOf(
-            "2x1" to "MINI_TALL", "3x1" to "BAR", "4x1" to "BAR",
+            "2x1" to "MINI_TALL", "3x1" to "BAR", "4x1" to "BAR_MID",
             "2x2" to "SQUARE", "3x2" to "WIDE", "4x2" to "WIDE_MID",
             "3x3" to "LARGE", "4x3" to "LARGE_ROOMY",
             "4x1 sideways" to "MINI", "4x2 sideways" to "BAR_ROOMY", "4x3 sideways" to "WIDE_ROOMY",
@@ -205,9 +205,11 @@ class ListenWidgetStateTest {
     fun theCoverIsInEverySizeButTheMiniBar() {
         for (b in LISTEN_BUCKETS) for (state in listOf(controls, resume)) {
             val layout = listenLayout(b.widthDp, b.heightDp, state)
-            if (layout.size == ListenSize.MINI) assertEquals(0f, layout.coverDp, b.name) else assertTrue(layout.coverDp > 0f, b.name)
+            // The mini bar has none; the narrowest bar leaves the room to the title (below LISTEN_BAR_COVER_MIN_DP).
+            if (layout.size == ListenSize.MINI || b.name == "BAR") assertEquals(0f, layout.coverDp, b.name) else assertTrue(layout.coverDp > 0f, b.name)
         }
-        assertEquals(44f, layoutAt("BAR").coverDp)
+        assertEquals(0f, layoutAt("BAR").coverDp)
+        assertEquals(44f, layoutAt("BAR_MID").coverDp)
         assertEquals(52f, layoutAt("SQUARE").coverDp)
         assertEquals(72f, layoutAt("WIDE").coverDp)
         assertEquals(92f, layoutAt("WIDE_MID").coverDp)
@@ -220,7 +222,8 @@ class ListenWidgetStateTest {
     /**
      * Which buttons each bucket shows for a loaded book that allows them all, worked by hand from the widths
      * (padding 10 + 10, gap 8 after the cover, 6 before the bar's buttons, play 48, side buttons 40 or 48):
-     * BAR 190: 190 - 20 - 44 - 8 - 6 - 48 = 64 dp of title: play only (back / forward would leave under 110).
+     * BAR 190: no cover below 240 dp; 190 - 20 - 6 - 48 = 116 dp of title: play only (back / forward would leave under 110).
+     * BAR_MID 250: 250 - 20 - 44 - 8 - 6 - 48 = 124 dp of title beside the cover: play only.
      * BAR_ROOMY 340: 340 - 20 - 44 - 8 - 6 - (48 + 2 x 48) = 118 dp of title: back / forward at 48 dp.
      * WIDE 200: 200 - 20 - 72 - 8 = 100 dp beside the cover: play only (back / forward need 128).
      * WIDE_MID 260: 260 - 20 - 92 - 8 = 140: back / forward at 40 (48 would need 144).
@@ -233,6 +236,7 @@ class ListenWidgetStateTest {
         data class Buttons(val skips: Boolean, val chapters: Boolean, val side: Float)
         val expected = mapOf(
             "BAR" to Buttons(false, false, 40f),
+            "BAR_MID" to Buttons(false, false, 40f),
             "BAR_ROOMY" to Buttons(true, false, 48f),
             "WIDE" to Buttons(false, false, 40f),
             "WIDE_MID" to Buttons(true, false, 40f),
@@ -257,6 +261,14 @@ class ListenWidgetStateTest {
         val roomyBar = layoutAt("BAR_ROOMY")
         val titleWidth = 340f - 20f - 44f - 8f - 6f - (48f + 2 * roomyBar.sideButtonDp)
         assertTrue(titleWidth >= 110f, "bar title $titleWidth dp")
+        // And never less than that without the skips either: the cover goes before the title is squeezed.
+        for (name in listOf("BAR", "BAR_MID")) {
+            val l = layoutAt(name)
+            val b = bucket(name)
+            val cover = if (l.coverDp > 0f) l.coverDp + 8f else 0f
+            val title = b.widthDp - 2 * l.horizontalPaddingDp - cover - 6f - l.playButtonDp
+            assertTrue(title >= ListenDimens.BAR_TEXT_MIN_DP, "$name title $title dp")
+        }
     }
 
     @Test
@@ -312,11 +324,16 @@ class ListenWidgetStateTest {
     @Test
     fun nowPlayingShowsItsCoverOnlyWhereItFits() {
         assertFalse(nowPlayingShowsCover(180f))
+        assertFalse(nowPlayingShowsCover(NOW_PLAYING_COVER_MIN_DP - 1f))
         assertTrue(nowPlayingShowsCover(NOW_PLAYING_COVER_MIN_DP))
-        for (width in listOf(NOW_PLAYING_WIDE_MIN_DP, 220f, NOW_PLAYING_COVER_MIN_DP, 320f)) {
+        assertFalse(nowPlayingShowsSkips(NOW_PLAYING_SKIPS_MIN_DP - 1f))
+        assertTrue(nowPlayingShowsSkips(NOW_PLAYING_SKIPS_MIN_DP))
+        // The skips and the cover go before the title is squeezed: at every width from the wide minimum up it keeps room to read.
+        for (width in listOf(NOW_PLAYING_WIDE_MIN_DP, 220f, NOW_PLAYING_SKIPS_MIN_DP, 280f, NOW_PLAYING_COVER_MIN_DP, 320f, 400f)) {
             val cover = if (nowPlayingShowsCover(width)) WidgetDimens.ROW_COVER_DP + WidgetDimens.GAP_DP else 0f
-            val used = 2 * WidgetDimens.ROW_PADDING_DP + cover + 2 * WidgetDimens.SIDE_BUTTON_DP + WidgetDimens.ROW_PLAY_DP
-            assertTrue(width - used >= WidgetDimens.ROW_TEXT_MIN_DP, "Now Playing at $width dp leaves ${width - used} dp for the title")
+            val skips = if (nowPlayingShowsSkips(width)) 2 * WidgetDimens.SIDE_BUTTON_DP else 0f
+            val used = 2 * WidgetDimens.ROW_PADDING_DP + cover + skips + WidgetDimens.ROW_PLAY_DP
+            assertTrue(width - used >= WidgetDimens.ROW_TITLE_COMFORT_DP, "Now Playing at $width dp leaves ${width - used} dp for the title")
         }
     }
 
@@ -376,7 +393,7 @@ class ListenWidgetStateTest {
     @Test
     fun theWidgetCoverIsSmall() {
         // 256 x 256 RGB_565 is 128 KiB, sent once per placed widget (every bucket draws the same bitmap).
-        assertEquals(8, LISTEN_BUCKETS.count { listenSize(it.widthDp, it.heightDp) != ListenSize.MINI })
+        assertEquals(8, LISTEN_BUCKETS.count { listenLayout(it.widthDp, it.heightDp, controls).coverDp > 0f })
         assertEquals(256, WIDGET_COVER_MAX_SIDE)
         assertEquals(131_072L, widgetCoverBytes(256, 256))
         assertEquals(256L * 170 * 2, widgetCoverBytes(256, 170))
