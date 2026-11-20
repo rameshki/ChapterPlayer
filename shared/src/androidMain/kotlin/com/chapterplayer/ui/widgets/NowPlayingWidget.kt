@@ -37,6 +37,8 @@ import com.chapterplayer.data.widgets.WidgetActions
 import com.chapterplayer.data.widgets.WidgetRefresher
 import com.chapterplayer.data.widgets.WidgetStates
 import com.chapterplayer.domain.widgets.NOW_PLAYING_COVER_MIN_DP
+import com.chapterplayer.domain.widgets.NOW_PLAYING_SKIPS_MIN_DP
+import com.chapterplayer.domain.widgets.nowPlayingShowsSkips
 import com.chapterplayer.domain.widgets.NOW_PLAYING_WIDE_MIN_DP
 import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.WidgetDimens
@@ -55,7 +57,7 @@ import org.koin.core.component.get
 
 /**
  * The Now Playing home screen widget. Narrow it is play/pause only; from [NOW_PLAYING_WIDE_MIN_DP] wide it shows
- * the title and back 15 / play-pause / forward 30, from [NOW_PLAYING_COVER_MIN_DP] with the book's cover first (the
+ * the title and play-pause, from [NOW_PLAYING_SKIPS_MIN_DP] back 15 / forward 30 too, from [NOW_PLAYING_COVER_MIN_DP] with the book's cover first (the
  * shared look of WidgetUi.kt: rounded card, round play button). Tapping the body opens the app on the player. The buttons act
  * on the loaded book through the app's one controller (see [WidgetActions]). With nothing loaded it offers the last book
  * (the Listen and Continue Listening book) with Play, which starts it without opening the app ([WidgetPlayAction]);
@@ -63,7 +65,7 @@ import org.koin.core.component.get
  */
 class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
 
-    override val sizeMode = SizeMode.Responsive(setOf(NARROW, WIDE, WIDE_COVER))
+    override val sizeMode = SizeMode.Responsive(setOf(NARROW, WIDE, WIDE_SKIPS, WIDE_COVER))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val states = get<WidgetStates>()
@@ -87,6 +89,7 @@ class NowPlayingWidget : GlanceAppWidget(), KoinComponent {
     companion object {
         val NARROW = DpSize(40.dp, 40.dp)
         val WIDE = DpSize(NOW_PLAYING_WIDE_MIN_DP.dp, 40.dp)
+        val WIDE_SKIPS = DpSize(NOW_PLAYING_SKIPS_MIN_DP.dp, 40.dp)
         val WIDE_COVER = DpSize(NOW_PLAYING_COVER_MIN_DP.dp, 40.dp)
     }
 }
@@ -137,13 +140,13 @@ internal fun NowPlayingContent(context: Context, state: NowPlayingWidgetState, c
                     )
                 }
             }
-            is NowPlayingWidgetState.Book -> if (wide) WideBook(state, cover, nowPlayingShowsCover(width), colors) else PlayPause(state, colors)
+            is NowPlayingWidgetState.Book -> if (wide) WideBook(state, cover, nowPlayingShowsCover(width), state.canSkip && nowPlayingShowsSkips(width), colors) else PlayPause(state, colors)
         }
     }
 }
 
 @Composable
-private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, cover: Bitmap?, showCover: Boolean, colors: WidgetColors) {
+private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, cover: Bitmap?, showCover: Boolean, showSkips: Boolean, colors: WidgetColors) {
     if (showCover) {
         WidgetCover(cover, WidgetDimens.ROW_COVER_DP.dp, colors)
         Spacer(GlanceModifier.width(WidgetDimens.GAP_DP.dp))
@@ -159,11 +162,11 @@ private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, cover: Bitmap?,
             Text(text = second, style = TextStyle(color = colors.textSecondary, fontSize = 12.sp), maxLines = 1)
         }
     }
-    if (state.canSkip) {
+    if (showSkips) {
         WidgetIconButton(R.drawable.ic_widget_back, "Back 15 seconds", colors.icon, actionRunCallback<SkipBackAction>(), label = "15")
     }
     PlayPause(state, colors)
-    if (state.canSkip) {
+    if (showSkips) {
         WidgetIconButton(R.drawable.ic_widget_forward, "Forward 30 seconds", colors.icon, actionRunCallback<SkipForwardAction>(), label = "30")
     }
 }

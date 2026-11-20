@@ -83,11 +83,12 @@ class WidgetScreenshotTest {
     // ---- Now Playing ----
     @Test fun nowPlayingNarrow() = shot("widget_np_narrow_dark", 40f, 40f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, book, null, k) }
     @Test fun nowPlayingWide() = shot("widget_np_wide_dark", 180f, 40f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, book, null, k) }
-    @Test fun nowPlayingCover() = shot("widget_np_cover_dark", 250f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, book, cover, k) }
-    @Test fun nowPlayingCoverLight() = shot("widget_np_cover_light", 250f, 56f, ThemeMode.LIGHT) { c, k -> NowPlayingContent(c, book, cover, k) }
-    @Test fun nowPlayingLongTitle() = shot("widget_np_long_title", 250f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, longBook, cover, k) }
-    @Test fun nowPlayingResume() = shot("widget_np_resume", 250f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, resume, cover, k) }
-    @Test fun nowPlayingEmpty() = shot("widget_np_empty", 250f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, NowPlayingWidgetState.Empty(everPlayed = false), null, k) }
+    @Test fun nowPlayingSkips() = shot("widget_np_skips_dark", 250f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, book, cover, k) }
+    @Test fun nowPlayingCover() = shot("widget_np_cover_dark", 300f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, book, cover, k) }
+    @Test fun nowPlayingCoverLight() = shot("widget_np_cover_light", 300f, 56f, ThemeMode.LIGHT) { c, k -> NowPlayingContent(c, book, cover, k) }
+    @Test fun nowPlayingLongTitle() = shot("widget_np_long_title", 300f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, longBook, cover, k) }
+    @Test fun nowPlayingResume() = shot("widget_np_resume", 300f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, resume, cover, k) }
+    @Test fun nowPlayingEmpty() = shot("widget_np_empty", 300f, 56f, ThemeMode.DARK) { c, k -> NowPlayingContent(c, NowPlayingWidgetState.Empty(everPlayed = false), null, k) }
 
     // ---- Continue Listening ----
     @Test fun continueBook() = shot("widget_continue_dark", 250f, 110f, ThemeMode.DARK) { c, k -> ContinueContent(c, continueBook, cover, k) }
@@ -104,7 +105,7 @@ class WidgetScreenshotTest {
     }
 
     @Test fun listenBucketsLight() {
-        for (name in listOf("BAR", "WIDE_MID", "LARGE_ROOMY")) {
+        for (name in listOf("BAR_MID", "WIDE_MID", "LARGE_ROOMY")) {
             val bucket = LISTEN_BUCKETS.first { it.name == name }
             shot("widget_listen_${name.lowercase()}_light", bucket.widthDp, bucket.heightDp, ThemeMode.LIGHT) { c, k ->
                 ListenContent(c, controls, cover, k)
@@ -113,7 +114,7 @@ class WidgetScreenshotTest {
     }
 
     @Test fun listenLongTitles() {
-        for (name in listOf("BAR", "WIDE_MID", "LARGE_ROOMY")) {
+        for (name in listOf("BAR", "BAR_MID", "WIDE_MID", "LARGE_ROOMY")) {
             val bucket = LISTEN_BUCKETS.first { it.name == name }
             shot("widget_listen_${name.lowercase()}_long", bucket.widthDp, bucket.heightDp, ThemeMode.DARK) { c, k ->
                 ListenContent(c, controlsLong, cover, k)

@@ -34,10 +34,24 @@ object WidgetDimens {
 
     /** A one-row widget keeps at least this much for its title. */
     const val ROW_TEXT_MIN_DP = 36f
+
+    /**
+     * What a title needs to read as a title ("A Reasonably Titl..." rather than "A R..."): the skip buttons and the cover
+     * of a one-row widget are shown only where the title keeps this much (the widget screenshots showed 36 to 62 dp).
+     */
+    const val ROW_TITLE_COMFORT_DP = 100f
 }
 
-/** From this width Now Playing shows the loaded book's cover before its title. */
-const val NOW_PLAYING_COVER_MIN_DP = 250f
+/**
+ * From this width Now Playing shows back 15 / forward 30 as well as the title and play: padding, the three buttons and
+ * [WidgetDimens.ROW_TITLE_COMFORT_DP] (below it the title and play only).
+ */
+const val NOW_PLAYING_SKIPS_MIN_DP = 250f
+
+/** From this width Now Playing shows the loaded book's cover before its title (the skips' width, the cover and its gap, rounded up). */
+const val NOW_PLAYING_COVER_MIN_DP = 300f
+
+fun nowPlayingShowsSkips(widthDp: Float): Boolean = widthDp >= NOW_PLAYING_SKIPS_MIN_DP
 
 /** Continue Listening's smallest width (its provider's minimum). */
 const val CONTINUE_MIN_WIDTH_DP = 180f

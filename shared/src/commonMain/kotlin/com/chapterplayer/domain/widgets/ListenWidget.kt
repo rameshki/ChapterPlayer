@@ -108,6 +108,12 @@ enum class ListenSize {
 /** From this width (three cells) the low widget is the bar with its cover. */
 const val LISTEN_BAR_MIN_WIDTH_DP = 190f
 
+/**
+ * From this width the bar shows its cover: padding, the cover, the play button and [ListenDimens.BAR_TEXT_MIN_DP] for the
+ * title. Narrower, the title keeps the room the cover would take (the widget screenshots showed "An Extr..." at 190 dp).
+ */
+const val LISTEN_BAR_COVER_MIN_DP = 240f
+
 /** From this height the bar has room for its cover and two lines at font scale 1.3 (a 4x1 upright is about 102 dp). */
 const val LISTEN_BAR_MIN_HEIGHT_DP = 68f
 
@@ -142,6 +148,7 @@ val LISTEN_BUCKETS: List<ListenBucket> = listOf(
     ListenBucket("MINI", 110f, 40f),
     ListenBucket("MINI_TALL", 110f, 56f),
     ListenBucket("BAR", LISTEN_BAR_MIN_WIDTH_DP, LISTEN_BAR_MIN_HEIGHT_DP),
+    ListenBucket("BAR_MID", LISTEN_BAR_COVER_MIN_DP + 10f, LISTEN_BAR_MIN_HEIGHT_DP),
     ListenBucket("BAR_ROOMY", 340f, LISTEN_BAR_MIN_HEIGHT_DP),
     ListenBucket("SQUARE", LISTEN_SQUARE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP),
     ListenBucket("WIDE", LISTEN_WIDE_MIN_WIDTH_DP, LISTEN_TALL_MIN_HEIGHT_DP),
@@ -227,7 +234,7 @@ fun listenLayout(widthDp: Float, heightDp: Float, state: ListenWidgetState): Lis
             playButtonDp = (heightDp - 8f).coerceIn(40f, WidgetDimens.PLAY_TARGET_DP), horizontalPaddingDp = 6f, verticalPaddingDp = 0f,
         )
         ListenSize.BAR -> ListenLayout(
-            size, coverDp = ListenDimens.BAR_COVER_DP, titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = book,
+            size, coverDp = if (widthDp >= LISTEN_BAR_COVER_MIN_DP) ListenDimens.BAR_COVER_DP else 0f, titleSp = ListenDimens.TITLE_SP, titleLines = 1, showSecondLine = book,
             showAuthorAndChapter = false, showProgress = false, showMeta = false, showSkips = false, showChapterButtons = false,
             sideButtonDp = side, playButtonDp = WidgetDimens.PLAY_TARGET_DP, horizontalPaddingDp = ListenDimens.PADDING_DP,
             verticalPaddingDp = ListenDimens.BAR_VERTICAL_PADDING_DP,
