@@ -21,18 +21,41 @@ Started by review finding R2 (no UI or screenshot tests; layout faults were only
   Robolectric runner: "1 selected", Select all gives "3 selected", the actions menu offers the mark and favourite
   rows and (outside the app's `LocalPlatformFeatures` provider) no Up next row, Close leaves the mode.
 
-- **Player (R2 step 2, R25):** `ui/screenshots/PlayerScreenshotTest` draws `PlayerContent` (already stateless; the Up next sheet is a stand-in) playing with chapters and a sleep timer in dark and light, at font scale 2.0, with very long titles and an error banner, in landscape, at a tablet width and as a failed start: 8 goldens. They found that the tool row broke labels inside words ("Bookmark" and "s") on a 360 dp phone and at large text; `toolsPerRow` now puts them in rows of 3 and 2 (or 2) when five do not fit. Known and left: the error banner shows two lines of its text at 2.0 scale.
+## Screenshot tests by screen
 
-- **Home (R2 step 2, R25):** `ui/screenshots/HomeScreenshotTest` draws `HomeBody` (extracted from `HomeScreen`: the spinner, the empty states and the shelves, from `HomeUiState` and callbacks) with the Resume card and every shelf in dark and light, at font scale 2.0, with a long title, at a tablet width, and the no-server, syncing and filters-hiding states: 8 goldens. The tablet image showed the Resume card and its button stretched across 1264 dp; the card is now at most 640 dp wide. Covers are the app's placeholders (no Coil in the test).
-- **Add Server (R2 step 2):** `ui/screenshots/AddServerScreenshotTest` draws the internal `AbsAddSection` and `JellyfinAddSection` (they already take plain state, so no refactor was needed) for the Audiobookshelf form and its error, the Jellyfin form, the Quick Connect wait with a code and the libraries step, in dark, light and at font scale 2.0 (a tall window, since the page scrolls in the app): 11 goldens. Plex's section needs a refactor and is not covered.
-- **Mini player (R2 step 2, R25):** `ui/screenshots/MiniPlayerScreenshotTest` draws `MiniPlayerContent` with a short and a very long title in dark and light, at font scale 2.0, in landscape (800 x 360 dp) and at a 10 inch tablet width (1280 x 800 dp): 5 goldens. Nothing clipped; at scale 2.0 a long title shortens to one line (the full title is in the content description). Each test can set its own window with `@Config(qualifiers = ...)`, the way to add tablet and landscape cases for other screens.
+- **Player (R2 step 2, R25):** `ui/screenshots/PlayerScreenshotTest` draws `PlayerContent` (already stateless; the Up next sheet is a stand-in) playing with chapters and a sleep timer in dark and light, at font scale 2.0, with very long titles and an error banner, in landscape, at a tablet width and as a failed start: 8 goldens.
+- They found that the tool row broke labels inside words ("Bookmark" and "s") on a 360 dp phone and at large text; `toolsPerRow` now puts them in rows of 3 and 2 (or 2) when five do not fit.
+- Known and left: the error banner shows two lines of its text at 2.0 scale.
 
-- **Book details (R2 step 2, R25):** `ui/screenshots/DetailsScreenshotTest` draws `BookDetailsContent` (already stateless) with the chapters, about and series states, a long title, playing, finished, downloading, cannot play offline, a play error, loading and not found, in dark, light, at font scale 2.0, in landscape and at a tablet width: 14 goldens. They showed the title breaking inside words beside the cover at 2.0 (the cover now goes above the title from font scale 1.5) and the button, tabs and chapter times stretched across a tablet (the page is now a column at most 720 dp wide).
-- **Library (R2 step 2, R25):** `ui/screenshots/LibraryScreenshotTest` draws `BookLayout` (large grid, small grid, list: long titles, a favourite, a downloaded, a downloading, a finished and a dimmed book, selection mode), `GroupList` and the sign-in-needed state in dark, light, at font scale 2.0, in landscape and at a tablet width: 13 goldens. The tablet images showed two grid tiles 614 dp wide and list rows 1264 dp wide; the grid now takes its column count from the width (`libraryGridColumns`: 2 large and 3 small on a phone, 6 and 10 on a 1280 dp tablet) and the list is at most 720 dp wide. Known and left: on a placeholder cover the favourite heart covers the first letters of the title (real covers show an image).
+- **Home (R2 step 2, R25):** `ui/screenshots/HomeScreenshotTest` draws `HomeBody` (extracted from `HomeScreen`: the spinner, the empty states and the shelves, from `HomeUiState` and callbacks) with the Resume card and every shelf in dark and light, at font scale 2.0, with a long title, at a tablet width, and the no-server, syncing and filters-hiding states: 8 goldens.
+- The tablet image showed the Resume card and its button stretched across 1264 dp; the card is now at most 640 dp wide.
+- Covers are the app's placeholders (no Coil in the test).
+- **Add Server (R2 step 2):** `ui/screenshots/AddServerScreenshotTest` draws the internal `AbsAddSection` and `JellyfinAddSection` (they already take plain state, so no refactor was needed) for the Audiobookshelf form and its error, the Jellyfin form, the Quick Connect wait with a code and the libraries step, in dark, light and at font scale 2.0 (a tall window, since the page scrolls in the app):
+  - 11 goldens.
+- Plex's section needs a refactor and is not covered.
+- **Mini player (R2 step 2, R25):** `ui/screenshots/MiniPlayerScreenshotTest` draws `MiniPlayerContent` with a short and a very long title in dark and light, at font scale 2.0, in landscape (800 x 360 dp) and at a 10 inch tablet width (1280 x 800 dp): 5 goldens.
+- Nothing clipped; at scale 2.0 a long title shortens to one line (the full title is in the content description).
+- Each test can set its own window with `@Config(qualifiers = ...)`, the way to add tablet and landscape cases for other screens.
 
-- **Settings pages (R25):** `ui/screenshots/SettingsPageScreenshotTest` draws the shared `SettingsPage` frame with switch cards on a phone, in landscape and on a tablet: 3 goldens. `SettingsPage` and Add Server now keep their content in a column at most 640 dp wide (`SETTINGS_MAX_WIDTH`), centred; before, the cards ran across the whole tablet. Other settings pages use `SettingsPage`, so they follow.
+- **Book details (R2 step 2, R25):** `ui/screenshots/DetailsScreenshotTest` draws `BookDetailsContent` (already stateless) with the chapters, about and series states, a long title, playing, finished, downloading, cannot play offline, a play error, loading and not found, in dark, light, at font scale 2.0, in landscape and at a tablet width: 14 goldens.
+- They showed the title breaking inside words beside the cover at 2.0 (the cover now goes above the title from font scale 1.5) and the button, tabs and chapter times stretched across a tablet (the page is now a column at most 720 dp wide).
+- **Library (R2 step 2, R25):** `ui/screenshots/LibraryScreenshotTest` draws `BookLayout` (large grid, small grid, list: long titles, a favourite, a downloaded, a downloading, a finished and a dimmed book, selection mode), `GroupList` and the sign-in-needed state in dark, light, at font scale 2.0, in landscape and at a tablet width: 13 goldens.
+- The tablet images showed two grid tiles 614 dp wide and list rows 1264 dp wide; the grid now takes its column count from the width (`libraryGridColumns`: 2 large and 3 small on a phone, 6 and 10 on a 1280 dp tablet) and the list is at most 720 dp wide.
+- Known and left: on a placeholder cover the favourite heart covers the first letters of the title (real covers show an image).
 
-- **Widgets (R2 step 3):** `ui/screenshots/WidgetScreenshotTest` composes each Glance widget at an exact size with `GlanceAppWidget.compose` (a test widget with `SizeMode.Exact` that calls the internal `NowPlayingContent`, `ListenContent` or `ContinueContent`), inflates the `RemoteViews` into a `FrameLayout` under Robolectric, draws that into a bitmap and captures the bitmap (Roborazzi's View capture needs an Activity). 28 goldens: Now Playing at three widths, with a long title, Resume and empty; Continue Listening with a book and empty; Listen at all ten size buckets in dark, three of them in light and with long titles, plus Resume and empty. Colours are baked for the chosen theme (`widgetColors`), the cover is a drawn bitmap. The goldens showed the title squeezed to 36 to 62 dp at the smallest widths ("A R...", "An Extr..."); Now Playing now shows the skips from 250 dp and the cover from 300 dp, and the Listen bar its cover from 240 dp (a new BAR_MID bucket at 250), so a title keeps 100 dp (`WidgetDimens.ROW_TITLE_COMFORT_DP`). Continue Listening is a single size and was left as is (76 dp for the title at its 180 dp minimum).
+- **Settings pages (R25):** `ui/screenshots/SettingsPageScreenshotTest` draws the shared `SettingsPage` frame with switch cards on a phone, in landscape and on a tablet: 3 goldens.
+- `SettingsPage` and Add Server now keep their content in a column at most 640 dp wide (`SETTINGS_MAX_WIDTH`), centred; before, the cards ran across the whole tablet.
+- Other settings pages use `SettingsPage`, so they follow.
+
+- **Widgets (R2 step 3):** `ui/screenshots/WidgetScreenshotTest` composes each Glance widget at an exact size with `GlanceAppWidget.compose` (a test widget with `SizeMode.Exact` that calls the internal `NowPlayingContent`, `ListenContent` or `ContinueContent`),
+  - inflates the `RemoteViews` into a `FrameLayout` under Robolectric,
+  - draws that into a bitmap and captures the bitmap (Roborazzi's View capture needs an Activity). 31 goldens:
+  - Now Playing at three widths, with a long title, Resume and empty;
+  - Continue Listening with a book and empty;
+  - Listen at all eleven size buckets in dark, three of them in light and with long titles, plus Resume and empty.
+- Colours are baked for the chosen theme (`widgetColors`), the cover is a drawn bitmap.
+- The goldens showed the title squeezed to 36 to 62 dp at the smallest widths ("A R...", "An Extr..."); Now Playing now shows the skips from 250 dp and the cover from 300 dp, and the Listen bar its cover from 240 dp (a new BAR_MID bucket at 250), so a title keeps 100 dp (`WidgetDimens.ROW_TITLE_COMFORT_DP`).
+- Continue Listening is a single size and was left as is (76 dp for the title at its 180 dp minimum).
 
 - Checked on Windows (JDK 17): `verifyRoborazziAndroidHostTest` passes with all 3191 host tests; widening the
   rows' padding by 2 dp made all four screenshot tests fail with "... font_card_dark_100.png is changed"; plain
@@ -58,12 +81,14 @@ Started by review finding R2 (no UI or screenshot tests; layout faults were only
 
 ## Options evaluated (versions: Kotlin 2.4.21, AGP 9.3.3 built-in Kotlin, KMP `com.android.kotlin.multiplatform.library`, CMP 1.12.1, Gradle 9.5, JDK 17)
 
-| Option | Result |
-|---|---|
-| (a) Roborazzi + Robolectric in `androidHostTest` | **Works** (chosen). Roborazzi supports the KMP Android library plugin since PR #758 (Nov 2025); tasks are named after the test variant (`...RoborazziAndroidHostTest`). Gradle 9 race (#830, two Roborazzi test tasks in one invocation sharing an output dir) does not apply: only `androidHostTest` captures; the plugin also adds `...IosSimulatorArm64` tasks, which capture nothing (keep the iOS tests and the Android tests in separate Gradle invocations, as CI does). |
-| (b) Paparazzi | Not used. 1.3.x does not support AGP 9 or the KMP library plugin; 2.0.0-alpha05(.1) adds AGP 9 and the KMP plugin but is a pre-release and since 2.0.0-alpha04 requires **Java 21** (the project builds on JDK 17). |
-| (c) AGP Compose Preview Screenshot Testing (`com.android.compose.screenshot`) | Not used. Google marks the standalone plugin unmaintained in favour of AGP test suites, which need **AGP 9.5** (we are on 9.3); its docs state it supports Android-only projects, not KMP modules; tests must be `@Preview` functions in a `screenshotTest` source set. |
-| (d) `runComposeUiTest` | **Works in `androidHostTest`** under `@RunWith(RobolectricTestRunner::class)` (the androidx `ui-test` artifact already carries it). Not in `commonTest`: there the same test would run on the JVM without the Robolectric runner (no Activity) and also on the iOS simulator; it would need an expect/actual runner base class and `compose.uiTest` in commonTest. Possible later, not worth it now. |
+- (a) Roborazzi + Robolectric in `androidHostTest`: **Works** (chosen).
+- Roborazzi supports the KMP Android library plugin since PR #758 (Nov 2025); tasks are named after the test variant (`...RoborazziAndroidHostTest`).
+- Gradle 9 race (#830, two Roborazzi test tasks in one invocation sharing an output dir) does not apply: only `androidHostTest` captures; the plugin also adds `...IosSimulatorArm64` tasks, which capture nothing (keep the iOS tests and the Android tests in separate Gradle invocations, as CI does).
+- (b) Paparazzi: Not used. 1.3.x does not support AGP 9 or the KMP library plugin; 2.0.0-alpha05(.1) adds AGP 9 and the KMP plugin but is a pre-release and since 2.0.0-alpha04 requires **Java 21** (the project builds on JDK 17).
+- (c) AGP Compose Preview Screenshot Testing (`com.android.compose.screenshot`): Not used. Google marks the standalone plugin unmaintained in favour of AGP test suites, which need **AGP 9.5** (we are on 9.3); its docs state it supports Android-only projects, not KMP modules; tests must be `@Preview` functions in a `screenshotTest` source set.
+- (d) `runComposeUiTest`: **Works in `androidHostTest`** under `@RunWith(RobolectricTestRunner::class)` (the androidx `ui-test` artifact already carries it).
+- Not in `commonTest`: there the same test would run on the JVM without the Robolectric runner (no Activity) and also on the iOS simulator; it would need an expect/actual runner base class and `compose.uiTest` in commonTest.
+- Possible later, not worth it now.
 
 ## Plan for the full suite (later steps)
 
