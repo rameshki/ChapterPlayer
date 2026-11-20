@@ -136,4 +136,15 @@ class CarRulesTest {
         assertEquals("Jane Doe · 45% listened · Needs a connection", carSubtitle("Jane Doe", 45, true))
         assertEquals("", carSubtitle("  ", 0, false))
     }
+
+    @Test
+    fun `the simulator is trusted like the car only in a debuggable build`() {
+        val sim = "com.google.android.autosimulator"
+        assertEquals(CarTrust.NONE, isTrustedCarController(sim, "com.chapterplayer"))
+        assertEquals(CarTrust.NONE, isTrustedCarController(sim, "com.chapterplayer", debuggable = false))
+        assertEquals(CarTrust.CAR, isTrustedCarController(sim, "com.chapterplayer.debug", debuggable = true))
+        // debuggable changes nothing for an unknown or look-alike package
+        assertEquals(CarTrust.NONE, isTrustedCarController("com.google.android.autosimulator.fake", "com.chapterplayer", debuggable = true))
+        assertEquals(CarTrust.NONE, isTrustedCarController("com.example.other", "com.chapterplayer", debuggable = true))
+    }
 }

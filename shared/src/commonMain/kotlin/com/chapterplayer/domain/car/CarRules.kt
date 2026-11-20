@@ -20,8 +20,10 @@ val TRUSTED_CAR_PACKAGES: Set<String> = setOf(
     "com.google.android.googlequicksearchbox",
     "com.google.android.carassistant",
     "com.android.systemui",
-    "com.google.android.autosimulator",
 )
+
+/** The Desktop Head Unit simulator: trusted like the car only in a debuggable build (review R19), never in a release. */
+val DEBUG_ONLY_CAR_PACKAGES: Set<String> = setOf("com.google.android.autosimulator")
 
 private const val NODE_PREFIX = "car:"
 private const val MAX_RANGE_TITLES = 25
@@ -41,11 +43,12 @@ fun parseCarNodeId(id: String): CarNode? {
     return CarNode(rest.substring(0, colon), rest.substring(colon + 1))
 }
 
-/** The caller's package decides: this app, a known car package, or nobody we trust. */
-fun isTrustedCarController(callerPackage: String?, ownPackage: String): CarTrust = when {
+/** The caller's package decides: this app, a known car package (the simulator only when [debuggable]), or nobody we trust. */
+fun isTrustedCarController(callerPackage: String?, ownPackage: String, debuggable: Boolean = false): CarTrust = when {
     callerPackage == null -> CarTrust.NONE
     callerPackage == ownPackage -> CarTrust.OWN
     callerPackage in TRUSTED_CAR_PACKAGES -> CarTrust.CAR
+    debuggable && callerPackage in DEBUG_ONLY_CAR_PACKAGES -> CarTrust.CAR
     else -> CarTrust.NONE
 }
 

@@ -94,9 +94,9 @@ fun parseCoverUri(uri: String, authority: String): String? {
  * Whether a caller whose user id holds [callerPackages] may read covers: this app or one of the trusted car packages
  * ([isTrustedCarController], the same rule as browsing), matched exactly. Unknown callers are refused.
  */
-fun coverCallerAllowed(callerPackages: List<String>?, ownPackage: String): Boolean {
+fun coverCallerAllowed(callerPackages: List<String>?, ownPackage: String, debuggable: Boolean = false): Boolean {
     if (ownPackage.isBlank() || callerPackages.isNullOrEmpty()) return false
-    return callerPackages.any { isTrustedCarController(it, ownPackage) != CarTrust.NONE }
+    return callerPackages.any { isTrustedCarController(it, ownPackage, debuggable) != CarTrust.NONE }
 }
 
 /** How a cover request is authorised. The token itself is read when the request is made, never kept here. */
