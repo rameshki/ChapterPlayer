@@ -1,5 +1,7 @@
 package com.chapterplayer.ui.settings
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -71,20 +73,26 @@ internal fun SettingsPage(
         },
         floatingActionButton = floatingActionButton
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                // Edge to edge: the keyboard covers the page instead of shrinking it, so the scroll keeps a
-                // focused field (Diagnostics' search) above it.
-                .keyboardOverlapPadding()
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = bottomPadding),
-            content = content
-        )
+        // On a tablet or a phone in landscape the cards stay a readable column instead of stretching across the screen.
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.TopCenter) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = SETTINGS_MAX_WIDTH)
+                    .fillMaxSize()
+                    // Edge to edge: the keyboard covers the page instead of shrinking it, so the scroll keeps a
+                    // focused field (Diagnostics' search) above it.
+                    .keyboardOverlapPadding()
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = bottomPadding),
+                content = content
+            )
+        }
     }
 }
+
+/** The widest a settings page gets; a wider screen leaves the sides empty. */
+internal val SETTINGS_MAX_WIDTH = 640.dp
 
 /** A heading inside a page, such as "Network" or "Connected Servers". */
 @Composable
