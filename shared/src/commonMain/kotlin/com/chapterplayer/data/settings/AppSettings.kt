@@ -17,6 +17,7 @@ import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
 import com.chapterplayer.domain.playback.MIN_PLAYBACK_SPEED
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** The user's app preferences. Every value has a default, so a new install needs no setup. */
@@ -64,6 +65,11 @@ interface AppSettings {
     val playbackSpeed: Flow<Float>
     /** Saves [speed], clamped to 0.5..3.0. */
     suspend fun setPlaybackSpeed(speed: Float)
+
+    /** The speed last chosen for this book (the copy that played), clamped; null when none was, so [playbackSpeed] applies. */
+    suspend fun bookSpeed(bookId: String): Float?
+    /** Remembers [speed] for this book; it wins over [playbackSpeed] the next time the book starts. */
+    suspend fun setBookSpeed(bookId: String, speed: Float)
 
     /** Which copy Download fetches when a book is on several servers; Ask by default. */
     val downloadSourceChoice: Flow<SourceChoice>
@@ -113,6 +119,9 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val browseFilters = stringPreferencesKey("browse_filters")
         val libraryView = stringPreferencesKey("library_view")
     }
+
+    /** One entry per book that had its speed changed; the book id is only ever stored on this phone. */
+    private fun bookSpeedKey(bookId: String) = floatPreferencesKey("book_speed:$bookId")
 
     // A damaged settings file reads as "nothing saved", so the defaults apply.
     private val prefs: Flow<Preferences> = store.data.catch { e ->
@@ -177,6 +186,12 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override suspend fun setPlaybackSpeed(speed: Float) {
         if (speed.isNaN()) return
         store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
+    }
+    override suspend fun bookSpeed(bookId: String): Float? =
+        prefs.first()[bookSpeedKey(bookId)]?.takeIf { !it.isNaN() }?.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED)
+    override suspend fun setBookSpeed(bookId: String, speed: Float) {
+        if (speed.isNaN()) return
+        store.edit { it[bookSpeedKey(bookId)] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
     }
     override suspend fun setDownloadSourceChoice(choice: SourceChoice) = setChoice(Keys.downloadSourceChoice, choice)
     override suspend fun setPlaySourceChoice(choice: SourceChoice) = setChoice(Keys.playSourceChoice, choice)

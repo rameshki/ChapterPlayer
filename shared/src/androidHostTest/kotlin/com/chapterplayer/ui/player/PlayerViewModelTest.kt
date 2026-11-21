@@ -305,6 +305,16 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun `the speed is remembered for the book that is playing and as the last used speed`() = runTest {
+        val s = Setup(book)
+        collect(s)
+        s.controller.playback.value = playing().copy(bookId = "a")
+        s.vm.setSpeed(1.75f)
+        assertEquals(1.75f, s.settings.bookSpeeds["a"])
+        assertEquals(1.75f, s.settings.speed.value)
+    }
+
+    @Test
     fun `a settings failure still changes the speed`() = runTest {
         val s = Setup(book)
         val failing = object : AppSettings by s.settings {

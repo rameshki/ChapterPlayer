@@ -122,7 +122,7 @@ class PlaybackStarter(
         }
         val startMs = atMs ?: startFromProgress(book, online)
         controller.load(book, startMs, origin)
-        applySavedSpeed()
+        applySavedSpeed(book.id)
         controller.play()
         Result.success(Unit)
     } catch (e: CancellationException) {
@@ -215,9 +215,10 @@ class PlaybackStarter(
         if (!running) controller.play()
     }
 
-    private suspend fun applySavedSpeed() {
+    /** The book's own speed when one was chosen for it, else the speed last used. */
+    private suspend fun applySavedSpeed(bookId: String) {
         val speed = try {
-            settings.playbackSpeed.first()
+            settings.bookSpeed(bookId) ?: settings.playbackSpeed.first()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

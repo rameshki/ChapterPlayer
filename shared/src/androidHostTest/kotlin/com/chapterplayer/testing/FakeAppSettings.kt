@@ -61,6 +61,9 @@ class FakeAppSettings(
     val speed = MutableStateFlow(1.0f)
     override val playbackSpeed: Flow<Float> = speed
     override suspend fun setPlaybackSpeed(speed: Float) { this.speed.value = speed }
+    val bookSpeeds = mutableMapOf<String, Float>()
+    override suspend fun bookSpeed(bookId: String): Float? = bookSpeeds[bookId]
+    override suspend fun setBookSpeed(bookId: String, speed: Float) { bookSpeeds[bookId] = speed }
     val downloadChoiceFlow = MutableStateFlow<SourceChoice>(SourceChoice.Ask)
     override val downloadSourceChoice: Flow<SourceChoice> = downloadChoiceFlow
     override suspend fun setDownloadSourceChoice(choice: SourceChoice) {

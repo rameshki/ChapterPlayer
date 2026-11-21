@@ -62,6 +62,11 @@ Detail moved out of `CLAUDE.md` (review R8); keep it current when this area chan
 - The player reads `file://` items through `DefaultDataSource` and HTTP through `AuthorizingDataSourceFactory`.
 - The car's Downloaded tab lists the downloaded books
 
+## Speed per book (review R26)
+- Choosing a speed in the player saves it for the book that is playing (`AppSettings.setBookSpeed`, a `book_speed:<bookId>` entry in DataStore, so no Room migration) and also as the last used speed (`playbackSpeed`).
+- `PlaybackStarter` applies the book's own speed when it has one, else the last used speed, so a new book starts at the speed you last chose and a book you slowed down keeps its speed.
+- Known limit: the key is the copy that played. A book on two servers keeps one speed per copy; there is no clear-speed action yet. Not checked on a phone.
+
 ## Android 15 audio focus
 
 - Android 15 audio focus (R5, targetSdk 36): focus is granted only to the top app or an app with a foreground service.

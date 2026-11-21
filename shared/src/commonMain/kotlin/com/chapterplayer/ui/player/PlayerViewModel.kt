@@ -205,8 +205,11 @@ class PlayerViewModel(
         if (speed.isNaN()) return
         val clamped = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED)
         controller.setSpeed(clamped)
+        val bookId = controller.state.value.bookId
         viewModelScope.launch {
             try {
+                // The book remembers its own speed; the last chosen speed is also what a new book starts at.
+                if (bookId != null) settings.setBookSpeed(bookId, clamped)
                 settings.setPlaybackSpeed(clamped)
             } catch (e: CancellationException) {
                 throw e
