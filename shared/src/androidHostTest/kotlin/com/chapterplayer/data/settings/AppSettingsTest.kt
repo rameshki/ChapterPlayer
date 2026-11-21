@@ -189,6 +189,24 @@ class AppSettingsTest {
         settings.setPlaybackSpeed(Float.NaN)
         assertEquals(1.1f, settings.playbackSpeed.first())
     }
+
+    @Test
+    fun `a book speed is saved per book, clamped, and leaves the last used speed alone`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertEquals(null, settings.bookSpeed("b1"))
+
+        settings.setBookSpeed("b1", 1.5f)
+        settings.setBookSpeed("b2", 9f)
+        settings.setBookSpeed("b3", Float.NaN)
+
+        assertEquals(1.5f, DataStoreAppSettings(store).bookSpeed("b1"))
+        assertEquals(3.0f, settings.bookSpeed("b2"))
+        assertEquals(null, settings.bookSpeed("b3"))
+        assertEquals(null, settings.bookSpeed("b4"))
+        assertEquals(1.0f, settings.playbackSpeed.first())
+    }
+
     @Test
     fun `both source choices default to asking and are saved separately`() = runTest {
         val store = InMemoryPreferencesDataStore()

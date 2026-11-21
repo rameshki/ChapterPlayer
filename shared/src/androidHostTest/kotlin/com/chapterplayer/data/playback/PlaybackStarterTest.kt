@@ -113,6 +113,38 @@ class PlaybackStarterTest {
     }
 
     @Test
+    fun `a speed chosen for the book wins over the last used speed`() = runTest {
+        settings.speed.value = 1.5f
+        settings.bookSpeeds[book.id] = 2.0f
+
+        PlaybackStarter(controller, repo, settings, connectivity, local).start(book, 0L)
+
+        assertEquals(listOf(2.0f), controller.speeds)
+    }
+
+    @Test
+    fun `a book with no speed of its own starts at the last used speed`() = runTest {
+        settings.speed.value = 1.25f
+        settings.bookSpeeds["some-other-book"] = 2.0f
+
+        PlaybackStarter(controller, repo, settings, connectivity, local).start(book, 0L)
+
+        assertEquals(listOf(1.25f), controller.speeds)
+    }
+
+    @Test
+    fun `an unreadable book speed falls back to the last used speed`() = runTest {
+        settings.speed.value = 1.25f
+        val failing = object : com.chapterplayer.data.settings.AppSettings by settings {
+            override suspend fun bookSpeed(bookId: String): Float? = error("storage unavailable")
+        }
+
+        PlaybackStarter(controller, repo, failing, connectivity, local).start(book, 0L)
+
+        assertEquals(listOf(1.25f), controller.speeds)
+    }
+
+    @Test
     fun `an unreadable saved speed does not stop the book playing`() = runTest {
         val failing = object : com.chapterplayer.data.settings.AppSettings by settings {
             override val playbackSpeed: kotlinx.coroutines.flow.Flow<Float> = kotlinx.coroutines.flow.flow { error("storage unavailable") }
