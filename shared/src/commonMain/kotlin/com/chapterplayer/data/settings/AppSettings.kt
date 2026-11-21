@@ -23,6 +23,8 @@ import com.chapterplayer.domain.playback.SKIP_FORWARD_CHOICES_SEC
 import com.chapterplayer.domain.playback.normalizedSkipSec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -77,6 +79,15 @@ interface AppSettings {
     suspend fun setSkipBackSeconds(seconds: Int)
     val skipForwardSeconds: Flow<Int>
     suspend fun setSkipForwardSeconds(seconds: Int)
+
+    /**
+     * Both lengths as one pair (back, forward), in seconds, emitted only when one of them changes; the defaults when the
+     * setting cannot be read. What the player, the widgets, the notification and iOS follow.
+     */
+    val skipLengths: Flow<Pair<Int, Int>>
+        get() = combine(skipBackSeconds, skipForwardSeconds) { back, forward -> back to forward }
+            .distinctUntilChanged()
+            .catch { emit(DEFAULT_SKIP_BACK_SEC to DEFAULT_SKIP_FORWARD_SEC) }
 
     /** The speed last chosen for this book (the copy that played), clamped; null when none was, so [playbackSpeed] applies. */
     suspend fun bookSpeed(bookId: String): Float?

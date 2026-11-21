@@ -49,7 +49,6 @@ import com.chapterplayer.ui.widgets.PlaybackNotices
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -199,7 +198,7 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         }
         scope.launch {
             try {
-                combine(skipSettings.skipBackSeconds, skipSettings.skipForwardSeconds) { back, forward -> back to forward }
+                skipSettings.skipLengths
                     .collect { (back, forward) ->
                         sessionPlayer.setSkipLengths(back * 1000L, forward * 1000L)
                         session?.setMediaButtonPreferences(skipButtons(back, forward))

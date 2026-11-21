@@ -1,8 +1,5 @@
 package com.chapterplayer.data.widgets
 
-import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
-import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
-import kotlinx.coroutines.flow.catch
 import com.chapterplayer.data.DownloadStates
 import com.chapterplayer.data.connectivity.ConnectivityMonitor
 import com.chapterplayer.data.merge.SourceMerging
@@ -56,9 +53,7 @@ class WidgetStates(
         get() = combine(merged.items, connectivity.isOnline, settings.downloadedOnly, ::Library)
 
     /** The back and forward lengths in seconds; the defaults when the setting cannot be read. */
-    private val skipLengths: Flow<Pair<Int, Int>> =
-        combine(settings.skipBackSeconds, settings.skipForwardSeconds) { back, forward -> back to forward }
-            .catch { emit(DEFAULT_SKIP_BACK_SEC to DEFAULT_SKIP_FORWARD_SEC) }
+    private val skipLengths: Flow<Pair<Int, Int>> = settings.skipLengths
 
     private val library: Flow<Library> = scope?.let {
         freshLibrary.shareIn(it, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), replay = 1)

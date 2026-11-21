@@ -21,5 +21,3 @@ fun skipForwardLabel(seconds: Int): String = "Forward $seconds seconds"
 /** The Settings row's summary line, e.g. "Back 15 s, forward 30 s". */
 fun skipSummary(backSec: Int, forwardSec: Int): String = "Back $backSec s, forward $forwardSec s"
 
-/** The lengths the notification can draw with a number on its arrow (Media3 has icons for these only); others get a plain arrow. */
-val NUMBERED_NOTIFICATION_SKIPS_SEC = setOf(5, 10, 15, 30)
