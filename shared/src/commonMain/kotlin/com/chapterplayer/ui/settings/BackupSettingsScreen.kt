@@ -48,6 +48,7 @@ fun BackupSettingsScreen(onBack: () -> Unit, viewModel: BackupViewModel = koinVi
             }
         },
         onRestore = viewModel::restore,
+        onPasteOpened = viewModel::messageShown,
         onBack = onBack,
     )
 }
@@ -59,6 +60,7 @@ internal fun BackupSettingsContent(
     copiedNote: Boolean,
     onExport: () -> Unit,
     onRestore: (String) -> Unit,
+    onPasteOpened: () -> Unit,
     onBack: () -> Unit,
 ) {
     var pasting by remember { mutableStateOf(false) }
@@ -66,7 +68,7 @@ internal fun BackupSettingsContent(
         SectionTitle("Back up")
         Text(
             "Makes a text with your favourites, Up next, corrections to merged books and these settings: theme, font, " +
-                "layout, speed, skip lengths and a few more. Books are named by server address and id. It holds no " +
+                "layout, speed, skip lengths and a few more (not the Wi-Fi only and Android Auto choices, which belong to the phone). Books are named by server address and id. It holds no " +
                 "passwords or tokens, but your server addresses and book titles are in it: keep it to yourself.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
@@ -97,7 +99,7 @@ internal fun BackupSettingsContent(
         )
         Spacer(Modifier.height(12.dp))
         OutlinedButton(
-            onClick = { pasting = true },
+            onClick = { onPasteOpened(); pasting = true },
             enabled = !state.busy,
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         ) { Text("Paste a backup") }

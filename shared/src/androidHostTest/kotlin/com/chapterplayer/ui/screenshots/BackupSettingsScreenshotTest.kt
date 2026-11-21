@@ -32,7 +32,7 @@ class BackupSettingsScreenshotTest {
     private fun shot(name: String, theme: ThemeMode, fontScale: Float, state: BackupUiState) {
         compose.setContent {
             ScreenshotFrame(theme, fontScale, padded = false) {
-                BackupSettingsContent(state, copiedNote = false, onExport = {}, onRestore = {}, onBack = {})
+                BackupSettingsContent(state, copiedNote = false, onExport = {}, onRestore = {}, onPasteOpened = {}, onBack = {})
             }
         }
         compose.onRoot().captureRoboImage(screenshotPath(name), roborazziOptions = SCREENSHOT_OPTIONS)

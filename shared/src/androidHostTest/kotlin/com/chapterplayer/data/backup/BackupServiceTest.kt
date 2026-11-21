@@ -93,7 +93,9 @@ class BackupServiceTest {
         first.settings.setThemeMode(ThemeMode.LIGHT)
         first.settings.setAppFont(AppFont.entries.last())
         first.settings.setSkipBackSeconds(60)
+        first.settings.setPlaybackSpeed(1.75f)
         first.settings.setResumeOnCarConnect(false)
+        first.settings.setDownloadWifiOnly(false)
         val text = first.service.export()
 
         // Another install: its own server id for the same address, the same books.
@@ -108,8 +110,11 @@ class BackupServiceTest {
         assertEquals(listOf(BookMergeEntity("b1", "b2", "SPLIT")), second.merges.rows.value)
         assertEquals(ThemeMode.LIGHT, second.settings.theme.value)
         assertEquals(60, second.settings.skipBack.value)
-        assertFalse(second.settings.carResume.value)
-        assertTrue(done.summary.startsWith("Restored 1 favourite, 2 in Up next, 1 correction"), done.summary)
+        assertEquals(1.75f, second.settings.speed.value)
+        // The settings that belong to the phone stay as they were.
+        assertTrue(second.settings.carResume.value)
+        assertTrue(second.settings.wifiOnly.value)
+        assertTrue(done.summary.startsWith("Restored 1 favourite, 2 in Up next, 1 correction, 8 settings"), done.summary)
     }
 
     @Test

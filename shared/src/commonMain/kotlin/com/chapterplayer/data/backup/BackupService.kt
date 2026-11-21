@@ -25,6 +25,8 @@ import com.chapterplayer.domain.backup.decodeBackup
 import com.chapterplayer.domain.backup.encodeBackup
 import com.chapterplayer.domain.backup.restorePlan
 import com.chapterplayer.domain.backup.restoreSummary
+import com.chapterplayer.domain.playback.SKIP_BACK_CHOICES_SEC
+import com.chapterplayer.domain.playback.SKIP_FORWARD_CHOICES_SEC
 import com.chapterplayer.domain.backup.serverKey
 import kotlinx.coroutines.flow.first
 import kotlin.time.Clock
@@ -111,8 +113,6 @@ class BackupService(
         theme = settings.themeMode.first().name,
         font = settings.appFont.first().name,
         libraryLayout = settings.libraryLayout.first().name,
-        resumeOnCarConnect = settings.resumeOnCarConnect.first(),
-        downloadWifiOnly = settings.downloadWifiOnly.first(),
         playbackSpeed = settings.playbackSpeed.first(),
         skipBackSeconds = settings.skipBackSeconds.first(),
         skipForwardSeconds = settings.skipForwardSeconds.first(),
@@ -126,11 +126,10 @@ class BackupService(
         s.theme?.let { name -> ThemeMode.entries.firstOrNull { it.name == name }?.let { settings.setThemeMode(it); n++ } }
         s.font?.let { name -> AppFont.entries.firstOrNull { it.name == name }?.let { settings.setAppFont(it); n++ } }
         s.libraryLayout?.let { name -> LibraryLayout.entries.firstOrNull { it.name == name }?.let { settings.setLibraryLayout(it); n++ } }
-        s.resumeOnCarConnect?.let { settings.setResumeOnCarConnect(it); n++ }
-        s.downloadWifiOnly?.let { settings.setDownloadWifiOnly(it); n++ }
-        s.playbackSpeed?.let { settings.setPlaybackSpeed(it); n++ }
-        s.skipBackSeconds?.let { settings.setSkipBackSeconds(it); n++ }
-        s.skipForwardSeconds?.let { settings.setSkipForwardSeconds(it); n++ }
+        // Only a value the app would accept counts as restored (the setters ignore the rest).
+        s.playbackSpeed?.takeIf { !it.isNaN() }?.let { settings.setPlaybackSpeed(it); n++ }
+        s.skipBackSeconds?.takeIf { it in SKIP_BACK_CHOICES_SEC }?.let { settings.setSkipBackSeconds(it); n++ }
+        s.skipForwardSeconds?.takeIf { it in SKIP_FORWARD_CHOICES_SEC }?.let { settings.setSkipForwardSeconds(it); n++ }
         s.mirrorProgress?.let { settings.setMirrorProgress(it); n++ }
         s.crossSyncOnAdd?.let { settings.setCrossSyncOnAdd(it); n++ }
         return n

@@ -32,6 +32,15 @@ class BackupTest {
         assertNull(index.resolve(ref("old.example", "zzz")))
     }
 
+    @Test fun `a correction needs an exact match and is skipped when only the title matches`() {
+        val file = BackupFile(
+            corrections = listOf(BackupCorrection(ref("old.example", "zzz", "The Second Book", "A. Writer"), ref("abs.example:13378", "b1"), "SPLIT")),
+        )
+        val plan = restorePlan(file, index, emptySet(), emptyList())
+        assertEquals(emptyList(), plan.corrections)
+        assertEquals(1, plan.skipped)
+    }
+
     @Test fun `server keys ignore scheme case and trailing slashes`() {
         assertEquals("host.example:1", serverKey("HTTPS://Host.Example:1/"))
         assertEquals(serverKey("http://host.example:1"), serverKey("https://host.example:1//"))
@@ -43,7 +52,7 @@ class BackupTest {
             favourites = listOf(BackupFavourite(ref("s", "b1", "T", "A"), 7L)),
             upNext = listOf(BackupQueued(ref("s", "b2"))),
             corrections = listOf(BackupCorrection(ref("s", "b1"), ref("s", "b2"), "SPLIT")),
-            settings = BackupSettings(theme = "DARK", skipBackSeconds = 30, resumeOnCarConnect = false),
+            settings = BackupSettings(theme = "DARK", skipBackSeconds = 30, mirrorProgress = false),
         )
         assertEquals(BackupParse.Ok(file), decodeBackup(encodeBackup(file)))
     }
@@ -51,6 +60,9 @@ class BackupTest {
     @Test fun `text that is not a backup is refused`() {
         assertEquals(BackupParse.NotABackup, decodeBackup(""))
         assertEquals(BackupParse.NotABackup, decodeBackup("hello"))
+        assertEquals(BackupParse.NotABackup, decodeBackup("{}"))
+        assertEquals(BackupParse.NotABackup, decodeBackup("{\"favourites\":[]}"))
+        assertEquals(BackupParse.NotABackup, decodeBackup("[1,2]"))
         assertEquals(BackupParse.NotABackup, decodeBackup("{\"format\":\"something-else\"}"))
         assertEquals(BackupParse.NotABackup, decodeBackup("{\"favourites\":[{\"oops\":1}]}"))
     }
