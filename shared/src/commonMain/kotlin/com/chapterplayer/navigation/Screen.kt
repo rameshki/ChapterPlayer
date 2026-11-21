@@ -42,6 +42,7 @@ sealed class Screen(val route: String) {
     object SettingsPlayback : Screen("settings/playback")
     object SettingsDownloads : Screen("settings/downloads")
     object SettingsCar : Screen("settings/car")
+    object SettingsBackup : Screen("settings/backup")
     object SettingsAbout : Screen("settings/about")
     /** Debug builds only; the About page offers it. */
     object SettingsDiagnostics : Screen("settings/diagnostics")
