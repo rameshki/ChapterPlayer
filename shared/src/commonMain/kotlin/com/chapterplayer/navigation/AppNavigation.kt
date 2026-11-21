@@ -78,6 +78,7 @@ import com.chapterplayer.ui.settings.AppearanceSettingsScreen
 import com.chapterplayer.ui.settings.CarSettingsScreen
 import com.chapterplayer.ui.settings.DownloadsSettingsScreen
 import com.chapterplayer.ui.settings.ServersSettingsScreen
+import com.chapterplayer.ui.settings.PlaybackSettingsScreen
 import com.chapterplayer.ui.settings.SettingsHubScreen
 import com.chapterplayer.ui.stats.StatsScreen
 import com.chapterplayer.ui.theme.AmberGold
@@ -293,6 +294,7 @@ fun AppNavigation() {
                             onOpenServers = { navController.navigate(Screen.SettingsServers.route) { launchSingleTop = true } },
                             onOpenAppearance = { navController.navigate(Screen.SettingsAppearance.route) { launchSingleTop = true } },
                             onOpenStats = { openStats() },
+                            onOpenPlayback = { navController.navigate(Screen.SettingsPlayback.route) { launchSingleTop = true } },
                             onOpenDownloads = { navController.navigate(Screen.SettingsDownloads.route) { launchSingleTop = true } },
                             onOpenCar = { navController.navigate(Screen.SettingsCar.route) { launchSingleTop = true } },
                             onOpenAbout = { navController.navigate(Screen.SettingsAbout.route) { launchSingleTop = true } },
@@ -318,6 +320,10 @@ fun AppNavigation() {
 
                     composable(Screen.SettingsAppearance.route) {
                         AppearanceSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    composable(Screen.SettingsPlayback.route) {
+                        PlaybackSettingsScreen(onBack = { navController.popBackStack() })
                     }
 
                     composable(Screen.SettingsDownloads.route) {

@@ -14,7 +14,12 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import com.chapterplayer.data.diagnostics.PlaybackJournal
+import com.chapterplayer.data.settings.AppSettings
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
 import com.chapterplayer.domain.playback.IdleStopPolicy
+import com.chapterplayer.domain.playback.skipBackLabel
+import com.chapterplayer.domain.playback.skipForwardLabel
 import com.chapterplayer.domain.playback.IdleTimerAction
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -42,7 +47,9 @@ import com.chapterplayer.domain.widgets.ForegroundRefusalAction
 import com.chapterplayer.domain.widgets.foregroundRefusalAction
 import com.chapterplayer.ui.widgets.PlaybackNotices
 import com.google.common.collect.ImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -184,22 +191,54 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
         })
         // The media notification wears the app's own small icon, not Media3's default.
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().also { it.setSmallIcon(R.drawable.ic_notification) })
+        val skipSettings = get<AppSettings>()
         session = builder.build().also {
-            // The notification and the lock screen show 15 s back and 30 s forward, not file skipping.
-            it.setMediaButtonPreferences(
-                ImmutableList.of(
-                    CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-                        .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-                        .setDisplayName("Back 15 seconds")
-                        .build(),
-                    CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_30)
-                        .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-                        .setDisplayName("Forward 30 seconds")
-                        .build(),
-                )
-            )
+            // The notification and the lock screen show the chosen skip lengths (15 s back and 30 s forward until
+            // chosen), not file skipping. The buttons and the player follow the setting while the service runs.
+            it.setMediaButtonPreferences(skipButtons(DEFAULT_SKIP_BACK_SEC, DEFAULT_SKIP_FORWARD_SEC))
+        }
+        scope.launch {
+            try {
+                combine(skipSettings.skipBackSeconds, skipSettings.skipForwardSeconds) { back, forward -> back to forward }
+                    .collect { (back, forward) ->
+                        sessionPlayer.setSkipLengths(back * 1000L, forward * 1000L)
+                        session?.setMediaButtonPreferences(skipButtons(back, forward))
+                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The buttons keep the lengths known so far.
+            }
         }
     }
+
+    // The notification's two skip buttons: Media3 draws a number on the arrow for 5, 10, 15 and 30 seconds only.
+    private fun skipButtons(backSec: Int, forwardSec: Int): ImmutableList<CommandButton> = ImmutableList.of(
+        CommandButton.Builder(
+            when (backSec) {
+                5 -> CommandButton.ICON_SKIP_BACK_5
+                10 -> CommandButton.ICON_SKIP_BACK_10
+                15 -> CommandButton.ICON_SKIP_BACK_15
+                30 -> CommandButton.ICON_SKIP_BACK_30
+                else -> CommandButton.ICON_SKIP_BACK
+            }
+        )
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+            .setDisplayName(skipBackLabel(backSec))
+            .build(),
+        CommandButton.Builder(
+            when (forwardSec) {
+                5 -> CommandButton.ICON_SKIP_FORWARD_5
+                10 -> CommandButton.ICON_SKIP_FORWARD_10
+                15 -> CommandButton.ICON_SKIP_FORWARD_15
+                30 -> CommandButton.ICON_SKIP_FORWARD_30
+                else -> CommandButton.ICON_SKIP_FORWARD
+            }
+        )
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+            .setDisplayName(skipForwardLabel(forwardSec))
+            .build(),
+    )
 
     // Android refused the playback a person asked for from the background (the foreground start, or audio focus):
     // the book is paused and "Tap to keep listening" opens the player, from where Play is allowed.
@@ -333,6 +372,19 @@ class PlaybackService : MediaLibraryService(), KoinComponent {
             val here = index == exo.currentMediaItemIndex && abs(positionMs - exo.currentPosition) <= SAME_PLACE_MS
             if (!here) exo.seekTo(index, positionMs)
         }
+
+        // The lengths the person chose (Settings, Playback); the notification, the car and headset buttons all ask the player.
+        private var skipBackMs = SEEK_BACK_MS
+        private var skipForwardMs = SEEK_FORWARD_MS
+
+        fun setSkipLengths(backMs: Long, forwardMs: Long) {
+            skipBackMs = backMs
+            skipForwardMs = forwardMs
+        }
+
+        override fun getSeekBackIncrement(): Long = skipBackMs
+
+        override fun getSeekForwardIncrement(): Long = skipForwardMs
 
         override fun seekBack() {
             if (!seekByBook(-seekBackIncrement)) super.seekBack()

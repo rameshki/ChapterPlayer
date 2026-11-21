@@ -208,6 +208,22 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `skip lengths default to 15 and 30 are saved and a value that is not a choice is ignored`() = runTest {
+        val store = InMemoryPreferencesDataStore()
+        val settings = DataStoreAppSettings(store)
+        assertEquals(15, settings.skipBackSeconds.first())
+        assertEquals(30, settings.skipForwardSeconds.first())
+
+        settings.setSkipBackSeconds(10)
+        settings.setSkipForwardSeconds(90)
+        settings.setSkipBackSeconds(7)
+        settings.setSkipForwardSeconds(5)
+
+        assertEquals(10, DataStoreAppSettings(store).skipBackSeconds.first())
+        assertEquals(90, DataStoreAppSettings(store).skipForwardSeconds.first())
+    }
+
+    @Test
     fun `both source choices default to asking and are saved separately`() = runTest {
         val store = InMemoryPreferencesDataStore()
         val settings = DataStoreAppSettings(store)

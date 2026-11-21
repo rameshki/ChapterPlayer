@@ -39,6 +39,7 @@ sealed class Screen(val route: String) {
     object Settings : Screen("settings")
     object SettingsServers : Screen("settings/servers")
     object SettingsAppearance : Screen("settings/appearance")
+    object SettingsPlayback : Screen("settings/playback")
     object SettingsDownloads : Screen("settings/downloads")
     object SettingsCar : Screen("settings/car")
     object SettingsAbout : Screen("settings/about")

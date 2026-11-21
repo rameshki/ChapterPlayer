@@ -13,6 +13,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioSession
@@ -78,7 +80,7 @@ import platform.darwin.NSObjectProtocol
 class IosPlaybackController private constructor(
     private val core: EnginePlaybackController,
     private val engine: AvPlayerEngine,
-) : PlaybackController by core {
+) : PlaybackController by core, SkipLengthsAware {
 
     private val scope = MainScope()
     private val observers = mutableListOf<NSObjectProtocol>()
@@ -146,6 +148,24 @@ class IosPlaybackController private constructor(
     }
 
     // -- Remote commands -----------------------------------------------------------------------
+
+    // The lock screen's skip buttons show the person's lengths; the engine skips by the same ones.
+    override fun followSkipLengths(lengths: Flow<Pair<Int, Int>>) {
+        core.followSkipLengths(lengths)
+        scope.launch {
+            try {
+                lengths.collect { (back, forward) ->
+                    val center = MPRemoteCommandCenter.sharedCommandCenter()
+                    center.skipForwardCommand.preferredIntervals = listOf(NSNumber(double = forward.toDouble()))
+                    center.skipBackwardCommand.preferredIntervals = listOf(NSNumber(double = back.toDouble()))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The buttons keep their last lengths.
+            }
+        }
+    }
 
     private fun registerRemoteCommands() {
         val center = MPRemoteCommandCenter.sharedCommandCenter()

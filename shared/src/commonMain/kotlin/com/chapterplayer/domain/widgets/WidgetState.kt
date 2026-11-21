@@ -1,5 +1,7 @@
 package com.chapterplayer.domain.widgets
 
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
 import com.chapterplayer.data.model.AudioBook
 import com.chapterplayer.data.playback.PlaybackState
 import com.chapterplayer.domain.browse.BrowseItem
@@ -43,8 +45,15 @@ sealed interface NowPlayingWidgetState {
         val canSkip: Boolean,
         /** The loaded book (its cover). */
         val bookId: String,
+        /** The lengths of the back and forward buttons, in seconds (Settings, Playback). */
+        val skipBackSec: Int = DEFAULT_SKIP_BACK_SEC,
+        val skipForwardSec: Int = DEFAULT_SKIP_FORWARD_SEC,
     ) : NowPlayingWidgetState
 }
+
+/** This state with the person's skip lengths on its buttons; states without skip buttons are unchanged. */
+fun NowPlayingWidgetState.withSkips(backSec: Int, forwardSec: Int): NowPlayingWidgetState =
+    if (this is NowPlayingWidgetState.Book) copy(skipBackSec = backSec, skipForwardSec = forwardSec) else this
 
 /**
  * The Now Playing widget for the player's [state]. [book] is the repository's copy of the loaded book; a different

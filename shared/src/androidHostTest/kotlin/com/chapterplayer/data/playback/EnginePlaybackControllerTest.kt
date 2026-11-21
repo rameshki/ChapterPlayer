@@ -227,6 +227,34 @@ class EnginePlaybackControllerTest {
     }
 
     @Test
+    fun `the skip buttons follow the lengths the person chose`() = rigTest { r ->
+        val lengths = kotlinx.coroutines.flow.MutableStateFlow(10 to 60)
+        r.controller.followSkipLengths(lengths)
+        testScheduler.runCurrent()
+        r.controller.load(book, 90_000L)
+        r.controller.skipForward()
+        assertEquals(1 to 50_000L, r.engine.currentIndex to r.engine.currentOffsetMs)
+        r.controller.skipBack()
+        assertEquals(1 to 40_000L, r.engine.currentIndex to r.engine.currentOffsetMs)
+
+        lengths.value = 5 to 30
+        testScheduler.runCurrent()
+        r.controller.skipBack()
+        assertEquals(1 to 35_000L, r.engine.currentIndex to r.engine.currentOffsetMs)
+        r.controller.skipForward()
+        assertEquals(1 to 65_000L, r.engine.currentIndex to r.engine.currentOffsetMs)
+    }
+
+    @Test
+    fun `a failing skip length source keeps the lengths known so far`() = rigTest { r ->
+        r.controller.followSkipLengths(kotlinx.coroutines.flow.flow { error("storage unavailable") })
+        testScheduler.runCurrent()
+        r.controller.load(book, 90_000L)
+        r.controller.skipForward()
+        assertEquals(1 to 20_000L, r.engine.currentIndex to r.engine.currentOffsetMs)
+    }
+
+    @Test
     fun `play after a pause rewinds a little and a jump while paused does not`() = rigTest { r ->
         r.controller.load(book, 50_000L)
         r.controller.play()

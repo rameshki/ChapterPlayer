@@ -45,10 +45,10 @@ interface PlaybackController {
     /** Sets, changes or (with [SleepTimer.Off]) clears the sleep timer. Time played counts from now. */
     fun setSleepTimer(timer: SleepTimer)
 
-    /** Jumps back 15 seconds on the book's timeline. */
+    /** Jumps back by the chosen skip length (15 seconds by default) on the book's timeline. */
     fun skipBack()
 
-    /** Jumps forward 30 seconds on the book's timeline. */
+    /** Jumps forward by the chosen skip length (30 seconds by default) on the book's timeline. */
     fun skipForward()
 
     /** Jumps to the start of the chapter at [index] in [PlaybackState.chapters]; an unknown index does nothing. */

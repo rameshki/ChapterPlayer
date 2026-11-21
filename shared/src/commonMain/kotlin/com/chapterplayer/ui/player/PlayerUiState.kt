@@ -1,6 +1,8 @@
 package com.chapterplayer.ui.player
 
 import com.chapterplayer.domain.browse.ChapterRow
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
 import com.chapterplayer.domain.playback.PlayerEmptyView
 import com.chapterplayer.domain.playback.SleepTimer
 
@@ -29,6 +31,9 @@ data class PlayerUiState(
     val chapterElapsed: String? = null,
     val chapterRemaining: String? = null,
     val timeLeft: String = "",
+    /** The lengths of the back and forward buttons, in seconds (Settings, Playback). */
+    val skipBackSec: Int = DEFAULT_SKIP_BACK_SEC,
+    val skipForwardSec: Int = DEFAULT_SKIP_FORWARD_SEC,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     /** Offer Pause (not Play): playing, or buffering with playback asked for. */

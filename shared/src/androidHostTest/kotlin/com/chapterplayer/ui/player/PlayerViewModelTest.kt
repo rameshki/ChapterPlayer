@@ -315,6 +315,16 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun `the buttons carry the skip lengths from settings`() = runTest {
+        val s = Setup(book)
+        collect(s)
+        assertEquals(15 to 30, s.vm.uiState.value.skipBackSec to s.vm.uiState.value.skipForwardSec)
+        s.settings.skipBack.value = 45
+        s.settings.skipForward.value = 90
+        assertEquals(45 to 90, s.vm.uiState.value.skipBackSec to s.vm.uiState.value.skipForwardSec)
+    }
+
+    @Test
     fun `a failed book write still saves the last used speed`() = runTest {
         val s = Setup(book)
         s.controller.playback.value = playing().copy(bookId = "a")

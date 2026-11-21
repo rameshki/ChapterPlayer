@@ -1,5 +1,7 @@
 package com.chapterplayer.ui.widgets
 
+import com.chapterplayer.domain.playback.skipBackLabel
+import com.chapterplayer.domain.playback.skipForwardLabel
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -163,11 +165,11 @@ private fun RowScope.WideBook(state: NowPlayingWidgetState.Book, cover: Bitmap?,
         }
     }
     if (showSkips) {
-        WidgetIconButton(R.drawable.ic_widget_back, "Back 15 seconds", colors.icon, actionRunCallback<SkipBackAction>(), label = "15")
+        WidgetIconButton(R.drawable.ic_widget_back, skipBackLabel(state.skipBackSec), colors.icon, actionRunCallback<SkipBackAction>(), label = "${state.skipBackSec}")
     }
     PlayPause(state, colors)
     if (showSkips) {
-        WidgetIconButton(R.drawable.ic_widget_forward, "Forward 30 seconds", colors.icon, actionRunCallback<SkipForwardAction>(), label = "30")
+        WidgetIconButton(R.drawable.ic_widget_forward, skipForwardLabel(state.skipForwardSec), colors.icon, actionRunCallback<SkipForwardAction>(), label = "${state.skipForwardSec}")
     }
 }
 

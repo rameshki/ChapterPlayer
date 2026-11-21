@@ -1,5 +1,9 @@
 package com.chapterplayer.ui.widgets
 
+import com.chapterplayer.domain.playback.skipBackLabel
+import com.chapterplayer.domain.playback.skipForwardLabel
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
@@ -233,15 +237,17 @@ private fun Secondary(text: String, colors: WidgetColors, sizeSp: Float = Listen
 @Composable
 private fun Buttons(context: Context, state: ListenWidgetState, layout: ListenLayout, colors: WidgetColors) {
     val side = layout.sideButtonDp.dp
+    val backSec = (state as? ListenWidgetState.Controls)?.skipBackSec ?: DEFAULT_SKIP_BACK_SEC
+    val forwardSec = (state as? ListenWidgetState.Controls)?.skipForwardSec ?: DEFAULT_SKIP_FORWARD_SEC
     if (layout.showChapterButtons) {
         WidgetIconButton(R.drawable.ic_widget_previous_chapter, "Previous chapter", colors.icon, actionRunCallback<ListenPreviousChapterAction>(), size = side)
     }
     if (layout.showSkips) {
-        WidgetIconButton(R.drawable.ic_widget_back, "Back 15 seconds", colors.icon, actionRunCallback<ListenSkipBackAction>(), size = side, label = "15")
+        WidgetIconButton(R.drawable.ic_widget_back, skipBackLabel(backSec), colors.icon, actionRunCallback<ListenSkipBackAction>(), size = side, label = "$backSec")
     }
     PlayButton(context, state, colors, layout.playButtonDp.dp)
     if (layout.showSkips) {
-        WidgetIconButton(R.drawable.ic_widget_forward, "Forward 30 seconds", colors.icon, actionRunCallback<ListenSkipForwardAction>(), size = side, label = "30")
+        WidgetIconButton(R.drawable.ic_widget_forward, skipForwardLabel(forwardSec), colors.icon, actionRunCallback<ListenSkipForwardAction>(), size = side, label = "$forwardSec")
     }
     if (layout.showChapterButtons) {
         WidgetIconButton(R.drawable.ic_widget_next_chapter, "Next chapter", colors.icon, actionRunCallback<ListenNextChapterAction>(), size = side)

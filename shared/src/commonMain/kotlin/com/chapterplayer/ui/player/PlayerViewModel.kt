@@ -13,6 +13,8 @@ import com.chapterplayer.domain.browse.currentChapterIndex
 import com.chapterplayer.domain.browse.formatClock
 import com.chapterplayer.domain.browse.formatTimeLeft
 import com.chapterplayer.domain.playback.Bookmark
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
 import com.chapterplayer.domain.playback.HistoryEntry
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.domain.playback.StartStatus
@@ -38,6 +40,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -88,9 +91,16 @@ class PlayerViewModel(
             .distinctUntilChanged()
     }
 
+    // The skip lengths the person chose (Settings, Playback): the buttons' numbers and labels follow them.
+    private val skipLengths = combine(settings.skipBackSeconds, settings.skipForwardSeconds) { back, forward -> back to forward }
+        .catch { emit(DEFAULT_SKIP_BACK_SEC to DEFAULT_SKIP_FORWARD_SEC) }
+
     val uiState: StateFlow<PlayerUiState> = combine(
-        controller.state, controller.sleepTimer, playingBook, dismissedError, startStatus
-    ) { state, timer, book, dismissed, start -> buildState(state, timer, book, dismissed, start) }
+        combine(controller.state, controller.sleepTimer, playingBook, dismissedError, startStatus) { state, timer, book, dismissed, start ->
+            buildState(state, timer, book, dismissed, start)
+        },
+        skipLengths
+    ) { built, (back, forward) -> built.copy(skipBackSec = back, skipForwardSec = forward) }
         .flowOn(dispatcher)
         // Seeded from the player, so a screen opened while a book plays draws it from the first frame.
         .stateIn(

@@ -67,6 +67,14 @@ Detail moved out of `CLAUDE.md` (review R8); keep it current when this area chan
 - `PlaybackStarter` applies the book's own speed when it has one, else the last used speed, so a new book starts at the speed you last chose and a book you slowed down keeps its speed.
 - Known limit: the key is the copy that played. A book on two servers keeps one speed per copy; there is no clear-speed action yet. Not checked on a phone.
 
+## Skip lengths (review R26)
+- Settings, Playback (`PlaybackSettingsScreen`, route `settings/playback`) sets how far back and forward jump: back 5, 10, 15, 30, 45 or 60 s, forward 10, 15, 30, 45, 60 or 90 s; 15 and 30 by default. `AppSettings.skipBackSeconds` / `skipForwardSeconds` keep only values from those lists (`domain/playback/SkipLengths.kt`).
+- Android: `PlaybackService` follows the setting while it runs. `SkipByTimePlayer` reports the lengths as its seek increments, so the notification, the lock screen, the car, headset buttons and the app's own buttons all skip the same distance on the book's timeline.
+- The notification buttons are redrawn on a change. Media3 has numbered arrows for 5, 10, 15 and 30 s only; other lengths get a plain arrow with the length in its label.
+- Player screen and widgets: the numbers on the buttons come from `PlayerUiState` and the widget states (`withSkips`).
+- iOS and the shared engine: `EnginePlaybackController.followSkipLengths`, wired in `headerPlayerModule` through `SkipLengthsAware`; `IosPlaybackController` also updates the lock screen's preferred skip intervals. Compiled only; not run on an iPhone.
+- Not checked on a phone: the notification redraw after a change, the widget numbers, a car or headset press.
+
 ## Android 15 audio focus
 
 - Android 15 audio focus (R5, targetSdk 36): focus is granted only to the top app or an app with a foreground service.
