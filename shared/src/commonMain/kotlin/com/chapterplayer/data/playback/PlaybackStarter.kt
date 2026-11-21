@@ -217,8 +217,16 @@ class PlaybackStarter(
 
     /** The book's own speed when one was chosen for it, else the speed last used. */
     private suspend fun applySavedSpeed(bookId: String) {
-        val speed = try {
-            settings.bookSpeed(bookId) ?: settings.playbackSpeed.first()
+        // Each read fails on its own: an unreadable book entry still falls back to the last used speed.
+        val own = try {
+            settings.bookSpeed(bookId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        val speed = own ?: try {
+            settings.playbackSpeed.first()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

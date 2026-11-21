@@ -315,6 +315,26 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun `a failed book write still saves the last used speed`() = runTest {
+        val s = Setup(book)
+        s.controller.playback.value = playing().copy(bookId = "a")
+        val failing = object : AppSettings by s.settings {
+            override suspend fun setBookSpeed(bookId: String, speed: Float) { error("storage unavailable") }
+        }
+        val vm = PlayerViewModel(s.controller, s.repo, failing, Dispatchers.Main)
+        vm.setSpeed(1.5f)
+        assertEquals(1.5f, s.settings.speed.value)
+    }
+
+    @Test
+    fun `with no book loaded the speed is still saved as the last used speed`() = runTest {
+        val s = Setup(book)
+        s.vm.setSpeed(1.5f)
+        assertEquals(1.5f, s.settings.speed.value)
+        assertEquals(emptyMap(), s.settings.bookSpeeds)
+    }
+
+    @Test
     fun `a settings failure still changes the speed`() = runTest {
         val s = Setup(book)
         val failing = object : AppSettings by s.settings {

@@ -207,14 +207,23 @@ class PlayerViewModel(
         controller.setSpeed(clamped)
         val bookId = controller.state.value.bookId
         viewModelScope.launch {
+            // Two writes that fail on their own. The speed still applies to this session; it is only not remembered.
+            // The book remembers its own speed; the last chosen speed is also what a new book starts at.
+            if (bookId != null) {
+                try {
+                    settings.setBookSpeed(bookId, clamped)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Not remembered for the book.
+                }
+            }
             try {
-                // The book remembers its own speed; the last chosen speed is also what a new book starts at.
-                if (bookId != null) settings.setBookSpeed(bookId, clamped)
                 settings.setPlaybackSpeed(clamped)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // The speed still applies to this session; it is only not remembered.
+                // Not remembered as the last used speed.
             }
         }
     }
