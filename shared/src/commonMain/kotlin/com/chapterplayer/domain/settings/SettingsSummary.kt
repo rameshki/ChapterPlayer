@@ -63,6 +63,8 @@ fun downloadLocationLabel(chosenId: String?, labels: Map<String, String>): Strin
 /** The Downloads row on a platform without a downloader (iOS until Stage 5 step 5). */
 const val DOWNLOADS_UNAVAILABLE_SUMMARY = "Not available on iOS yet"
 
+const val BACKUP_SUMMARY = "Favourites, Up next, corrections and settings"
+
 fun carSummary(resumeOnConnect: Boolean): String = "Resume on connect: ${if (resumeOnConnect) "on" else "off"}"
 
 /** The "keep playing overnight" row: says what the setting is now and, when it is limited, what a tap does. */

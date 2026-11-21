@@ -21,6 +21,7 @@ class FavouritesRepositoryTest {
             val known = this.rows.value.map { it.bookId }.toSet()
             this.rows.value = this.rows.value + rows.filter { it.bookId !in known }
         }
+        override suspend fun getAll(): List<FavouriteEntity> = rows.value
         override suspend fun existing(bookIds: List<String>): List<String> = rows.value.map { it.bookId }.filter { it in bookIds }
         override suspend fun deleteAll(bookIds: List<String>) {
             rows.value = rows.value.filterNot { it.bookId in bookIds }

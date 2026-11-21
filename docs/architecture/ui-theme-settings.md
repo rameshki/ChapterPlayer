@@ -57,6 +57,13 @@ Detail moved out of `CLAUDE.md` (review R8); keep it current when this area chan
 - The About page reads the version through `AppInfo` (`data/AppInfo.kt`), which `androidApp` provides in `AppModule` (iOS: `IosAppInfo`, the bundle's `CFBundleShortVersionString`).
 - The hub is host-tested for text and routes only, not checked on a device
 
+## Back up and restore (review R27)
+- Settings, Back up and restore (`BackupSettingsScreen`, `BackupViewModel`, route `settings/backup`) shares one JSON text and reads one back. The text goes through the system share sheet (`TextSharer`, else the clipboard); a restore is a pasted text. No file picker, so Android and iOS behave the same.
+- `BackupService` (`data/backup`) reads the DAOs and `AppSettings`; the format, the matching and the plan are pure code in `domain/backup/Backup.kt` (`BackupFile`, `BookIndex`, `restorePlan`), versioned (`BACKUP_VERSION`; a newer file is refused).
+- Version 1 holds favourites, Up next, the corrections of merged books and ten simple settings (theme, font, layout, car resume, Wi-Fi only, speed, skip lengths, mirror progress, cross sync on add). Not in it: statistics, the position of Plex-only books, per-book speeds, filters and source choices (they name this phone's server ids).
+- A book is named by `serverKey(baseUrl)` (no scheme, lower case) and its id, with title and author as the fallback when the address changed and only one book matches. No token and no id of this phone's servers is written.
+- Restore adds favourites and queue entries it does not have, upserts corrections and sets settings. Entries whose book is missing are counted and said ("add the server, let it sync, then restore again"). Not checked on a phone.
+
 ## First run and What's new
 
 - Home with no server shows `FirstRunGuide` (`ui/home`): a welcome and three steps (add a server, pick libraries, add a widget) with the "Add a server" button. It is the empty state, so it needs no saved flag and goes away with the first server.

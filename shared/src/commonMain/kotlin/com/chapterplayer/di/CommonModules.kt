@@ -1,5 +1,7 @@
 package com.chapterplayer.di
 
+import com.chapterplayer.data.backup.BackupService
+import com.chapterplayer.ui.settings.BackupViewModel
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.chapterplayer.data.DownloadStates
@@ -410,6 +412,8 @@ val commonViewModelModule = module {
     // The player's Up next sheet.
     viewModel { UpNextViewModel(get(), get(), get(), get(IoDispatcherQualifier), merging = get(), library = get()) }
     viewModel { PlayerMenuViewModel(get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), merges = get(), library = get()) }
+    single { BackupService(get(), get(), get(), get(), get(), get()) }
+    viewModel { BackupViewModel(get()) }
     viewModel { SettingsViewModel(get(), get(), get(), get(), get(AppScopeQualifier), get()) }
     // The statistics page; its figures are worked out off the main thread.
     viewModel { StatsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(IoDispatcherQualifier), merging = get(), library = get()) }

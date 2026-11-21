@@ -17,6 +17,9 @@ interface FavouriteDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(rows: List<FavouriteEntity>)
 
+    @Query("SELECT * FROM favourites")
+    suspend fun getAll(): List<FavouriteEntity>
+
     @Query("SELECT bookId FROM favourites WHERE bookId IN (:bookIds)")
     suspend fun existing(bookIds: List<String>): List<String>
 

@@ -13,6 +13,9 @@ interface BookMergeDao {
     @Query("SELECT * FROM book_merges")
     fun observeAll(): Flow<List<BookMergeEntity>>
 
+    @Query("SELECT * FROM book_merges")
+    suspend fun getAll(): List<BookMergeEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(rows: List<BookMergeEntity>)
 

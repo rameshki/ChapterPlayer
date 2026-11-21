@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.settings
 
+import com.chapterplayer.domain.settings.BACKUP_SUMMARY
 import com.chapterplayer.domain.playback.skipSummary
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ChevronRight
@@ -69,6 +71,7 @@ fun SettingsHubScreen(
     onOpenPlayback: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenCar: () -> Unit,
+    onOpenBackup: () -> Unit,
     onOpenAbout: () -> Unit,
     onBack: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel(),
@@ -119,6 +122,9 @@ fun SettingsHubScreen(
             HubGroup("Devices") {
                 HubRow(Icons.Default.DirectionsCar, "Android Auto", carSummary(resumeOnCarConnect), onOpenCar)
             }
+        }
+        HubGroup("Your data") {
+            HubRow(Icons.Default.Backup, "Back up and restore", BACKUP_SUMMARY, onOpenBackup)
         }
         HubGroup("About") {
             HubRow(Icons.Default.Info, "About", aboutSummary(appInfo.versionName), onOpenAbout)

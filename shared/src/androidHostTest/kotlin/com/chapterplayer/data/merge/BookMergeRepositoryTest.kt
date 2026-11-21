@@ -15,6 +15,7 @@ class BookMergeRepositoryTest {
     private class FakeDao : BookMergeDao {
         val rows = MutableStateFlow<List<BookMergeEntity>>(emptyList())
         override fun observeAll(): Flow<List<BookMergeEntity>> = rows
+        override suspend fun getAll(): List<BookMergeEntity> = rows.value
         override suspend fun upsertAll(rows: List<BookMergeEntity>) {
             val byKey = LinkedHashMap<Pair<String, String>, BookMergeEntity>()
             for (r in this.rows.value + rows) byKey[r.bookIdA to r.bookIdB] = r
