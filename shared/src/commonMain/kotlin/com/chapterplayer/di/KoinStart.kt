@@ -1,5 +1,7 @@
 package com.chapterplayer.di
 
+import com.chapterplayer.data.playback.SkipLengthsAware
+import com.chapterplayer.data.settings.AppSettings
 import com.chapterplayer.data.PlatformFeatures
 import com.chapterplayer.data.downloads.DownloadController
 import com.chapterplayer.data.downloads.DownloadOverview
@@ -57,7 +59,14 @@ fun headerPlayerModule(
             onJellyfinRefused = { refused -> blankRefusedPlexToken(servers, refused) },
         )
     }
-    single<PlaybackController> { create(get(), get(), get(AppScopeQualifier), get()) }
+    single<PlaybackController> {
+        create(get(), get(), get(AppScopeQualifier), get()).also { player ->
+            // The lock screen and the engine follow the skip lengths chosen in Settings.
+            if (player is SkipLengthsAware) {
+                player.followSkipLengths(get<AppSettings>().skipLengths)
+            }
+        }
+    }
 }
 
 /**

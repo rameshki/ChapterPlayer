@@ -13,6 +13,7 @@ import com.chapterplayer.domain.widgets.NowPlayingWidgetState
 import com.chapterplayer.domain.widgets.continueWidgetState
 import com.chapterplayer.domain.widgets.nowPlayingWidgetState
 import com.chapterplayer.domain.widgets.widgetMayResume
+import com.chapterplayer.domain.widgets.withSkips
 import com.chapterplayer.data.merge.MergedLibrary
 import com.chapterplayer.data.merge.mergedBrowseItems
 import kotlinx.coroutines.flow.Flow
@@ -51,6 +52,9 @@ class WidgetStates(
     private val freshLibrary: Flow<Library>
         get() = combine(merged.items, connectivity.isOnline, settings.downloadedOnly, ::Library)
 
+    /** The back and forward lengths in seconds; the defaults when the setting cannot be read. */
+    private val skipLengths: Flow<Pair<Int, Int>> = settings.skipLengths
+
     private val library: Flow<Library> = scope?.let {
         freshLibrary.shareIn(it, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), replay = 1)
     } ?: freshLibrary
@@ -60,8 +64,9 @@ class WidgetStates(
      * [listen]), "Nothing played yet" only when there is no history.
      */
     val nowPlaying: Flow<NowPlayingWidgetState>
-        get() = combine(controller.state, books.observeAllBooks(), library) { state, all, lib ->
+        get() = combine(controller.state, books.observeAllBooks(), library, skipLengths) { state, all, lib, (back, forward) ->
             nowPlayingWidgetState(state, state.bookId?.let { id -> all.firstOrNull { it.id == id } }, lib.items, lib.online, lib.downloadedOnly)
+                .withSkips(back, forward)
         }.distinctUntilChanged()
 
     val continueListening: Flow<ContinueWidgetState>
@@ -72,9 +77,9 @@ class WidgetStates(
      * that changes (a whole percent at most while playing, never a position tick).
      */
     val listen: Flow<ListenWidgetState>
-        get() = combine(controller.state, books.observeAllBooks(), library) { state, all, lib ->
+        get() = combine(controller.state, books.observeAllBooks(), library, skipLengths) { state, all, lib, (back, forward) ->
             val loaded = state.bookId?.let { id -> all.firstOrNull { it.id == id } }
-            listenWidgetState(state, loaded, lib.items, lib.online, lib.downloadedOnly)
+            listenWidgetState(state, loaded, lib.items, lib.online, lib.downloadedOnly).withSkips(back, forward)
         }.distinctUntilChanged()
 
     /** Whether the phone is online (the Listen cover is asked for again when it comes back). */

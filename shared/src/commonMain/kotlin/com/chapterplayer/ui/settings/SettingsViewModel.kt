@@ -2,6 +2,8 @@
 
 package com.chapterplayer.ui.settings
 
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
 import com.chapterplayer.domain.browse.SourceChoice
 import com.chapterplayer.domain.settings.SourceChoiceCard
 import com.chapterplayer.domain.settings.SourcePurpose
@@ -310,6 +312,27 @@ class SettingsViewModel(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // The choice is not saved; the screen keeps showing the saved one.
+            }
+        }
+    }
+
+    /** How far the back and forward buttons jump, in seconds (15 and 30 until chosen). */
+    val skipBackSeconds: StateFlow<Int> =
+        appSettings.skipBackSeconds.stateIn(viewModelScope, SharingStarted.Eagerly, DEFAULT_SKIP_BACK_SEC)
+    val skipForwardSeconds: StateFlow<Int> =
+        appSettings.skipForwardSeconds.stateIn(viewModelScope, SharingStarted.Eagerly, DEFAULT_SKIP_FORWARD_SEC)
+
+    fun setSkipBackSeconds(seconds: Int) = saveSetting { appSettings.setSkipBackSeconds(seconds) }
+
+    fun setSkipForwardSeconds(seconds: Int) = saveSetting { appSettings.setSkipForwardSeconds(seconds) }
+
+    // A choice that cannot be saved leaves the screen showing the saved one.
+    private fun saveSetting(save: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                save()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
             }
         }
     }

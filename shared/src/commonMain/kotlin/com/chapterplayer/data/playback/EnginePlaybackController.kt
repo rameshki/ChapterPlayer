@@ -27,6 +27,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -322,9 +323,29 @@ class EnginePlaybackController(
         refresh()
     }
 
-    override fun skipBack() = skipBy(-SKIP_BACK_MS)
+    // The lengths of the skip buttons, in ms: 15 s back and 30 s forward until the person's choice arrives.
+    private var skipBackMs = SKIP_BACK_MS
+    private var skipForwardMs = SKIP_FORWARD_MS
 
-    override fun skipForward() = skipBy(SKIP_FORWARD_MS)
+    /** Follows the person's skip lengths, in seconds (back, forward); a failing source leaves the last lengths. */
+    fun followSkipLengths(lengths: Flow<Pair<Int, Int>>) {
+        scope.launch {
+            try {
+                lengths.collect { (back, forward) ->
+                    skipBackMs = back * 1000L
+                    skipForwardMs = forward * 1000L
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Keep skipping by the lengths known so far.
+            }
+        }
+    }
+
+    override fun skipBack() = skipBy(-skipBackMs)
+
+    override fun skipForward() = skipBy(skipForwardMs)
 
     override fun seekToChapter(index: Int) {
         val chapter = _state.value.chapters.getOrNull(index) ?: return

@@ -1,5 +1,6 @@
 package com.chapterplayer.ui.settings
 
+import com.chapterplayer.domain.playback.skipSummary
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -64,6 +66,7 @@ fun SettingsHubScreen(
     onOpenServers: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenPlayback: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenCar: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -80,6 +83,8 @@ fun SettingsHubScreen(
     val downloadLocations by viewModel.downloadLocations.collectAsStateWithLifecycle()
     val downloadStorageLimit by viewModel.downloadStorageLimit.collectAsStateWithLifecycle()
     val sourceChoices by viewModel.sourceChoiceCards.collectAsStateWithLifecycle()
+    val skipBack by viewModel.skipBackSeconds.collectAsStateWithLifecycle()
+    val skipForward by viewModel.skipForwardSeconds.collectAsStateWithLifecycle()
 
     // A card may have been put in or taken out since the hub was last open.
     LaunchedEffect(Unit) { viewModel.refreshDownloadLocations() }
@@ -96,6 +101,7 @@ fun SettingsHubScreen(
         }
         HubGroup("Listening") {
             HubRow(Icons.Default.Palette, "Appearance", appearanceSummary(themeMode, appFont), onOpenAppearance)
+            HubRow(Icons.Default.Speed, "Playback", skipSummary(skipBack, skipForward), onOpenPlayback)
             HubRow(Icons.Default.BarChart, "Statistics", STATS_SUMMARY, onOpenStats)
             if (battery.available) {
                 HubRow(Icons.Default.BatteryChargingFull, BATTERY_TITLE, batterySummary(batteryUnrestricted), battery::openSettings)

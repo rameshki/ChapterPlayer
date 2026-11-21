@@ -88,9 +88,15 @@ class PlayerViewModel(
             .distinctUntilChanged()
     }
 
+    // The skip lengths the person chose (Settings, Playback): the buttons' numbers and labels follow them.
+    private val skipLengths = settings.skipLengths
+
     val uiState: StateFlow<PlayerUiState> = combine(
-        controller.state, controller.sleepTimer, playingBook, dismissedError, startStatus
-    ) { state, timer, book, dismissed, start -> buildState(state, timer, book, dismissed, start) }
+        combine(controller.state, controller.sleepTimer, playingBook, dismissedError, startStatus) { state, timer, book, dismissed, start ->
+            buildState(state, timer, book, dismissed, start)
+        },
+        skipLengths
+    ) { built, (back, forward) -> built.copy(skipBackSec = back, skipForwardSec = forward) }
         .flowOn(dispatcher)
         // Seeded from the player, so a screen opened while a book plays draws it from the first frame.
         .stateIn(

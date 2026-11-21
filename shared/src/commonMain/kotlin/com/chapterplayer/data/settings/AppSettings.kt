@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -14,9 +15,16 @@ import com.chapterplayer.domain.browse.migratedSourceChoice
 import com.chapterplayer.domain.browse.parseSourceChoice
 import com.chapterplayer.domain.browse.stored
 import com.chapterplayer.domain.playback.MAX_PLAYBACK_SPEED
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_BACK_SEC
+import com.chapterplayer.domain.playback.DEFAULT_SKIP_FORWARD_SEC
 import com.chapterplayer.domain.playback.MIN_PLAYBACK_SPEED
+import com.chapterplayer.domain.playback.SKIP_BACK_CHOICES_SEC
+import com.chapterplayer.domain.playback.SKIP_FORWARD_CHOICES_SEC
+import com.chapterplayer.domain.playback.normalizedSkipSec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -65,6 +73,21 @@ interface AppSettings {
     val playbackSpeed: Flow<Float>
     /** Saves [speed], clamped to 0.5..3.0. */
     suspend fun setPlaybackSpeed(speed: Float)
+
+    /** How far the back and forward buttons jump (player, notification, widgets, car, headset), in seconds; 15 and 30 by default. */
+    val skipBackSeconds: Flow<Int>
+    suspend fun setSkipBackSeconds(seconds: Int)
+    val skipForwardSeconds: Flow<Int>
+    suspend fun setSkipForwardSeconds(seconds: Int)
+
+    /**
+     * Both lengths as one pair (back, forward), in seconds, emitted only when one of them changes; the defaults when the
+     * setting cannot be read. What the player, the widgets, the notification and iOS follow.
+     */
+    val skipLengths: Flow<Pair<Int, Int>>
+        get() = combine(skipBackSeconds, skipForwardSeconds) { back, forward -> back to forward }
+            .distinctUntilChanged()
+            .catch { emit(DEFAULT_SKIP_BACK_SEC to DEFAULT_SKIP_FORWARD_SEC) }
 
     /** The speed last chosen for this book (the copy that played), clamped; null when none was, so [playbackSpeed] applies. */
     suspend fun bookSpeed(bookId: String): Float?
@@ -118,6 +141,8 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
         val crossSyncOnAdd = booleanPreferencesKey("cross_sync_on_add")
         val browseFilters = stringPreferencesKey("browse_filters")
         val libraryView = stringPreferencesKey("library_view")
+        val skipBack = intPreferencesKey("skip_back_seconds")
+        val skipForward = intPreferencesKey("skip_forward_seconds")
     }
 
     /** One entry per book that had its speed changed; the book id is only ever stored on this phone. */
@@ -188,6 +213,16 @@ class DataStoreAppSettings(private val store: DataStore<Preferences>) : AppSetti
     override suspend fun setPlaybackSpeed(speed: Float) {
         if (speed.isNaN()) return
         store.edit { it[Keys.playbackSpeed] = speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) }
+    }
+    override val skipBackSeconds: Flow<Int> =
+        prefs.map { normalizedSkipSec(it[Keys.skipBack], SKIP_BACK_CHOICES_SEC, DEFAULT_SKIP_BACK_SEC) }
+    override val skipForwardSeconds: Flow<Int> =
+        prefs.map { normalizedSkipSec(it[Keys.skipForward], SKIP_FORWARD_CHOICES_SEC, DEFAULT_SKIP_FORWARD_SEC) }
+    override suspend fun setSkipBackSeconds(seconds: Int) {
+        if (seconds in SKIP_BACK_CHOICES_SEC) store.edit { it[Keys.skipBack] = seconds }
+    }
+    override suspend fun setSkipForwardSeconds(seconds: Int) {
+        if (seconds in SKIP_FORWARD_CHOICES_SEC) store.edit { it[Keys.skipForward] = seconds }
     }
     override suspend fun bookSpeed(bookId: String): Float? =
         prefs.first()[bookSpeedKey(bookId)]?.takeIf { !it.isNaN() }?.let(::clampSpeed)

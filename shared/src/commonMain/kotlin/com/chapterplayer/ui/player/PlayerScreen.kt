@@ -85,6 +85,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.chapterplayer.domain.playback.Bookmark
 import com.chapterplayer.domain.playback.HistoryEntry
+import com.chapterplayer.domain.playback.skipBackLabel
+import com.chapterplayer.domain.playback.skipForwardLabel
 import com.chapterplayer.domain.playback.PlayerEmptyView
 import com.chapterplayer.domain.playback.SleepTimer
 import com.chapterplayer.ui.components.BookCoverPlaceholder
@@ -591,9 +593,9 @@ private fun TransportRow(
         IconButton(onClick = onPreviousChapter, enabled = state.canGoPrevious, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.SkipPrevious, contentDescription = "Previous chapter", modifier = Modifier.size(32.dp))
         }
-        SkipButton(seconds = 15, forward = false, description = "Back 15 seconds", onClick = onSkipBack)
+        SkipButton(seconds = state.skipBackSec, forward = false, description = skipBackLabel(state.skipBackSec), onClick = onSkipBack)
         PlayPauseButton(state.showPause, state.isBuffering, onPlayPause)
-        SkipButton(seconds = 30, forward = true, description = "Forward 30 seconds", onClick = onSkipForward)
+        SkipButton(seconds = state.skipForwardSec, forward = true, description = skipForwardLabel(state.skipForwardSec), onClick = onSkipForward)
         IconButton(onClick = onNextChapter, enabled = state.canGoNext, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.SkipNext, contentDescription = "Next chapter", modifier = Modifier.size(32.dp))
         }
